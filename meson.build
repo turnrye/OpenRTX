@@ -45,6 +45,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/dsp.cpp',
                'openrtx/src/core/cps.c',
                'openrtx/src/core/crc.c',
+               'openrtx/src/core/slip.c',
                'openrtx/src/core/datetime.c',
                'openrtx/src/core/openrtx.c',
                'openrtx/src/core/audio_codec.c',
@@ -1363,6 +1364,10 @@ csma_test = executable('csma_test',
                        sources : unit_test_src + ['tests/unit/csma_test.cpp'],
                        kwargs  : unit_test_opts)
 
+slip_test = executable('slip_test',
+                      sources : unit_test_src + ['tests/unit/slip.cpp'],
+                      kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1392,3 +1397,4 @@ test('APRS OpMode Test', aprs_opmode_test)
 test('APRS RX Performance Test', aprs_rx_performance_test)
 test('APRS Modulator Test', aprs_modulator_test)
 test('CSMA Test', csma_test)
+test('Slip Test', slip_test)
