@@ -44,14 +44,14 @@ jobs:
         run: |
           export PATH=$PATH:/tmp/OpenGD77/tools/Python/FirmwareLoader:/tmp/OpenGD77/firmware/tools
           echo $PATH
-          meson compile -C build_arm openrtx_md3x0_wrap
-          meson compile -C build_arm openrtx_mduv3x0_wrap
-          meson compile -C build_arm openrtx_md9600_wrap
-          meson compile -C build_arm openrtx_gd77_wrap
-          meson compile -C build_arm openrtx_dm1801_wrap
-          meson compile -C build_arm openrtx_mod17_wrap
           meson compile -C build_arm openrtx_cs7000_wrap
           meson compile -C build_arm openrtx_dm1701_wrap
+          meson compile -C build_arm openrtx_dm1801_wrap
+          meson compile -C build_arm openrtx_md3x0_wrap
+          meson compile -C build_arm openrtx_md9600_wrap
+          meson compile -C build_arm openrtx_mduv3x0_wrap
+          meson compile -C build_arm openrtx_mod17_wrap
+          meson compile -C build_arm openrtx_gd77_wrap
       - name: Compile arm cortex m7 targets
         run: |
           export PATH=$PATH:/tmp/OpenGD77/tools/Python/FirmwareLoader:/tmp/OpenGD77/firmware/tools
@@ -62,6 +62,14 @@ jobs:
           name: release-bins
           path: |
             ${{github.workspace}}/build_arm/openrtx_*_wrap
+            ${{github.workspace}}/build_arm/openrtx_*_wrap.sgl
+            ${{github.workspace}}/build_arm/openrtx_*_wrap.bin
+            ${{github.workspace}}/build_arm/openrtx_gd77_wrap*
+            ${{github.workspace}}/build_arm/openrtx_dm1801_wrap*
+            ${{github.workspace}}/build_arm/openrtx_cs7000_wrap*
+            ${{github.workspace}}/build_cm7/openrtx_*_wrap
+            ${{github.workspace}}/build_cm7/openrtx_*_wrap.bin
+            ${{github.workspace}}/build_cm7/openrtx_cs7000p_wrap*
             ${{github.workspace}}/build_linux/openrtx_linux
             ${{github.workspace}}/build_linux/openrtx_linux_smallscreen
             ${{github.workspace}}/build_linux/openrtx_linux_mod17
