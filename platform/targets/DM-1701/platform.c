@@ -35,57 +35,53 @@
 #include <backlight.h>
 #endif
 
-static const hwInfo_t hwInfo =
-{
-    .vhf_maxFreq = 174,
-    .vhf_minFreq = 136,
-    .vhf_band    = 1,
-    .uhf_maxFreq = 470,
-    .uhf_minFreq = 400,
-    .uhf_band    = 1,
-    .hw_version  = 0,
-    .name        = "DM-1701"
-};
-
+static const hwInfo_t hwInfo = { .vhf_maxFreq = 174,
+                                 .vhf_minFreq = 136,
+                                 .vhf_band = 1,
+                                 .uhf_maxFreq = 470,
+                                 .uhf_minFreq = 400,
+                                 .uhf_band = 1,
+                                 .hw_version = 0,
+                                 .name = "DM-1701" };
 
 void platform_init()
 {
     /* Configure GPIOs */
     gpio_setMode(GREEN_LED, OUTPUT);
-    gpio_setMode(RED_LED,   OUTPUT);
+    gpio_setMode(RED_LED, OUTPUT);
 
-    gpio_setMode(PTT_SW,  INPUT_PULL_UP);
+    gpio_setMode(PTT_SW, INPUT_PULL_UP);
     gpio_setMode(PTT_EXT, INPUT_PULL_UP);
 
-    #ifndef RUNNING_TESTSUITE
+#ifndef RUNNING_TESTSUITE
     gpio_setMode(PWR_SW, OUTPUT);
     gpio_setPin(PWR_SW);
-    #endif
+#endif
 
     adcStm32_init(&adc1);
 
-    nvm_init();                      /* Initialise non volatile memory manager */
-    toneGen_init();                  /* Initialise tone generator              */
-    rtc_init();                      /* Initialise RTC                         */
-    chSelector_init();               /* Initialise channel selector handler    */
-    audio_init();                    /* Initialise audio management module     */
+    nvm_init(); /* Initialise non volatile memory manager */
+    toneGen_init(); /* Initialise tone generator              */
+    rtc_init(); /* Initialise RTC                         */
+    chSelector_init(); /* Initialise channel selector handler    */
+    audio_init(); /* Initialise audio management module     */
 
-    #ifdef ENABLE_BKLIGHT_DIMMING
-    backlight_init();                /* Initialise backlight driver            */
-    #else
+#ifdef ENABLE_BKLIGHT_DIMMING
+    backlight_init(); /* Initialise backlight driver            */
+#else
     gpio_setMode(LCD_BKLIGHT, OUTPUT);
     gpio_clearPin(LCD_BKLIGHT);
-    #endif
+#endif
 }
 
 void platform_terminate()
 {
-    /* Shut down backlight */
-    #ifdef ENABLE_BKLIGHT_DIMMING
+/* Shut down backlight */
+#ifdef ENABLE_BKLIGHT_DIMMING
     backlight_terminate();
-    #else
+#else
     gpio_clearPin(LCD_BKLIGHT);
-    #endif
+#endif
 
     /* Shut down LEDs */
     gpio_clearPin(GREEN_LED);
@@ -120,7 +116,7 @@ uint8_t platform_getMicLevel()
 
 uint8_t platform_getVolumeLevel()
 {
-   /*
+    /*
      * Volume level corresponds to an analog signal in the range 20 - 1650mV.
      * Potentiometer has pseudo-logarithmic law, well described with two straight
      * lines with a breakpoint around 270mV.
@@ -129,24 +125,21 @@ uint8_t platform_getVolumeLevel()
     uint16_t value = adc_getVoltage(&adc1, ADC_VOL_CH) / 1000;
     uint32_t output;
 
-    if(value < 20)
+    if (value < 20)
         return 0;
 
-    if(value <= 270)
-    {
+    if (value <= 270) {
         // First line: offset zero, slope 0.556
         output = value;
         output = (output * 556) / 1000;
-    }
-    else
-    {
+    } else {
         // Second line: offset 270, slope 0.076
-        output  = value - 270;
-        output  = (output * 76) / 1000;
+        output = value - 270;
+        output = (output * 76) / 1000;
         output += 150;
     }
 
-    if(output > 255)
+    if (output > 255)
         output = 255;
 
     return output;
@@ -173,8 +166,7 @@ bool platform_pwrButtonStatus()
 
 void platform_ledOn(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_setPin(GREEN_LED);
             break;
@@ -190,8 +182,7 @@ void platform_ledOn(led_t led)
 
 void platform_ledOff(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_clearPin(GREEN_LED);
             break;

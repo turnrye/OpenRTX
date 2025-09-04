@@ -32,36 +32,35 @@
 #include "stm32_adc.h"
 #include "Cx000_dac.h"
 
-#define PATH(x,y) ((x << 4) | y)
+#define PATH(x, y) ((x << 4) | y)
 
-const struct audioDevice outputDevices[] =
-{
-    {NULL,                    NULL, 0,             SINK_MCU},
-    {&stm32_dac_audio_driver, NULL, STM32_DAC_CH2, SINK_RTX},
-    {&Cx000_dac_audio_driver, NULL, 0,             SINK_SPK},
+const struct audioDevice outputDevices[] = {
+    { NULL, NULL, 0, SINK_MCU },
+    { &stm32_dac_audio_driver, NULL, STM32_DAC_CH2, SINK_RTX },
+    { &Cx000_dac_audio_driver, NULL, 0, SINK_SPK },
 };
 
-const struct audioDevice inputDevices[] =
-{
-    {NULL,                    0,                          0,              SOURCE_MCU},
-    {&stm32_adc_audio_driver, (const void *) ADC_RTX_CH,  STM32_ADC_ADC2, SOURCE_RTX},
-    {&stm32_adc_audio_driver, (const void *) ADC_MIC_CH,  STM32_ADC_ADC2, SOURCE_MIC},
+const struct audioDevice inputDevices[] = {
+    { NULL, 0, 0, SOURCE_MCU },
+    { &stm32_adc_audio_driver, (const void *)ADC_RTX_CH, STM32_ADC_ADC2,
+      SOURCE_RTX },
+    { &stm32_adc_audio_driver, (const void *)ADC_MIC_CH, STM32_ADC_ADC2,
+      SOURCE_MIC },
 };
 
-HR_C6000 C6000((const struct spiDevice *) &c6000_spi, { C6K_CS });
+HR_C6000 C6000((const struct spiDevice *)&c6000_spi, { C6K_CS });
 static bool spkEnabled = false;
 
 static inline void selectSpk()
 {
-    if(spkEnabled == false)
-    {
+    if (spkEnabled == false) {
         gpioDev_set(INT_SPK_MUTE);
         gpioDev_set(EXT_SPK_MUTE);
         return;
     }
 
     // Phone detect pin is active low
-    if(gpio_readPin(PHONE_DETECT) == 0)
+    if (gpio_readPin(PHONE_DETECT) == 0)
         gpioDev_clear(EXT_SPK_MUTE);
     else
         gpioDev_clear(INT_SPK_MUTE);
@@ -69,14 +68,13 @@ static inline void selectSpk()
 
 static void *audio_thread(void *arg)
 {
-    (void) arg;
+    (void)arg;
 
     unsigned long long now = getTick();
 
     Cx000dac_init(&C6000);
 
-    while(state.devStatus != SHUTDOWN)
-    {
+    while (state.devStatus != SHUTDOWN) {
         selectSpk();
         Cx000dac_task();
 
@@ -92,9 +90,9 @@ static void *audio_thread(void *arg)
 void audio_init()
 {
     gpio_setMode(BEEP_OUT, ANALOG);
-    gpio_setMode(AIN_MIC,  ANALOG);
-    gpio_setMode(AIN_RTX,  ANALOG);
-    gpio_setMode(C6K_CLK,  ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(AIN_MIC, ANALOG);
+    gpio_setMode(AIN_RTX, ANALOG);
+    gpio_setMode(C6K_CLK, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(C6K_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(C6K_MISO, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(PHONE_DETECT, INPUT_PULL_UP);
@@ -115,7 +113,7 @@ void audio_init()
     C6000.fmMode();
 
     pthread_attr_t attr;
-    pthread_t      thread;
+    pthread_t thread;
     struct sched_param param;
 
     pthread_attr_init(&attr);
@@ -137,18 +135,16 @@ void audio_terminate()
     C6000.terminate();
 }
 
-
 void audio_connect(const enum AudioSource source, const enum AudioSink sink)
 {
     uint32_t path = PATH(source, sink);
 
-    switch(path)
-    {
+    switch (path) {
         case PATH(SOURCE_MIC, SINK_SPK):
         case PATH(SOURCE_MIC, SINK_RTX):
         case PATH(SOURCE_MIC, SINK_MCU):
             // Phone detect pin is active low
-            if(gpio_readPin(PHONE_DETECT) == 0)
+            if (gpio_readPin(PHONE_DETECT) == 0)
                 gpioDev_set(EXT_MIC_SEL);
             else
                 gpioDev_set(INT_MIC_SEL);
@@ -168,8 +164,7 @@ void audio_connect(const enum AudioSource source, const enum AudioSink sink)
             break;
     }
 
-    if(sink == SINK_SPK)
-    {
+    if (sink == SINK_SPK) {
         // Anti-pop: unmute speaker after 10ms from amp. power on
         gpioDev_set(AUDIO_AMP_EN);
         sleepFor(0, 10);
@@ -181,14 +176,12 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
 {
     uint32_t path = PATH(source, sink);
 
-    if(sink == SINK_SPK)
-    {
+    if (sink == SINK_SPK) {
         gpioDev_clear(AUDIO_AMP_EN);
         spkEnabled = false;
     }
 
-    switch(path)
-    {
+    switch (path) {
         case PATH(SOURCE_MIC, SINK_SPK):
         case PATH(SOURCE_MIC, SINK_RTX):
         case PATH(SOURCE_MIC, SINK_MCU):
@@ -211,15 +204,15 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
 }
 
 bool audio_checkPathCompatibility(const enum AudioSource p1Source,
-                                  const enum AudioSink   p1Sink,
+                                  const enum AudioSink p1Sink,
                                   const enum AudioSource p2Source,
-                                  const enum AudioSink   p2Sink)
+                                  const enum AudioSink p2Sink)
 
 {
-    if(p1Source == p2Source)
+    if (p1Source == p2Source)
         return false;
 
-    if(p1Sink == p2Sink)
+    if (p1Sink == p2Sink)
         return false;
 
     return true;

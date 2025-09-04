@@ -31,10 +31,8 @@
 
 using namespace M17;
 
-
 M17Modulator::M17Modulator()
 {
-
 }
 
 M17Modulator::~M17Modulator()
@@ -49,19 +47,18 @@ void M17Modulator::init()
      * audio.
      */
 
-    baseband_buffer = std::make_unique< int16_t[] >(2 * M17_FRAME_SAMPLES);
-    idleBuffer      = baseband_buffer.get();
-    txRunning       = false;
-    #if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
+    baseband_buffer = std::make_unique<int16_t[]>(2 * M17_FRAME_SAMPLES);
+    idleBuffer = baseband_buffer.get();
+    txRunning = false;
+#if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
     pwmComp.reset();
-    #endif
+#endif
 }
 
 void M17Modulator::terminate()
 {
     // Terminate an ongoing stream, if present
-    if(txRunning)
-    {
+    if (txRunning) {
         audioStream_terminate(outStream);
         txRunning = false;
     }
@@ -75,23 +72,23 @@ void M17Modulator::terminate()
 
 bool M17Modulator::start()
 {
-    if(txRunning)
+    if (txRunning)
         return true;
 
-    #ifndef PLATFORM_LINUX
+#ifndef PLATFORM_LINUX
     outPath = audioPath_request(SOURCE_MCU, SINK_RTX, PRIO_TX);
-    if(outPath < 0)
+    if (outPath < 0)
         return false;
 
     outStream = audioStream_start(outPath, baseband_buffer.get(),
-                                  2*M17_FRAME_SAMPLES, M17_TX_SAMPLE_RATE,
+                                  2 * M17_FRAME_SAMPLES, M17_TX_SAMPLE_RATE,
                                   STREAM_OUTPUT | BUF_CIRC_DOUBLE);
 
-    if(outStream < 0)
+    if (outStream < 0)
         return false;
 
     idleBuffer = outputStream_getIdleBuffer(outStream);
-    #endif
+#endif
 
     txRunning = true;
 
@@ -101,9 +98,8 @@ bool M17Modulator::start()
 void M17Modulator::sendPreamble()
 {
     // Fill symbol buffer with preamble, made of alternated +3 and -3 symbols
-    for(size_t i = 0; i < symbols.size(); i += 2)
-    {
-        symbols[i]     = +3;
+    for (size_t i = 0; i < symbols.size(); i += 2) {
+        symbols[i] = +3;
         symbols[i + 1] = -3;
     }
 
@@ -117,13 +113,12 @@ void M17Modulator::sendPreamble()
     sendBaseband();
 }
 
-void M17Modulator::sendFrame(const frame_t& frame)
+void M17Modulator::sendFrame(const frame_t &frame)
 {
     auto it = symbols.begin();
-    for(size_t i = 0; i < frame.size(); i++)
-    {
+    for (size_t i = 0; i < frame.size(); i++) {
         auto sym = byteToSymbols(frame[i]);
-        it       = std::copy(sym.begin(), sym.end(), it);
+        it = std::copy(sym.begin(), sym.end(), it);
     }
 
     symbolsToBaseband();
@@ -132,17 +127,17 @@ void M17Modulator::sendFrame(const frame_t& frame)
 
 void M17Modulator::stop()
 {
-    if(txRunning == false)
+    if (txRunning == false)
         return;
 
     audioStream_stop(outStream);
-    txRunning  = false;
+    txRunning = false;
     idleBuffer = baseband_buffer.get();
     audioPath_release(outPath);
 
-    #if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
+#if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
     pwmComp.reset();
-    #endif
+#endif
 }
 
 void M17Modulator::invertPhase(const bool status)
@@ -150,33 +145,33 @@ void M17Modulator::invertPhase(const bool status)
     invPhase = status;
 }
 
-
 void M17Modulator::symbolsToBaseband()
 {
     memset(idleBuffer, 0x00, M17_FRAME_SAMPLES * sizeof(stream_sample_t));
 
-    for(size_t i = 0; i < symbols.size(); i++)
-    {
+    for (size_t i = 0; i < symbols.size(); i++) {
         idleBuffer[i * 10] = symbols[i];
     }
 
-    for(size_t i = 0; i < M17_FRAME_SAMPLES; i++)
-    {
-        float elem    = static_cast< float >(idleBuffer[i]);
-        elem          = M17::rrc_48k(elem * M17_RRC_GAIN) - M17_RRC_OFFSET;
-        #if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
-        elem          = pwmComp(elem);
-        #endif
-        if(invPhase) elem = 0.0f - elem;    // Invert signal phase
-        idleBuffer[i] = static_cast< int16_t >(elem);
+    for (size_t i = 0; i < M17_FRAME_SAMPLES; i++) {
+        float elem = static_cast<float>(idleBuffer[i]);
+        elem = M17::rrc_48k(elem * M17_RRC_GAIN) - M17_RRC_OFFSET;
+#if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
+        elem = pwmComp(elem);
+#endif
+        if (invPhase)
+            elem = 0.0f - elem; // Invert signal phase
+        idleBuffer[i] = static_cast<int16_t>(elem);
     }
 }
 
 #ifndef PLATFORM_LINUX
 void M17Modulator::sendBaseband()
 {
-    if(txRunning == false) return;
-    if(audioPath_getStatus(outPath) != PATH_OPEN) return;
+    if (txRunning == false)
+        return;
+    if (audioPath_getStatus(outPath) != PATH_OPEN)
+        return;
 
     // Transmission is ongoing, syncronise with stream end before proceeding
     outputStream_sync(outStream, true);
@@ -187,8 +182,7 @@ void M17Modulator::sendBaseband()
 {
     FILE *outfile = fopen("/tmp/m17_output.raw", "ab");
 
-    for(size_t i = 0; i < M17_FRAME_SAMPLES; i++)
-    {
+    for (size_t i = 0; i < M17_FRAME_SAMPLES; i++) {
         auto s = idleBuffer[i];
         fwrite(&s, sizeof(s), 1, outfile);
     }

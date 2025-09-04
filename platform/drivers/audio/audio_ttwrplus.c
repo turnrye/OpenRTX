@@ -21,28 +21,24 @@
 #include <interfaces/audio.h>
 #include "SA8x8.h"
 
-const struct audioDevice outputDevices[] =
-{
-    {NULL, 0, 0, SINK_MCU},
-    {NULL, 0, 0, SINK_RTX},
-    {NULL, 0, 0, SINK_SPK},
+const struct audioDevice outputDevices[] = {
+    { NULL, 0, 0, SINK_MCU },
+    { NULL, 0, 0, SINK_RTX },
+    { NULL, 0, 0, SINK_SPK },
 };
 
-const struct audioDevice inputDevices[] =
-{
-    {NULL, 0, 0, SINK_MCU},
-    {NULL, 0, 0, SINK_RTX},
-    {NULL, 0, 0, SINK_SPK},
+const struct audioDevice inputDevices[] = {
+    { NULL, 0, 0, SINK_MCU },
+    { NULL, 0, 0, SINK_RTX },
+    { NULL, 0, 0, SINK_SPK },
 };
 
 void audio_init()
 {
-
 }
 
 void audio_terminate()
 {
-
 }
 
 void audio_connect(const enum AudioSource source, const enum AudioSink sink)
@@ -68,9 +64,9 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
 }
 
 bool audio_checkPathCompatibility(const enum AudioSource p1Source,
-                                  const enum AudioSink   p1Sink,
+                                  const enum AudioSink p1Sink,
                                   const enum AudioSource p2Source,
-                                  const enum AudioSink   p2Sink)
+                                  const enum AudioSink p2Sink)
 
 {
     static const uint8_t RTX_SPK = (SOURCE_RTX * 3) + SINK_SPK;
@@ -80,11 +76,11 @@ bool audio_checkPathCompatibility(const enum AudioSource p1Source,
     uint8_t p2 = (p2Source * 3) + p2Sink;
 
     // RTX-SPK and MIC-RTX are compatible
-    if((p1 == RTX_SPK) && (p2 == MIC_RTX))
+    if ((p1 == RTX_SPK) && (p2 == MIC_RTX))
         return true;
 
     // Same as above but with the paths swapped
-    if((p1 == MIC_RTX) && (p2 == RTX_SPK))
+    if ((p1 == MIC_RTX) && (p2 == RTX_SPK))
         return true;
 
     // Disallow all the other path combinations

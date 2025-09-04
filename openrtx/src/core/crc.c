@@ -22,14 +22,13 @@
 
 uint16_t crc_ccitt(const void *data, const size_t len)
 {
-    uint16_t x   = 0;
+    uint16_t x = 0;
     uint16_t crc = 0;
-    const uint8_t *buf = ((const uint8_t *) data);
+    const uint8_t *buf = ((const uint8_t *)data);
 
-    for(size_t i = 0; i < len; i++)
-    {
-        x   = (crc >> 8) ^ buf[i];
-        x  ^= x >> 4;
+    for (size_t i = 0; i < len; i++) {
+        x = (crc >> 8) ^ buf[i];
+        x ^= x >> 4;
         crc = (crc << 8) ^ (x << 12) ^ (x << 5) ^ x;
     }
 

@@ -30,75 +30,76 @@
  * LCD command set, basic and extended
  */
 
-#define CMD_NOP          0x00 // No Operation
-#define CMD_SWRESET      0x01 // Software reset
-#define CMD_RDDIDIF      0x04 // Read Display ID Info
-#define CMD_RDDST        0x09 // Read Display Status
-#define CMD_RDDPM        0x0a // Read Display Power
-#define CMD_RDD_MADCTL   0x0b // Read Display
-#define CMD_RDD_COLMOD   0x0c // Read Display Pixel
-#define CMD_RDDDIM       0x0d // Read Display Image
-#define CMD_RDDSM        0x0e // Read Display Signal
-#define CMD_RDDSDR       0x0f // Read display self-diagnostic resut
-#define CMD_SLPIN        0x10 // Sleep in & booster off
-#define CMD_SLPOUT       0x11 // Sleep out & booster on
-#define CMD_PTLON        0x12 // Partial mode on
-#define CMD_NORON        0x13 // Partial off (Normal)
-#define CMD_INVOFF       0x20 // Display inversion off
-#define CMD_INVON        0x21 // Display inversion on
-#define CMD_GAMSET       0x26 // Gamma curve select
-#define CMD_DISPOFF      0x28 // Display off
-#define CMD_DISPON       0x29 // Display on
-#define CMD_CASET        0x2a // Column address set
-#define CMD_RASET        0x2b // Row address set
-#define CMD_RAMWR        0x2c // Memory write
-#define CMD_RGBSET       0x2d // LUT parameter (16-to-18 color mapping)
-#define CMD_RAMRD        0x2e // Memory read
-#define CMD_PTLAR        0x30 // Partial start/end address set
-#define CMD_VSCRDEF      0x31 // Vertical Scrolling Direction
-#define CMD_TEOFF        0x34 // Tearing effect line off
-#define CMD_TEON         0x35 // Tearing effect mode set & on
-#define CMD_MADCTL       0x36 // Memory data access control
-#define CMD_VSCRSADD     0x37 // Vertical scrolling start address
-#define CMD_IDMOFF       0x38 // Idle mode off
-#define CMD_IDMON        0x39 // Idle mode on
-#define CMD_COLMOD       0x3a // Interface pixel format
-#define CMD_RDID1        0xda // Read ID1
-#define CMD_RDID2        0xdb // Read ID2
-#define CMD_RDID3        0xdc // Read ID3
+#define CMD_NOP 0x00 // No Operation
+#define CMD_SWRESET 0x01 // Software reset
+#define CMD_RDDIDIF 0x04 // Read Display ID Info
+#define CMD_RDDST 0x09 // Read Display Status
+#define CMD_RDDPM 0x0a // Read Display Power
+#define CMD_RDD_MADCTL 0x0b // Read Display
+#define CMD_RDD_COLMOD 0x0c // Read Display Pixel
+#define CMD_RDDDIM 0x0d // Read Display Image
+#define CMD_RDDSM 0x0e // Read Display Signal
+#define CMD_RDDSDR 0x0f // Read display self-diagnostic resut
+#define CMD_SLPIN 0x10 // Sleep in & booster off
+#define CMD_SLPOUT 0x11 // Sleep out & booster on
+#define CMD_PTLON 0x12 // Partial mode on
+#define CMD_NORON 0x13 // Partial off (Normal)
+#define CMD_INVOFF 0x20 // Display inversion off
+#define CMD_INVON 0x21 // Display inversion on
+#define CMD_GAMSET 0x26 // Gamma curve select
+#define CMD_DISPOFF 0x28 // Display off
+#define CMD_DISPON 0x29 // Display on
+#define CMD_CASET 0x2a // Column address set
+#define CMD_RASET 0x2b // Row address set
+#define CMD_RAMWR 0x2c // Memory write
+#define CMD_RGBSET 0x2d // LUT parameter (16-to-18 color mapping)
+#define CMD_RAMRD 0x2e // Memory read
+#define CMD_PTLAR 0x30 // Partial start/end address set
+#define CMD_VSCRDEF 0x31 // Vertical Scrolling Direction
+#define CMD_TEOFF 0x34 // Tearing effect line off
+#define CMD_TEON 0x35 // Tearing effect mode set & on
+#define CMD_MADCTL 0x36 // Memory data access control
+#define CMD_VSCRSADD 0x37 // Vertical scrolling start address
+#define CMD_IDMOFF 0x38 // Idle mode off
+#define CMD_IDMON 0x39 // Idle mode on
+#define CMD_COLMOD 0x3a // Interface pixel format
+#define CMD_RDID1 0xda // Read ID1
+#define CMD_RDID2 0xdb // Read ID2
+#define CMD_RDID3 0xdc // Read ID3
 
-#define CMD_SETOSC       0xb0 // Set internal oscillator
-#define CMD_SETPWCTR     0xb1 // Set power control
-#define CMD_SETDISPLAY   0xb2 // Set display control
-#define CMD_SETCYC       0xb4 // Set display cycle
-#define CMD_SETBGP       0xb5 // Set BGP voltage
-#define CMD_SETVCOM      0xb6 // Set VCOM voltage
-#define CMD_SETEXTC      0xb9 // Enter extension command
-#define CMD_SETOTP       0xbb // Set OTP
-#define CMD_SETSTBA      0xc0 // Set Source option
-#define CMD_SETID        0xc3 // Set ID
-#define CMD_SETPANEL     0xcc // Set Panel characteristics
-#define CMD_GETHID       0xd0 // Read Himax internal ID
-#define CMD_SETGAMMA     0xe0 // Set Gamma
+#define CMD_SETOSC 0xb0 // Set internal oscillator
+#define CMD_SETPWCTR 0xb1 // Set power control
+#define CMD_SETDISPLAY 0xb2 // Set display control
+#define CMD_SETCYC 0xb4 // Set display cycle
+#define CMD_SETBGP 0xb5 // Set BGP voltage
+#define CMD_SETVCOM 0xb6 // Set VCOM voltage
+#define CMD_SETEXTC 0xb9 // Enter extension command
+#define CMD_SETOTP 0xbb // Set OTP
+#define CMD_SETSTBA 0xc0 // Set Source option
+#define CMD_SETID 0xc3 // Set ID
+#define CMD_SETPANEL 0xcc // Set Panel characteristics
+#define CMD_GETHID 0xd0 // Read Himax internal ID
+#define CMD_SETGAMMA 0xe0 // Set Gamma
 #define CMD_SET_SPI_RDEN 0xfe // Set SPI Read address (and enable)
 #define CMD_GET_SPI_RDEN 0xff // Get FE A[7:0] parameter
 
 /* Addresses for memory-mapped display data and command (through FSMC) */
 #define LCD_FSMC_ADDR_COMMAND 0x60000000
-#define LCD_FSMC_ADDR_DATA    0x60040000
-
+#define LCD_FSMC_ADDR_DATA 0x60040000
 
 using namespace miosix;
 static Thread *lcdWaiting = 0;
 
 void __attribute__((used)) DmaImpl()
 {
-    DMA2->HIFCR |= DMA_HIFCR_CTCIF7 | DMA_HIFCR_CTEIF7;    /* Clear flags */
+    DMA2->HIFCR |= DMA_HIFCR_CTCIF7 | DMA_HIFCR_CTEIF7; /* Clear flags */
     gpio_setPin(LCD_CS);
 
-    if(lcdWaiting == 0) return;
+    if (lcdWaiting == 0)
+        return;
     lcdWaiting->IRQwakeup();
-    if(lcdWaiting->IRQgetPriority()>Thread::IRQgetCurrentThread()->IRQgetPriority())
+    if (lcdWaiting->IRQgetPriority() >
+        Thread::IRQgetCurrentThread()->IRQgetPriority())
         Scheduler::IRQfindNextThread();
     lcdWaiting = 0;
 }
@@ -112,12 +113,12 @@ void __attribute__((naked)) DMA2_Stream7_IRQHandler()
 
 static inline __attribute__((__always_inline__)) void writeCmd(uint8_t cmd)
 {
-    *((volatile uint8_t*) LCD_FSMC_ADDR_COMMAND) = cmd;
+    *((volatile uint8_t *)LCD_FSMC_ADDR_COMMAND) = cmd;
 }
 
 static inline __attribute__((__always_inline__)) void writeData(uint8_t val)
 {
-    *((volatile uint8_t*) LCD_FSMC_ADDR_DATA) = val;
+    *((volatile uint8_t *)LCD_FSMC_ADDR_DATA) = val;
 }
 
 void display_init()
@@ -172,12 +173,12 @@ void display_init()
      * - ADDSET  = 7: address setup time 7*HCLK_period
      */
     FSMC_Bank1->BTCR[1] = (0 << 28) /* ACCMOD */
-                        | (0 << 24) /* DATLAT */
-                        | (1 << 20) /* CLKDIV */
-                        | (0 << 16) /* BUSTURN */
-                        | (5 << 8)  /* DATAST */
-                        | (1 << 4)  /* ADDHLD */
-                        | 7;        /* ADDSET */
+                          | (0 << 24) /* DATLAT */
+                          | (1 << 20) /* CLKDIV */
+                          | (0 << 16) /* BUSTURN */
+                          | (5 << 8) /* DATAST */
+                          | (1 << 4) /* ADDHLD */
+                          | 7; /* ADDSET */
 
     /* Configure alternate function for data and control lines. */
     gpio_setMode(LCD_D0, ALTERNATE | ALTERNATE_FUNC(12));
@@ -193,14 +194,14 @@ void display_init()
     gpio_setMode(LCD_RD, ALTERNATE | ALTERNATE_FUNC(12));
 
     /* Reset and chip select lines as outputs */
-    gpio_setMode(LCD_CS,  OUTPUT);
+    gpio_setMode(LCD_CS, OUTPUT);
     gpio_setMode(LCD_RST, OUTPUT);
 
-    gpio_setPin(LCD_CS);    /* CS idle state is high level */
+    gpio_setPin(LCD_CS); /* CS idle state is high level */
     gpio_clearPin(LCD_RST); /* Put LCD in reset mode */
 
     delayMs(20);
-    gpio_setPin(LCD_RST);   /* Exit from reset */
+    gpio_setPin(LCD_RST); /* Exit from reset */
 
     gpio_clearPin(LCD_CS);
 
@@ -217,8 +218,7 @@ void display_init()
      */
     uint8_t lcd_type = platform_getHwInfo()->hw_version;
 
-    if((lcd_type == 2) || (lcd_type == 3))
-    {
+    if ((lcd_type == 2) || (lcd_type == 3)) {
         writeCmd(0xfe);
         writeCmd(0xef);
         writeCmd(0xb4);
@@ -227,7 +227,7 @@ void display_init()
         writeData(0x16);
         writeCmd(0xfd);
 
-        if(lcd_type == 3)
+        if (lcd_type == 3)
             writeData(0x40);
         else
             writeData(0x4f);
@@ -280,9 +280,7 @@ void display_init()
         writeCmd(0xe9);
         writeData(0x00);
         delayMs(20);
-    }
-    else
-    {
+    } else {
         writeCmd(0x11);
         delayMs(120);
         writeCmd(0xb1);
@@ -376,31 +374,26 @@ void display_init()
      */
 
     writeCmd(CMD_MADCTL);
-    if(lcd_type == 1)
-    {
-        writeData(0x60);    /* Reference case: MD-390(G)  */
-    }
-    else if(lcd_type == 2)
-    {
-        writeData(0xE0);    /* Reference case: MD-380V(G) */
-    }
-    else
-    {
-        writeData(0xA0);    /* Reference case: MD-380     */
+    if (lcd_type == 1) {
+        writeData(0x60); /* Reference case: MD-390(G)  */
+    } else if (lcd_type == 2) {
+        writeData(0xE0); /* Reference case: MD-380V(G) */
+    } else {
+        writeData(0xA0); /* Reference case: MD-380     */
     }
 
     writeCmd(CMD_CASET);
     writeData(0x00);
     writeData(0x00);
     writeData(0x00);
-    writeData(0xA0);      /* 160 coloumns */
+    writeData(0xA0); /* 160 coloumns */
     writeCmd(CMD_RASET);
     writeData(0x00);
     writeData(0x00);
     writeData(0x00);
-    writeData(0x80);      /* 128 rows */
+    writeData(0x80); /* 128 rows */
     writeCmd(CMD_COLMOD);
-    writeData(0x05);      /* 16 bit per pixel */
+    writeData(0x05); /* 16 bit per pixel */
     delayMs(10);
 
     writeCmd(CMD_SLPOUT); /* Finally, turn on display */
@@ -444,11 +437,9 @@ void display_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
      * the CS pin low, in this way user code calling the renderingInProgress
      * function gets true as return value and does not stomp our work.
      */
-    uint16_t *frameBuffer = (uint16_t *) fb;
-    for(uint8_t y = startRow; y < endRow; y++)
-    {
-        for(uint8_t x = 0; x < CONFIG_SCREEN_WIDTH; x++)
-        {
+    uint16_t *frameBuffer = (uint16_t *)fb;
+    for (uint8_t y = startRow; y < endRow; y++) {
+        for (uint8_t x = 0; x < CONFIG_SCREEN_WIDTH; x++) {
             size_t pos = x + y * CONFIG_SCREEN_WIDTH;
             uint16_t pixel = frameBuffer[pos];
             frameBuffer[pos] = __builtin_bswap16(pixel);
@@ -471,16 +462,17 @@ void display_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
      * we have to set the transfer size to twice the framebuffer size, since
      * this one is made of 16 bit variables.
      */
-    DMA2_Stream7->NDTR = (endRow - startRow) * CONFIG_SCREEN_WIDTH * sizeof(uint16_t);
-    DMA2_Stream7->PAR  = ((uint32_t ) frameBuffer + (startRow * CONFIG_SCREEN_WIDTH
-                                                     * sizeof(uint16_t)));
+    DMA2_Stream7->NDTR =
+        (endRow - startRow) * CONFIG_SCREEN_WIDTH * sizeof(uint16_t);
+    DMA2_Stream7->PAR = ((uint32_t)frameBuffer +
+                         (startRow * CONFIG_SCREEN_WIDTH * sizeof(uint16_t)));
     DMA2_Stream7->M0AR = LCD_FSMC_ADDR_DATA;
-    DMA2_Stream7->CR = DMA_SxCR_CHSEL         /* Channel 7                   */
-                     | DMA_SxCR_PINC          /* Increment source pointer    */
-                     | DMA_SxCR_DIR_1         /* Memory to memory            */
-                     | DMA_SxCR_TCIE          /* Transfer complete interrupt */
-                     | DMA_SxCR_TEIE          /* Transfer error interrupt    */
-                     | DMA_SxCR_EN;           /* Start transfer              */
+    DMA2_Stream7->CR = DMA_SxCR_CHSEL /* Channel 7                   */
+                       | DMA_SxCR_PINC /* Increment source pointer    */
+                       | DMA_SxCR_DIR_1 /* Memory to memory            */
+                       | DMA_SxCR_TCIE /* Transfer complete interrupt */
+                       | DMA_SxCR_TEIE /* Transfer error interrupt    */
+                       | DMA_SxCR_EN; /* Start transfer              */
 
     /*
      * Put the calling thread in waiting status until render completes.
@@ -488,14 +480,13 @@ void display_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
     {
         FastInterruptDisableLock dLock;
         lcdWaiting = Thread::IRQgetCurrentThread();
-        do
-        {
+        do {
             Thread::IRQwait();
             {
                 FastInterruptEnableLock eLock(dLock);
                 Thread::yield();
             }
-        } while(lcdWaiting);
+        } while (lcdWaiting);
     }
 }
 
@@ -507,7 +498,7 @@ void display_render(void *fb)
 void display_setContrast(uint8_t contrast)
 {
     /* This controller does not support contrast regulation */
-    (void) contrast;
+    (void)contrast;
 }
 
 /*

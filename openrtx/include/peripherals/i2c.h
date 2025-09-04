@@ -28,12 +28,11 @@
 /**
  * Enumeration type for I2C bus speeds
  */
-enum I2CSpeed
-{
-    I2C_SPEED_LOW = 0,  ///< Generic, implementation-specific, low speed
-    I2C_SPEED_100kHz,   ///< Standard I2C speed
-    I2C_SPEED_400kHz,   ///< Fast I2C speed
-    I2C_SPEED_1MHz      ///< Fast Plus I2C speed
+enum I2CSpeed {
+    I2C_SPEED_LOW = 0, ///< Generic, implementation-specific, low speed
+    I2C_SPEED_100kHz, ///< Standard I2C speed
+    I2C_SPEED_400kHz, ///< Fast I2C speed
+    I2C_SPEED_1MHz ///< Fast Plus I2C speed
 };
 
 struct i2cDevice;
@@ -41,8 +40,7 @@ struct i2cDevice;
 /**
  * I2C driver API.
  */
-struct i2cApi
-{
+struct i2cApi {
     /**
      * Perform a read operation on an I2C device.
      *
@@ -73,13 +71,11 @@ struct i2cApi
 /**
  * I2C peripheral descriptor.
  */
-struct i2cDevice
-{
-    const struct i2cApi   *driver;     ///< Driver API
-    const void            *periph;     ///< Underlying hardware peripheral
-    const pthread_mutex_t *mutex;      ///< Mutex for exclusive access
+struct i2cDevice {
+    const struct i2cApi *driver; ///< Driver API
+    const void *periph; ///< Underlying hardware peripheral
+    const pthread_mutex_t *mutex; ///< Mutex for exclusive access
 };
-
 
 /**
  * Acquire exclusive ownership on an I2C peripheral.
@@ -89,10 +85,10 @@ struct i2cDevice
  */
 static inline int i2c_acquire(const struct i2cDevice *dev)
 {
-    if(dev->mutex == NULL)
+    if (dev->mutex == NULL)
         return 0;
 
-    return pthread_mutex_lock((pthread_mutex_t *) dev->mutex);
+    return pthread_mutex_lock((pthread_mutex_t *)dev->mutex);
 }
 
 /**
@@ -103,10 +99,10 @@ static inline int i2c_acquire(const struct i2cDevice *dev)
  */
 static inline int i2c_tryAcquire(const struct i2cDevice *dev)
 {
-    if(dev->mutex == NULL)
+    if (dev->mutex == NULL)
         return 0;
 
-    return pthread_mutex_trylock((pthread_mutex_t *) dev->mutex);
+    return pthread_mutex_trylock((pthread_mutex_t *)dev->mutex);
 }
 
 /**
@@ -117,10 +113,10 @@ static inline int i2c_tryAcquire(const struct i2cDevice *dev)
  */
 static inline int i2c_release(const struct i2cDevice *dev)
 {
-    if(dev->mutex == NULL)
+    if (dev->mutex == NULL)
         return 0;
 
-    return pthread_mutex_unlock((pthread_mutex_t *) dev->mutex);
+    return pthread_mutex_unlock((pthread_mutex_t *)dev->mutex);
 }
 
 /**

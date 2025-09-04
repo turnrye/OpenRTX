@@ -59,15 +59,13 @@ keyboard_t kbd_getKeys()
 
     /* Read channel knob to send KNOB_LEFT and KNOB_RIGHT events */
     int8_t new_pos = platform_getChSelector();
-    if (old_pos != new_pos)
-    {
+    if (old_pos != new_pos) {
         int8_t diff = new_pos - old_pos;
         if (diff < 0)
             keys |= KNOB_LEFT;
         else if (diff > 0)
             keys |= KNOB_RIGHT;
-        else
-        {
+        else {
             if (old_pos < 0)
                 keys |= KNOB_LEFT;
             else
@@ -75,7 +73,6 @@ keyboard_t kbd_getKeys()
         }
         old_pos = new_pos;
     }
-
 
     /*
      * The row lines are in common with the display, so we have to configure
@@ -102,7 +99,6 @@ keyboard_t kbd_getKeys()
     gpio_clearPin(LCD_D6);
     gpio_clearPin(LCD_D7);
 
-
     gpio_setMode(LCD_D0, INPUT_PULL_DOWN);
     gpio_setMode(LCD_D1, INPUT_PULL_DOWN);
     gpio_setMode(LCD_D2, INPUT_PULL_DOWN);
@@ -125,34 +121,52 @@ keyboard_t kbd_getKeys()
     gpio_setPin(KB_ROW1);
 
     delayUs(10);
-    if(gpio_readPin(LCD_D7)) keys |= KEY_STAR;
-    if(gpio_readPin(LCD_D2)) keys |= KEY_3;
-    if(gpio_readPin(LCD_D1)) keys |= KEY_2;
-    if(gpio_readPin(LCD_D0)) keys |= KEY_1;
-    if(gpio_readPin(LCD_D6)) keys |= KEY_0;
-    if(gpio_readPin(LCD_D5)) keys |= KEY_6;
-    if(gpio_readPin(LCD_D4)) keys |= KEY_5;
-    if(gpio_readPin(LCD_D3)) keys |= KEY_4;
+    if (gpio_readPin(LCD_D7))
+        keys |= KEY_STAR;
+    if (gpio_readPin(LCD_D2))
+        keys |= KEY_3;
+    if (gpio_readPin(LCD_D1))
+        keys |= KEY_2;
+    if (gpio_readPin(LCD_D0))
+        keys |= KEY_1;
+    if (gpio_readPin(LCD_D6))
+        keys |= KEY_0;
+    if (gpio_readPin(LCD_D5))
+        keys |= KEY_6;
+    if (gpio_readPin(LCD_D4))
+        keys |= KEY_5;
+    if (gpio_readPin(LCD_D3))
+        keys |= KEY_4;
 
     gpio_clearPin(KB_ROW1);
     gpio_setPin(KB_ROW2);
 
     delayUs(10);
-    if(gpio_readPin(LCD_D7)) keys |= KEY_ESC;
-    if(gpio_readPin(LCD_D2)) keys |= KEY_DOWN;
-    if(gpio_readPin(LCD_D1)) keys |= KEY_UP;
-    if(gpio_readPin(LCD_D0)) keys |= KEY_ENTER;
-    if(gpio_readPin(LCD_D6)) keys |= KEY_HASH;
-    if(gpio_readPin(LCD_D5)) keys |= KEY_9;
-    if(gpio_readPin(LCD_D4)) keys |= KEY_8;
-    if(gpio_readPin(LCD_D3)) keys |= KEY_7;
+    if (gpio_readPin(LCD_D7))
+        keys |= KEY_ESC;
+    if (gpio_readPin(LCD_D2))
+        keys |= KEY_DOWN;
+    if (gpio_readPin(LCD_D1))
+        keys |= KEY_UP;
+    if (gpio_readPin(LCD_D0))
+        keys |= KEY_ENTER;
+    if (gpio_readPin(LCD_D6))
+        keys |= KEY_HASH;
+    if (gpio_readPin(LCD_D5))
+        keys |= KEY_9;
+    if (gpio_readPin(LCD_D4))
+        keys |= KEY_8;
+    if (gpio_readPin(LCD_D3))
+        keys |= KEY_7;
 
     gpio_clearPin(KB_ROW2);
     gpio_setPin(KB_ROW3);
 
     delayUs(10);
-    if(gpio_readPin(FUNC_SW)) keys |= KEY_F1;
-    if(gpio_readPin(MONI_SW)) keys |= KEY_MONI;
+    if (gpio_readPin(FUNC_SW))
+        keys |= KEY_F1;
+    if (gpio_readPin(MONI_SW))
+        keys |= KEY_MONI;
 
     gpio_clearPin(KB_ROW3);
     return keys;

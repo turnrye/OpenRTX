@@ -26,8 +26,7 @@ int main()
 {
     platform_init();
 
-    while(1)
-    {
+    while (1) {
         platform_ledOn(GREEN);
         delayMs(1000);
         platform_ledOff(GREEN);

@@ -42,35 +42,31 @@ void dsp_dcRemoval(filter_state_t *state, audio_sample_t *buffer, size_t length)
      * y(k) = u(k) - u(k-1) + 0.999*y(k-1)
      */
 
-    if(length < 2) return;
+    if (length < 2)
+        return;
 
     static constexpr float alpha = 0.999f;
     size_t pos = 0;
 
-    if(state->initialised == false)
-    {
-        state->u[1] = static_cast< float >(buffer[0]);
+    if (state->initialised == false) {
+        state->u[1] = static_cast<float>(buffer[0]);
         state->initialised = true;
         pos = 1;
     }
 
-    for(; pos < length; pos++)
-    {
-        state->u[0] = static_cast< float >(buffer[pos]);
-        state->y[0] = (state->u[0])
-                    - (state->u[1])
-                    + alpha * (state->y[1]);
+    for (; pos < length; pos++) {
+        state->u[0] = static_cast<float>(buffer[pos]);
+        state->y[0] = (state->u[0]) - (state->u[1]) + alpha * (state->y[1]);
 
         state->u[1] = state->u[0];
         state->y[1] = state->y[0];
-        buffer[pos] = static_cast< audio_sample_t >(state->y[0] + 0.5f);
+        buffer[pos] = static_cast<audio_sample_t>(state->y[0] + 0.5f);
     }
 }
 
 void dsp_invertPhase(audio_sample_t *buffer, uint16_t length)
 {
-    for(uint16_t i = 0; i < length; i++)
-    {
+    for (uint16_t i = 0; i < length; i++) {
         buffer[i] = -buffer[i];
     }
 }

@@ -33,17 +33,15 @@ extern "C" {
  * Data type representing current date and time, optimized for minimum space
  * occupancy.
  */
-typedef struct
-{
-    int8_t hour;      // Hours (0-23)
-    int8_t minute;    // Minutes (0-59)
-    int8_t second;    // Seconds (0-59)
-    int8_t day;       // Day of the week (1-7)
-    int8_t date;      // Day of the month (1-31)
-    int8_t month;     // Month (1-12)
-    uint8_t year;     // Year (0-99)
-}
-datetime_t;
+typedef struct {
+    int8_t hour; // Hours (0-23)
+    int8_t minute; // Minutes (0-59)
+    int8_t second; // Seconds (0-59)
+    int8_t day; // Day of the week (1-7)
+    int8_t date; // Day of the month (1-31)
+    int8_t month; // Month (1-12)
+    uint8_t year; // Year (0-99)
+} datetime_t;
 
 /**
  * Convert from UTC time to local time, given the destination timezone.

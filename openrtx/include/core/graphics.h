@@ -61,8 +61,7 @@ extern "C" {
 /**
  * Structure that represents the X,Y coordinates of a single point
  */
-typedef struct point_t
-{
+typedef struct point_t {
     int16_t x;
     int16_t y;
 } point_t;
@@ -70,16 +69,14 @@ typedef struct point_t
 /**
  * Structure that represents a single color in the RGB 8 bit per channel format
  */
-typedef struct color_t
-{
+typedef struct color_t {
     uint8_t r;
     uint8_t g;
     uint8_t b;
     uint8_t alpha;
 } color_t;
 
-typedef enum
-{
+typedef enum {
     FONT_SIZE_5PT = 0,
     FONT_SIZE_6PT,
     FONT_SIZE_8PT,
@@ -91,20 +88,17 @@ typedef enum
     FONT_SIZE_NUM
 } fontSize_t;
 
-typedef enum
-{
+typedef enum {
     SYMBOLS_SIZE_5PT,
     SYMBOLS_SIZE_6PT,
     SYMBOLS_SIZE_8PT
 } symbolSize_t;
 
-typedef enum
-{
+typedef enum {
     TEXT_ALIGN_LEFT = 0,
     TEXT_ALIGN_CENTER,
     TEXT_ALIGN_RIGHT
 } textAlign_t;
-
 
 /**
  * This function calls the correspondent method of the low level interface display.h
@@ -171,7 +165,6 @@ void gfx_setPixel(point_t pos, color_t color);
  */
 void gfx_drawLine(point_t start, point_t end, color_t color);
 
-
 /**
  * Draw a horizontal line with specified vertical position and width.
  * @param y: vertical position, in pixel coordinates.
@@ -237,7 +230,7 @@ point_t gfx_printBuffer(point_t start, fontSize_t size, textAlign_t alignment,
  * @return text width and height as point_t coordinates
  */
 point_t gfx_print(point_t start, fontSize_t size, textAlign_t alignment,
-                  color_t color, const char* fmt, ... );
+                  color_t color, const char *fmt, ...);
 
 /**
  * Prints text on the screen, calculating the print position.
@@ -255,7 +248,7 @@ point_t gfx_print(point_t start, fontSize_t size, textAlign_t alignment,
  */
 point_t gfx_printLine(uint8_t cur, uint8_t tot, int16_t startY, int16_t endY,
                       int16_t startX, fontSize_t size, textAlign_t alignment,
-                      color_t color, const char* fmt, ... );
+                      color_t color, const char *fmt, ...);
 
 /**
  * Prints an error message surrounded by a red box on the screen.
@@ -301,7 +294,8 @@ void gfx_drawBattery(point_t start, uint16_t width, uint16_t height,
  * @param color: color of the squelch bar
  */
 void gfx_drawSmeter(point_t start, uint16_t width, uint16_t height, rssi_t rssi,
-                    uint8_t squelch, uint8_t volume, bool drawVolume, color_t color);
+                    uint8_t squelch, uint8_t volume, bool drawVolume,
+                    color_t color);
 
 /**
  * Function to draw Smeter + level meter of arbitrary size.
@@ -316,7 +310,8 @@ void gfx_drawSmeter(point_t start, uint16_t width, uint16_t height, rssi_t rssi,
  * @param drawVolume: whether the volume bar should be drawn
  */
 void gfx_drawSmeterLevel(point_t start, uint16_t width, uint16_t height,
-                         rssi_t rssi, uint8_t level, uint8_t volume, bool drawVolume);
+                         rssi_t rssi, uint8_t level, uint8_t volume,
+                         bool drawVolume);
 
 /**
  * Function to draw GPS SNR bar graph of arbitrary size.

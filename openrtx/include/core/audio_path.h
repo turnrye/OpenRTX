@@ -27,24 +27,16 @@
 extern "C" {
 #endif
 
-enum PathStatus
-{
-    PATH_CLOSED,
-    PATH_OPEN,
-    PATH_SUSPENDED
-};
+enum PathStatus { PATH_CLOSED, PATH_OPEN, PATH_SUSPENDED };
 
-typedef struct
-{
+typedef struct {
     uint8_t source;
     uint8_t sink;
     uint8_t prio;
     uint8_t status;
-}
-pathInfo_t;
+} pathInfo_t;
 
 typedef int32_t pathId;
-
 
 /**
  * Request to set up an audio path, returns an error if the path is already used

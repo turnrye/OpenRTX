@@ -31,11 +31,10 @@ extern "C" {
 /**
  * SKY73210 device data.
  */
-struct sky73210
-{
-    const struct spiDevice *spi;      ///< SPI bus device driver
-    const struct gpioPin   cs;        ///< Chip select gpio
-    const uint32_t         refClk;    ///< Reference clock frequency, in Hz
+struct sky73210 {
+    const struct spiDevice *spi; ///< SPI bus device driver
+    const struct gpioPin cs; ///< Chip select gpio
+    const uint32_t refClk; ///< Reference clock frequency, in Hz
 };
 
 /**

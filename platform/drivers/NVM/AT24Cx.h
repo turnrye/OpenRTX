@@ -33,7 +33,7 @@
 /**
  * Device driver and information block for AT24Cx EEPROM memory.
  */
-extern const struct nvmOps  AT24Cx_ops;
+extern const struct nvmOps AT24Cx_ops;
 extern const struct nvmInfo AT24Cx_info;
 
 /**
@@ -42,13 +42,10 @@ extern const struct nvmInfo AT24Cx_info;
  * @param name: instance name.
  * @param sz: memory size, in bytes.
  */
-#define AT24Cx_DEVICE_DEFINE(name, sz) \
-struct nvmDevice name =                \
-{                                      \
-    .ops  = &AT24Cx_ops,               \
-    .info = &AT24Cx_info,              \
-    .size = sz                         \
-};
+#define AT24Cx_DEVICE_DEFINE(name, sz)              \
+    struct nvmDevice name = { .ops = &AT24Cx_ops,   \
+                              .info = &AT24Cx_info, \
+                              .size = sz };
 
 /**
  * Initialise driver for external EEPROM.

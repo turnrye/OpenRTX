@@ -48,7 +48,7 @@ int Cx000dac_startBeep(const uint16_t freq);
 void Cx000dac_stopBeep();
 
 #ifdef __cplusplus
-}   // extern "C"
+} // extern "C"
 
 /**
  * Initialize the driver.

@@ -35,12 +35,11 @@ extern "C" {
 /**
  * Private data of shift register gpio driver.
  */
-struct gpioShiftRegPriv
-{
-    const struct spiDevice *spi;        ///< SPI interface device driver
-    const struct gpioPin   strobe;      ///< Gpio for output strobe line
-    const size_t           numOutputs;  ///< Number of actual outputs
-    uint8_t *const         outData;     ///< Pointer to gpio state storage
+struct gpioShiftRegPriv {
+    const struct spiDevice *spi; ///< SPI interface device driver
+    const struct gpioPin strobe; ///< Gpio for output strobe line
+    const size_t numOutputs; ///< Number of actual outputs
+    uint8_t *const outData; ///< Pointer to gpio state storage
 };
 
 /**
@@ -51,21 +50,17 @@ struct gpioShiftRegPriv
  * @param strb: gpioPin struct for strobe line management.
  * @param numOuts: number of gpio outputs.
  */
-#define GPIO_SHIFTREG_DEVICE_DEFINE(name, spiDev, strb, numOuts)  \
-extern const struct gpioApi gpioShiftReg_ops;                     \
-static uint8_t srData_##name[(numOuts + 8 - 1) / 8];              \
-static const struct gpioShiftRegPriv srGpioPriv_##name =          \
-{                                                                 \
-    .spi        = spiDev,                                         \
-    .strobe     = strb,                                           \
-    .numOutputs = numOuts,                                        \
-    .outData    = srData_##name                                   \
-};                                                                \
-const struct gpioDev name =                                       \
-{                                                                 \
-    .api  = &gpioShiftReg_ops,                                    \
-    .priv = &srGpioPriv_##name                                    \
-};
+#define GPIO_SHIFTREG_DEVICE_DEFINE(name, spiDev, strb, numOuts) \
+    extern const struct gpioApi gpioShiftReg_ops;                \
+    static uint8_t srData_##name[(numOuts + 8 - 1) / 8];         \
+    static const struct gpioShiftRegPriv srGpioPriv_##name = {   \
+        .spi = spiDev,                                           \
+        .strobe = strb,                                          \
+        .numOutputs = numOuts,                                   \
+        .outData = srData_##name                                 \
+    };                                                           \
+    const struct gpioDev name = { .api = &gpioShiftReg_ops,      \
+                                  .priv = &srGpioPriv_##name };
 
 /**
  * Initialize the GPIO shift register driver.

@@ -35,7 +35,6 @@ extern "C" {
 
 extern const struct audioDriver file_source_audio_driver;
 
-
 #ifdef __cplusplus
 }
 #endif

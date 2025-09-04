@@ -24,8 +24,7 @@
  * chan_t is an unbuffered synchronization channel.
  * Both reader and writer are blocked untill the data is exchanged.
  */
-typedef struct chan_t
-{
+typedef struct chan_t {
     pthread_mutex_t m_meta;
     pthread_mutex_t m_read;
     pthread_mutex_t m_write;
@@ -36,8 +35,7 @@ typedef struct chan_t
     bool closed;
     bool reader;
     bool writer;
-}
-chan_t;
+} chan_t;
 
 /**
  * This function initializes a channel.

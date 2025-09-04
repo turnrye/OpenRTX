@@ -33,9 +33,8 @@
 #define CONFIG_SCREEN_HEIGHT 128
 #endif
 
-enum choices
-{
-    VAL_RSSI=1,
+enum choices {
+    VAL_RSSI = 1,
     VAL_BAT,
     VAL_MIC,
     VAL_VOL,
@@ -45,17 +44,15 @@ enum choices
     EXIT
 };
 
-typedef struct
-{
+typedef struct {
     float RSSI;
     float vbat;
     float micLevel;
     float volumeLevel;
     float chSelector;
-    bool  PTTstatus;
-    bool  powerOff;
-}
-emulator_state_t;
+    bool PTTstatus;
+    bool powerOff;
+} emulator_state_t;
 
 extern emulator_state_t emulator_state;
 

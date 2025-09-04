@@ -43,5 +43,4 @@ void eflash_restore();
 }
 #endif
 
-
 #endif /* BACKUP_H */

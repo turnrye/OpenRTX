@@ -28,11 +28,9 @@
 #include <interfaces/display.h>
 #include <interfaces/delays.h>
 
-char *keys_list[] = {
-     " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-     "*", "#", "ENTER", "ESC", "UP", "DOWN", "LEFT", "RIGHT",
-     "MONI", "F1"
-};
+char *keys_list[] = { " ",   "0",  "1",    "2",    "3",     "4",    "5",
+                      "6",   "7",  "8",    "9",    "*",     "#",    "ENTER",
+                      "ESC", "UP", "DOWN", "LEFT", "RIGHT", "MONI", "F1" };
 
 int main(void)
 {
@@ -45,15 +43,14 @@ int main(void)
     display_setBacklightLevel(255);
 
     while (1) {
-
         gfx_clearScreen();
 
-        color_t color_white = {255, 255, 255, 255};
-        color_t color_green = {0,   255,   0, 255};
-        point_t origin = {5, 10};
+        color_t color_white = { 255, 255, 255, 255 };
+        color_t color_green = { 0, 255, 0, 255 };
+        point_t origin = { 5, 10 };
 
         gfx_print(origin, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_green,
-                    "Keyboard test");
+                  "Keyboard test");
 
         keyboard_t keys = kbd_getKeys();
         int i = __builtin_popcount(keys);
@@ -64,7 +61,7 @@ int main(void)
 
             origin.y += 10;
             gfx_print(origin, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                        "Pressed: %s", keys_list[pos + 1]);
+                      "Pressed: %s", keys_list[pos + 1]);
 
             //unset the bit we already handled
             keys &= ~(1 << pos);
@@ -77,4 +74,3 @@ int main(void)
 
     return 0;
 }
-

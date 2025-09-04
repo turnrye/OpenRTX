@@ -42,7 +42,6 @@ void backlight_init();
  */
 void backlight_terminate();
 
-
 #ifdef __cplusplus
 }
 #endif

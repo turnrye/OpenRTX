@@ -50,18 +50,17 @@ extern "C" {
  * gpio functional modes.
  * For more details see the documentation of the gpio peripheral.
  */
-enum Mode
-{
-    INPUT           = 0, ///< Input, floating
-    INPUT_PULL_UP   = 1, ///< Input, with pull-up
+enum Mode {
+    INPUT = 0, ///< Input, floating
+    INPUT_PULL_UP = 1, ///< Input, with pull-up
     INPUT_PULL_DOWN = 2, ///< Input, with pull-down
-    ANALOG          = 3, ///< Analog
-    OUTPUT          = 4, ///< Output, push pull
-    OPEN_DRAIN      = 5, ///< Output, open drain
-    OPEN_DRAIN_PU   = 6, ///< Output, open drain with pull-up
-    ALTERNATE       = 7, ///< Alternate function
-    ALTERNATE_OD    = 8, ///< Alternate function, open drain
-    ALTERNATE_OD_PU = 9  ///< Alternate function, open drain with pull-up
+    ANALOG = 3, ///< Analog
+    OUTPUT = 4, ///< Output, push pull
+    OPEN_DRAIN = 5, ///< Output, open drain
+    OPEN_DRAIN_PU = 6, ///< Output, open drain with pull-up
+    ALTERNATE = 7, ///< Alternate function
+    ALTERNATE_OD = 8, ///< Alternate function, open drain
+    ALTERNATE_OD_PU = 9 ///< Alternate function, open drain with pull-up
 };
 
 /**
@@ -74,8 +73,7 @@ struct gpioDev;
 /**
  * Gpio device driver API.
  */
-struct gpioApi
-{
+struct gpioApi {
     /**
      * Configure gpio pin functional mode.
      *
@@ -85,7 +83,8 @@ struct gpioApi
      * function mapping.
      * @return zero on success, a negative error code otherwise.
      */
-    int (*mode)(const struct gpioDev *dev, const uint8_t pin, const uint16_t mode);
+    int (*mode)(const struct gpioDev *dev, const uint8_t pin,
+                const uint16_t mode);
 
     /**
      * Set gpio pin to logic high level.
@@ -118,28 +117,25 @@ struct gpioApi
 /**
  * Gpio device descriptor.
  */
-struct gpioDev
-{
-    const struct gpioApi *api;     ///< Pointer to device driver API
-    const void           *priv;    ///< Pointer to device data
+struct gpioDev {
+    const struct gpioApi *api; ///< Pointer to device driver API
+    const void *priv; ///< Pointer to device data
 };
 
 /**
  * Gpio pin descriptor, general form.
  */
-struct gpioPin
-{
-    const struct gpioDev *port;    ///< Pointer to the gpio device
-    const uint8_t         pin;     ///< Gpio pin number
+struct gpioPin {
+    const struct gpioDev *port; ///< Pointer to the gpio device
+    const uint8_t pin; ///< Gpio pin number
 };
 
 /**
  * Gpio pin descriptor, for native MCU gpios.
  */
-struct gpio
-{
-    const void   *port;    ///< Pointer to gpio port
-    const uint8_t pin;     ///< Gpio pin number
+struct gpio {
+    const void *port; ///< Pointer to gpio port
+    const uint8_t pin; ///< Gpio pin number
 };
 
 /**
@@ -201,7 +197,8 @@ static inline bool gpioDev_read(const struct gpioDev *port, const uint8_t pin)
  * function mapping.
  * @return zero on success, a negative error code otherwise.
  */
-static inline int gpioPin_setMode(const struct gpioPin *gpio, const uint16_t mode)
+static inline int gpioPin_setMode(const struct gpioPin *gpio,
+                                  const uint16_t mode)
 {
     return gpio->port->api->mode(gpio->port, gpio->pin, mode);
 }

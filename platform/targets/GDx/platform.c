@@ -34,38 +34,36 @@ pthread_mutex_t adc_mutex;
 
 gdxCalibration_t calibration;
 
-static const hwInfo_t hwInfo =
-{
-    .vhf_maxFreq = 174,
-    .vhf_minFreq = 136,
-    .vhf_band    = 1,
-    .uhf_maxFreq = 470,
-    .uhf_minFreq = 400,
-    .uhf_band    = 1,
-    .hw_version  = 0,
-    #ifdef PLATFORM_GD77
-    .name        = "GD-77"
-    #else
-    .name        = "DM-1801"
-    #endif
+static const hwInfo_t hwInfo = { .vhf_maxFreq = 174,
+                                 .vhf_minFreq = 136,
+                                 .vhf_band = 1,
+                                 .uhf_maxFreq = 470,
+                                 .uhf_minFreq = 400,
+                                 .uhf_band = 1,
+                                 .hw_version = 0,
+#ifdef PLATFORM_GD77
+                                 .name = "GD-77"
+#else
+                                 .name = "DM-1801"
+#endif
 };
 
 void platform_init()
 {
     /* Configure GPIOs */
     gpio_setMode(GREEN_LED, OUTPUT);
-    gpio_setMode(RED_LED,   OUTPUT);
+    gpio_setMode(RED_LED, OUTPUT);
 
     gpio_setMode(PTT_SW, INPUT);
 
-    #ifndef RUNNING_TESTSUITE
+#ifndef RUNNING_TESTSUITE
     gpio_setMode(PWR_SW, OUTPUT);
-    #endif
+#endif
 
-    backlight_init();                /* Initialise backlight driver        */
-    audio_init();                    /* Initialise audio management module */
-    adc0_init();                     /* Initialise ADC                     */
-    nvm_init();                      /* Initialise NVM manager             */
+    backlight_init(); /* Initialise backlight driver        */
+    audio_init(); /* Initialise audio management module */
+    adc0_init(); /* Initialise ADC                     */
+    nvm_init(); /* Initialise NVM manager             */
     pthread_mutex_init(&adc_mutex, NULL);
 
     /*
@@ -149,8 +147,7 @@ bool platform_pwrButtonStatus()
 
 void platform_ledOn(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_setPin(GREEN_LED);
             break;
@@ -166,8 +163,7 @@ void platform_ledOn(led_t led)
 
 void platform_ledOff(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_clearPin(GREEN_LED);
             break;
@@ -185,7 +181,7 @@ void platform_beepStart(uint16_t freq)
 {
     /* TODO */
 
-    (void) freq;
+    (void)freq;
 }
 
 void platform_beepStop()

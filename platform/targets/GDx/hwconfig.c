@@ -23,14 +23,12 @@
 #include <spi_mk22.h>
 #include <hwconfig.h>
 
-static const struct spiConfig spiFlashCfg =
-{
-    .clk       = { FLASH_CLK },
-    .mosi      = { FLASH_SDO },
-    .miso      = { FLASH_SDI },
-    .clkPeriod = SCK_PERIOD_FROM_FREQ(1000000),
-    .flags     = 0
-};
+static const struct spiConfig spiFlashCfg = { .clk = { FLASH_CLK },
+                                              .mosi = { FLASH_SDO },
+                                              .miso = { FLASH_SDI },
+                                              .clkPeriod =
+                                                  SCK_PERIOD_FROM_FREQ(1000000),
+                                              .flags = 0 };
 
 SPI_BITBANG_DEVICE_DEFINE(nvm_spi, spiFlashCfg, NULL)
 SPI_MK22_DEVICE_DEFINE(c6000_spi, SPI0, NULL)

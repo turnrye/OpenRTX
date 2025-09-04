@@ -25,13 +25,12 @@
 #include <MCP4551.h>
 #include "../audio/MAX9814.h"
 
-static enum  opstatus      radioStatus;   // Current operating status
-extern mod17Calib_t mod17CalData;         // Calibration data
-
+static enum opstatus radioStatus; // Current operating status
+extern mod17Calib_t mod17CalData; // Calibration data
 
 void radio_init(const rtxStatus_t *rtxState)
 {
-    (void) rtxState;
+    (void)rtxState;
 
     radioStatus = OFF;
 
@@ -46,7 +45,7 @@ void radio_terminate()
 
 void radio_setOpmode(const enum opmode mode)
 {
-    (void) mode;
+    (void)mode;
 }
 
 bool radio_checkRxDigitalSquelch()
@@ -56,12 +55,10 @@ bool radio_checkRxDigitalSquelch()
 
 void radio_enableAfOutput()
 {
-
 }
 
 void radio_disableAfOutput()
 {
-
 }
 
 void radio_enableRx()
@@ -73,7 +70,7 @@ void radio_enableRx()
 
     // Module17 PTT output is open drain. This means that, on MCU side, we have
     // to assert the gpio to bring it to low state.
-    if(mod17CalData.ptt_out_level)
+    if (mod17CalData.ptt_out_level)
         gpio_setPin(PTT_OUT);
     else
         gpio_clearPin(PTT_OUT);
@@ -87,7 +84,7 @@ void radio_enableTx()
     mcp4551_setWiper(&i2c1, SOFTPOT_RX, mod17CalData.rx_wiper);
     max9814_setGain(mod17CalData.mic_gain);
 
-    if(mod17CalData.ptt_out_level)
+    if (mod17CalData.ptt_out_level)
         gpio_clearPin(PTT_OUT);
     else
         gpio_setPin(PTT_OUT);
@@ -95,7 +92,7 @@ void radio_enableTx()
 
 void radio_disableRtx()
 {
-    if(mod17CalData.ptt_out_level)
+    if (mod17CalData.ptt_out_level)
         gpio_setPin(PTT_OUT);
     else
         gpio_clearPin(PTT_OUT);
@@ -103,7 +100,6 @@ void radio_disableRtx()
 
 void radio_updateConfiguration()
 {
-
 }
 
 rssi_t radio_getRssi()

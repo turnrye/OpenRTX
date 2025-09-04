@@ -34,10 +34,9 @@ extern "C" {
  * Maximum GPIO switching speed.
  * For more details see microcontroller's reference manual and datasheet.
  */
-enum Speed
-{
-    SLOW   = 0x0,   ///< 2MHz
-    FAST   = 0x1    ///< 50MHz
+enum Speed {
+    SLOW = 0x0, ///< 2MHz
+    FAST = 0x1 ///< 50MHz
 };
 
 /**
@@ -66,7 +65,8 @@ void gpio_setMode(const void *port, const uint8_t pin, const uint16_t mode);
  * @param pin: gpio pin number, between 0 and 15.
  * @param spd: gpio output speed to be set.
  */
-void gpio_setOutputSpeed(const void *port, const uint8_t pin, const enum Speed spd);
+void gpio_setOutputSpeed(const void *port, const uint8_t pin,
+                         const enum Speed spd);
 
 /**
  * Set gpio pin to high logic level.

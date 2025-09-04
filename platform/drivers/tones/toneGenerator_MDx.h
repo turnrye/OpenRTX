@@ -115,7 +115,6 @@ bool toneGen_beepLocked();
  */
 bool toneGen_toneBusy();
 
-
 #ifdef __cplusplus
 }
 #endif

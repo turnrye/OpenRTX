@@ -36,12 +36,7 @@ static const freq_t BAND_UHF_HI = 470000000;
 /**
  * Enumeration type for bandwidth identification.
  */
-enum Band
-{
-    BND_NONE = -1,
-    BND_VHF  = 0,
-    BND_UHF  = 1
-};
+enum Band { BND_NONE = -1, BND_VHF = 0, BND_UHF = 1 };
 
 /**
  * \internal
@@ -53,8 +48,10 @@ enum Band
  */
 static inline enum Band getBandFromFrequency(const freq_t freq)
 {
-    if((freq >= BAND_VHF_LO) && (freq <= BAND_VHF_HI)) return BND_VHF;
-    if((freq >= BAND_UHF_LO) && (freq <= BAND_UHF_HI)) return BND_UHF;
+    if ((freq >= BAND_VHF_LO) && (freq <= BAND_VHF_HI))
+        return BND_VHF;
+    if ((freq >= BAND_UHF_LO) && (freq <= BAND_UHF_HI))
+        return BND_UHF;
     return BND_NONE;
 }
 

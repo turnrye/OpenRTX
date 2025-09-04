@@ -25,18 +25,13 @@
 
 void max9814_setGain(uint8_t gain)
 {
-    if (gain == 0)
-    {
+    if (gain == 0) {
         gpio_setMode(MIC_GAIN, OUTPUT);
         gpio_setPin(MIC_GAIN); // 40 dB gain
-    }
-    else if (gain == 1)
-    {
+    } else if (gain == 1) {
         gpio_setMode(MIC_GAIN, OUTPUT);
         gpio_clearPin(MIC_GAIN); // 50 dB gain
-    }
-    else
-    {
+    } else {
         gpio_setMode(MIC_GAIN, INPUT); // High impedance, 60 dB gain
     }
 }

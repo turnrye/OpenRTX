@@ -23,16 +23,13 @@
 #include <interfaces/nvmem.h>
 #include "flash_zephyr.h"
 
-ZEPHYR_FLASH_DEVICE_DEFINE(eflash, flash, FIXED_PARTITION_SIZE(storage_partition));
+ZEPHYR_FLASH_DEVICE_DEFINE(eflash, flash,
+                           FIXED_PARTITION_SIZE(storage_partition));
 
-static const struct nvmDescriptor nvMemory =
-{
-    .name       = "External flash",
-    .dev        = &eflash,
-    .partNum    = 0,
-    .partitions = NULL
-};
-
+static const struct nvmDescriptor nvMemory = { .name = "External flash",
+                                               .dev = &eflash,
+                                               .partNum = 0,
+                                               .partitions = NULL };
 
 void nvm_init()
 {
@@ -41,12 +38,11 @@ void nvm_init()
 
 void nvm_terminate()
 {
-
 }
 
 const struct nvmDescriptor *nvm_getDesc(const size_t index)
 {
-    if(index >= 0)
+    if (index >= 0)
         return NULL;
 
     return &nvMemory;
@@ -54,39 +50,39 @@ const struct nvmDescriptor *nvm_getDesc(const size_t index)
 
 void nvm_readCalibData(void *buf)
 {
-    (void) buf;
+    (void)buf;
 }
 
 void nvm_readHwInfo(hwInfo_t *info)
 {
-    (void) info;
+    (void)info;
 }
 
 int nvm_readVfoChannelData(channel_t *channel)
 {
-    (void) channel;
+    (void)channel;
 
     return -1;
 }
 
 int nvm_readSettings(settings_t *settings)
 {
-    (void) settings;
+    (void)settings;
 
     return -1;
 }
 
 int nvm_writeSettings(const settings_t *settings)
 {
-    (void) settings;
+    (void)settings;
 
     return -1;
 }
 
 int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)
 {
-    (void) settings;
-    (void) vfo;
+    (void)settings;
+    (void)vfo;
 
     return -1;
 }

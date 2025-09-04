@@ -34,11 +34,10 @@
  * for the VHF band instead of nine.
  */
 
-struct CalData
-{
+struct CalData {
     uint8_t freqAdjustMid;
-    freq_t  rxFreq[9];
-    freq_t  txFreq[9];
+    freq_t rxFreq[9];
+    freq_t txFreq[9];
     uint8_t txHighPower[9];
     uint8_t txLowPower[9];
     uint8_t rxSensitivity[9];
@@ -56,11 +55,9 @@ typedef struct CalData md3x0Calib_t;
 /**
  * \brief Calibration data for MD-UV3x0.
  */
-typedef struct
-{
+typedef struct {
     struct CalData uhfCal;
     struct CalData vhfCal;
-}
-mduv3x0Calib_t;
+} mduv3x0Calib_t;
 
 #endif /* CALIBINFO_MDX_H */

@@ -36,28 +36,26 @@
 /**
  * Configuration data structure for W25Qx memory device.
  */
-struct W25QxCfg
-{
+struct W25QxCfg {
     const struct spiDevice *spi;
-    const struct gpioPin    cs;
+    const struct gpioPin cs;
 };
 
 /**
  * Driver data structure for W25Qx security registers.
  */
-struct W25QxSecRegDevice
-{
-    const void           *priv;        ///< Device driver private data
-    const struct nvmOps  *ops;         ///< Device operations
-    const struct nvmInfo *info;        ///< Device info
-    const size_t          size;        ///< Device size
-    const uint32_t        baseAddr;    ///< Register base address
+struct W25QxSecRegDevice {
+    const void *priv; ///< Device driver private data
+    const struct nvmOps *ops; ///< Device operations
+    const struct nvmInfo *info; ///< Device info
+    const size_t size; ///< Device size
+    const uint32_t baseAddr; ///< Register base address
 };
 
 /**
  * Device driver and information block for W25Qx main memory.
  */
-extern const struct nvmOps  W25Qx_ops;
+extern const struct nvmOps W25Qx_ops;
 extern const struct nvmInfo W25Qx_info;
 
 /**
@@ -67,18 +65,17 @@ extern const struct nvmInfo W25Qx_info;
  * @param sz: memory size, in bytes.
  */
 #define W25Qx_DEVICE_DEFINE(name, config, sz) \
-const struct nvmDevice name =                 \
-{                                             \
-    .priv = &config,                          \
-    .ops  = &W25Qx_ops,                       \
-    .info = &W25Qx_info,                      \
-    .size = sz,                               \
-};
+    const struct nvmDevice name = {           \
+        .priv = &config,                      \
+        .ops = &W25Qx_ops,                    \
+        .info = &W25Qx_info,                  \
+        .size = sz,                           \
+    };
 
 /**
  * Device driver and information block for W25Qx security registers area.
  */
-extern const struct nvmOps  W25Qx_secReg_ops;
+extern const struct nvmOps W25Qx_secReg_ops;
 extern const struct nvmInfo W25Qx_secReg_info;
 
 /**
@@ -88,15 +85,12 @@ extern const struct nvmInfo W25Qx_secReg_info;
  * @param base: security register base address.
  * @param sz: memory size, in bytes.
  */
-#define W25Qx_SECREG_DEFINE(name, config, base, sz) \
-const struct W25QxSecRegDevice name =               \
-{                                                   \
-    .priv     = &config,                            \
-    .ops      = &W25Qx_secReg_ops,                  \
-    .info     = &W25Qx_secReg_info,                 \
-    .size     = sz,                                 \
-    .baseAddr = base                                \
-};
+#define W25Qx_SECREG_DEFINE(name, config, base, sz)                     \
+    const struct W25QxSecRegDevice name = { .priv = &config,            \
+                                            .ops = &W25Qx_secReg_ops,   \
+                                            .info = &W25Qx_secReg_info, \
+                                            .size = sz,                 \
+                                            .baseAddr = base };
 
 /**
  * Initialise driver for external flash.

@@ -25,7 +25,7 @@
 
 void radio_init(const rtxStatus_t *rtxState)
 {
-    (void) rtxState;
+    (void)rtxState;
     puts("radio_linux: init() called");
 }
 
@@ -37,17 +37,21 @@ void radio_terminate()
 void radio_setOpmode(const enum opmode mode)
 {
     std::string mStr(" ");
-    if(mode == OPMODE_NONE) mStr = "NONE";
-    if(mode == OPMODE_FM)   mStr = "FM";
-    if(mode == OPMODE_DMR)  mStr = "DMR";
-    if(mode == OPMODE_M17)  mStr = "M17";
+    if (mode == OPMODE_NONE)
+        mStr = "NONE";
+    if (mode == OPMODE_FM)
+        mStr = "FM";
+    if (mode == OPMODE_DMR)
+        mStr = "DMR";
+    if (mode == OPMODE_M17)
+        mStr = "M17";
 
     printf("radio_linux: setting opmode to %s\n", mStr.c_str());
 }
 
 bool radio_checkRxDigitalSquelch()
 {
-//     puts("radio_linux: radio_checkRxDigitalSquelch(), returning 'false'");
+    //     puts("radio_linux: radio_checkRxDigitalSquelch(), returning 'false'");
     return false;
 }
 
@@ -75,7 +79,7 @@ rssi_t radio_getRssi()
 {
     // Commented to reduce verbosity on Linux
     // printf("radio_linux: requested RSSI at freq %d, returning -100dBm\n", rxFreq);
-    return static_cast< rssi_t >(emulator_state.RSSI);
+    return static_cast<rssi_t>(emulator_state.RSSI);
 }
 
 enum opstatus radio_getStatus()

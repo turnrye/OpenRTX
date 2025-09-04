@@ -32,19 +32,19 @@
 
 #define BUTTON_PTT_NODE DT_NODELABEL(button_ptt)
 
-static const struct gpio_dt_spec button_ptt = GPIO_DT_SPEC_GET_OR(BUTTON_PTT_NODE, gpios, {0});
+static const struct gpio_dt_spec button_ptt =
+    GPIO_DT_SPEC_GET_OR(BUTTON_PTT_NODE, gpios, { 0 });
 static const struct device *const qdec_dev = DEVICE_DT_GET(DT_ALIAS(qdec0));
-static const struct device *const led_dev  = DEVICE_DT_GET(DT_ALIAS(led0));
+static const struct device *const led_dev = DEVICE_DT_GET(DT_ALIAS(led0));
 
 // This is cross-references in keyboard_ttwrplus.c to implement volume control
 uint8_t volume_level = 125;
 
-static hwInfo_t hwInfo =
-{
-    .name        = "ttwrplus",
-    .hw_version  = 0,
-    .uhf_band    = 0,
-    .vhf_band    = 0,
+static hwInfo_t hwInfo = {
+    .name = "ttwrplus",
+    .hw_version = 0,
+    .uhf_band = 0,
+    .vhf_band = 0,
     .uhf_maxFreq = 0,
     .uhf_minFreq = 0,
     .vhf_maxFreq = 0,
@@ -52,42 +52,39 @@ static hwInfo_t hwInfo =
 };
 
 // RGB led color data
-static struct led_rgb led_color = {0};
+static struct led_rgb led_color = { 0 };
 
 static void gpsEnable(void *priv)
 {
-    (void) priv;
+    (void)priv;
     pmu_setGPSPower(true);
 }
 
 static void gpsDisable(void *priv)
 {
-    (void) priv;
+    (void)priv;
     pmu_setGPSPower(false);
 }
 
-static const struct gpsDevice gps =
-{
-    .enable = gpsEnable,
-    .disable = gpsDisable,
-    .getSentence = gpsZephyr_getNmeaSentence
-};
+static const struct gpsDevice gps = { .enable = gpsEnable,
+                                      .disable = gpsDisable,
+                                      .getSentence =
+                                          gpsZephyr_getNmeaSentence };
 
 void platform_init()
 {
     // Setup GPIO for PTT and rotary encoder
-    if(gpio_is_ready_dt(&button_ptt) == false)
+    if (gpio_is_ready_dt(&button_ptt) == false)
         printk("Error: button device %s is not ready\n", button_ptt.port->name);
 
     int ret = gpio_pin_configure_dt(&button_ptt, GPIO_INPUT);
-    if (ret != 0)
-    {
+    if (ret != 0) {
         printk("Error %d: failed to configure %s pin %d\n", ret,
                button_ptt.port->name, button_ptt.pin);
     }
 
     // Rotary encoder is read using hardware pulse counter
-    if(device_is_ready(qdec_dev) == false)
+    if (device_is_ready(qdec_dev) == false)
         printk("Qdec device is not ready\n");
 
     // Initialize PMU
@@ -107,20 +104,15 @@ void platform_init()
 
     // Detect radio model and set hwInfo accordingly
     const char *model = sa8x8_getModel();
-    if(strncmp(model, "SA868S-VHF", 10) == 0)
-    {
+    if (strncmp(model, "SA868S-VHF", 10) == 0) {
         hwInfo.vhf_band = 1;
         hwInfo.vhf_minFreq = 134;
         hwInfo.vhf_maxFreq = 174;
-    }
-    else if(strncmp(model, "SA868S-UHF\r", 10) == 0)
-    {
+    } else if (strncmp(model, "SA868S-UHF\r", 10) == 0) {
         hwInfo.uhf_band = 1;
         hwInfo.uhf_minFreq = 400;
         hwInfo.uhf_maxFreq = 480;
-    }
-    else
-    {
+    } else {
         printk("Error detecting SA868 model");
     }
 }
@@ -149,23 +141,21 @@ uint8_t platform_getVolumeLevel()
 int8_t platform_getChSelector()
 {
     int rc = sensor_sample_fetch(qdec_dev);
-    if (rc != 0)
-    {
+    if (rc != 0) {
         printk("Failed to fetch sample (%d)\n", rc);
         return 0;
     }
 
     struct sensor_value val;
     rc = sensor_channel_get(qdec_dev, SENSOR_CHAN_ROTATION, &val);
-    if (rc != 0)
-    {
+    if (rc != 0) {
         printk("Failed to get data (%d)\n", rc);
         return 0;
     }
 
     // The esp32-pcnt sensor returns a signed 16-bit value: we remap it into a
     // signed 8-bit one.
-    return (int8_t) val.val1;
+    return (int8_t)val.val1;
 }
 
 bool platform_getPttStatus()
@@ -177,7 +167,7 @@ bool platform_pwrButtonStatus()
 {
     // Long press of the power on button triggers a shutdown
     uint8_t btnStatus = pmu_pwrBtnStatus();
-    if(btnStatus == 2)
+    if (btnStatus == 2)
         return false;
 
     return true;
@@ -187,8 +177,7 @@ void platform_ledOn(led_t led)
 {
     int ret = 0;
 
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             led_color.g = 0xff;
             break;
@@ -208,8 +197,7 @@ void platform_ledOff(led_t led)
 {
     int ret = 0;
 
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             led_color.g = 0x00;
             break;
@@ -227,7 +215,7 @@ void platform_ledOff(led_t led)
 
 void platform_beepStart(uint16_t freq)
 {
-    (void) freq;
+    (void)freq;
 }
 
 void platform_beepStop()

@@ -36,17 +36,14 @@
 #include <gps.h>
 
 /* TODO: Hardcoded hwInfo until we implement reading from flash */
-static const hwInfo_t hwInfo =
-{
-    .vhf_maxFreq = 174,
-    .vhf_minFreq = 136,
-    .vhf_band    = 1,
-    .uhf_maxFreq = 480,
-    .uhf_minFreq = 400,
-    .uhf_band    = 1,
-    .hw_version  = 0,
-    .name        = "MD-9600"
-};
+static const hwInfo_t hwInfo = { .vhf_maxFreq = 174,
+                                 .vhf_minFreq = 136,
+                                 .vhf_band = 1,
+                                 .uhf_maxFreq = 480,
+                                 .uhf_minFreq = 400,
+                                 .uhf_band = 1,
+                                 .hw_version = 0,
+                                 .name = "MD-9600" };
 
 void platform_init()
 {
@@ -56,11 +53,11 @@ void platform_init()
 
     gpio_setMode(PTT_SW, INPUT);
 
-    gpio_setMode(AIN_VBAT,  ANALOG);
-    gpio_setMode(AIN_MIC,   ANALOG);
-    gpio_setMode(AIN_RSSI,  ANALOG);
-    gpio_setMode(AIN_SW2,   ANALOG);
-    gpio_setMode(AIN_SW1,   ANALOG);
+    gpio_setMode(AIN_VBAT, ANALOG);
+    gpio_setMode(AIN_MIC, ANALOG);
+    gpio_setMode(AIN_RSSI, ANALOG);
+    gpio_setMode(AIN_SW2, ANALOG);
+    gpio_setMode(AIN_SW1, ANALOG);
     gpio_setMode(AIN_RSSI2, ANALOG);
     gpio_setMode(AIN_HTEMP, ANALOG);
 
@@ -75,12 +72,12 @@ void platform_init()
     gpio_setMode(SPI2_SDI, ALTERNATE | ALTERNATE_FUNC(5));
     spiStm32_init(&spi2, 1300000, 0);
 
-    nvm_init();                      /* Initialise non volatile memory manager */
-    toneGen_init();                  /* Initialise tone generator              */
-    rtc_init();                      /* Initialise RTC                         */
-    backlight_init();                /* Initialize Backlight                   */
-    chSelector_init();               /* Initialise channel selector handler    */
-    audio_init();                    /* Initialise audio management module     */
+    nvm_init(); /* Initialise non volatile memory manager */
+    toneGen_init(); /* Initialise tone generator              */
+    rtc_init(); /* Initialise RTC                         */
+    backlight_init(); /* Initialize Backlight                   */
+    chSelector_init(); /* Initialise channel selector handler    */
+    audio_init(); /* Initialise audio management module     */
 }
 
 void platform_terminate()
@@ -100,7 +97,8 @@ void platform_terminate()
      * always powered. Thus, for turn off, perform a system reset.
      */
     NVIC_SystemReset();
-    while(1) ;
+    while (1)
+        ;
 }
 
 uint16_t platform_getVbat()
@@ -127,10 +125,11 @@ uint8_t platform_getVolumeLevel()
      * 1600 and then multiply by 256.
      */
     uint16_t value = adc_getVoltage(&adc1, ADC_VOL_CH) / 1000;
-    if(value > 1599) value = 1599;
+    if (value > 1599)
+        value = 1599;
     uint32_t level = value << 16;
     level /= 1600;
-    return ((uint8_t) (level >> 8));
+    return ((uint8_t)(level >> 8));
 }
 
 bool platform_getPttStatus()
@@ -155,11 +154,11 @@ bool platform_pwrButtonStatus()
      * Also, working at register level to keep it as short as possible
      */
     __disable_irq();
-    uint32_t prevRowState = GPIOD->ODR & (1 << 4);  /* Row 3 is PD4 */
-    GPIOD->BSRR = 1 << (4 + 16);                    /* PD4 low      */
+    uint32_t prevRowState = GPIOD->ODR & (1 << 4); /* Row 3 is PD4 */
+    GPIOD->BSRR = 1 << (4 + 16); /* PD4 low      */
     delayUs(10);
-    uint32_t btnStatus = GPIOE->IDR & 0x01;         /* Col 3 is PE0 */
-    GPIOD->ODR |= prevRowState;                     /* Restore PD4  */
+    uint32_t btnStatus = GPIOE->IDR & 0x01; /* Col 3 is PE0 */
+    GPIOD->ODR |= prevRowState; /* Restore PD4  */
     __enable_irq();
 
     /*
@@ -176,15 +175,11 @@ bool platform_pwrButtonStatus()
      * Power button follows an active-low logic: btnStatus is low when button
      * is pressed
      */
-    if(btnStatus == 0)
-    {
-        if(gpio_readPin(PWR_SW))
-        {
+    if (btnStatus == 0) {
+        if (gpio_readPin(PWR_SW)) {
             /* Power switch high and button pressed: request to turn off */
             return false;
-        }
-        else
-        {
+        } else {
             /* Power switch low and button pressed: request to turn on */
             return true;
         }
@@ -197,19 +192,19 @@ bool platform_pwrButtonStatus()
 void platform_ledOn(led_t led)
 {
     /* No LEDs on this platform */
-    (void) led;
+    (void)led;
 }
 
 void platform_ledOff(led_t led)
 {
     /* No LEDs on this platform */
-    (void) led;
+    (void)led;
 }
 
 void platform_beepStart(uint16_t freq)
 {
     /* TODO */
-    (void) freq;
+    (void)freq;
 }
 
 void platform_beepStop()
@@ -241,8 +236,8 @@ const struct gpsDevice *platform_initGps()
     gpio_setMode(GPS_EN, OUTPUT);
     gpio_setPin(GPS_EN);
 
-    for(size_t i = 0; i < 50; i++) {
-        if(gpio_readPin(GPS_DATA) != 0) {
+    for (size_t i = 0; i < 50; i++) {
+        if (gpio_readPin(GPS_DATA) != 0) {
             dev = &gps;
             gpsStm32_init(9600);
             break;

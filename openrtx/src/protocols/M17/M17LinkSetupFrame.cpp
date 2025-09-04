@@ -32,7 +32,6 @@ M17LinkSetupFrame::M17LinkSetupFrame()
 
 M17LinkSetupFrame::~M17LinkSetupFrame()
 {
-
 }
 
 void M17LinkSetupFrame::clear()
@@ -41,7 +40,7 @@ void M17LinkSetupFrame::clear()
     data.dst.fill(0xFF);
 }
 
-void M17LinkSetupFrame::setSource(const std::string& callsign)
+void M17LinkSetupFrame::setSource(const std::string &callsign)
 {
     encode_callsign(callsign, data.src);
 }
@@ -51,7 +50,7 @@ std::string M17LinkSetupFrame::getSource()
     return decode_callsign(data.src);
 }
 
-void M17LinkSetupFrame::setDestination(const std::string& callsign)
+void M17LinkSetupFrame::setDestination(const std::string &callsign)
 {
     encode_callsign(callsign, data.dst);
 }
@@ -73,10 +72,10 @@ void M17LinkSetupFrame::setType(streamType_t type)
 {
     // NOTE: M17 fields are big-endian, we need to swap bytes
     type.value = __builtin_bswap16(type.value);
-    data.type  = type;
+    data.type = type;
 }
 
-meta_t& M17LinkSetupFrame::metadata()
+meta_t &M17LinkSetupFrame::metadata()
 {
     return data.meta;
 }
@@ -85,20 +84,21 @@ void M17LinkSetupFrame::updateCrc()
 {
     // Compute CRC over the first 28 bytes, then store it in big endian format.
     uint16_t crc = crc16(&data, 28);
-    data.crc     = __builtin_bswap16(crc);
+    data.crc = __builtin_bswap16(crc);
 }
 
 bool M17LinkSetupFrame::valid() const
 {
     uint16_t crc = crc16(&data, 28);
-    if(data.crc == __builtin_bswap16(crc)) return true;
+    if (data.crc == __builtin_bswap16(crc))
+        return true;
 
     return false;
 }
 
-const uint8_t * M17LinkSetupFrame::getData()
+const uint8_t *M17LinkSetupFrame::getData()
 {
-    return reinterpret_cast < const uint8_t * >(&data);
+    return reinterpret_cast<const uint8_t *>(&data);
 }
 
 lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
@@ -115,11 +115,11 @@ lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
      */
 
     // Set up pointer to the beginning of the specified 5-byte chunk
-    uint8_t num    = segmentNum % 6;
-    uint8_t *chunk = reinterpret_cast< uint8_t* >(&data) + (num * 5);
+    uint8_t num = segmentNum % 6;
+    uint8_t *chunk = reinterpret_cast<uint8_t *>(&data) + (num * 5);
 
     // Partition chunk data in 12-bit blocks for Golay(24,12) encoding.
-    std::array< uint16_t, 4 > blocks;
+    std::array<uint16_t, 4> blocks;
     blocks[0] = chunk[0] << 4 | ((chunk[1] >> 4) & 0x0F);
     blocks[1] = ((chunk[1] & 0x0F) << 8) | chunk[2];
     blocks[2] = chunk[3] << 4 | ((chunk[4] >> 4) & 0x0F);
@@ -128,11 +128,10 @@ lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
     // Encode each block and assemble the final data block.
     // NOTE: shift and bitswap required to genereate big-endian data.
     lich_t result;
-    for(size_t i = 0; i < blocks.size(); i++)
-    {
+    for (size_t i = 0; i < blocks.size(); i++) {
         uint32_t encoded = golay24_encode(blocks[i]);
-        encoded          = __builtin_bswap32(encoded << 8);
-        memcpy(&result[3*i], &encoded, 3);
+        encoded = __builtin_bswap32(encoded << 8);
+        memcpy(&result[3 * i], &encoded, 3);
     }
 
     return result;
@@ -140,16 +139,14 @@ lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
 
 uint16_t M17LinkSetupFrame::crc16(const void *data, const size_t len) const
 {
-    const uint8_t *ptr = reinterpret_cast< const uint8_t *>(data);
+    const uint8_t *ptr = reinterpret_cast<const uint8_t *>(data);
     uint16_t crc = 0xFFFF;
 
-    for(size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         crc ^= (ptr[i] << 8);
 
-        for(uint8_t j = 0; j < 8; j++)
-        {
-            if(crc & 0x8000)
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x8000)
                 crc = (crc << 1) ^ 0x5935;
             else
                 crc = (crc << 1);

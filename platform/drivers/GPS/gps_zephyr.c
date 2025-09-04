@@ -34,14 +34,14 @@ static void uartRxCallback(const struct device *dev, void *user_data)
 {
     uint8_t c;
 
-    if(uart_irq_update(dev) == false)
+    if (uart_irq_update(dev) == false)
         return;
 
-    if(uart_irq_rx_ready(dev) == false)
+    if (uart_irq_rx_ready(dev) == false)
         return;
 
     // read until FIFO empty
-    while(uart_fifo_read(dev, &c, 1) == 1)
+    while (uart_fifo_read(dev, &c, 1) == 1)
         nmeaRbuf_putChar(&ringBuf, c);
 }
 
@@ -50,14 +50,14 @@ void gpsZephyr_init()
     int ret = 0;
 
     // Check if GPS UART is ready
-    if(device_is_ready(gpsDev) == false) {
+    if (device_is_ready(gpsDev) == false) {
         printk("UART device not found!\n");
         return;
     }
 
     ret = uart_irq_callback_user_data_set(gpsDev, uartRxCallback, NULL);
-    if(ret < 0) {
-        switch(ret) {
+    if (ret < 0) {
+        switch (ret) {
             case -ENOTSUP:
                 printk("Interrupt-driven UART support not enabled\n");
                 break;
@@ -78,12 +78,12 @@ void gpsZephyr_init()
 
 void gpsZephyr_terminate()
 {
-     uart_irq_rx_disable(gpsDev);
+    uart_irq_rx_disable(gpsDev);
 }
 
 int gpsZephyr_getNmeaSentence(void *priv, char *buf, const size_t maxLength)
 {
-    (void) priv;
+    (void)priv;
 
     return nmeaRbuf_getSentence(&ringBuf, buf, maxLength);
 }

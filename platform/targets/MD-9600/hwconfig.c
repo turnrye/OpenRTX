@@ -44,10 +44,7 @@ static pthread_mutex_t adcMutex;
 SPI_STM32_DEVICE_DEFINE(spi2, SPI2, &spi2Mutex)
 ADC_STM32_DEVICE_DEFINE(adc1, ADC1, &adcMutex, ADC_COUNTS_TO_UV(3300000, 12))
 
-const struct gpsDevice gps =
-{
-    .priv = NULL,
-    .enable = gpsEnable,
-    .disable = gpsDisable,
-    .getSentence = gpsStm32_getNmeaSentence
-};
+const struct gpsDevice gps = { .priv = NULL,
+                               .enable = gpsEnable,
+                               .disable = gpsDisable,
+                               .getSentence = gpsStm32_getNmeaSentence };

@@ -28,8 +28,7 @@
 
 SPI_STM32_DEVICE_DEFINE(spi2, SPI2, NULL)
 
-struct displayFuncs
-{
+struct displayFuncs {
     void (*init)(void);
     void (*terminate)(void);
     void (*renderRows)(uint8_t, uint8_t, void *);
@@ -38,40 +37,36 @@ struct displayFuncs
     void (*setBacklightLevel)(uint8_t);
 };
 
-static struct displayFuncs display =
-{
-    .init        = NULL,
-    .terminate   = NULL,
-    .renderRows  = NULL,
-    .render      = NULL,
+static struct displayFuncs display = {
+    .init = NULL,
+    .terminate = NULL,
+    .renderRows = NULL,
+    .render = NULL,
     .setContrast = NULL,
 };
 
 void display_init()
 {
     const hwInfo_t *hwinfo = platform_getHwInfo();
-    if(((hwinfo->flags & MOD17_FLAGS_HMI_PRESENT) != 0) &&
-       ((hwinfo->hw_version >> 8) == MOD17_HMI_V10))
-    {
-        display.init        = SSD1309_init;
-        display.renderRows  = SSD1309_renderRows;
-        display.render      = SSD1309_render;
+    if (((hwinfo->flags & MOD17_FLAGS_HMI_PRESENT) != 0) &&
+        ((hwinfo->hw_version >> 8) == MOD17_HMI_V10)) {
+        display.init = SSD1309_init;
+        display.renderRows = SSD1309_renderRows;
+        display.render = SSD1309_render;
         display.setContrast = SSD1309_setContrast;
-        display.terminate   = SSD1309_terminate;
-    }
-    else
-    {
-        display.init        = SH110x_init;
-        display.renderRows  = SH110x_renderRows;
-        display.render      = SH110x_render;
+        display.terminate = SSD1309_terminate;
+    } else {
+        display.init = SH110x_init;
+        display.renderRows = SH110x_renderRows;
+        display.render = SH110x_render;
         display.setContrast = SH110x_setContrast;
-        display.terminate   = SH110x_terminate;
+        display.terminate = SH110x_terminate;
     }
 
     /*
      * Initialise SPI2 for external flash and LCD
      */
-    gpio_setMode(SPI2_SCK,  ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(SPI2_SCK, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(SPI2_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(SPI2_MISO, ALTERNATE | ALTERNATE_FUNC(5));
     spiStm32_init(&spi2, 1300000, 0);
@@ -79,9 +74,9 @@ void display_init()
     /*
      * Initialise GPIOs for LCD control
      */
-    gpio_setMode(LCD_CS,  OUTPUT);
+    gpio_setMode(LCD_CS, OUTPUT);
     gpio_setMode(LCD_RST, OUTPUT);
-    gpio_setMode(LCD_DC,  OUTPUT);
+    gpio_setMode(LCD_DC, OUTPUT);
 
     display.init();
 }
@@ -109,5 +104,5 @@ void display_setContrast(uint8_t contrast)
 
 void display_setBacklightLevel(uint8_t level)
 {
-    (void) level;
+    (void)level;
 }

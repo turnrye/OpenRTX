@@ -29,8 +29,7 @@ int cap1206_init(const struct i2cDevice *i2c)
     data[0] = CAP1206_CONFIG_1;
     data[1] = /*CAP1206_CONFIG_1_TIMEOUT |*/ CAP1206_CONFIG_1_DIS_DIG_NOISE;
     ret = i2c_write(i2c, CAP1206_ADDR, data, 2, true);
-    if(ret < 0)
-    {
+    if (ret < 0) {
         i2c_release(i2c);
         return ret;
     }
@@ -39,8 +38,7 @@ int cap1206_init(const struct i2cDevice *i2c)
     data[0] = CAP1206_RPT_EN;
     data[1] = 0;
     ret = i2c_write(i2c, CAP1206_ADDR, data, 2, true);
-    if(ret < 0)
-    {
+    if (ret < 0) {
         i2c_release(i2c);
         return ret;
     }
@@ -64,15 +62,13 @@ int cap1206_readkeys(const struct i2cDevice *i2c)
 
     cmd[0] = CAP1206_SENSOR_IN_STATUS;
     ret = i2c_write(i2c, CAP1206_ADDR, cmd, 1, false);
-    if(ret < 0)
-    {
+    if (ret < 0) {
         i2c_release(i2c);
         return ret;
     }
 
     ret = i2c_read(i2c, CAP1206_ADDR, &keyStatus, 1, true);
-    if(ret < 0)
-    {
+    if (ret < 0) {
         i2c_release(i2c);
         return ret;
     }
@@ -82,7 +78,7 @@ int cap1206_readkeys(const struct i2cDevice *i2c)
     ret = i2c_write(i2c, CAP1206_ADDR, cmd, 2, false);
     i2c_release(i2c);
 
-    if(ret < 0)
+    if (ret < 0)
         return ret;
 
     return keyStatus;

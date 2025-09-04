@@ -44,16 +44,12 @@ extern "C" {
  * config field.
  */
 
-
-enum Stm32DacInstance
-{
+enum Stm32DacInstance {
     STM32_DAC_CH1 = 0,
     STM32_DAC_CH2,
 };
 
-
 extern const struct audioDriver stm32_dac_audio_driver;
-
 
 /**
  * Initialize the driver and the peripherals.
@@ -67,7 +63,6 @@ void stm32dac_init(const uint8_t instance, const uint16_t idleLevel);
  * Shutdown the driver and the peripherals.
  */
 void stm32dac_terminate();
-
 
 #ifdef __cplusplus
 }

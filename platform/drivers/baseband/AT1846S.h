@@ -28,44 +28,39 @@
 /**
  * Enumeration type defining the bandwidth settings supported by the AT1846S chip.
  */
-enum class AT1846S_BW : uint8_t
-{
-    _12P5 = 0,    ///< 12.5kHz bandwidth.
-    _25   = 1     ///< 25kHz bandwidth.
+enum class AT1846S_BW : uint8_t {
+    _12P5 = 0, ///< 12.5kHz bandwidth.
+    _25 = 1 ///< 25kHz bandwidth.
 };
 
 /**
  * Enumeration type defining the possible operating mode configurations for the
  * AT1846S chip.
  */
-enum class AT1846S_OpMode : uint8_t
-{
-    FM  = 0,      ///< Analog FM operation.
-    DMR = 1       ///< DMR operation.
+enum class AT1846S_OpMode : uint8_t {
+    FM = 0, ///< Analog FM operation.
+    DMR = 1 ///< DMR operation.
 };
 
 /**
  * Enumeration type defining the AT1846S functional modes.
  */
-enum class AT1846S_FuncMode : uint8_t
-{
-    OFF = 0,      ///< Both TX and RX off.
-    RX  = 1,      ///< RX enabled.
-    TX  = 2,      ///< TX enabled.
+enum class AT1846S_FuncMode : uint8_t {
+    OFF = 0, ///< Both TX and RX off.
+    RX = 1, ///< RX enabled.
+    TX = 2, ///< TX enabled.
 };
 
 /**
  * Low-level driver for AT1846S "radio on a chip" integrated circuit.
  */
 
-class AT1846S
-{
+class AT1846S {
 public:
-
     /**
      * \return a reference to the instance of the AT1846S class (singleton).
      */
-    static AT1846S& instance()
+    static AT1846S &instance()
     {
         static AT1846S instance;
         return instance;
@@ -104,7 +99,7 @@ public:
         // AT1846S datasheet specifies a frequency step of 1/16th of kHz per bit.
         // Computation of register value is done using 64 bit to avoid overflows,
         // result is then truncated to 32 bits to fit it into the registers.
-        uint64_t val = ((uint64_t) freq * 16) / 1000;
+        uint64_t val = ((uint64_t)freq * 16) / 1000;
         val &= 0xFFFFFFFF;
 
         uint16_t fHi = (val >> 16) & 0xFFFF;
@@ -142,7 +137,7 @@ public:
          * register 0x30. With a cast and shift we can set it easily.
          */
 
-        uint16_t value = static_cast< uint16_t >(mode) << 5;
+        uint16_t value = static_cast<uint16_t>(mode) << 5;
         maskSetRegister(0x30, 0x0060, value);
     }
 
@@ -172,10 +167,10 @@ public:
      */
     void enableTxCtcss(const tone_t freq)
     {
-        i2c_writeReg16(0x4A, freq*10);          // Set CTCSS1 frequency reg.
-        i2c_writeReg16(0x4B, 0x0000);           // Clear CDCSS bits
+        i2c_writeReg16(0x4A, freq * 10); // Set CTCSS1 frequency reg.
+        i2c_writeReg16(0x4B, 0x0000); // Clear CDCSS bits
         i2c_writeReg16(0x4C, 0x0000);
-        maskSetRegister(0x4E, 0x0600, 0x0600);  // Enable CTCSS TX
+        maskSetRegister(0x4E, 0x0600, 0x0600); // Enable CTCSS TX
     }
 
     /**
@@ -185,9 +180,9 @@ public:
      */
     void enableRxCtcss(const tone_t freq)
     {
-        i2c_writeReg16(0x4D, freq*10);          // Set CTCSS2 frequency reg.
+        i2c_writeReg16(0x4D, freq * 10); // Set CTCSS2 frequency reg.
         i2c_writeReg16(0x5B, getCtcssThreshFromTone(freq));
-        maskSetRegister(0x3A, 0x001F, 0x0008);  // Enable CTCSS2 freq. detection
+        maskSetRegister(0x3A, 0x001F, 0x0008); // Enable CTCSS2 freq. detection
     }
 
     /**
@@ -198,10 +193,11 @@ public:
     inline bool rxCtcssDetected()
     {
         // Check if CTCSS detection is enabled: if not, return false.
-        if((i2c_readReg16(0x3A) & 0x0008) == 0) return false;
+        if ((i2c_readReg16(0x3A) & 0x0008) == 0)
+            return false;
 
         // Check CTCSS2 compare flag
-        uint16_t reg  = i2c_readReg16(0x1C);
+        uint16_t reg = i2c_readReg16(0x1C);
         return ((reg & 0x100) != 0);
     }
 
@@ -210,10 +206,10 @@ public:
      */
     inline void disableCtcss()
     {
-        maskSetRegister(0x4E, 0x0600, 0x0000);  // Disable TX CTCSS
-        maskSetRegister(0x3A, 0x001F, 0x0000);  // Disable CTCSS freq. detection
-        i2c_writeReg16(0x4A, 0x0000);           // Clear CTCSS1 frequency reg.
-        i2c_writeReg16(0x4D, 0x0000);           // Clear CTCSS2 frequency reg.
+        maskSetRegister(0x4E, 0x0600, 0x0000); // Disable TX CTCSS
+        maskSetRegister(0x3A, 0x001F, 0x0000); // Disable CTCSS freq. detection
+        i2c_writeReg16(0x4A, 0x0000); // Clear CTCSS1 frequency reg.
+        i2c_writeReg16(0x4D, 0x0000); // Clear CTCSS2 frequency reg.
     }
 
     /**
@@ -224,7 +220,7 @@ public:
     inline int16_t readRSSI()
     {
         // RSSI value is contained in the upper 8 bits of register 0x1B.
-        return -137 + static_cast< int16_t >(i2c_readReg16(0x1B) >> 8);
+        return -137 + static_cast<int16_t>(i2c_readReg16(0x1B) >> 8);
     }
 
     /**
@@ -245,7 +241,7 @@ public:
      */
     inline void setMicGain(const uint8_t gain)
     {
-        maskSetRegister(0x41, 0x007F, static_cast< uint16_t >(gain));
+        maskSetRegister(0x41, 0x007F, static_cast<uint16_t>(gain));
     }
 
     /**
@@ -281,7 +277,7 @@ public:
     {
         uint16_t value = (analogDacGain & 0x0F) << 4;
         maskSetRegister(0x44, 0x00F0, value);
-        maskSetRegister(0x44, 0x000F, static_cast< uint16_t >(digitalGain));
+        maskSetRegister(0x44, 0x000F, static_cast<uint16_t>(digitalGain));
     }
 
     /**
@@ -338,7 +334,7 @@ public:
      */
     inline void setAnalogSqlThresh(const uint8_t thresh)
     {
-        i2c_writeReg16(0x49, static_cast< uint16_t >(thresh));
+        i2c_writeReg16(0x49, static_cast<uint16_t>(thresh));
     }
 
     /**
@@ -360,7 +356,6 @@ public:
     }
 
 private:
-
     /**
      * Constructor.
      */
@@ -394,9 +389,10 @@ private:
      */
     inline void reloadConfig()
     {
-        uint16_t funcMode = i2c_readReg16(0x30) & 0x0060;   // Get current op. status
-        maskSetRegister(0x30, 0x0060, 0x0000);              // RX and TX off
-        maskSetRegister(0x30, 0x0060, funcMode);            // Restore op. status
+        uint16_t funcMode = i2c_readReg16(0x30) &
+                            0x0060; // Get current op. status
+        maskSetRegister(0x30, 0x0060, 0x0000); // RX and TX off
+        maskSetRegister(0x30, 0x0060, funcMode); // Restore op. status
     }
 
     /**
@@ -431,52 +427,93 @@ private:
      */
     uint16_t getCtcssThreshFromTone(const tone_t tone)
     {
-        switch(tone)
-        {
-            case 670:  return 0x0C0D; break;    // 67.0 Hz
-            case 693:  return 0x0C0C; break;    // 69.3 Hz
-            case 719:  return 0x0B0B; break;    // 71.9 Hz
-            case 744:                           // 74.4 Hz
-            case 770:  return 0x0A0A; break;    // 77.0 Hz
-            case 797:                           // 79.7 Hz
-            case 825:  return 0x0909; break;    // 82.5 Hz
-            case 854:                           // 85.4 Hz
-            case 885:  return 0x0808; break;    // 88.5 Hz
-            case 915:                           // 91.5 Hz
-            case 948:  return 0x0707; break;    // 94.8 Hz
-            case 974:  return 0x0706; break;    // 97.4 Hz
-            case 1000:                          // 100.0Hz
-            case 1034: return 0x0606; break;    // 103.4Hz
-            case 1072:                          // 107.2Hz
-            case 1109: return 0x0605; break;    // 110.9Hz
-            case 1148: return 0x0505; break;    // 114.8Hz
-            case 1188:                          // 118.8Hz
-            case 1230: return 0x0504; break;    // 123.0Hz
-            case 1273:                          // 127.3Hz
-            case 1318: return 0x0404; break;    // 131.8Hz
-            case 1365:                          // 136.5Hz
-            case 1413:                          // 141.3Hz
-            case 1462: return 0x0403; break;    // 146.2Hz
-            case 1514: return 0x0504; break;    // 151.4Hz
-            case 1567:                          // 156.7Hz
-            case 1622:                          // 162.2Hz
-            case 1679:                          // 167.9Hz
-            case 1713:                          // 171.3Hz
-            case 1799: return 0x0403; break;    // 179.9Hz
-            case 1862: return 0x0400; break;    // 186.2Hz
-            case 1928: return 0x0302; break;    // 192.8Hz
-            case 2035:                          // 203.5Hz
-            case 2107:                          // 210.7Hz
-            case 2181:                          // 218.1Hz
-            case 2257: return 0x0302; break;    // 225.7Hz
-            case 2336:                          // 233.6Hz
-            case 2418:                          // 241.8Hz
-            case 2503: return 0x0300; break;    // 250.3Hz
+        switch (tone) {
+            case 670:
+                return 0x0C0D;
+                break; // 67.0 Hz
+            case 693:
+                return 0x0C0C;
+                break; // 69.3 Hz
+            case 719:
+                return 0x0B0B;
+                break; // 71.9 Hz
+            case 744: // 74.4 Hz
+            case 770:
+                return 0x0A0A;
+                break; // 77.0 Hz
+            case 797: // 79.7 Hz
+            case 825:
+                return 0x0909;
+                break; // 82.5 Hz
+            case 854: // 85.4 Hz
+            case 885:
+                return 0x0808;
+                break; // 88.5 Hz
+            case 915: // 91.5 Hz
+            case 948:
+                return 0x0707;
+                break; // 94.8 Hz
+            case 974:
+                return 0x0706;
+                break; // 97.4 Hz
+            case 1000: // 100.0Hz
+            case 1034:
+                return 0x0606;
+                break; // 103.4Hz
+            case 1072: // 107.2Hz
+            case 1109:
+                return 0x0605;
+                break; // 110.9Hz
+            case 1148:
+                return 0x0505;
+                break; // 114.8Hz
+            case 1188: // 118.8Hz
+            case 1230:
+                return 0x0504;
+                break; // 123.0Hz
+            case 1273: // 127.3Hz
+            case 1318:
+                return 0x0404;
+                break; // 131.8Hz
+            case 1365: // 136.5Hz
+            case 1413: // 141.3Hz
+            case 1462:
+                return 0x0403;
+                break; // 146.2Hz
+            case 1514:
+                return 0x0504;
+                break; // 151.4Hz
+            case 1567: // 156.7Hz
+            case 1622: // 162.2Hz
+            case 1679: // 167.9Hz
+            case 1713: // 171.3Hz
+            case 1799:
+                return 0x0403;
+                break; // 179.9Hz
+            case 1862:
+                return 0x0400;
+                break; // 186.2Hz
+            case 1928:
+                return 0x0302;
+                break; // 192.8Hz
+            case 2035: // 203.5Hz
+            case 2107: // 210.7Hz
+            case 2181: // 218.1Hz
+            case 2257:
+                return 0x0302;
+                break; // 225.7Hz
+            case 2336: // 233.6Hz
+            case 2418: // 241.8Hz
+            case 2503:
+                return 0x0300;
+                break; // 250.3Hz
 
-                                                // 159.8Hz, 165.5Hz, 173.8Hz,
-                                                // 177.3Hz, 183.5Hz, 189.9Hz,
-                                                // 196.6Hz, 199.5Hz, 206.5Hz,
-            default:   return 0x0505; break;    // 229.1Hz, 254.1Hz
+            // 159.8Hz, 165.5Hz, 173.8Hz,
+            // 177.3Hz, 183.5Hz, 189.9Hz,
+            // 196.6Hz, 199.5Hz, 206.5Hz,
+            default:
+                return 0x0505;
+                break; // 229.1Hz, 254.1Hz
         }
     }
 };

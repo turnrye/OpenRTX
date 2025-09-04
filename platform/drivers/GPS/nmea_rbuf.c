@@ -28,7 +28,7 @@
 
 static inline size_t nmeaRbuf_size(struct nmeaRbuf *rbuf)
 {
-    if(rbuf->wrPos >= rbuf->rdPos)
+    if (rbuf->wrPos >= rbuf->rdPos)
         return rbuf->wrPos - rbuf->rdPos;
     else
         return CONFIG_NMEA_RBUF_SIZE + rbuf->wrPos - rbuf->rdPos;
@@ -44,14 +44,14 @@ void nmeaRbuf_reset(struct nmeaRbuf *rbuf)
 
 int nmeaRbuf_putChar(struct nmeaRbuf *rbuf, const char c)
 {
-    if((rbuf->filling == false) && (c == '$'))
+    if ((rbuf->filling == false) && (c == '$'))
         rbuf->filling = true;
 
-    if(rbuf->filling) {
+    if (rbuf->filling) {
         size_t next = (rbuf->wrPos + 1) % CONFIG_NMEA_RBUF_SIZE;
 
         // No more space, drop current sentence and restart
-        if(next == rbuf->rdPos) {
+        if (next == rbuf->rdPos) {
             rbuf->filling = false;
             rbuf->wrPos = rbuf->rdLimit;
 
@@ -63,7 +63,7 @@ int nmeaRbuf_putChar(struct nmeaRbuf *rbuf, const char c)
         rbuf->wrPos = next;
 
         // Check if a full sentence is present
-        if(c == '\n') {
+        if (c == '\n') {
             rbuf->filling = false;
             rbuf->rdLimit = rbuf->wrPos;
         }
@@ -79,15 +79,15 @@ int nmeaRbuf_putSentence(struct nmeaRbuf *rbuf, const char *sentence)
     size_t free = CONFIG_NMEA_RBUF_SIZE - nmeaRbuf_size(rbuf);
 
     // Bad-formatted string
-    if((sentence[0] != '$') || (sentence[len - 1] != '\n'))
+    if ((sentence[0] != '$') || (sentence[len - 1] != '\n'))
         return -1;
 
     // Not enough space
-    if(len >= free)
+    if (len >= free)
         return -2;
 
     // Handle write pointer wrap-around
-    if((rbuf->wrPos + len) >= CONFIG_NMEA_RBUF_SIZE) {
+    if ((rbuf->wrPos + len) >= CONFIG_NMEA_RBUF_SIZE) {
         size_t chunkSize = CONFIG_NMEA_RBUF_SIZE - rbuf->wrPos;
         memcpy(&rbuf->data[rbuf->wrPos], sentence, chunkSize);
         sentence += chunkSize;
@@ -95,11 +95,11 @@ int nmeaRbuf_putSentence(struct nmeaRbuf *rbuf, const char *sentence)
         rbuf->wrPos = 0;
     }
 
-   memcpy(&rbuf->data[rbuf->wrPos], sentence, len);
-   rbuf->wrPos = next;
-   rbuf->rdLimit = next;
+    memcpy(&rbuf->data[rbuf->wrPos], sentence, len);
+    rbuf->wrPos = next;
+    rbuf->rdLimit = next;
 
-   return 0;
+    return 0;
 }
 
 int nmeaRbuf_getSentence(struct nmeaRbuf *rbuf, char *buf, const size_t maxLen)
@@ -107,7 +107,7 @@ int nmeaRbuf_getSentence(struct nmeaRbuf *rbuf, char *buf, const size_t maxLen)
     size_t bufPos = 0;
     char c;
 
-    if(rbuf->rdPos == rbuf->rdLimit)
+    if (rbuf->rdPos == rbuf->rdLimit)
         return 0;
 
     do {
@@ -118,14 +118,13 @@ int nmeaRbuf_getSentence(struct nmeaRbuf *rbuf, char *buf, const size_t maxLen)
 
         // Store it
         buf[bufPos] = c;
-        if(bufPos < maxLen)
+        if (bufPos < maxLen)
             bufPos += 1;
 
-    } while(c != '\n');
+    } while (c != '\n');
 
-    if(bufPos == maxLen)
+    if (bufPos == maxLen)
         return -1;
 
-    return (int) bufPos;
+    return (int)bufPos;
 }
-

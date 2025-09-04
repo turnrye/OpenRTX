@@ -43,17 +43,13 @@ extern "C" {
  * The configuration parameter for each instance is the ADC input number.
  */
 
-
-enum Stm32AdcInstance
-{
+enum Stm32AdcInstance {
     STM32_ADC_ADC1 = 0,
     STM32_ADC_ADC2,
     STM32_ADC_ADC3,
 };
 
-
 extern const struct audioDriver stm32_adc_audio_driver;
-
 
 /**
  * Initialize the driver and the peripherals.

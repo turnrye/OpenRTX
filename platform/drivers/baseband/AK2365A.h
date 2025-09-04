@@ -27,25 +27,22 @@
 extern "C" {
 #endif
 
-enum AK2365A_BPF
-{
-    AK2365A_BPF_7p5 = 4,    ///< BAND = 1, BPF_BW = 00
-    AK2365A_BPF_6   = 0,    ///< BAND = 0, BPF_BW = 00
-    AK2365A_BPF_4p5 = 1,    ///< BAND = 0, BPF_BW = 01
-    AK2365A_BPF_3   = 2,    ///< BAND = 0, BPF_BW = 10
-    AK2365A_BPF_2   = 3,    ///< BAND = 0, BPF_BW = 11
+enum AK2365A_BPF {
+    AK2365A_BPF_7p5 = 4, ///< BAND = 1, BPF_BW = 00
+    AK2365A_BPF_6 = 0, ///< BAND = 0, BPF_BW = 00
+    AK2365A_BPF_4p5 = 1, ///< BAND = 0, BPF_BW = 01
+    AK2365A_BPF_3 = 2, ///< BAND = 0, BPF_BW = 10
+    AK2365A_BPF_2 = 3, ///< BAND = 0, BPF_BW = 11
 };
 
 /**
  * AK2365A device data.
  */
-struct ak2365a
-{
-    const struct spiDevice *spi;   ///< SPI bus device driver
-    const struct gpioPin   cs;     ///< Chip select gpio
-    const struct gpioPin   res;    ///< Reset gpio
+struct ak2365a {
+    const struct spiDevice *spi; ///< SPI bus device driver
+    const struct gpioPin cs; ///< Chip select gpio
+    const struct gpioPin res; ///< Reset gpio
 };
-
 
 /**
  * Initialise the FM detector IC.

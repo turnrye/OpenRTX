@@ -33,12 +33,11 @@ int main(void)
 
     display_setBacklightLevel(255);
 
-    while(1)
-    {
+    while (1) {
         gfx_clearScreen();
 
-        point_t pos_line = {5, 15};
-        color_t color_white = {255, 255, 255, 255};
+        point_t pos_line = { 5, 15 };
+        color_t color_white = { 255, 255, 255, 255 };
 
         uint16_t vBat = platform_getVbat();
         uint8_t micLevel = platform_getMicLevel();
@@ -47,17 +46,16 @@ int main(void)
         bool ptt = platform_getPttStatus();
         bool pwr = platform_pwrButtonStatus();
 
-        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT,
-                  color_white, "bat: %d, mic: %d", vBat, micLevel);
+        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                  "bat: %d, mic: %d", vBat, micLevel);
 
         pos_line.y = 30;
-        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT,
-                  color_white, "vol: %d, ch: %d", volumeLevel, currentCh);
+        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                  "vol: %d, ch: %d", volumeLevel, currentCh);
 
         pos_line.y = 45;
-        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT,
-                  color_white, "ptt: %s, pwr: %s", ptt ? "on" : "off",
-                  pwr ? "on" : "off");
+        gfx_print(pos_line, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                  "ptt: %s, pwr: %s", ptt ? "on" : "off", pwr ? "on" : "off");
 
         gfx_render();
         sleepFor(0, 250u);

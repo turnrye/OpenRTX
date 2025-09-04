@@ -39,8 +39,7 @@
 // Max number of UI events
 #define MAX_NUM_EVENTS 16
 
-enum uiScreen
-{
+enum uiScreen {
     MAIN_VFO = 0,
     MAIN_VFO_INPUT,
     MAIN_MEM,
@@ -67,16 +66,11 @@ enum uiScreen
     LOW_BAT
 };
 
-enum SetRxTx
-{
-    SET_RX = 0,
-    SET_TX
-};
+enum SetRxTx { SET_RX = 0, SET_TX };
 
 // This enum is needed to have item numbers that match
 // menu elements even if some elements may be missing (GPS)
-enum menuItems
-{
+enum menuItems {
     M_SETTINGS = 0,
 #ifdef CONFIG_GPS
     M_GPS,
@@ -86,49 +80,33 @@ enum menuItems
     M_SHUTDOWN
 };
 
-enum settingsItems
-{
+enum settingsItems {
     S_DISPLAY = 0
 #ifdef CONFIG_RTC
-    ,S_TIMEDATE
+    ,
+    S_TIMEDATE
 #endif
 #ifdef CONFIG_GPS
-    ,S_GPS
+    ,
+    S_GPS
 #endif
-    ,S_M17
-    ,S_MOD17
-    ,S_RESET2DEFAULTS
+    ,
+    S_M17,
+    S_MOD17,
+    S_RESET2DEFAULTS
 };
 
-enum backupRestoreItems
-{
-    BR_BACKUP = 0,
-    BR_RESTORE
-};
+enum backupRestoreItems { BR_BACKUP = 0, BR_RESTORE };
 
-enum displayItems
-{
-    D_BRIGHTNESS = 0
-};
+enum displayItems { D_BRIGHTNESS = 0 };
 
 #ifdef CONFIG_GPS
-enum settingsGPSItems
-{
-    G_ENABLED = 0,
-    G_SET_TIME,
-    G_TIMEZONE
-};
+enum settingsGPSItems { G_ENABLED = 0, G_SET_TIME, G_TIMEZONE };
 #endif
 
-enum m17Items
-{
-    M_CALLSIGN = 0,
-    M_CAN,
-    M_CAN_RX
-};
+enum m17Items { M_CALLSIGN = 0, M_CAN, M_CAN_RX };
 
-enum module17Items
-{
+enum module17Items {
     D_MICGAIN = 0,
     D_PTTINLEVEL,
     D_PTTOUTLEVEL,
@@ -144,8 +122,7 @@ enum module17Items
  * Using these parameters make the UI automatically adapt
  * To displays of different sizes
  */
-typedef struct layout_t
-{
+typedef struct layout_t {
     uint16_t hline_h;
     uint16_t top_h;
     uint16_t line1_h;
@@ -190,8 +167,7 @@ typedef struct layout_t
  * UI that need to be kept between executions of the UI
  * This state does not need to be saved on device poweroff
  */
-typedef struct ui_state_t
-{
+typedef struct ui_state_t {
     // Index of the currently selected menu entry
     uint8_t menu_selected;
     // If true we can change a menu entry value with UP/DOWN
@@ -214,8 +190,7 @@ typedef struct ui_state_t
     char new_callsign[10];
     // Which state to return to when we exit menu
     uint8_t last_main_state;
-}
-ui_state_t;
+} ui_state_t;
 
 extern layout_t layout;
 // Copy of the radio state

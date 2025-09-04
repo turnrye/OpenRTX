@@ -43,12 +43,11 @@ extern "C" {
  * \enum led_t Enumeration type for platform LED control. To allow for a wide
  * platform support, LEDs are identified by their color.
  */
-typedef enum
-{
-        GREEN = 0,
-        RED,
-        YELLOW,
-        WHITE,
+typedef enum {
+    GREEN = 0,
+    RED,
+    YELLOW,
+    WHITE,
 } led_t;
 
 /**
@@ -56,22 +55,21 @@ typedef enum
  * information: UHF and VHF band support, manufacturer-assigned hardware name
  * and LCD driver type.
  */
-typedef struct
-{
-    char     name[10];      /* Manufacturer-assigned hardware name.             */
+typedef struct {
+    char name[10]; /* Manufacturer-assigned hardware name.             */
 
-    uint16_t hw_version;    /* Hardware version number                          */
-    uint16_t flags;         /* Device-specific flags                            */
+    uint16_t hw_version; /* Hardware version number                          */
+    uint16_t flags; /* Device-specific flags                            */
 
-    uint8_t  _unused  : 6,
-             uhf_band : 1,  /* Device allows UHF band operation.                */
-             vhf_band : 1;  /* Device allows VHF band operation.                */
+    uint8_t _unused : 6,
+        uhf_band : 1, /* Device allows UHF band operation.                */
+        vhf_band : 1; /* Device allows VHF band operation.                */
 
-    uint16_t uhf_maxFreq;   /* Upper bound for UHF band, in MHz.                */
-    uint16_t uhf_minFreq;   /* Lower bound for UHF band, in MHz.                */
+    uint16_t uhf_maxFreq; /* Upper bound for UHF band, in MHz.                */
+    uint16_t uhf_minFreq; /* Lower bound for UHF band, in MHz.                */
 
-    uint16_t vhf_maxFreq;   /* Upper bound for VHF band, in MHz.                */
-    uint16_t vhf_minFreq;   /* Lower bound for VHF band, in MHz.                */
+    uint16_t vhf_maxFreq; /* Upper bound for VHF band, in MHz.                */
+    uint16_t vhf_minFreq; /* Lower bound for VHF band, in MHz.                */
 
 } hwInfo_t;
 

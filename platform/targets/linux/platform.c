@@ -30,19 +30,14 @@
  */
 mod17Calib_t mod17CalData;
 
-
-static const hwInfo_t hwInfo =
-{
-    .vhf_maxFreq = 174,
-    .vhf_minFreq = 136,
-    .vhf_band    = 1,
-    .uhf_maxFreq = 480,
-    .uhf_minFreq = 400,
-    .uhf_band    = 1,
-    .name        = "Linux",
-    .hw_version  = 1
-};
-
+static const hwInfo_t hwInfo = { .vhf_maxFreq = 174,
+                                 .vhf_minFreq = 136,
+                                 .vhf_band = 1,
+                                 .uhf_maxFreq = 480,
+                                 .uhf_minFreq = 400,
+                                 .uhf_band = 1,
+                                 .name = "Linux",
+                                 .hw_version = 1 };
 
 void platform_init()
 {
@@ -60,27 +55,33 @@ void platform_terminate()
 uint16_t platform_getVbat()
 {
     float voltage = emulator_state.vbat;
-    if(voltage < 0.0f)  voltage = 0.0f;
-    if(voltage > 65.0f) voltage = 65.0f;
-    return ((uint16_t) (voltage * 1000.0f));
+    if (voltage < 0.0f)
+        voltage = 0.0f;
+    if (voltage > 65.0f)
+        voltage = 65.0f;
+    return ((uint16_t)(voltage * 1000.0f));
 }
 
 uint8_t platform_getMicLevel()
 {
     float level = emulator_state.micLevel;
-    if(level < 0.0f)   level = 0.0f;
-    if(level > 255.0f) level = 255.0f;
+    if (level < 0.0f)
+        level = 0.0f;
+    if (level > 255.0f)
+        level = 255.0f;
 
-    return ((uint8_t) level);
+    return ((uint8_t)level);
 }
 
 uint8_t platform_getVolumeLevel()
 {
     float level = emulator_state.volumeLevel;
-    if(level < 0.0f)   level = 0.0f;
-    if(level > 255.0f) level = 255.0f;
+    if (level < 0.0f)
+        level = 0.0f;
+    if (level > 255.0f)
+        level = 255.0f;
 
-    return ((uint8_t) level);
+    return ((uint8_t)level);
 }
 
 int8_t platform_getChSelector()
@@ -107,12 +108,12 @@ bool platform_pwrButtonStatus()
 
 void platform_ledOn(led_t led)
 {
-    (void) led;
+    (void)led;
 }
 
 void platform_ledOff(led_t led)
 {
-    (void) led;
+    (void)led;
 }
 
 void platform_beepStart(uint16_t freq)
@@ -130,10 +131,10 @@ datetime_t platform_getCurrentTime()
     datetime_t t;
 
     time_t rawtime;
-    struct tm * timeinfo;
-    time ( &rawtime );
+    struct tm *timeinfo;
+    time(&rawtime);
     // radio expects time to be TZ-less, so use gmtime instead of localtime.
-    timeinfo = gmtime ( &rawtime );
+    timeinfo = gmtime(&rawtime);
 
     t.hour = timeinfo->tm_hour;
     t.minute = timeinfo->tm_min;
@@ -149,7 +150,7 @@ datetime_t platform_getCurrentTime()
 
 void platform_setTime(datetime_t t)
 {
-    (void) t;
+    (void)t;
 
     printf("rtc_setTime(t)\n");
 }

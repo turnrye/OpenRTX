@@ -44,27 +44,28 @@ void platform_init()
 {
     /* Configure GPIOs */
     gpio_setMode(GREEN_LED, OUTPUT);
-    gpio_setMode(RED_LED,   OUTPUT);
+    gpio_setMode(RED_LED, OUTPUT);
 
     gpio_setMode(PTT_SW, INPUT_PULL_UP);
     gpio_setMode(PTT_EXT, INPUT_PULL_UP);
 
-    #ifndef RUNNING_TESTSUITE
+#ifndef RUNNING_TESTSUITE
     gpio_setMode(PWR_SW, OUTPUT);
     gpio_setPin(PWR_SW);
-    #endif
+#endif
 
     adcStm32_init(&adc1);
 
     memset(&hwInfo, 0x00, sizeof(hwInfo));
 
-    nvm_init();                      /* Initialise non volatile memory manager */
-    nvm_readCalibData(&calibration); /* Load calibration data                  */
-    nvm_readHwInfo(&hwInfo);         /* Load hardware information data         */
-    toneGen_init();                  /* Initialise tone generator              */
-    rtc_init();                      /* Initialise RTC                         */
-    chSelector_init();               /* Initialise channel selector handler    */
-    audio_init();                    /* Initialise audio management module     */
+    nvm_init(); /* Initialise non volatile memory manager */
+    nvm_readCalibData(
+        &calibration); /* Load calibration data                  */
+    nvm_readHwInfo(&hwInfo); /* Load hardware information data         */
+    toneGen_init(); /* Initialise tone generator              */
+    rtc_init(); /* Initialise RTC                         */
+    chSelector_init(); /* Initialise channel selector handler    */
+    audio_init(); /* Initialise audio management module     */
 }
 
 void platform_terminate()
@@ -112,24 +113,21 @@ uint8_t platform_getVolumeLevel()
     uint16_t value = adc_getVoltage(&adc1, ADC_VOL_CH) / 1000;
     uint32_t output;
 
-    if(value < 20)
+    if (value < 20)
         return 0;
 
-    if(value <= 270)
-    {
+    if (value <= 270) {
         // First line: offset zero, slope 0.556
         output = value;
         output = (output * 556) / 1000;
-    }
-    else
-    {
+    } else {
         // Second line: offset 270, slope 0.076
-        output  = value - 270;
-        output  = (output * 76) / 1000;
+        output = value - 270;
+        output = (output * 76) / 1000;
         output += 150;
     }
 
-    if(output > 255)
+    if (output > 255)
         output = 255;
 
     return output;
@@ -156,8 +154,7 @@ bool platform_pwrButtonStatus()
 
 void platform_ledOn(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_setPin(GREEN_LED);
             break;
@@ -173,8 +170,7 @@ void platform_ledOn(led_t led)
 
 void platform_ledOff(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpio_clearPin(GREEN_LED);
             break;
@@ -222,8 +218,8 @@ const struct gpsDevice *platform_initGps()
     gpio_setMode(GPS_EN, OUTPUT);
     gpio_setPin(GPS_EN);
 
-    for(size_t i = 0; i < 50; i++) {
-        if(gpio_readPin(GPS_DATA) != 0) {
+    for (size_t i = 0; i < 50; i++) {
+        if (gpio_readPin(GPS_DATA) != 0) {
             dev = &gps;
             gpsStm32_init(9600);
             break;

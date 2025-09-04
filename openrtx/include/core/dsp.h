@@ -39,14 +39,11 @@ typedef int16_t audio_sample_t;
 /**
  * Data structure holding the internal state of a filter.
  */
-typedef struct
-{
-    float u[3];         // input values u(k), u(k-1), u(k-2)
-    float y[3];         // output values y(k), y(k-1), y(k-2)
-    bool  initialised;  // state variables initialised
-}
-filter_state_t;
-
+typedef struct {
+    float u[3]; // input values u(k), u(k-1), u(k-2)
+    float y[3]; // output values y(k), y(k-1), y(k-2)
+    bool initialised; // state variables initialised
+} filter_state_t;
 
 /**
  * Reset the filter state variables.
@@ -63,7 +60,8 @@ void dsp_resetFilterState(filter_state_t *state);
  * @param buffer: buffer containing the audio samples.
  * @param length: number of samples contained in the buffer.
  */
-void dsp_dcRemoval(filter_state_t *state, audio_sample_t *buffer, size_t length);
+void dsp_dcRemoval(filter_state_t *state, audio_sample_t *buffer,
+                   size_t length);
 
 /*
  * Inverts the phase of the audio buffer passed as paramenter.

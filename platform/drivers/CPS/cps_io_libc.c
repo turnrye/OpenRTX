@@ -40,10 +40,10 @@ int _readHeader(cps_header_t *header)
     fseek(cps_file, 0L, SEEK_SET);
     fread(header, sizeof(cps_header_t), 1, cps_file);
     // Validate magic number
-    if(header->magic != CPS_MAGIC)
+    if (header->magic != CPS_MAGIC)
         return -1;
     // Validate version number
-    if(((header->version_number & 0xff00) >> 8) != CPS_VERSION_MAJOR ||
+    if (((header->version_number & 0xff00) >> 8) != CPS_VERSION_MAJOR ||
         (header->version_number & 0x00ff) > CPS_VERSION_MINOR)
         return -1;
     return 0;
@@ -80,8 +80,7 @@ int _pushDown(uint32_t offset, uint32_t amount)
         return 0;
     // Move data downwards in chunks of fixed size
     char buffer[CPS_CHUNK_SIZE] = { 0 };
-    for(int i = 1; i <= ((end - offset) / CPS_CHUNK_SIZE); i++)
-    {
+    for (int i = 1; i <= ((end - offset) / CPS_CHUNK_SIZE); i++) {
         fseek(cps_file, end - i * CPS_CHUNK_SIZE, SEEK_SET);
         fread(buffer, CPS_CHUNK_SIZE, 1, cps_file);
         fseek(cps_file, end - i * CPS_CHUNK_SIZE + amount, SEEK_SET);
@@ -108,20 +107,17 @@ int _updateCtNumbering(uint16_t pos, bool add)
     cps_header_t header = { 0 };
     if (_readHeader(&header))
         return -1;
-    for(int i = 0; i < header.ch_count; i++)
-    {
+    for (int i = 0; i < header.ch_count; i++) {
         channel_t c = { 0 };
         cps_readChannel(&c, i);
-        if (c.mode == OPMODE_M17 && c.m17.contact_index >= pos)
-        {
+        if (c.mode == OPMODE_M17 && c.m17.contact_index >= pos) {
             if (add)
                 c.m17.contact_index++;
             else
                 c.m17.contact_index--;
             cps_writeChannel(c, i);
         }
-        if (c.mode == OPMODE_DMR && c.dmr.contact_index >= pos)
-        {
+        if (c.mode == OPMODE_DMR && c.dmr.contact_index >= pos) {
             if (add)
                 c.dmr.contact_index++;
             else
@@ -144,15 +140,12 @@ int _updateChNumbering(uint16_t pos, bool add)
     cps_header_t header = { 0 };
     if (_readHeader(&header))
         return -1;
-    for(int i = 0; i < header.b_count; i++)
-    {
+    for (int i = 0; i < header.b_count; i++) {
         bankHdr_t b_header = { 0 };
         cps_readBankHeader(&b_header, i);
-        for(int j = 0; j < b_header.ch_count; j++)
-        {
+        for (int j = 0; j < b_header.ch_count; j++) {
             int32_t ch = cps_readBankData(i, j);
-            if (ch >= pos)
-            {
+            if (ch >= pos) {
                 if (add)
                     ch++;
                 else
@@ -177,36 +170,32 @@ long _getBankDataOffset(uint16_t pos)
         return -1;
     if (pos >= header.b_count + 1)
         return -1;
-    if (pos == header.b_count)
-    {
+    if (pos == header.b_count) {
         // No bank is present, no offset to read
         if (header.b_count == 0)
-            return ftell(cps_file) +
-                   header.ct_count * sizeof(contact_t) +
-                   header.ch_count * sizeof(channel_t) +
-                   sizeof(uint32_t);
+            return ftell(cps_file) + header.ct_count * sizeof(contact_t) +
+                   header.ch_count * sizeof(channel_t) + sizeof(uint32_t);
         // Read last bank offset
         fseek(cps_file,
               header.ct_count * sizeof(contact_t) +
-              header.ch_count * sizeof(channel_t) +
-              (header.b_count - 1) * sizeof(uint32_t),
+                  header.ch_count * sizeof(channel_t) +
+                  (header.b_count - 1) * sizeof(uint32_t),
               SEEK_CUR);
         uint32_t offset = 0;
         fread(&offset, sizeof(uint32_t), 1, cps_file);
         long bdata_pos = ftell(cps_file);
         bankHdr_t last_bank = { 0 };
         cps_readBankHeader(&last_bank, header.b_count - 1);
-        return bdata_pos + offset + sizeof(bankHdr_t) + last_bank.ch_count * sizeof(uint32_t);
+        return bdata_pos + offset + sizeof(bankHdr_t) +
+               last_bank.ch_count * sizeof(uint32_t);
     }
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
-    return ftell(cps_file) +
-           (header.b_count - pos - 1) * sizeof(uint32_t) +
+    return ftell(cps_file) + (header.b_count - pos - 1) * sizeof(uint32_t) +
            offset;
 }
 
@@ -270,8 +259,7 @@ int cps_readChannel(channel_t *channel, uint16_t pos)
     if (pos >= header.ch_count)
         return -1;
     fseek(cps_file,
-          header.ct_count * sizeof(contact_t) +
-          pos * sizeof(channel_t),
+          header.ct_count * sizeof(contact_t) + pos * sizeof(channel_t),
           SEEK_CUR);
     fread(channel, sizeof(channel_t), 1, cps_file);
     return 0;
@@ -286,12 +274,12 @@ int cps_readBankHeader(bankHdr_t *b_header, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
-    fseek(cps_file, (header.b_count - pos - 1) * sizeof(uint32_t) + offset, SEEK_CUR);
+    fseek(cps_file, (header.b_count - pos - 1) * sizeof(uint32_t) + offset,
+          SEEK_CUR);
     fread(b_header, sizeof(bankHdr_t), 1, cps_file);
     return 0;
 }
@@ -305,12 +293,12 @@ int cps_readBankData(uint16_t bank_pos, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          bank_pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + bank_pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
-    fseek(cps_file, (header.b_count - bank_pos - 1) * sizeof(uint32_t) + offset, SEEK_CUR);
+    fseek(cps_file, (header.b_count - bank_pos - 1) * sizeof(uint32_t) + offset,
+          SEEK_CUR);
     bankHdr_t b_header = { 0 };
     fread(&b_header, sizeof(bankHdr_t), 1, cps_file);
     if (pos >= b_header.ch_count)
@@ -341,8 +329,7 @@ int cps_writeChannel(channel_t channel, uint16_t pos)
     if (pos >= header.ch_count)
         return -1;
     fseek(cps_file,
-          header.ct_count * sizeof(contact_t) +
-          pos * sizeof(channel_t),
+          header.ct_count * sizeof(contact_t) + pos * sizeof(channel_t),
           SEEK_CUR);
     fwrite(&channel, sizeof(channel_t), 1, cps_file);
     return 0;
@@ -357,8 +344,7 @@ int cps_writeBankHeader(bankHdr_t b_header, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
@@ -376,12 +362,12 @@ int cps_writeBankData(uint32_t ch, uint16_t bank_pos, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          bank_pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + bank_pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
-    fseek(cps_file, (header.b_count - bank_pos - 1) * sizeof(uint32_t) + offset, SEEK_CUR);
+    fseek(cps_file, (header.b_count - bank_pos - 1) * sizeof(uint32_t) + offset,
+          SEEK_CUR);
     bankHdr_t b_header = { 0 };
     fread(&b_header, sizeof(bankHdr_t), 1, cps_file);
     if (pos >= b_header.ch_count)
@@ -415,8 +401,7 @@ int cps_insertChannel(channel_t channel, uint16_t pos)
         return -1;
     if (pos >= header.ch_count + 1)
         return -1;
-    long ch_pos = ftell(cps_file) +
-                  header.ct_count * sizeof(contact_t) +
+    long ch_pos = ftell(cps_file) + header.ct_count * sizeof(contact_t) +
                   pos * sizeof(channel_t);
     _pushDown(ch_pos, sizeof(channel_t));
     fwrite(&channel, sizeof(channel_t), 1, cps_file);
@@ -435,8 +420,7 @@ int cps_insertBankHeader(bankHdr_t b_header, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + pos * sizeof(uint32_t),
           SEEK_CUR);
     long b_offset_pos = ftell(cps_file);
     uint32_t b_offset = _getBankDataOffset(pos) - _getBankDataOffset(0);
@@ -444,8 +428,7 @@ int cps_insertBankHeader(bankHdr_t b_header, uint16_t pos)
     _pushDown(b_offset_pos, sizeof(uint32_t));
     fwrite(&b_offset, sizeof(uint32_t), 1, cps_file);
     // Update all the offsets following the moved bank
-    for(int i = 0; i < header.b_count - pos; i++)
-    {
+    for (int i = 0; i < header.b_count - pos; i++) {
         long p = ftell(cps_file);
         uint32_t o = 0;
         fread(&o, sizeof(uint32_t), 1, cps_file);
@@ -469,14 +452,12 @@ int cps_insertBankData(uint32_t ch, uint16_t bank_pos, uint16_t pos)
         return -1;
     fseek(cps_file,
           header.ct_count * sizeof(contact_t) +
-          header.ch_count * sizeof(channel_t) +
-          bank_pos * sizeof(uint32_t),
+              header.ch_count * sizeof(channel_t) + bank_pos * sizeof(uint32_t),
           SEEK_CUR);
     uint32_t offset = 0;
     fread(&offset, sizeof(uint32_t), 1, cps_file);
     // Update all the offsets following the moved bank
-    for(int i = 0; i < header.b_count - bank_pos - 1; i++)
-    {
+    for (int i = 0; i < header.b_count - bank_pos - 1; i++) {
         long p = ftell(cps_file);
         uint32_t o = 0;
         fread(&o, sizeof(uint32_t), 1, cps_file);

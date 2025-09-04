@@ -31,22 +31,20 @@
  * Configuration options for analog FM mode.
  * Each option is tied to a particular bit of the Configuration register 0x34.
  */
-enum class FmConfig : uint8_t
-{
-    BPF_EN     = 1 << 7,    ///< Enable band-pass filter.
-    COMP_EN    = 1 << 6,    ///< Enable compression.
-    PREEMPH_EN = 1 << 5,    ///< Enable preemphasis.
-    BW_25kHz   = 1 << 4,    ///< 25kHz TX bandwidth.
-    BW_12p5kHz = 0          ///< 12.5kHz TX bandwidth.
+enum class FmConfig : uint8_t {
+    BPF_EN = 1 << 7, ///< Enable band-pass filter.
+    COMP_EN = 1 << 6, ///< Enable compression.
+    PREEMPH_EN = 1 << 5, ///< Enable preemphasis.
+    BW_25kHz = 1 << 4, ///< 25kHz TX bandwidth.
+    BW_12p5kHz = 0 ///< 12.5kHz TX bandwidth.
 };
 
 /**
  * Audio input selection for both DMR and FM operation.
  */
-enum class TxAudioSource
-{
-    MIC,        ///< Audio source is microphone.
-    LINE_IN     ///< Audio source is "line in", e.g. tone generator.
+enum class TxAudioSource {
+    MIC, ///< Audio source is microphone.
+    LINE_IN ///< Audio source is "line in", e.g. tone generator.
 };
 
 class ScopedChipSelect;
@@ -54,18 +52,17 @@ class ScopedChipSelect;
 /**
  * Generic driver for HR_C5000/HR_C6000 "baseband" chip.
  */
-template< class M >
-class HR_Cx000
-{
+template <class M> class HR_Cx000 {
 public:
-
     /**
      * Constructor.
      *
      * @param uSpi: pointer to SPI device for "user" SPI interface.
      * @param uCs: gpioPin object for "user" SPI chip select.
      */
-    HR_Cx000(const struct spiDevice *uSpi, const struct gpioPin uCs) : uSpi(uSpi), uCs(uCs)
+    HR_Cx000(const struct spiDevice *uSpi, const struct gpioPin uCs)
+        : uSpi(uSpi)
+        , uCs(uCs)
     {
         // Configure chip select pin
         gpioPin_setMode(&uCs, OUTPUT);
@@ -109,8 +106,8 @@ public:
      */
     inline void setModAmplitude(const uint8_t iAmp, const uint8_t qAmp)
     {
-        writeReg(M::CONFIG, 0x45, iAmp);    // Mod2 magnitude
-        writeReg(M::CONFIG, 0x46, qAmp);    // Mod1 magnitude
+        writeReg(M::CONFIG, 0x45, iAmp); // Mod2 magnitude
+        writeReg(M::CONFIG, 0x46, qAmp); // Mod1 magnitude
     }
 
     /**
@@ -120,8 +117,9 @@ public:
      */
     inline void setModFactor(const uint8_t mf)
     {
-        writeReg(M::CONFIG, 0x35, mf);      // FM modulation factor
-        writeReg(M::CONFIG, 0x3F, 0x07);    // FM Limiting modulation factor (HR_C6000)
+        writeReg(M::CONFIG, 0x35, mf); // FM modulation factor
+        writeReg(M::CONFIG, 0x3F,
+                 0x07); // FM Limiting modulation factor (HR_C6000)
     }
 
     /**
@@ -208,7 +206,6 @@ public:
     }
 
 private:
-
     /**
      * Helper function for register writing.
      *
@@ -220,7 +217,7 @@ private:
     {
         uint8_t data[3];
 
-        data[0] = static_cast< uint8_t >(opMode);
+        data[0] = static_cast<uint8_t>(opMode);
         data[1] = addr;
         data[2] = value;
 
@@ -240,7 +237,7 @@ private:
         uint8_t cmd[3];
         uint8_t ret[3];
 
-        cmd[0] = 0x80 | static_cast< uint8_t >(opMode);
+        cmd[0] = 0x80 | static_cast<uint8_t>(opMode);
         cmd[1] = addr;
         cmd[2] = 0x00;
 
@@ -264,7 +261,6 @@ private:
     }
 
 protected:
-
     const struct spiDevice *uSpi;
     const struct gpioPin uCs;
 };
@@ -274,16 +270,14 @@ protected:
  * Specialisation of logical OR operator to allow composition of FmConfig fields.
  * This allows to have code like: "FmConfig::BPF_EN | FmConfig::WB_MODE"
  */
-FmConfig operator |(FmConfig lhs, FmConfig rhs);
+FmConfig operator|(FmConfig lhs, FmConfig rhs);
 
 /**
  * \internal
  * RAII class for chip select management.
  */
-class ScopedChipSelect
-{
+class ScopedChipSelect {
 public:
-
     /**
      * Constructor.
      * When called it acquires exclusive ownership on the "user" SPI bus and
@@ -291,7 +285,7 @@ public:
      *
      * @param dev: pointer to device interface.
      */
-    ScopedChipSelect(const struct spiDevice *spi, const struct gpioPin& cs);
+    ScopedChipSelect(const struct spiDevice *spi, const struct gpioPin &cs);
 
     /**
      * Destructor.
@@ -302,7 +296,7 @@ public:
 
 private:
     const struct spiDevice *spi;
-    const struct gpioPin& cs;
+    const struct gpioPin &cs;
 };
 
 #endif // HRCx000_H

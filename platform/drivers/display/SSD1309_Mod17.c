@@ -41,21 +41,17 @@ void SSD1309_init()
     gpio_setPin(LCD_RST);
     delayMs(50);
 
-    static const uint8_t init[] =
-    {
-        0xAE,    // SSD1309_DISPLAYOFF,
-        0xD5,    // Set display clock division
-        0xF0,
-        0xA8,    // Set multiplex ratio, 1/64
-        0x3F,
-        0x81,    // Set contrast control
-        0x32,
-        0xD9,    // Set pre-charge period
-        0xF1,
-        0xDB,    // Set VCOMH Deselect level
-        0x30,
-        0xAF
-    };
+    static const uint8_t init[] = { 0xAE, // SSD1309_DISPLAYOFF,
+                                    0xD5, // Set display clock division
+                                    0xF0,
+                                    0xA8, // Set multiplex ratio, 1/64
+                                    0x3F,
+                                    0x81, // Set contrast control
+                                    0x32,
+                                    0xD9, // Set pre-charge period
+                                    0xF1,
+                                    0xDB, // Set VCOMH Deselect level
+                                    0x30, 0xAF };
 
     gpio_clearPin(LCD_CS);
     gpio_clearPin(LCD_DC);
@@ -68,7 +64,7 @@ void SSD1309_terminate()
     uint8_t dispOff = 0xAE;
 
     gpio_clearPin(LCD_CS);
-    gpio_clearPin(LCD_DC);  /* DC low -> command mode          */
+    gpio_clearPin(LCD_DC); /* DC low -> command mode          */
     spi_send(&spi2, &dispOff, 1);
     gpio_setPin(LCD_CS);
 }
@@ -89,8 +85,7 @@ void SSD1309_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
 
     uint8_t *framebuffer = (uint8_t *)fb;
 
-    for(uint8_t page = startPage; page < endPage; page++)
-    {
+    for (uint8_t page = startPage; page < endPage; page++) {
         gpio_clearPin(LCD_DC);
         cmd[0] = 0xB0 | page;
         cmd[1] = 0x00;
@@ -99,13 +94,13 @@ void SSD1309_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
         gpio_setPin(LCD_DC); // DC high -> data mode
 
         uint8_t topRow = page * 8;
-        for(uint8_t col = 0; col < CONFIG_SCREEN_WIDTH; col++)
-        {
+        for (uint8_t col = 0; col < CONFIG_SCREEN_WIDTH; col++) {
             uint8_t data = 0;
-            uint8_t bit_offset = col % 8; // Bit offset in the fb for the column we are refreshing
+            uint8_t bit_offset =
+                col %
+                8; // Bit offset in the fb for the column we are refreshing
             // Gather the 8 rows of data
-            for(uint8_t row = 0; row < 8; row++)
-            {
+            for (uint8_t row = 0; row < 8; row++) {
                 size_t pos = ((topRow + row) * CONFIG_SCREEN_WIDTH + col) / 8;
                 uint8_t cell = framebuffer[pos];
                 data |= ((cell >> bit_offset) & 0x01) << row;
@@ -120,14 +115,9 @@ void SSD1309_renderRows(uint8_t startRow, uint8_t endRow, void *fb)
 
 void SSD1309_render(void *fb)
 {
-    static const uint8_t cmd[] =
-    {
-        0xB0,
-        0x20, // Set horizontal addressing mode
-        0x00,
-        0x00,
-        0x10
-    };
+    static const uint8_t cmd[] = { 0xB0,
+                                   0x20, // Set horizontal addressing mode
+                                   0x00, 0x00, 0x10 };
 
     gpio_clearPin(LCD_CS);
     gpio_clearPin(LCD_DC);
@@ -137,16 +127,16 @@ void SSD1309_render(void *fb)
     uint8_t *framebuffer = (uint8_t *)fb;
 
     // Refresh the whole screen 8 rows by 8 rows
-    for(uint8_t topRow = 0; topRow <= 56; topRow += 8)
-    {
-        for(uint8_t col = 0; col < CONFIG_SCREEN_WIDTH; col++)
-        {
+    for (uint8_t topRow = 0; topRow <= 56; topRow += 8) {
+        for (uint8_t col = 0; col < CONFIG_SCREEN_WIDTH; col++) {
             uint8_t data = 0;
-            uint8_t bit_offset = col % 8; // Bit offset in the fb for the column we are refreshing
+            uint8_t bit_offset =
+                col %
+                8; // Bit offset in the fb for the column we are refreshing
             // Gather the 8 rows of data
-            for(uint8_t subRow = 0; subRow < 8; subRow++)
-            {
-                size_t pos = ((topRow + subRow) * CONFIG_SCREEN_WIDTH + col) / 8;
+            for (uint8_t subRow = 0; subRow < 8; subRow++) {
+                size_t pos =
+                    ((topRow + subRow) * CONFIG_SCREEN_WIDTH + col) / 8;
                 uint8_t cell = framebuffer[pos];
                 data |= ((cell >> bit_offset) & 0x01) << subRow;
             }
@@ -161,11 +151,11 @@ void SSD1309_render(void *fb)
 void SSD1309_setContrast(uint8_t contrast)
 {
     uint8_t cmd[2];
-    cmd[0] = 0x81;          /* Set Electronic Volume               */
-    cmd[0] = contrast;      /* Controller contrast range is 0 - 63 */
+    cmd[0] = 0x81; /* Set Electronic Volume               */
+    cmd[0] = contrast; /* Controller contrast range is 0 - 63 */
 
     gpio_clearPin(LCD_CS);
-    gpio_clearPin(LCD_DC);  /* RS low -> command mode              */
+    gpio_clearPin(LCD_DC); /* RS low -> command mode              */
     spi_send(&spi2, cmd, sizeof(cmd));
     gpio_setPin(LCD_CS);
 }

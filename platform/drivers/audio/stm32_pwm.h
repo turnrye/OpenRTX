@@ -41,16 +41,14 @@ extern "C" {
 /**
  * Data structure holding the configuration for a given DAC channel.
  */
-struct PwmChannelCfg
-{
-    volatile uint32_t *pwmReg;  ///< Address of PWM duty cycle register.
-    void (*startCbk)(void);     ///< Callback function for additional setup operations.
-    void (*stopCbk)(void);      ///< Callback function for additional end operations.
+struct PwmChannelCfg {
+    volatile uint32_t *pwmReg; ///< Address of PWM duty cycle register.
+    void (*startCbk)(
+        void); ///< Callback function for additional setup operations.
+    void (*stopCbk)(void); ///< Callback function for additional end operations.
 };
 
-
 extern const struct audioDriver stm32_pwm_audio_driver;
-
 
 /**
  * Initialize the driver and the peripherals.

@@ -31,21 +31,17 @@
 extern "C" {
 #endif
 
-enum StreamMode
-{
-    STREAM_INPUT  = 0x10,    ///< Open an audio stream in input mode.
-    STREAM_OUTPUT = 0x20     ///< Open an audio stream in output mode.
+enum StreamMode {
+    STREAM_INPUT = 0x10, ///< Open an audio stream in input mode.
+    STREAM_OUTPUT = 0x20 ///< Open an audio stream in output mode.
 };
 
 typedef int8_t streamId;
 
-
-typedef struct
-{
+typedef struct {
     stream_sample_t *data;
     size_t len;
-}
-dataBlock_t;
+} dataBlock_t;
 
 /**
  * Start an audio stream, either in input or output mode as specified by the
@@ -61,7 +57,7 @@ dataBlock_t;
  * @param mode: operation mode of the buffer
  * @return a unique identifier for the stream or a negative error code.
  */
-streamId audioStream_start(const pathId path, stream_sample_t * const buf,
+streamId audioStream_start(const pathId path, stream_sample_t *const buf,
                            const size_t length, const uint32_t sampleRate,
                            const uint8_t mode);
 

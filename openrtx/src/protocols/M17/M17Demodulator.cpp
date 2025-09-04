@@ -38,20 +38,18 @@ using namespace M17;
 #include <usb_vcom.h>
 #endif
 
-typedef struct
-{
+typedef struct {
     int16_t sample;
     int32_t conv;
-    float   conv_th;
+    float conv_th;
     int32_t sample_index;
-    float   qnt_pos_avg;
-    float   qnt_neg_avg;
+    float qnt_pos_avg;
+    float qnt_neg_avg;
     int32_t symbol;
     int32_t frame_index;
     uint8_t flags;
     uint8_t _empty;
-}
-__attribute__((packed)) log_entry_t;
+} __attribute__((packed)) log_entry_t;
 
 #ifdef PLATFORM_LINUX
 #define LOG_QUEUE 160000
@@ -59,71 +57,64 @@ __attribute__((packed)) log_entry_t;
 #define LOG_QUEUE 1024
 #endif
 
-static RingBuffer< log_entry_t, LOG_QUEUE > logBuf;
+static RingBuffer<log_entry_t, LOG_QUEUE> logBuf;
 static std::atomic_bool dumpData;
-static bool      logRunning;
-static bool      trigEnable;
-static bool      triggered;
-static uint32_t  trigCnt;
+static bool logRunning;
+static bool trigEnable;
+static bool triggered;
+static uint32_t trigCnt;
 static pthread_t logThread;
 
 static void *logFunc(void *arg)
 {
-    (void) arg;
+    (void)arg;
 
-    #ifdef PLATFORM_LINUX
+#ifdef PLATFORM_LINUX
     FILE *csv_log = fopen("demod_log.csv", "w");
-    fprintf(csv_log, "Sample,Convolution,Threshold,Index,Max,Min,Symbol,I,Flags\n");
-    #endif
+    fprintf(csv_log,
+            "Sample,Convolution,Threshold,Index,Max,Min,Symbol,I,Flags\n");
+#endif
 
     uint8_t emptyCtr = 0;
 
-    while(logRunning)
-    {
-        if(dumpData)
-        {
+    while (logRunning) {
+        if (dumpData) {
             // Log up to four entries filled with zeroes before terminating
             // the dump.
             log_entry_t entry;
             memset(&entry, 0x00, sizeof(log_entry_t));
-            if(logBuf.pop(entry, false) == false) emptyCtr++;
+            if (logBuf.pop(entry, false) == false)
+                emptyCtr++;
 
-            if(emptyCtr >= 100)
-            {
+            if (emptyCtr >= 100) {
                 dumpData = false;
                 emptyCtr = 0;
-                #ifdef PLATFORM_LINUX
+#ifdef PLATFORM_LINUX
                 logRunning = false;
-                #endif
+#endif
             }
 
-            #ifdef PLATFORM_LINUX
-            fprintf(csv_log, "%d,%d,%f,%d,%f,%f,%d,%d,%d\n",
-                    entry.sample,
-                    entry.conv,
-                    entry.conv_th,
-                    entry.sample_index,
-                    entry.qnt_pos_avg,
-                    entry.qnt_neg_avg,
-                    entry.symbol,
-                    entry.frame_index,
-                    entry.flags);
+#ifdef PLATFORM_LINUX
+            fprintf(csv_log, "%d,%d,%f,%d,%f,%f,%d,%d,%d\n", entry.sample,
+                    entry.conv, entry.conv_th, entry.sample_index,
+                    entry.qnt_pos_avg, entry.qnt_neg_avg, entry.symbol,
+                    entry.frame_index, entry.flags);
             fflush(csv_log);
-            #else
+#else
             vcom_writeBlock(&entry, sizeof(log_entry_t));
-            #endif
+#endif
         }
     }
 
-    #ifdef PLATFORM_LINUX
+#ifdef PLATFORM_LINUX
     fclose(csv_log);
     exit(-1);
-    #endif
+#endif
 
     return NULL;
 }
 
-static inline void pushLog(const log_entry_t& e)
+static inline void pushLog(const log_entry_t &e)
 {
     /*
      * 1) do not push data to log while dump is in progress
@@ -133,24 +124,24 @@ static inline void pushLog(const log_entry_t& e)
      * 5) push data without blocking
      */
 
-    if(dumpData) return;
-    if(triggered) trigCnt++;
-    if(trigCnt >= LOG_QUEUE/2)
-    {
-        dumpData  = true;
+    if (dumpData)
+        return;
+    if (triggered)
+        trigCnt++;
+    if (trigCnt >= LOG_QUEUE / 2) {
+        dumpData = true;
         triggered = false;
-        trigCnt   = 0;
+        trigCnt = 0;
     }
-    if(logBuf.full()) logBuf.eraseElement();
+    if (logBuf.full())
+        logBuf.eraseElement();
     logBuf.push(e, false);
 }
 
 #endif
 
-
 M17Demodulator::M17Demodulator()
 {
-
 }
 
 M17Demodulator::~M17Demodulator()
@@ -166,20 +157,20 @@ void M17Demodulator::init()
      * placement new.
      */
 
-    baseband_buffer = std::make_unique< int16_t[] >(2 * SAMPLE_BUF_SIZE);
-    demodFrame      = std::make_unique< frame_t >();
-    readyFrame      = std::make_unique< frame_t >();
+    baseband_buffer = std::make_unique<int16_t[]>(2 * SAMPLE_BUF_SIZE);
+    demodFrame = std::make_unique<frame_t>();
+    readyFrame = std::make_unique<frame_t>();
 
     reset();
 
-    #ifdef ENABLE_DEMOD_LOG
+#ifdef ENABLE_DEMOD_LOG
     logRunning = true;
-    triggered  = false;
-    dumpData   = false;
+    triggered = false;
+    dumpData = false;
     trigEnable = false;
-    trigCnt    = 0;
+    trigCnt = 0;
     pthread_create(&logThread, NULL, logFunc, NULL);
-    #endif
+#endif
 }
 
 void M17Demodulator::terminate()
@@ -193,9 +184,9 @@ void M17Demodulator::terminate()
     demodFrame.reset();
     readyFrame.reset();
 
-    #ifdef ENABLE_DEMOD_LOG
+#ifdef ENABLE_DEMOD_LOG
     logRunning = false;
-    #endif
+#endif
 }
 
 void M17Demodulator::startBasebandSampling()
@@ -215,7 +206,7 @@ void M17Demodulator::stopBasebandSampling()
     locked = false;
 }
 
-const frame_t& M17Demodulator::getFrame()
+const frame_t &M17Demodulator::getFrame()
 {
     // When a frame is read is not new anymore
     newFrame = false;
@@ -230,125 +221,116 @@ bool M17Demodulator::isLocked()
 bool M17Demodulator::update(const bool invertPhase)
 {
     // Audio path closed, nothing to do
-    if(audioPath_getStatus(basebandPath) != PATH_OPEN)
+    if (audioPath_getStatus(basebandPath) != PATH_OPEN)
         return false;
 
     // Read samples from the ADC
     dataBlock_t baseband = inputStream_getData(basebandId);
-    if(baseband.data != NULL)
-    {
+    if (baseband.data != NULL) {
         // Apply DC removal filter
         dsp_dcRemoval(&dcrState, baseband.data, baseband.len);
 
         // Process samples
-        for(size_t i = 0; i < baseband.len; i++)
-        {
+        for (size_t i = 0; i < baseband.len; i++) {
             // Apply RRC on the baseband sample
-            float           elem   = static_cast< float >(baseband.data[i]);
-            if(invertPhase) elem   = 0.0f - elem;
-            int16_t         sample = static_cast< int16_t >(M17::rrc_24k(elem));
+            float elem = static_cast<float>(baseband.data[i]);
+            if (invertPhase)
+                elem = 0.0f - elem;
+            int16_t sample = static_cast<int16_t>(M17::rrc_24k(elem));
 
             // Update correlator and sample filter for correlation thresholds
             correlator.sample(sample);
             corrThreshold = sampleFilter(std::abs(sample));
 
-            switch(demodState)
-            {
-                case DemodState::INIT:
-                {
+            switch (demodState) {
+                case DemodState::INIT: {
                     initCount -= 1;
-                    if(initCount == 0)
+                    if (initCount == 0)
                         demodState = DemodState::UNLOCKED;
-                }
-                    break;
+                } break;
 
-                case DemodState::UNLOCKED:
-                {
-                    int32_t syncThresh = static_cast< int32_t >(corrThreshold * 33.0f);
-                    int8_t  syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
+                case DemodState::UNLOCKED: {
+                    int32_t syncThresh =
+                        static_cast<int32_t>(corrThreshold * 33.0f);
+                    int8_t syncStatus =
+                        streamSync.update(correlator, syncThresh, -syncThresh);
 
-                    if(syncStatus != 0)
+                    if (syncStatus != 0)
                         demodState = DemodState::SYNCED;
-                }
-                    break;
+                } break;
 
-                case DemodState::SYNCED:
-                {
+                case DemodState::SYNCED: {
                     // Set sampling point and deviation, zero frame symbol count
-                    samplingPoint  = streamSync.samplingIndex();
+                    samplingPoint = streamSync.samplingIndex();
                     outerDeviation = correlator.maxDeviation(samplingPoint);
-                    frameIndex     = 0;
+                    frameIndex = 0;
 
                     // Quantize the syncword taking data from the correlator
                     // memory.
-                    for(size_t i = 0; i < SYNCWORD_SAMPLES; i++)
-                    {
-                        size_t  pos = (correlator.index() + i) % SYNCWORD_SAMPLES;
+                    for (size_t i = 0; i < SYNCWORD_SAMPLES; i++) {
+                        size_t pos =
+                            (correlator.index() + i) % SYNCWORD_SAMPLES;
                         int16_t val = correlator.data()[pos];
 
-                        if((pos % SAMPLES_PER_SYMBOL) == samplingPoint)
+                        if ((pos % SAMPLES_PER_SYMBOL) == samplingPoint)
                             updateFrame(val);
                     }
 
-                    uint8_t hd  = hammingDistance((*demodFrame)[0], STREAM_SYNC_WORD[0]);
-                            hd += hammingDistance((*demodFrame)[1], STREAM_SYNC_WORD[1]);
+                    uint8_t hd =
+                        hammingDistance((*demodFrame)[0], STREAM_SYNC_WORD[0]);
+                    hd +=
+                        hammingDistance((*demodFrame)[1], STREAM_SYNC_WORD[1]);
 
-                    if(hd == 0)
-                    {
-                        locked     = true;
+                    if (hd == 0) {
+                        locked = true;
                         demodState = DemodState::LOCKED;
-                    }
-                    else
-                    {
+                    } else {
                         demodState = DemodState::UNLOCKED;
                     }
-                }
-                    break;
+                } break;
 
-                case DemodState::LOCKED:
-                {
+                case DemodState::LOCKED: {
                     // Quantize and update frame at each sampling point
-                    if(sampleIndex == samplingPoint)
-                    {
+                    if (sampleIndex == samplingPoint) {
                         updateFrame(sample);
 
                         // When we have reached almost the end of a frame, switch
                         // to syncpoint update.
-                        if(frameIndex == (M17_FRAME_SYMBOLS - M17_SYNCWORD_SYMBOLS/2))
-                        {
+                        if (frameIndex ==
+                            (M17_FRAME_SYMBOLS - M17_SYNCWORD_SYMBOLS / 2)) {
                             demodState = DemodState::SYNC_UPDATE;
-                            syncCount  = SYNCWORD_SAMPLES * 2;
+                            syncCount = SYNCWORD_SAMPLES * 2;
                         }
                     }
-                }
-                    break;
+                } break;
 
-                case DemodState::SYNC_UPDATE:
-                {
+                case DemodState::SYNC_UPDATE: {
                     // Keep filling the ongoing frame!
-                    if(sampleIndex == samplingPoint)
+                    if (sampleIndex == samplingPoint)
                         updateFrame(sample);
 
                     // Find the new correlation peak
-                    int32_t syncThresh = static_cast< int32_t >(corrThreshold * 33.0f);
-                    int8_t  syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
+                    int32_t syncThresh =
+                        static_cast<int32_t>(corrThreshold * 33.0f);
+                    int8_t syncStatus =
+                        streamSync.update(correlator, syncThresh, -syncThresh);
 
-                    if(syncStatus != 0)
-                    {
+                    if (syncStatus != 0) {
                         // Correlation has to coincide with a syncword!
-                        if(frameIndex == M17_SYNCWORD_SYMBOLS)
-                        {
-                            uint8_t hd  = hammingDistance((*demodFrame)[0], STREAM_SYNC_WORD[0]);
-                                    hd += hammingDistance((*demodFrame)[1], STREAM_SYNC_WORD[1]);
+                        if (frameIndex == M17_SYNCWORD_SYMBOLS) {
+                            uint8_t hd = hammingDistance((*demodFrame)[0],
+                                                         STREAM_SYNC_WORD[0]);
+                            hd += hammingDistance((*demodFrame)[1],
+                                                  STREAM_SYNC_WORD[1]);
 
                             // Valid sync found: update deviation and sample
                             // point, then go back to locked state
-                            if(hd <= 1)
-                            {
-                                outerDeviation = correlator.maxDeviation(samplingPoint);
-                                samplingPoint  = streamSync.samplingIndex();
-                                missedSyncs    = 0;
-                                demodState     = DemodState::LOCKED;
+                            if (hd <= 1) {
+                                outerDeviation =
+                                    correlator.maxDeviation(samplingPoint);
+                                samplingPoint = streamSync.samplingIndex();
+                                missedSyncs = 0;
+                                demodState = DemodState::LOCKED;
                                 break;
                             }
                         }
@@ -357,15 +339,11 @@ bool M17Demodulator::update(const bool invertPhase)
                     // No syncword found within the window, increase the count
                     // of missed syncs and choose where to go. The lock is lost
                     // after four consecutive sync misses.
-                    if(syncCount == 0)
-                    {
-                        if(missedSyncs >= 4)
-                        {
+                    if (syncCount == 0) {
+                        if (missedSyncs >= 4) {
                             demodState = DemodState::UNLOCKED;
-                            locked     = false;
-                        }
-                        else
-                        {
+                            locked = false;
+                        } else {
                             demodState = DemodState::LOCKED;
                         }
 
@@ -373,12 +351,11 @@ bool M17Demodulator::update(const bool invertPhase)
                     }
 
                     syncCount -= 1;
-                }
-                    break;
+                } break;
             }
 
             sampleCount += 1;
-            sampleIndex  = (sampleIndex + 1) % SAMPLES_PER_SYMBOL;
+            sampleIndex = (sampleIndex + 1) % SAMPLES_PER_SYMBOL;
         }
     }
 
@@ -389,31 +366,23 @@ int8_t M17Demodulator::updateFrame(stream_sample_t sample)
 {
     int8_t symbol;
 
-    if(sample > (2 * outerDeviation.first)/3)
-    {
+    if (sample > (2 * outerDeviation.first) / 3) {
         symbol = +3;
-    }
-    else if(sample < (2 * outerDeviation.second)/3)
-    {
+    } else if (sample < (2 * outerDeviation.second) / 3) {
         symbol = -3;
-    }
-    else if(sample > 0)
-    {
+    } else if (sample > 0) {
         symbol = +1;
-    }
-    else
-    {
+    } else {
         symbol = -1;
     }
 
     setSymbol(*demodFrame, frameIndex, symbol);
     frameIndex += 1;
 
-    if(frameIndex >= M17_FRAME_SYMBOLS)
-    {
+    if (frameIndex >= M17_FRAME_SYMBOLS) {
         std::swap(readyFrame, demodFrame);
         frameIndex = 0;
-        newFrame   = true;
+        newFrame = true;
     }
 
     return symbol;
@@ -422,16 +391,15 @@ int8_t M17Demodulator::updateFrame(stream_sample_t sample)
 void M17Demodulator::reset()
 {
     sampleIndex = 0;
-    frameIndex  = 0;
+    frameIndex = 0;
     sampleCount = 0;
-    newFrame    = false;
-    locked      = false;
-    demodState  = DemodState::INIT;
-    initCount   = RX_SAMPLE_RATE / 50;  // 50ms of init time
+    newFrame = false;
+    locked = false;
+    demodState = DemodState::INIT;
+    initCount = RX_SAMPLE_RATE / 50; // 50ms of init time
 
     dsp_resetFilterState(&dcrState);
 }
 
-
-constexpr std::array < float, 3 > M17Demodulator::sfNum;
-constexpr std::array < float, 3 > M17Demodulator::sfDen;
+constexpr std::array<float, 3> M17Demodulator::sfNum;
+constexpr std::array<float, 3> M17Demodulator::sfDen;

@@ -46,4 +46,3 @@ int cap1206_readkeys(const struct i2cDevice *i2c);
 #endif
 
 #endif /* CAP1206_H */
-

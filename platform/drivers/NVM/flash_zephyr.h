@@ -40,16 +40,13 @@ extern const struct nvmOps zephyr_flash_ops;
  * @param alias: devicetree alias of the flash device.
  * @param sz: memory size, in bytes.
  */
-#define ZEPHYR_FLASH_DEVICE_DEFINE(name, alias, sz) \
-static struct nvmInfo nvm_devInfo_##name;           \
-static const struct nvmDevice name =                \
-{                                                   \
-    .priv   = DEVICE_DT_GET(DT_ALIAS(alias)),       \
-    .ops    = &zephyr_flash_ops,                    \
-    .info   = &nvm_devInfo_##name,                  \
-    .size   = sz                                    \
-};
-
+#define ZEPHYR_FLASH_DEVICE_DEFINE(name, alias, sz)                            \
+    static struct nvmInfo nvm_devInfo_##name;                                  \
+    static const struct nvmDevice name = { .priv =                             \
+                                               DEVICE_DT_GET(DT_ALIAS(alias)), \
+                                           .ops = &zephyr_flash_ops,           \
+                                           .info = &nvm_devInfo_##name,        \
+                                           .size = sz };
 
 /**
  * Initialize a Zephyr RTOS flash device driver instance.
@@ -57,6 +54,6 @@ static const struct nvmDevice name =                \
  * @param dev: device handle.
  * @return zero on success, a negative error code otherwise.
  */
-int zephirFlash_init(const struct nvmDevice* dev);
+int zephirFlash_init(const struct nvmDevice *dev);
 
 #endif /* FLASH_ZEPHYR_H */

@@ -38,15 +38,13 @@ void backlight_init()
     TIM8->ARR = 255;
     TIM8->PSC = 654;
     TIM8->CNT = 0;
-    TIM8->CR1   |= TIM_CR1_ARPE;    /* LCD backlight is on PC6, TIM8-CH1 */
-    TIM8->CCMR2 |= TIM_CCMR1_OC2M_2
-                |  TIM_CCMR1_OC2M_1
-                |  TIM_CCMR1_OC2PE;
-    TIM8->CCER  |= TIM_CCER_CC4E;
-    TIM8->BDTR  |= TIM_BDTR_MOE;
+    TIM8->CR1 |= TIM_CR1_ARPE; /* LCD backlight is on PC6, TIM8-CH1 */
+    TIM8->CCMR2 |= TIM_CCMR1_OC2M_2 | TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2PE;
+    TIM8->CCER |= TIM_CCER_CC4E;
+    TIM8->BDTR |= TIM_BDTR_MOE;
     TIM8->CCR1 = 0;
-    TIM8->EGR  = TIM_EGR_UG;        /* Update registers */
-    TIM8->CR1 |= TIM_CR1_CEN;       /* Start timer */
+    TIM8->EGR = TIM_EGR_UG; /* Update registers */
+    TIM8->CR1 |= TIM_CR1_CEN; /* Start timer */
 }
 
 void backlight_terminate()
@@ -65,14 +63,15 @@ void backlight_terminate()
  */
 void display_setBacklightLevel(uint8_t level)
 {
-    if(level > 100)
+    if (level > 100)
         level = 100;
 
-    uint8_t pwmLevel = (2 * level) + (level * 55)/100;    // Convert value to 0 - 255
+    uint8_t pwmLevel =
+        (2 * level) + (level * 55) / 100; // Convert value to 0 - 255
     TIM8->CCR4 = pwmLevel;
 
     // Keyboard backlight does not have dimming, only on/off
-    if(level > 0)
+    if (level > 0)
         gpioDev_set(KBD_BKLIGHT);
     else
         gpioDev_clear(KBD_BKLIGHT);

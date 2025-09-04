@@ -25,8 +25,8 @@
 #include <I2C0.h>
 #include "AT24Cx.h"
 
-static const uint8_t DEV_ADDR  = 0xA0;    /* EEPROM I2C address */
-static const size_t  PAGE_SIZE = 128;
+static const uint8_t DEV_ADDR = 0xA0; /* EEPROM I2C address */
+static const size_t PAGE_SIZE = 128;
 
 void AT24Cx_init()
 {
@@ -38,12 +38,11 @@ void AT24Cx_init()
 
 void AT24Cx_terminate()
 {
-
 }
 
-int AT24Cx_readData(uint32_t addr, void* buf, size_t len)
+int AT24Cx_readData(uint32_t addr, void *buf, size_t len)
 {
-    uint16_t a = __builtin_bswap16((uint16_t) addr);
+    uint16_t a = __builtin_bswap16((uint16_t)addr);
 
     /*
      * On GDx devices the I2C bus is shared between the EEPROM and the AT1846S,
@@ -62,7 +61,7 @@ int AT24Cx_readData(uint32_t addr, void* buf, size_t len)
 
 int AT24Cx_writeData(uint32_t addr, const void *buf, size_t len)
 {
-    size_t  toWrite;
+    size_t toWrite;
     uint8_t writeBuf[PAGE_SIZE + 2];
 
     /*
@@ -71,20 +70,19 @@ int AT24Cx_writeData(uint32_t addr, const void *buf, size_t len)
      */
     i2c0_lockDeviceBlocking();
 
-    while(len > 0)
-    {
+    while (len > 0) {
         toWrite = len;
-        if(toWrite >= PAGE_SIZE)
+        if (toWrite >= PAGE_SIZE)
             toWrite = PAGE_SIZE;
 
-        writeBuf[0] = (addr >> 8) & 0xFF;   /* High address byte */
-        writeBuf[1] = (addr & 0xFF);        /* Low address byte  */
+        writeBuf[0] = (addr >> 8) & 0xFF; /* High address byte */
+        writeBuf[1] = (addr & 0xFF); /* Low address byte  */
         memcpy(&writeBuf[2], buf, toWrite); /* Data              */
 
         i2c0_write(DEV_ADDR, writeBuf, toWrite + 2, true);
 
-        len  -= toWrite;
-        buf   = ((const uint8_t *) buf) + toWrite;
+        len -= toWrite;
+        buf = ((const uint8_t *)buf) + toWrite;
         addr += toWrite;
 
         /* Wait for the write cycle to end (max 5ms as per datasheet) */
@@ -96,33 +94,30 @@ int AT24Cx_writeData(uint32_t addr, const void *buf, size_t len)
     return 0;
 }
 
-static int nvm_api_read(const struct nvmDevice *dev, uint32_t offset, void *data, size_t len)
+static int nvm_api_read(const struct nvmDevice *dev, uint32_t offset,
+                        void *data, size_t len)
 {
-    (void) dev;
+    (void)dev;
 
     return AT24Cx_readData(offset, data, len);
 }
 
-static int nvm_api_write(const struct nvmDevice *dev, uint32_t offset, const void *data, size_t len)
+static int nvm_api_write(const struct nvmDevice *dev, uint32_t offset,
+                         const void *data, size_t len)
 {
-    (void) dev;
+    (void)dev;
 
     return AT24Cx_writeData(offset, data, len);
 }
 
+const struct nvmOps AT24Cx_ops = { .read = nvm_api_read,
+                                   .write = nvm_api_write,
+                                   .erase = NULL,
+                                   .sync = NULL };
 
-const struct nvmOps AT24Cx_ops =
-{
-    .read   = nvm_api_read,
-    .write  = nvm_api_write,
-    .erase  = NULL,
-    .sync   = NULL
-};
-
-const struct nvmInfo AT24Cx_info =
-{
-    .write_size   = 1,
-    .erase_size   = 1,
+const struct nvmInfo AT24Cx_info = {
+    .write_size = 1,
+    .erase_size = 1,
     .erase_cycles = 1000000,
-    .device_info  = NVM_EEPROM,
+    .device_info = NVM_EEPROM,
 };

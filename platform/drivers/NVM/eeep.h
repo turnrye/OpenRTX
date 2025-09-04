@@ -32,18 +32,18 @@
 /**
  * Device driver and information block for EEEPROM memory.
  */
-extern const struct nvmOps  eeep_ops;
+extern const struct nvmOps eeep_ops;
 extern const struct nvmInfo eeep_info;
 
 /**
  * Driver private data.
  */
-struct eeepData
-{
-    const struct nvmDevice    *nvm;         ///< Underlying NVM device
-    const struct nvmPartition *part;        ///< Memory partition used for EEPROM emulation
-    uint32_t                  readAddr;     ///< Physical start address for EEEPROM reads
-    uint32_t                  writeAddr;    ///< Physical start address for EEEPROM writes
+struct eeepData {
+    const struct nvmDevice *nvm; ///< Underlying NVM device
+    const struct nvmPartition
+        *part; ///< Memory partition used for EEPROM emulation
+    uint32_t readAddr; ///< Physical start address for EEEPROM reads
+    uint32_t writeAddr; ///< Physical start address for EEEPROM writes
 };
 
 /**
@@ -53,15 +53,12 @@ struct eeepData
  * @param path: full path of the file used for data storage.
  * @param size: size of the storage file, in bytes.
  */
-#define EEEP_DEVICE_DEFINE(name)        \
-static struct eeepData eeepData_##name; \
-struct nvmDevice name =                 \
-{                                       \
-    .priv = &eeepData_##name,           \
-    .ops  = &eeep_ops,                  \
-    .info = &eeep_info,                 \
-    .size = 65536                       \
-};
+#define EEEP_DEVICE_DEFINE(name)                        \
+    static struct eeepData eeepData_##name;             \
+    struct nvmDevice name = { .priv = &eeepData_##name, \
+                              .ops = &eeep_ops,         \
+                              .info = &eeep_info,       \
+                              .size = 65536 };
 
 /**
  * Initialize an EEEP driver instance.

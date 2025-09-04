@@ -24,29 +24,28 @@
 #include <datatypes.h>
 #include "HR_Cx000.h"
 
-enum class C6000_SpiOpModes : uint8_t
-{
-    AUX    = 1,     ///< Auxiliary configuration registers.
-    DATA   = 2,     ///< Write TX data register and read RX data register.
-    SOUND  = 3,     ///< Voice prompt sample register.
-    CONFIG = 4,     ///< Main configuration registers.
-    AMBE3K = 5,     ///< AMBE3000 configuration register.
-    DATA_R = 6,     ///< Write RX data register and read TX data register.
-    AMBE1K = 7      ///< AMBE1000 configuration register.
+enum class C6000_SpiOpModes : uint8_t {
+    AUX = 1, ///< Auxiliary configuration registers.
+    DATA = 2, ///< Write TX data register and read RX data register.
+    SOUND = 3, ///< Voice prompt sample register.
+    CONFIG = 4, ///< Main configuration registers.
+    AMBE3K = 5, ///< AMBE3000 configuration register.
+    DATA_R = 6, ///< Write RX data register and read TX data register.
+    AMBE1K = 7 ///< AMBE1000 configuration register.
 };
 
-class HR_C6000 : public HR_Cx000 < C6000_SpiOpModes >
-{
+class HR_C6000 : public HR_Cx000<C6000_SpiOpModes> {
 public:
-
     /**
      * Constructor.
      *
      * @param uSpi: pointer to SPI device for "user" SPI interface.
      * @param uCs: gpioPin object for "user" SPI chip select.
      */
-    HR_C6000(const struct spiDevice *uSpi, const struct gpioPin uCs) :
-        HR_Cx000< C6000_SpiOpModes >(uSpi, uCs) { }
+    HR_C6000(const struct spiDevice *uSpi, const struct gpioPin uCs)
+        : HR_Cx000<C6000_SpiOpModes>(uSpi, uCs)
+    {
+    }
 
     /**
      * Configure CTCSS tone transmission.
@@ -79,7 +78,7 @@ public:
      */
     inline void disableTones()
     {
-        writeCfgRegister(0xA1, 0x00);     // Disable all tones
+        writeCfgRegister(0xA1, 0x00); // Disable all tones
     }
 
     /**
@@ -91,7 +90,6 @@ public:
     void sendTone(const uint32_t freq, const uint8_t deviation);
 
 private:
-
     /**
      * Write a register with 16-bit address.
      *
@@ -99,11 +97,12 @@ private:
      * @param addr: register address.
      * @param value: value to be written.
      */
-    void writeReg16(const C6000_SpiOpModes opMode, const uint16_t addr, const uint8_t value)
+    void writeReg16(const C6000_SpiOpModes opMode, const uint16_t addr,
+                    const uint8_t value)
     {
         uint8_t data[4];
 
-        data[0] =  static_cast< uint8_t >(opMode) | 0x40;
+        data[0] = static_cast<uint8_t>(opMode) | 0x40;
         data[2] = (addr >> 8) & 0x07;
         data[1] = addr & 0xFF;
         data[3] = value;

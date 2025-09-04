@@ -39,30 +39,29 @@ void openrtx_init()
 {
     state.devStatus = STARTUP;
 
-    platform_init();    // Initialize low-level platform drivers
-    state_init();       // Initialize radio state
+    platform_init(); // Initialize low-level platform drivers
+    state_init(); // Initialize radio state
 
-    gfx_init();         // Initialize display and graphics driver
-    kbd_init();         // Initialize keyboard driver
-    ui_init();          // Initialize user interface
-    vp_init();          // Initialize voice prompts
-    #ifdef CONFIG_SCREEN_CONTRAST
+    gfx_init(); // Initialize display and graphics driver
+    kbd_init(); // Initialize keyboard driver
+    ui_init(); // Initialize user interface
+    vp_init(); // Initialize voice prompts
+#ifdef CONFIG_SCREEN_CONTRAST
     display_setContrast(state.settings.contrast);
-    #endif
+#endif
 
     // Load codeplug from nonvolatile memory, create a new one in case of failure.
-    if(cps_open(NULL) < 0)
-    {
+    if (cps_open(NULL) < 0) {
         cps_create(NULL);
-        if(cps_open(NULL) < 0)
-        {
-            // Unrecoverable error
-            #ifdef PLATFORM_LINUX
+        if (cps_open(NULL) < 0) {
+// Unrecoverable error
+#ifdef PLATFORM_LINUX
             exit(-1);
-            #else
+#else
             // TODO: implement error handling for non-linux targets
-            while(1) ;
-            #endif
+            while (1)
+                ;
+#endif
         }
     }
 
@@ -76,7 +75,7 @@ void openrtx_init()
 
 void *openrtx_run(void *arg)
 {
-    (void) arg;
+    (void)arg;
 
     state.devStatus = RUNNING;
 

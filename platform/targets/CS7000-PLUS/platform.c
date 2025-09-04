@@ -28,40 +28,36 @@
 #include <string.h>
 #include <gps.h>
 
-static const hwInfo_t hwInfo =
-{
-    .name        = "CS7000P",
-    .hw_version  = 0,
-    .vhf_band    = 0,
-    .uhf_band    = 1,
-    .vhf_minFreq = 0,
-    .vhf_maxFreq = 0,
-    .uhf_minFreq = 400,
-    .uhf_maxFreq = 527
-};
-
+static const hwInfo_t hwInfo = { .name = "CS7000P",
+                                 .hw_version = 0,
+                                 .vhf_band = 0,
+                                 .uhf_band = 1,
+                                 .vhf_minFreq = 0,
+                                 .vhf_maxFreq = 0,
+                                 .uhf_minFreq = 400,
+                                 .uhf_maxFreq = 527 };
 
 void platform_init()
 {
-    gpio_setMode(PTT_SW,       INPUT);
-    gpio_setMode(PTT_EXT,      INPUT);
+    gpio_setMode(PTT_SW, INPUT);
+    gpio_setMode(PTT_EXT, INPUT);
 
     gpio_setMode(MAIN_PWR_DET, ANALOG);
-    gpio_setMode(AIN_MIC,      ANALOG);
-    gpio_setMode(AIN_VOLUME,   ANALOG);
+    gpio_setMode(AIN_MIC, ANALOG);
+    gpio_setMode(AIN_VOLUME, ANALOG);
 
     gpio_setMode(GPIOEXT_CLK, OUTPUT);
     gpio_setMode(GPIOEXT_DAT, OUTPUT);
 
-    spi_init((const struct spiDevice *) &spiSr);
+    spi_init((const struct spiDevice *)&spiSr);
     gpioShiftReg_init(&extGpio);
     adcStm32_init(&adc1);
     nvm_init();
     audio_init();
 
-    #ifndef RUNNING_TESTSUITE
+#ifndef RUNNING_TESTSUITE
     gpioDev_set(MAIN_PWR_SW);
-    #endif
+#endif
 }
 
 void platform_terminate()
@@ -69,9 +65,9 @@ void platform_terminate()
     adcStm32_terminate(&adc1);
     gpsStm32_terminate();
 
-    #ifndef RUNNING_TESTSUITE
+#ifndef RUNNING_TESTSUITE
     gpioDev_clear(MAIN_PWR_SW);
-    #endif
+#endif
 
     gpioShiftReg_terminate(&extGpio);
 }
@@ -103,21 +99,18 @@ uint8_t platform_getVolumeLevel()
     uint16_t value = adc_getRawSample(&adc1, ADC_VOL_CH) >> 4;
     uint32_t output;
 
-    if(value <= 512)
-    {
+    if (value <= 512) {
         // First line: offset zero, slope 0.271
         output = value;
         output = (output * 271) / 1000;
-    }
-    else
-    {
+    } else {
         // Second line: offset 512, slope 0.044
-        output  = value - 512;
-        output  = (output * 44) / 1000;
+        output = value - 512;
+        output = (output * 44) / 1000;
         output += 139;
     }
 
-    if(output > 255)
+    if (output > 255)
         output = 255;
 
     return output;
@@ -145,7 +138,7 @@ bool platform_pwrButtonStatus()
      * voltage not to be exactly zero.
      */
     uint16_t vbat = platform_getVbat();
-    if(vbat < 1000)
+    if (vbat < 1000)
         return false;
 
     return true;
@@ -153,8 +146,7 @@ bool platform_pwrButtonStatus()
 
 void platform_ledOn(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpioDev_set(GREEN_LED);
             break;
@@ -175,8 +167,7 @@ void platform_ledOn(led_t led)
 
 void platform_ledOff(led_t led)
 {
-    switch(led)
-    {
+    switch (led) {
         case GREEN:
             gpioDev_clear(GREEN_LED);
             break;

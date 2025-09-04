@@ -22,12 +22,10 @@
 
 void kbd_init()
 {
-
 }
 
 void kbd_terminate()
 {
-
 }
 
 keyboard_t kbd_getKeys()

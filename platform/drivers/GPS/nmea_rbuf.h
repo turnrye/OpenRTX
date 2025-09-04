@@ -96,4 +96,4 @@ int nmeaRbuf_getSentence(struct nmeaRbuf *rbuf, char *buf, const size_t maxLen);
 }
 #endif
 
-#endif  // NMEA_RBUF_H
+#endif // NMEA_RBUF_H

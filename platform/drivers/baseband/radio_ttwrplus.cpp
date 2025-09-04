@@ -25,18 +25,18 @@
 #include "AT1846S.h"
 #include "SA8x8.h"
 
-static const rtxStatus_t *config;                // Pointer to data structure with radio configuration
+static const rtxStatus_t
+    *config; // Pointer to data structure with radio configuration
 
-static Band currRxBand = BND_NONE;               // Current band for RX
-static Band currTxBand = BND_NONE;               // Current band for TX
-static enum opstatus radioStatus;                // Current operating status
+static Band currRxBand = BND_NONE; // Current band for RX
+static Band currTxBand = BND_NONE; // Current band for TX
+static enum opstatus radioStatus; // Current operating status
 
-static AT1846S& at1846s = AT1846S::instance();   // AT1846S driver
-
+static AT1846S &at1846s = AT1846S::instance(); // AT1846S driver
 
 void radio_init(const rtxStatus_t *rtxState)
 {
-    config      = rtxState;
+    config = rtxState;
     radioStatus = OFF;
 
     // Set SA8x8 serial to 115200 baud, module has alredy been initialized in
@@ -67,10 +67,9 @@ void radio_terminate()
 
 void radio_setOpmode(const enum opmode mode)
 {
-    switch(mode)
-    {
+    switch (mode) {
         case OPMODE_FM:
-            at1846s.setOpMode(AT1846S_OpMode::FM);  // AT1846S in FM mode
+            at1846s.setOpMode(AT1846S_OpMode::FM); // AT1846S in FM mode
             break;
 
         case OPMODE_DMR:
@@ -79,8 +78,10 @@ void radio_setOpmode(const enum opmode mode)
             break;
 
         case OPMODE_M17:
-            at1846s.setOpMode(AT1846S_OpMode::DMR); // AT1846S in DMR mode, disables RX filter
-            at1846s.setBandwidth(AT1846S_BW::_25);  // Set bandwidth to 25kHz for proper deviation
+            at1846s.setOpMode(
+                AT1846S_OpMode::DMR); // AT1846S in DMR mode, disables RX filter
+            at1846s.setBandwidth(
+                AT1846S_BW::_25); // Set bandwidth to 25kHz for proper deviation
             break;
 
         default:
@@ -105,13 +106,13 @@ void radio_disableAfOutput()
 
 void radio_enableRx()
 {
-    if(currRxBand == BND_NONE) return;
+    if (currRxBand == BND_NONE)
+        return;
 
     at1846s.setFrequency(config->rxFrequency);
     at1846s.setFuncMode(AT1846S_FuncMode::RX);
 
-    if(config->rxToneEn)
-    {
+    if (config->rxToneEn) {
         at1846s.enableRxCtcss(config->rxTone);
     }
 
@@ -120,7 +121,8 @@ void radio_enableRx()
 
 void radio_enableTx()
 {
-    if(config->txDisable == 1) return;
+    if (config->txDisable == 1)
+        return;
 
     // Constrain output power between 1W and 5W.
     uint32_t power = std::max(std::min(config->txPower, 5000U), 1000U);
@@ -129,8 +131,7 @@ void radio_enableTx()
     at1846s.setFrequency(config->txFrequency);
     at1846s.setFuncMode(AT1846S_FuncMode::TX);
 
-    if(config->txToneEn)
-    {
+    if (config->txToneEn) {
         at1846s.enableTxCtcss(config->txTone);
     }
 
@@ -142,23 +143,22 @@ void radio_updateConfiguration()
     currRxBand = getBandFromFrequency(config->rxFrequency);
     currTxBand = getBandFromFrequency(config->txFrequency);
 
-    if((currRxBand == BND_NONE) || (currTxBand == BND_NONE)) return;
+    if ((currRxBand == BND_NONE) || (currTxBand == BND_NONE))
+        return;
 
     // Set bandwidth, only for analog FM mode
-    if(config->opMode == OPMODE_FM)
-    {
-        switch(config->bandwidth)
-        {
+    if (config->opMode == OPMODE_FM) {
+        switch (config->bandwidth) {
             case BW_12_5:
                 at1846s.setBandwidth(AT1846S_BW::_12P5);
                 break;
 
-             case BW_25:
+            case BW_25:
                 at1846s.setBandwidth(AT1846S_BW::_25);
                 break;
 
-             default:
-                 break;
+            default:
+                break;
         }
     }
 
@@ -168,13 +168,15 @@ void radio_updateConfiguration()
      * This is done by calling again the corresponding functions, which is safe
      * to do and avoids code duplication.
      */
-    if(radioStatus == RX) radio_enableRx();
-    if(radioStatus == TX) radio_enableTx();
+    if (radioStatus == RX)
+        radio_enableRx();
+    if (radioStatus == TX)
+        radio_enableTx();
 }
 
 rssi_t radio_getRssi()
 {
-    return static_cast< rssi_t > (at1846s.readRSSI());
+    return static_cast<rssi_t>(at1846s.readRSSI());
 }
 
 enum opstatus radio_getStatus()

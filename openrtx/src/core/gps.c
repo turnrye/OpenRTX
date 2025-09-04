@@ -25,37 +25,36 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define KNOTS2KMH(x) ((((int) x) * 1852) / 1000)
+#define KNOTS2KMH(x) ((((int)x) * 1852) / 1000)
 
 static bool gpsEnabled = false;
 
 void gps_task(const struct gpsDevice *dev)
 {
-    char sentence[2*MINMEA_MAX_LENGTH];
+    char sentence[2 * MINMEA_MAX_LENGTH];
     int ret;
 
     // No GPS, return
-    if(dev == NULL)
+    if (dev == NULL)
         return;
 
     // Handle GPS turn on/off
-    if(state.settings.gps_enabled != gpsEnabled)
-    {
+    if (state.settings.gps_enabled != gpsEnabled) {
         gpsEnabled = state.settings.gps_enabled;
 
-        if(gpsEnabled)
+        if (gpsEnabled)
             gps_enable(dev);
         else
             gps_disable(dev);
     }
 
     // GPS disabled, nothing to do
-    if(gpsEnabled == false)
+    if (gpsEnabled == false)
         return;
 
     // Acquire a new NMEA sentence from GPS
     ret = gps_getSentence(dev, sentence, sizeof(sentence));
-    if(ret <= 0)
+    if (ret <= 0)
         return;
 
     // Parse the sentence. Work on a local state copy to minimize the time
@@ -66,13 +65,10 @@ void gps_task(const struct gpsDevice *dev)
     pthread_mutex_unlock(&state_mutex);
 
     int32_t sId = minmea_sentence_id(sentence, false);
-    switch(sId)
-    {
-        case MINMEA_SENTENCE_RMC:
-        {
+    switch (sId) {
+        case MINMEA_SENTENCE_RMC: {
             struct minmea_sentence_rmc frame;
-            if (minmea_parse_rmc(&frame, sentence))
-            {
+            if (minmea_parse_rmc(&frame, sentence)) {
                 gps_data.latitude = minmea_tofixedpoint(&frame.latitude);
                 gps_data.longitude = minmea_tofixedpoint(&frame.longitude);
                 gps_data.timestamp.hour = frame.time.hours;
@@ -85,87 +81,77 @@ void gps_task(const struct gpsDevice *dev)
             }
 
             gps_data.speed = KNOTS2KMH(minmea_toint(&frame.speed));
-        }
-        break;
+        } break;
 
-        case MINMEA_SENTENCE_GGA:
-        {
+        case MINMEA_SENTENCE_GGA: {
             struct minmea_sentence_gga frame;
-            if (minmea_parse_gga(&frame, sentence))
-            {
+            if (minmea_parse_gga(&frame, sentence)) {
                 gps_data.fix_quality = frame.fix_quality;
                 gps_data.satellites_tracked = frame.satellites_tracked;
                 gps_data.altitude = minmea_toint(&frame.altitude);
             }
-        }
-        break;
+        } break;
 
-        case MINMEA_SENTENCE_GSA:
-        {
+        case MINMEA_SENTENCE_GSA: {
             gps_data.active_sats = 0;
             struct minmea_sentence_gsa frame;
-            if (minmea_parse_gsa(&frame, sentence))
-            {
+            if (minmea_parse_gsa(&frame, sentence)) {
                 gps_data.hdop = minmea_toscaledint(&frame.hdop, 100);
                 gps_data.fix_type = frame.fix_type;
-                for (int i = 0; i < 12; i++)
-                {
-                    if (frame.sats[i] != 0)
-                    {
+                for (int i = 0; i < 12; i++) {
+                    if (frame.sats[i] != 0) {
                         gps_data.active_sats |= 1 << (frame.sats[i] - 1);
                     }
                 }
             }
-        }
-        break;
+        } break;
 
-        case MINMEA_SENTENCE_GSV:
-        {
+        case MINMEA_SENTENCE_GSV: {
             // Parse only sentences 1 - 3, maximum 12 satellites
             struct minmea_sentence_gsv frame;
-            if (minmea_parse_gsv(&frame, sentence) && (frame.msg_nr < 3))
-            {
+            if (minmea_parse_gsv(&frame, sentence) && (frame.msg_nr < 3)) {
                 // When the first sentence arrives, clear all the old data
-                if (frame.msg_nr == 1)
-                {
-                    memset(&gps_data.satellites[0], 0x00, 12 * sizeof(gpssat_t));
+                if (frame.msg_nr == 1) {
+                    memset(&gps_data.satellites[0], 0x00,
+                           12 * sizeof(gpssat_t));
                 }
 
                 gps_data.satellites_in_view = frame.total_sats;
-                for (int i = 0; i < 4; i++)
-                {
+                for (int i = 0; i < 4; i++) {
                     int index = 4 * (frame.msg_nr - 1) + i;
                     gps_data.satellites[index].id = frame.sats[i].nr;
-                    gps_data.satellites[index].elevation = frame.sats[i].elevation;
+                    gps_data.satellites[index].elevation =
+                        frame.sats[i].elevation;
                     gps_data.satellites[index].azimuth = frame.sats[i].azimuth;
                     gps_data.satellites[index].snr = frame.sats[i].snr;
                 }
             }
-        }
-        break;
+        } break;
 
-        case MINMEA_SENTENCE_VTG:
-        {
+        case MINMEA_SENTENCE_VTG: {
             struct minmea_sentence_vtg frame;
-            if (minmea_parse_vtg(&frame, sentence))
-            {
+            if (minmea_parse_vtg(&frame, sentence)) {
                 gps_data.speed = minmea_toint(&frame.speed_kph);
                 gps_data.tmg_mag = minmea_toint(&frame.magnetic_track_degrees);
                 gps_data.tmg_true = minmea_toint(&frame.true_track_degrees);
             }
-        }
-        break;
+        } break;
 
         // Ignore this message as we take data from RMC
-        case MINMEA_SENTENCE_GLL: break;
+        case MINMEA_SENTENCE_GLL:
+            break;
 
         // These messages are never sent by the Jumpstar JS-M710 Module
-        case MINMEA_SENTENCE_GST: break;
-        case MINMEA_SENTENCE_ZDA: break;
+        case MINMEA_SENTENCE_GST:
+            break;
+        case MINMEA_SENTENCE_ZDA:
+            break;
 
         // Error handling
-        case MINMEA_INVALID: break;
-        case MINMEA_UNKNOWN: break;
+        case MINMEA_INVALID:
+            break;
+        case MINMEA_UNKNOWN:
+            break;
     }
 
     // Update GPS data inside radio state
@@ -173,12 +159,10 @@ void gps_task(const struct gpsDevice *dev)
     state.gps_data = gps_data;
     pthread_mutex_unlock(&state_mutex);
 
-    // Synchronize RTC with GPS UTC clock, only when fix is done
-    #ifdef CONFIG_RTC
-    if(state.gps_set_time)
-    {
-        if((sId == MINMEA_SENTENCE_RMC) && (gps_data.fix_quality > 0))
-        {
+// Synchronize RTC with GPS UTC clock, only when fix is done
+#ifdef CONFIG_RTC
+    if (state.gps_set_time) {
+        if ((sId == MINMEA_SENTENCE_RMC) && (gps_data.fix_quality > 0)) {
             platform_setTime(gps_data.timestamp);
 
             // Done, clear the flag
@@ -187,5 +171,5 @@ void gps_task(const struct gpsDevice *dev)
             pthread_mutex_unlock(&state_mutex);
         }
     }
-    #endif
+#endif
 }
