@@ -3,16 +3,22 @@ FROM ubuntu:24.04
 # Install dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    wget ca-certificates sudo git pkg-config build-essential meson cmake libstdc++6 libusb-1.0-0 libusb-1.0-0-dev dfu-util libsdl2-dev libcodec2-dev libreadline-dev  python3 python3-pip \
+    wget ca-certificates sudo git pkg-config build-essential meson cmake libstdc++6 libusb-1.0-0 libusb-1.0-0-dev dfu-util libsdl2-dev libcodec2-dev libreadline-dev gcc g++ python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install moisix
 RUN wget https://miosix.org/toolchain/MiosixToolchainInstaller.run \
     && sh MiosixToolchainInstaller.run
 
-# Install radiotool
-RUN wget https://github.com/v0l/radio_tool/releases/download/v0.3.0/radio_tool-0.3.0-Linux.deb \
-    && dpkg -i radio_tool-0.3.0-Linux.deb
+# Build radio_tool from source (since the deb package doesnt support all architectures)
+RUN git clone https://github.com/v0l/radio_tool \
+    && cd radio_tool \
+    && git checkout tags/v0.3.0 \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make -j4 \
+    && make install
+ENV PATH="$PATH:/usr/local/bin"
 
 # Install opengd77 sources and put the firmware loader and tools in PATH
 RUN git clone https://github.com/open-ham/OpenGD77.git /tmp/OpenGD77
