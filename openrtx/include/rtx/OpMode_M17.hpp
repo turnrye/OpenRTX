@@ -122,6 +122,14 @@ private:
     void txState(rtxStatus_t *const status);
 
     /**
+    * Function handling the Packet Data TX operating state.
+    *
+    * @param status: pointer to the rtxStatus_t structure containing the
+    * current RTX status.
+    */
+    void txPacketState(rtxStatus_t *const status);
+
+    /**
      * Compare two callsigns in plain text form.
      * The comparison does not take into account the country prefixes (strips
      * the '/' and whatever is in front from all callsigns). It does take into
