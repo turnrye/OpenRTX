@@ -1,5 +1,19 @@
 {
   "build": {
-    "dockerfile": "Dockerfile"
-  }
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "options": [
+        "--platform=linux/amd64"
+    ]
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools-extension-pack",
+        "mesonbuild.mesonbuild",
+        "ms-python.python"
+      ]
+    }
+  },
+  "postCreateCommand": "meson setup --cross-file cross_arm.txt build_arm && meson setup build_linux"
 }

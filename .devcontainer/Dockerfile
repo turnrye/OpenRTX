@@ -1,55 +1,46 @@
-FROM ubuntu:24.04 AS build
-
-# dependencies for miosix compiler
-RUN apt-get update -y && apt-get install -y \
-  git \
-  wget \
-  sudo \
-  build-essential \
-  libncurses5-dev \
-  byacc \
-  flex \
-  texinfo \
-  patch \
-  tar \
-  unzip \
-  lzip \
-  libelf-dev \
-  perl \
-  libexpat1-dev \
-  && rm -rf /var/lib/apt/lists/*
-
-# compile miosix compiler
-RUN git clone --depth 1 https://github.com/fedetft/miosix-kernel.git \
-  && cd miosix-kernel/miosix/_tools/compiler/gcc-9.2.0-mp3.2 \
-  && sh download.sh \
-  && bash install-script.sh -j`nproc`
-
-
-# 2th stage build
 FROM ubuntu:24.04
 
-# copy arm-miosix-eabi compiler from build stage
-COPY --from=build /opt /opt
+# Install dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    wget ca-certificates sudo git pkg-config build-essential meson cmake libstdc++6 libusb-1.0-0 libusb-1.0-0-dev dfu-util libsdl2-dev libcodec2-dev libreadline-dev gcc g++ python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-# create symbolic links to compiler
-RUN ln -s /opt/arm-miosix-eabi/bin/* /bin/
+## TODO: make the below multi-arch so that it works on arm64 too, and remove the amd64 bit from devcontainer.json; see https://files.openrtx.org/toolchains/
+# Install moisix
+RUN wget https://miosix.org/toolchain/MiosixToolchainInstaller.run \
+    && sh MiosixToolchainInstaller.run
 
-# dependencies for the project
-RUN apt-get update -y && apt-get install -y \
-  git \
-  pkg-config \
-  build-essential \
-  meson \
-  libsdl2-dev \
-  libreadline-dev \
-  dfu-util \
-  cmake \
-  libusb-1.0-0 \
-  libusb-1.0-0-dev \
-  codec2 \
-  libcodec2-dev \
-  && rm -rf /var/lib/apt/lists/*
+# Build radio_tool from source (since the deb package doesnt support all architectures)
+RUN git clone https://github.com/v0l/radio_tool \
+    && cd radio_tool \
+    && git checkout tags/v0.3.0 \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make -j4 \
+    && make install
+ENV PATH="$PATH:/usr/local/bin"
 
-# fix error from git with different users
-RUN git config --system --add safe.directory '*'
+# Install opengd77 sources and put the firmware loader and tools in PATH
+RUN git clone https://github.com/open-ham/OpenGD77.git /tmp/OpenGD77
+ENV PATH="$PATH:/tmp/OpenGD77/tools/Python/FirmwareLoader:/tmp/OpenGD77/firmware/tools"
+
+# Install Python 3.11 using the deadsnakes PPA
+RUN apt-get update \
+    && apt-get install -y software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y python3.11 python3.11-venv python3.11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3.11 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Copy requirements.txt and install dependencies
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -U pip && \
+    pip install --no-cache-dir -r requirements.txt
+
