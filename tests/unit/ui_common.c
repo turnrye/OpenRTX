@@ -1,5 +1,9 @@
 /***************************************************************************
- *   Copyright (C) 2020 - 2025 by Frederik Saraci IU2NRO                   *
+ *   Copyright (C) 2025        by Federico Amedeo Izzo IU2NUO,             *
+ *                                Niccolò Izzo IU2KIN                      *
+ *                                Frederik Saraci IU2NRO                   *
+ *                                Silvano Seva IU2KWO                      *
+ *                                and the OpenRTX contributors             *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -15,33 +19,13 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#ifndef HWCONFIG_H
-#define HWCONFIG_H
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ui/common/ui_scrollingText.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Module17 hardware info flags, required by Module17 UI emulator target */
-enum Mod17Flags
+int main()
 {
-    MOD17_FLAGS_HMI_PRESENT = 1,
-    MOD17_FLAGS_SOFTPOT     = 2
-};
-
-/* Screen has adjustable brightness */
-#define CONFIG_SCREEN_BRIGHTNESS
-
-/* Battery type */
-#define CONFIG_BAT_LIPO
-#define CONFIG_BAT_NCELLS 2
-
-/* Device supports M17 mode */
-#define CONFIG_M17
-#define M17_META_TEXT_MAX_SCREEN_WIDTH 13
-
-#ifdef __cplusplus
+    // TODO: add tests, figure out test runner for reporting/tracking
+    return 0;
 }
-#endif
-
-#endif /* HWCONFIG_H */
