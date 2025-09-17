@@ -20,7 +20,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include <ui/ui_mod17.h>
+#include <ui/ui_mod17.h> 
 #include <rtx.h>
 #include <interfaces/platform.h>
 #include <interfaces/display.h>
@@ -118,15 +118,6 @@ const char *settings_gps_items[] =
 };
 #endif
 
-const char *info_items[] =
-{
-    "",
-    "Used heap",
-    "Hw Version",
-    "HMI",
-    "BB Tuning Pot",
-};
-
 const char *authors[] =
 {
     "Niccolo' IU2KIN",
@@ -148,7 +139,6 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 #endif
 const uint8_t m17_num = sizeof(m17_items)/sizeof(m17_items[0]);
 const uint8_t module17_num = sizeof(module17_items)/sizeof(module17_items[0]);
-const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
 const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};

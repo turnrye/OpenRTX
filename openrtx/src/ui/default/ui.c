@@ -196,23 +196,6 @@ const char *backup_restore_items[] =
     "Restore"
 };
 
-const char *info_items[] =
-{
-    "",
-    "Bat. Voltage",
-    "Bat. Charge",
-    "RSSI",
-    "Used heap",
-    "Band",
-    "VHF",
-    "UHF",
-    "Hw Version",
-#ifdef PLATFORM_TTWRPLUS
-    "Radio",
-    "Radio FW",
-#endif
-};
-
 const char *authors[] =
 {
     "Niccolo' IU2KIN",
@@ -269,7 +252,6 @@ const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_
 #endif
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
 const uint8_t backup_restore_num = sizeof(backup_restore_items)/sizeof(backup_restore_items[0]);
-const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
 const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};

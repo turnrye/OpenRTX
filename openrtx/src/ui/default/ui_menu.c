@@ -487,70 +487,6 @@ int _ui_getBackupRestoreEntryName(char *buf, uint8_t max_len, uint8_t index)
     return 0;
 }
 
-int _ui_getInfoEntryName(char *buf, uint8_t max_len, uint8_t index)
-{
-    if(index >= info_num) return -1;
-    sniprintf(buf, max_len, "%s", info_items[index]);
-    return 0;
-}
-
-int _ui_getInfoValueName(char *buf, uint8_t max_len, uint8_t index)
-{
-    const hwInfo_t* hwinfo = platform_getHwInfo();
-    if(index >= info_num) return -1;
-    switch(index)
-    {
-        case 0: // Git Version
-            sniprintf(buf, max_len, "%s", GIT_VERSION);
-            break;
-        case 1: // Battery voltage
-        {
-            // Compute integer part and mantissa of voltage value, adding 50mV
-            // to mantissa for rounding to nearest integer
-            uint16_t volt  = (last_state.v_bat + 50) / 1000;
-            uint16_t mvolt = ((last_state.v_bat - volt * 1000) + 50) / 100;
-            sniprintf(buf, max_len, "%d.%dV", volt, mvolt);
-        }
-            break;
-        case 2: // Battery charge
-            sniprintf(buf, max_len, "%d%%", last_state.charge);
-            break;
-        case 3: // RSSI
-            sniprintf(buf, max_len, "%"PRIi32"dBm", last_state.rssi);
-            break;
-        case 4: // Heap usage
-            sniprintf(buf, max_len, "%dB", getHeapSize() - getCurrentFreeHeap());
-            break;
-        case 5: // Band
-            sniprintf(buf, max_len, "%s %s", hwinfo->vhf_band ? currentLanguage->VHF : "", hwinfo->uhf_band ? currentLanguage->UHF : "");
-            break;
-        case 6: // VHF
-            sniprintf(buf, max_len, "%d - %d", hwinfo->vhf_minFreq, hwinfo->vhf_maxFreq);
-            break;
-        case 7: // UHF
-            sniprintf(buf, max_len, "%d - %d", hwinfo->uhf_minFreq, hwinfo->uhf_maxFreq);
-            break;
-        case 8: // LCD Type
-            sniprintf(buf, max_len, "%d", hwinfo->hw_version);
-            break;
-        #ifdef PLATFORM_TTWRPLUS
-        case 9: // Radio model
-            strncpy(buf, sa8x8_getModel(), max_len);
-            break;
-        case 10: // Radio firmware version
-        {
-            // Get FW version string, skip the first nine chars ("sa8x8-fw/")
-            uint8_t major, minor, patch, release;
-            const char *fwVer = sa8x8_getFwVersion();
-
-            sscanf(fwVer, "sa8x8-fw/v%hhu.%hhu.%hhu.r%hhu", &major, &minor, &patch, &release);
-            sniprintf(buf, max_len,"v%hhu.%hhu.%hhu.r%hhu", major, minor, patch, release);
-        }
-            break;
-        #endif
-    }
-    return 0;
-}
 
 int _ui_getBankName(char *buf, uint8_t max_len, uint8_t index)
 {
@@ -803,16 +739,6 @@ void _ui_drawMenuRestore(ui_state_t* ui_state)
     state.restore_eflash = true;
 }
 
-void _ui_drawMenuInfo(ui_state_t* ui_state)
-{
-    gfx_clearScreen();
-    // Print "Info" on top bar
-    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
-              color_white, currentLanguage->info);
-    // Print menu entries
-    _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getInfoEntryName,
-                           _ui_getInfoValueName);
-}
 
 void _ui_drawMenuAbout(ui_state_t* ui_state)
 {

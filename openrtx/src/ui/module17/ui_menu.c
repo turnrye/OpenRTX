@@ -23,6 +23,7 @@
 #include <string.h>
 #include <utils.h>
 #include <ui/ui_mod17.h>
+#include <ui/ui_strings.h>
 #include <interfaces/nvmem.h>
 #include <interfaces/cps_io.h>
 #include <interfaces/platform.h>
@@ -277,51 +278,6 @@ int _ui_getSettingsGPSValueName(char *buf, uint8_t max_len, uint8_t index)
 }
 #endif
 
-int _ui_getInfoEntryName(char *buf, uint8_t max_len, uint8_t index)
-{
-    if(index >= info_num) return -1;
-    snprintf(buf, max_len, "%s", info_items[index]);
-    return 0;
-}
-
-int _ui_getInfoValueName(char *buf, uint8_t max_len, uint8_t index)
-{
-    const hwInfo_t* hwinfo = platform_getHwInfo();
-    if(index >= info_num) return -1;
-    switch(index)
-    {
-        case 0: // Git Version
-            snprintf(buf, max_len, "%s", GIT_VERSION);
-            break;
-        case 1: // Heap usage
-            snprintf(buf, max_len, "%dB", getHeapSize() - getCurrentFreeHeap());
-            break;
-        case 2: // HW Revision
-            snprintf(buf, max_len, "%s", hwVersions[hwinfo->hw_version & 0xFF]);
-            break;
-        case 3: // HMI Version
-        #ifdef PLATFORM_LINUX
-            snprintf(buf, max_len, "%s", "Linux");
-        #else
-            if(hwinfo->flags & MOD17_FLAGS_HMI_PRESENT)
-                snprintf(buf, max_len, "%s", hmiVersions[(hwinfo->hw_version >> 8) & 0xFF]);
-            else
-                snprintf(buf, max_len, "%s", hmiVersions[0]);
-        #endif
-            break;
-        case 4: // Baseband tuning potentiometers
-        #ifdef PLATFORM_LINUX
-            snprintf(buf, max_len, "%s", "Linux");
-        #else
-            if((hwinfo->flags & MOD17_FLAGS_SOFTPOT) != 0)
-                snprintf(buf, max_len, "%s", bbTuningPot[0]);
-            else
-                snprintf(buf, max_len, "%s", bbTuningPot[1]);
-        #endif
-            break;
-    }
-    return 0;
-}
 
 void _ui_drawMenuTop(ui_state_t* ui_state)
 {
@@ -431,17 +387,6 @@ void _ui_drawMenuSettings(ui_state_t* ui_state)
               color_white, "Settings");
     // Print menu entries
     _ui_drawMenuList(ui_state->menu_selected, _ui_getSettingsEntryName);
-}
-
-void _ui_drawMenuInfo(ui_state_t* ui_state)
-{
-    gfx_clearScreen();
-    // Print "Info" on top bar
-    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
-              color_white, "Info");
-    // Print menu entries
-    _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getInfoEntryName,
-                           _ui_getInfoValueName);
 }
 
 void _ui_drawMenuAbout(ui_state_t* ui_state)

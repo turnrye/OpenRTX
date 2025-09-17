@@ -93,12 +93,15 @@ openrtx_inc = ['openrtx/include',
 
 ui_src_default = ['openrtx/src/ui/default/ui.c',
                   'openrtx/src/ui/default/ui_main.c',
+                  'openrtx/src/ui/common/menu.c',
                   'openrtx/src/ui/default/ui_menu.c',
                   'openrtx/src/ui/default/ui_strings.c']
 
 ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
                    'openrtx/src/ui/module17/ui_main.c',
-                   'openrtx/src/ui/module17/ui_menu.c']
+                  'openrtx/src/ui/common/menu.c',
+                   'openrtx/src/ui/module17/ui_menu.c',
+                  'openrtx/src/ui/default/ui_strings.c']
 
 ##
 ## Selection of main entrypoint
@@ -349,7 +352,7 @@ linux_small_def   = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HE
 # Module17 UI
 #
 linux_mod17_src = linux_src + ui_src_module17
-linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': ''}
+linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': '', 'PLATFORM_MOD17': ''}
 
 linux_c_args   = ['-ffunction-sections', '-fdata-sections', '-std=gnu17']
 linux_cpp_args = ['-ffunction-sections', '-fdata-sections', '-std=c++14']

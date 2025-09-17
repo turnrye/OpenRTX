@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <ui/ui_mod17.h>
 #include <string.h>
+#include <ui/ui_strings.h>
 
 void _ui_drawMainBackground()
 {
