@@ -31,7 +31,6 @@
 #include "M17LinkSetupFrame.hpp"
 #include "M17Viterbi.hpp"
 #include "M17StreamFrame.hpp"
-#include "M17PacketFrame.hpp"
 
 namespace M17
 {
@@ -42,8 +41,7 @@ enum class M17FrameType : uint8_t
     LINK_SETUP = 1,    ///< Frame is a Link Setup Frame.
     STREAM     = 2,    ///< Frame is a stream data frame.
     PACKET     = 3,    ///< Frame is a packet data frame.
-    EOT        = 4,    ///< Frame is a EOT frame.
-    UNKNOWN    = 5     ///< Frame is unknown.
+    UNKNOWN    = 4     ///< Frame is unknown.
 };
 
 /**
@@ -89,16 +87,6 @@ public:
     }
 
     /**
-     * Get the latest packet data frame decoded.
-     *
-     * @return a reference to the latest packet data frame decoded.
-     */
-    const M17PacketFrame& getPacketFrame()
-    {
-        return packetFrame;
-    }
-
-    /**
      * Get the latest stream data frame decoded.
      *
      * @return a reference to the latest stream data frame decoded.
@@ -138,14 +126,6 @@ private:
     void decodeStream(const std::array< uint8_t, 46 >& data);
 
     /**
-     * Decode packet data and update the internal LSF field with the new
-     * frame data.
-     *
-     * @param data: byte array containg frame data, without sync word.
-     */
-    void decodePacket(const std::array< uint8_t, 46 >& data);
-
-    /**
      * Decode a LICH block.
      *
      * @param segment: byte array where to store the decoded Link Setup Frame
@@ -160,7 +140,6 @@ private:
     M17LinkSetupFrame lsf;              ///< Latest LSF received.
     M17LinkSetupFrame lsfFromLich;      ///< LSF assembled from LICH segments.
     M17StreamFrame    streamFrame;      ///< Latest stream dat frame received.
-    M17PacketFrame    packetFrame;      ///< Latest packet dat frame received.
     M17HardViterbi    viterbi;          ///< Viterbi decoder.
 
     ///< Maximum allowed hamming distance when determining the frame type.

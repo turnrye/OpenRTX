@@ -33,9 +33,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <gps.h>
-//#include <drivers/USART3_MOD17.h> // for debugging
 #include <rtx.h>
-//#include <drivers/usb_vcom.h>
 
 #ifdef PLATFORM_MOD17
 #include <calibInfo_Mod17.h>
@@ -63,18 +61,12 @@ void OpMode_M17::enable()
     codec_init();
     modulator.init();
     demodulator.init();
-    smsSender.clear();
-    smsMessage.clear();
     locked                 = false;
     dataValid              = false;
     extendedCall           = false;
     startRx                = true;
     startTx                = false;
-    smsEnabled             = true;
     gpsEnabled             = true;
-    totalSMSLength         = 0;
-    state.totalSMSMessages = 0;
-    state.havePacketData   = false;
 }
 
 void OpMode_M17::disable()
@@ -89,30 +81,6 @@ void OpMode_M17::disable()
     radio_disableRtx();
     modulator.terminate();
     demodulator.terminate();
-    for(size_t i=0;i<state.totalSMSMessages;i++)
-    {
-        free(smsSender[i]);
-        free(smsMessage[i]);
-    }
-    smsSender.clear();
-    smsMessage.clear();
-}
-
-bool OpMode_M17::getSMSMessage(uint8_t mesg_num, char *sender, char *message)
-{
-    if(state.totalSMSMessages == 0 || mesg_num > (state.totalSMSMessages - 1))
-        return false;
-    strcpy(sender, smsSender[mesg_num]);
-    strcpy(message, smsMessage[mesg_num]);
-    return true;
-}
-
-void OpMode_M17::delSMSMessage(uint8_t mesg_num)
-{
-    free(smsSender[mesg_num]);
-    free(smsMessage[mesg_num]);
-    smsSender.erase(smsSender.begin()+mesg_num);
-    smsMessage.erase(smsMessage.begin()+mesg_num);
 }
 
 void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
@@ -154,12 +122,7 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
             break;
 
         case TX:
-            // check if we have SMS packet to send
-            if(state.havePacketData)
-                txPacketState(status);
-            else
-                txState(status);
-            break;
+            txState(status);
 
         default:
             break;
@@ -206,14 +169,6 @@ void OpMode_M17::offState(rtxStatus_t *const status)
     {
         startTx = true;
         status->opStatus = TX;
-        return;
-    }
-
-    if(state.havePacketData)
-    {
-        startTx = true;
-        status->opStatus = TX;
-        status->txDisable = 0;
         return;
     }
 
@@ -287,45 +242,6 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                     if(frameCnt == 6)
                         frameCnt = 0;
 
-                            // no metatext present
-                    memset(status->M17_Meta_Text, 0, 53);
-                }
-                // Check if metatext is present
-                else if((streamType.fields.encType    == M17_ENCRYPTION_NONE) &&
-                         (streamType.fields.encSubType == M17_META_TEXT) &&
-                         lsf.valid() && frameCnt == 6)
-                {
-                    frameCnt = 0;
-                    meta_t& meta = lsf.metadata();
-                    uint8_t blk_len = (meta.raw_data[0] & 0xf0) >> 4;
-                    uint8_t blk_id = (meta.raw_data[0] & 0x0f);
-                    if(blk_id == 1)
-                    {  // On first block reset everything
-                        memset(status->M17_Meta_Text, 0, 53);
-                        memset(textBuffer, 0, 53);
-                        textOffset = 0;
-                        blk_id_tot = 0;
-                        textStarted = true;
-                    }
-                    // check if first valid metatext block is found
-                    if(textStarted)
-                    {
-                        // Check for valid block id
-                        if(blk_id <= 0x0f)
-                        {
-                            blk_id_tot += blk_id;
-                            memcpy(textBuffer+textOffset, meta.raw_data+1, 13);
-                            textOffset += 13;
-                            // Check for completed text message
-                            if((blk_len == blk_id_tot) || textOffset == 52)
-                            {
-                                memcpy(status->M17_Meta_Text, textBuffer, textOffset);
-                                textOffset = 0;
-                                blk_id_tot = 0;
-                                textStarted = false;
-                            }
-                        }
-                    }
                 }
 
                         // Set source and destination fields.
@@ -368,89 +284,14 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                 		codec_pushFrame(sf.payload().data(),     false);
                 		codec_pushFrame(sf.payload().data() + 8, false);
                 	}
-                } // check if packet SMS message and SMS receive enabled
-                else if(type == M17FrameType::PACKET && smsEnabled && (canMatch == true) &&
-                		((callMatch == true) || !state.settings.m17_sms_match_call))
-                {
-                	// grab decoded packet data
-                    M17PacketFrame pf = decoder.getPacketFrame();
-
-                    if(!smsStarted && pf.payload()[0] == 0x05)
-                    {  // check if we need to delete oldest message to make room
-                    	if(state.totalSMSMessages == 0)
-                    		lastCRC = 0;
-                    	if(state.totalSMSMessages == 10)
-                    	{
-                    		free(smsSender[0]);
-                    		free(smsMessage[0]);
-                    		smsSender.erase(smsSender.begin());
-                    		smsMessage.erase(smsMessage.begin());
-                    		state.totalSMSMessages--;
-                    	}
-                		smsLastFrame = 0;
-                		// start new message by saving senders call
-                		char *tmp = (char*)malloc(strlen(status->M17_src)+1);
-                		if(tmp != NULL)
-                		{
-                			memset(tmp, 0, strlen(status->M17_src)+1);
-                			memcpy(tmp, status->M17_src, strlen(status->M17_src));
-                			smsSender.push_back(tmp);
-                			smsStarted = true;
-                			totalSMSLength = 0;
-                			memset(smsBuffer, 0, 821);
-                		}
-                    }
-
-                	// store next frame of message
-                	if(smsStarted)
-                    {
-                        uint8_t rx_fn   = (pf.payload()[25] >> 2) & 0x1F;
-                    	uint8_t rx_last =  pf.payload()[25] >> 7;
-
-                    	if(rx_fn <= 31 && rx_fn == smsLastFrame && !rx_last)
-                    	{
-                   		    memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), 25);
-                    		smsLastFrame++;
-                    		totalSMSLength += 25;
-                    	}
-                    	else if(rx_last)
-                    	{
-                   		    memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), rx_fn < 25 ? rx_fn : 25);
-                    		totalSMSLength += rx_fn < 25 ? rx_fn : 25;
-
-                    		// check crc matches
-                			uint16_t packet_crc = lsf.m17Crc(smsBuffer, totalSMSLength - 2);
-                			uint16_t crc;
-                			memcpy((uint8_t*)&crc, &smsBuffer[totalSMSLength - 2], 2);
-                			// store completed message into message queue
-                			char *tmp = (char*)malloc(totalSMSLength-3);
-                			if(tmp != NULL && crc == packet_crc && crc != lastCRC)
-                			{
-                				memset(tmp, 0, totalSMSLength-3);
-                				memcpy(tmp, &smsBuffer[1], totalSMSLength-3);
-                				smsMessage.push_back(tmp);
-                        		state.totalSMSMessages++;
-                        		lastCRC = crc;
-                			}
-                			else
-                			{  // if message memory allocation fails, crc does not match
-                			   // or duplicate message delete sender call
-                				if(tmp != NULL)
-                					free(tmp);
-                				free(smsSender[state.totalSMSMessages]);
-                				smsSender.pop_back();
-                			}
-                	        smsStarted = false;
-                		}
-                    } // if SMS started
-                } // if type PACKET
+                }
             } // if LSF OK
         }
     }
 
     locked = lock;
 
-    if(platform_getPttStatus() || state.havePacketData)
+    if(platform_getPttStatus())
     {
         demodulator.stopBasebandSampling();
         locked = false;
@@ -463,9 +304,6 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         status->lsfOk = false;
         dataValid     = false;
         extendedCall  = false;
-        textStarted   = false;
-        smsStarted    = false;
-        memset(textBuffer, 0, 52);
         status->M17_link[0] = '\0';
         status->M17_refl[0] = '\0';
  //       if(codec_running() == true)
@@ -479,7 +317,6 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 {
     static streamType_t type;
     frame_t m17Frame;
-    static bool textStarted;
     static bool gpsStarted;
 
     if(startTx)
@@ -487,11 +324,8 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         startTx = false;
         lsfFragCount = 6;
         gpsTimer = -1;
-        textStarted = false;
         gpsStarted = false;
 
-        // reset metatext so nothing left over from previous contact
-        memset(status->M17_Meta_Text, 0, 53);
 
         std::string src(status->source_address);
         std::string dst(status->destination_address);
@@ -503,40 +337,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         type.fields.dataMode   = M17_DATAMODE_STREAM;     // Stream
         type.fields.dataType   = M17_DATATYPE_VOICE;      // Voice data
         type.fields.CAN        = status->can;             // Channel access number
-        if(strlen(state.settings.M17_meta_text) > 0)      // have text to send
-        {
-            type.fields.encType    = M17_ENCRYPTION_NONE; // No encryption
-            type.fields.encSubType = M17_META_TEXT;       // Meta text
-
-    		uint8_t buf[14];
-    		memset(buf, 32, 14); // set to all spaces
-    		// this should return number of meta blocks needed
-    		uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
-    		// set control byte upper nibble for number of text blocks
-    		// 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
-    		buf[0] = (0x0f >> (4 - msglen)) << 4;
-
-    		// check if less than 13 characters remain
-    		uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
-    		// if over 13 then limit to 13
-    		if(len > 13)
-    			len = 13;
-    		memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
-
-    		// set control byte lower nibble to block id
-    		// 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
-    		buf[0] += (1 << last_text_blk++);
-    		lsf.setMetaText(buf);
-    		encoder.encodeLsf(lsf, m17Frame);
-
-    		// if all blocks sent then reset
-    		if(last_text_blk == msglen)
-    		{
-    			last_text_blk = 0;
-    		}
-        }
-        else
-        	last_text_blk = 0xff;   // no text to send
+        
 
         lsf.setType(type);
         lsf.updateCrc();
@@ -557,7 +358,6 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     if(lsfFragCount == 6)
     {
 	   lsfFragCount = 0;
-       textStarted = false;
        gpsStarted = false;
 
        // reset metadata if no text message
@@ -573,50 +373,14 @@ void OpMode_M17::txState(rtxStatus_t *const status)
        }
 
        // Wait at least 5 seconds between GPS transmissions
-       if((gpsTimer == -1 || gpsTimer >= 150) && (last_text_blk == 0 || last_text_blk == 0xff))
+       if((gpsTimer == -1 || gpsTimer >= 150))
        {
            gpsStarted = true;
-           textStarted = true;
        }
     }
     else
     	lsfFragCount++;
 
-    // 0xff indicates no text to send
-    if(last_text_blk != 0xff && !gpsStarted && !textStarted) // send meta text
-    {
-        textStarted = true;
-
-    	uint8_t buf[14];
-    	memset(buf, 32, 14); // set to all spaces
-    	// this should return number of meta blocks needed
-    	uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
-    	// set control byte upper nibble for number of text blocks
-    	// 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
-    	buf[0] = (0x0f >> (4 - msglen)) << 4;
-
-    	// check if less than 13 characters remain
-    	uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
-    	// if over 13 then limit to 13
-    	if(len > 13)
-    	    len = 13;
-    	memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
-
-    	// set control byte lower nibble to block id
-    	// 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
-    	buf[0] += (1 << last_text_blk++);
-    	lsf.setMetaText(buf);
-    	type.fields.encSubType = M17_META_TEXT;
-    	lsf.setType(type);
-        lsf.updateCrc();
-    	encoder.encodeLsf(lsf, m17Frame);
-
-    	// if all blocks sent then reset
-    	if(last_text_blk == msglen)
-    	{
-    		last_text_blk = 0;
-    	}
-    }
 
     if(gpsStarted)
     {
@@ -689,10 +453,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     {
         lastFrame = true;
         startRx   = true;
-        if(strlen(state.settings.M17_meta_text) > 0) //do we have text to send
-            last_text_blk = 0;
-        else
-        	last_text_blk = 0xff;
+        last_text_blk = 0xff;
         status->opStatus = OFF;
     }
 
@@ -701,102 +462,11 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
     if(lastFrame)
     {
-    	lastCRC = 0;
         encoder.encodeEotFrame(m17Frame);
         modulator.sendFrame(m17Frame);
         modulator.stop();
         gpsTimer = -1;
     }
-}
-
-void OpMode_M17::txPacketState(rtxStatus_t *const status)
-{
-	frame_t      m17Frame;
-    pktPayload_t packetFrame;
-    uint8_t      full_packet_data[33*25] = {0};
-
-    if(!startRx && locked)
-    {
-        demodulator.stopBasebandSampling();
-        locked = false;
-        status->opStatus = OFF;
-    }
-
-    // do not transmit if sms message empty
-    if(strlen(state.sms_message) == 0)
-    {
-    	// do not enter normal tx mode until de-key from SMS send
-        if(platform_getPttStatus() == false)
-        	state.havePacketData = false;
-    	startRx = true;
-        status->opStatus = OFF;
-    	return;
-    }
-	startTx = false;
-
-	std::string src(status->source_address);
-	std::string dst(status->destination_address);
-
-	lsf.clear();
-	lsf.setSource(src);
-	if(!dst.empty()) lsf.setDestination(dst);
-
-//	strcpy(state.sms_message, "Hello this is OpenRTX.");
-	memset(full_packet_data, 0, 33*25);
-	full_packet_data[0] = 0x05;
-	memcpy((char*)&full_packet_data[1], state.sms_message, strlen(state.sms_message));
-	numPacketbytes                     = strlen(state.sms_message) + 2; //0x05 and 0x00
-	uint16_t packet_crc                = lsf.m17Crc(full_packet_data, numPacketbytes);
-	full_packet_data[numPacketbytes]   = packet_crc & 0xFF;
-	full_packet_data[numPacketbytes+1] = packet_crc >> 8;
-	numPacketbytes += 2; //count 2-byte CRC too
-
-	streamType_t type;
-	type.fields.dataMode   = M17_DATAMODE_PACKET;     // Packet
-	type.fields.dataType   = 0;
-	type.fields.CAN        = status->can;             // Channel access number
-
-	lsf.setType(type);
-	lsf.updateCrc();
-
-	encoder.reset();
-    encoder.encodeLsf(lsf, m17Frame);
-
-	radio_enableTx();
-
-	modulator.invertPhase(invertTxPhase);
-	modulator.start();
-	modulator.sendPreamble();
-	modulator.sendFrame(m17Frame);
-
-	uint8_t cnt = 0;
-	while(numPacketbytes > 25)
-	{
-		memcpy(packetFrame.data(), &full_packet_data[cnt*25], 25);
-		packetFrame[25] = cnt << 2;
-		encoder.encodePacketFrame(packetFrame, m17Frame);
-		modulator.sendFrame(m17Frame);
-		cnt++;
-		numPacketbytes -= 25;
-	}
-
-	memset(packetFrame.data(), 0, 26);
-	memcpy(packetFrame.data(), &full_packet_data[cnt*25], numPacketbytes);
-	packetFrame[25] = 0x80 | (numPacketbytes << 2);
-	encoder.encodePacketFrame(packetFrame, m17Frame);
-	modulator.sendFrame(m17Frame);
-
-	encoder.encodeEotFrame(m17Frame);
-	modulator.sendFrame(m17Frame);
-	modulator.stop();
-
-	startRx = true;
-//	if(platform_getPttStatus() == false)
-		state.havePacketData = false;
-	memset(state.sms_message, 0, 821);
-    lastCRC = 0;
-    status->txDisable = 1;
-    status->opStatus = OFF;
 }
 
 bool OpMode_M17::compareCallsigns(const std::string& localCs,
@@ -818,20 +488,6 @@ bool OpMode_M17::compareCallsigns(const std::string& localCs,
 
     if(truncatedLocal == truncatedIncoming)
         return true;
-    else
-    {
-    	// Remove any appended characters from callsign
-        int spacePos = truncatedLocal.find_first_of(' ');
-        if(spacePos >= 4)
-            truncatedLocal = truncatedLocal.substr(0, spacePos);
-
-        spacePos = truncatedIncoming.find_first_of(' ');
-        if(spacePos >= 4)
-            truncatedIncoming = truncatedIncoming.substr(0, spacePos);
-
-        if(truncatedLocal == truncatedIncoming)
-            return true;
-    }
 
     return false;
 }

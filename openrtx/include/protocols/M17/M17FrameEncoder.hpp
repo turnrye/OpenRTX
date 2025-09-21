@@ -30,7 +30,6 @@
 #include "M17ConvolutionalEncoder.hpp"
 #include "M17LinkSetupFrame.hpp"
 #include "M17StreamFrame.hpp"
-#include "M17PacketFrame.hpp"
 
 namespace M17
 {
@@ -92,8 +91,6 @@ public:
      * @param output: destination buffer for the encoded data.
      */
     void encodeEotFrame(frame_t& output);
-
-    void encodePacketFrame(const pktPayload_t& payload, frame_t& output);
 
 private:
 

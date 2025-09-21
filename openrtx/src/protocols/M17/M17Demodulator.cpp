@@ -27,7 +27,6 @@
 #include <math.h>
 #include <cstring>
 #include <stdio.h>
-//#include <drivers/usb_vcom.h>
 
 using namespace M17;
 
@@ -367,32 +366,8 @@ bool M17Demodulator::update(const bool invertPhase)
                     // Find the new correlation peak
                     int32_t syncThresh = static_cast< int32_t >(corrThreshold * 33.0f);
 
-                    // Look for packet frame
-                    int8_t  syncStatus = packetSync.update(correlator, syncThresh, -syncThresh);
-
-                    if(syncStatus != 0)
-                    {
-                        // Correlation has to coincide with a syncword!
-                        if(frameIndex == M17_SYNCWORD_SYMBOLS)
-                        {
-                            uint8_t hd  = hammingDistance((*demodFrame)[0], PACKET_SYNC_WORD[0]);
-                                    hd += hammingDistance((*demodFrame)[1], PACKET_SYNC_WORD[1]);
-
-                            // Valid sync found: update deviation and sample
-                            // point, then go back to locked state
-                            if(hd <= 1)
-                            {
-                                outerDeviation = correlator.maxDeviation(samplingPoint);
-                                samplingPoint  = packetSync.samplingIndex();
-                                missedSyncs    = 0;
-                                demodState     = DemodState::LOCKED;
-                                break;
-                            }
-                        }
-                    }
-
                     // Look for stream frame
-                    syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
+                    int8_t syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
 
                     if(syncStatus != 0)
                     {

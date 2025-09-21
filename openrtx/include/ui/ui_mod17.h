@@ -15,8 +15,6 @@
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- *                                                                         *
- *   (2025) Modified by KD0OSS for new modes on Module17                   *
  ***************************************************************************/
 
 #ifndef UI_MOD17_H
@@ -59,7 +57,6 @@ enum uiScreen
     MENU_RESTORE,
     MENU_INFO,
     MENU_ABOUT,
-    SETTINGS_SMS,
     SETTINGS_TIMEDATE,
     SETTINGS_TIMEDATE_SET,
     SETTINGS_DISPLAY,
@@ -123,18 +120,9 @@ enum settingsGPSItems
 };
 #endif
 
-enum m17smsItems
-{
-    M_SMSSEND = 0,
-    M_SMSVIEW,
-    M_SMSMATCHCALL
-};
-
 enum m17Items
 {
     M_CALLSIGN = 0,
-    M_METATEXT,
-    M_SMS,
     M_CAN,
     M_CAN_RX
 };
@@ -192,7 +180,6 @@ typedef struct layout_t
     symbolSize_t line5_symbol_font;
     fontSize_t bottom_font;
     fontSize_t input_font;
-    fontSize_t message_font;
     fontSize_t menu_font;
     fontSize_t mode_font_big;
     fontSize_t mode_font_small;
@@ -209,9 +196,6 @@ typedef struct ui_state_t
     uint8_t menu_selected;
     // If true we can change a menu entry value with UP/DOWN
     bool edit_mode;
-    bool edit_message;
-    bool edit_sms;
-    bool view_sms;
     // Variables used for VFO input
     uint8_t input_number;
     uint8_t input_position;
@@ -228,8 +212,6 @@ typedef struct ui_state_t
     char new_time_buf[9];
 #endif
     char new_callsign[10];
-    char new_message[822];
-    uint8_t currentSMSMessage;
     // Which state to return to when we exit menu
     uint8_t last_main_state;
 }
@@ -242,7 +224,6 @@ extern const char *menu_items[];
 extern const char *settings_items[];
 extern const char *display_items[];
 extern const char *settings_gps_items[];
-extern const char *m17sms_items[];
 extern const char *m17_items[];
 extern const char *module17_items[];
 extern const char *backup_restore_items[];
@@ -253,7 +234,6 @@ extern const uint8_t settings_num;
 extern const uint8_t display_num;
 extern const uint8_t settings_gps_num;
 extern const uint8_t backup_restore_num;
-extern const uint8_t m17sms_num;
 extern const uint8_t m17_num;
 extern const uint8_t module17_num;
 extern const uint8_t info_num;

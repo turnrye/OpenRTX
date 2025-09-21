@@ -16,8 +16,6 @@
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- *                                                                         *
- *   (2025) Modified by KD0OSS for new modes on Module17                   *
  ***************************************************************************/
 
 #ifndef RTX_H
@@ -68,7 +66,6 @@ typedef struct
     char     M17_src[10];              /**  M17 LSF source             */
     char     M17_link[10];             /**  M17 LSF traffic originator */
     char     M17_refl[10];             /**  M17 LSF reflector module   */
-    char     M17_Meta_Text[53];        /**< M17 Meta Text                */
 }
 rtxStatus_t;
 
@@ -148,11 +145,6 @@ rssi_t rtx_getRssi();
  * @return true if RX squelch is open.
  */
 bool rtx_rxSquelchOpen();
-
-
-bool rtx_getSMSMessage(uint8_t mesg_num, char *sender, char *message);
-
-void rtx_delSMSMessage(uint8_t mesg_num);
 
 #ifdef __cplusplus
 }
