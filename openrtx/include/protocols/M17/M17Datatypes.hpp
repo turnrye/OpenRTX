@@ -28,6 +28,13 @@
 #error This header is C++ only!
 #endif
 
+// Constants for the GNSS Meta field
+#define M17_GNSS_SOURCE_M17CLIENT        ((uint8_t)0)
+#define M17_GNSS_SOURCE_OPENRTX          ((uint8_t)1)
+#define M17_GNSS_STATION_FIXED           ((uint8_t)0)
+#define M17_GNSS_STATION_MOBILE          ((uint8_t)1)
+#define M17_GNSS_STATION_HANDHELD        ((uint8_t)2)
+
 namespace M17
 {
 
@@ -74,24 +81,40 @@ enum M17ScramblingType
 
 
 /**
- * Data structure for M17 GNSS metadata field.
+ * Data structure for M17 GNSS metadata field. The fields are individually set to big endian.
  */
 typedef struct __attribute__((packed))
 {
-    uint8_t  data_src;          //< Data source
-    uint8_t  station_type;      //< Station type
-    uint8_t  lat_deg;           //< Latitude, whole number
-    uint16_t lat_dec;           //< Latitude, decimal part multiplied by 65535
-    uint8_t  lon_deg;           //< Longitude, whole number
-    uint16_t lon_dec;           //< Longitude, decimal part multiplied by 65535
-    uint8_t  lat_sign  : 1;     //< Latitude N/S: 0 = north, 1 = south
-    uint8_t  lon_sign  : 1;     //< Longitude E/W: 0 = east, 1 = west
-    uint8_t  alt_valid : 1;     //< Altitude data valid
-    uint8_t  spd_valid : 1;     //< Speed data valid
-    uint8_t  _unused   : 4;
-    uint16_t altitude;          //< Altitude above sea level in feet + 1500
-    uint16_t bearing;           //< Bearing in degrees, whole number
-    uint8_t  speed;             //< Speed in mph, whole number
+    uint8_t     station_type    : 4;  //< Station type
+    uint8_t     data_src        : 4;  //< Data source
+    uint8_t     bearing_1       : 1;  //< MSB of bearing
+    uint8_t     radius          : 3;  //< estimate of lateral uncertainty, based on HDOP value
+    uint8_t     radius_valid    : 1;  //< radius data valid
+    uint8_t     velocity_valid  : 1;  //< speed and bearing valid
+    uint8_t     alt_valid       : 1;  //< Altitude data valid
+    uint8_t     coords_valid    : 1;  //< Coordinate data valid
+    uint8_t     bearing_2       : 8;  //< Lower 8 bits of bearing, heading direction for the velocity in degrees, never to exceed 359; e.g. north is 0
+    union {
+        struct {
+            int8_t latitude1;         // MSB
+            int8_t latitude2;
+            int8_t latitude3;
+        } latitude_t;
+        int8_t  latitude_bytes[3];    //< Latitude, twos complement, binary fraction of 90 degrees with positive north and negative south
+    };
+    union {
+        struct {
+            int8_t longitude1;        // MSB
+            int8_t longitude2;
+            int8_t longitude3;
+        } longitude_t;
+        int8_t  longitude_bytes[3];   //< Longitude, twos complement, binary fraction of 90 degrees with positive north and negative south
+    };
+    uint16_t    altitude        : 16; //< Numeric, in 0.5m steps offset by 500m; e.g. 0 = -500.0m
+    uint16_t    speed_1         : 8,  //< Numeric speed in 0.5 km/h steps; MSB
+                                : 4,
+                speed_2         : 4;  //< LSB
+    uint8_t                     : 8;
 }
 gnssData_t;
 

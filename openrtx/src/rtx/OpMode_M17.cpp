@@ -3,6 +3,7 @@
  *                                Niccolò Izzo IU2KIN                      *
  *                                Frederik Saraci IU2NRO                   *
  *                                Silvano Seva IU2KWO                      *
+ *                                Rick Schnicker KD0OSS                    *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -16,8 +17,6 @@
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- *                                                                         *
- *   (2025) Modified by KD0OSS for new modes on Module17                   *
  ***************************************************************************/
 
 #include <interfaces/platform.h>
@@ -28,15 +27,14 @@
 #include <core/state.h>
 #include <OpMode_M17.hpp>
 #include <audio_codec.h>
-#include <vector>
 #include <errno.h>
-#include <stdlib.h>
-#include <math.h>
+#include <utils.h>
 #include <gps.h>
 #include <rtx.h>
 
 #ifdef PLATFORM_MOD17
 #include <calibInfo_Mod17.h>
+#include <interfaces/platform.h>
 
 extern mod17Calib_t mod17CalData;
 #endif
@@ -46,7 +44,8 @@ using namespace M17;
 
 OpMode_M17::OpMode_M17() : startRx(false), startTx(false), locked(false),
                            dataValid(false), extendedCall(false),
-                           invertTxPhase(false), invertRxPhase(false)
+                           gpsTransmitting(false), invertTxPhase(false),
+                           invertRxPhase(false)
 {
 
 }
@@ -64,17 +63,19 @@ void OpMode_M17::enable()
     locked       = false;
     dataValid    = false;
     extendedCall = false;
+    gpsTransmitting = false;
     startRx      = true;
     startTx      = false;
-    gpsEnabled   = true;
 }
 
 void OpMode_M17::disable()
 {
     startRx = false;
     startTx = false;
+    gpsTransmitting = false;
     platform_ledOff(GREEN);
     platform_ledOff(RED);
+    platform_ledOff(YELLOW);
     audioPath_release(rxAudioPath);
     audioPath_release(txAudioPath);
     codec_terminate();
@@ -142,12 +143,16 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
 
         case TX:
             platform_ledOff(GREEN);
-            platform_ledOn(RED);
+            if(gpsTransmitting)
+                platform_ledOn(YELLOW);
+            else
+                platform_ledOn(RED);
             break;
 
         default:
             platform_ledOff(GREEN);
             platform_ledOff(RED);
+            platform_ledOff(YELLOW);
             break;
     }
 }
@@ -309,7 +314,10 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 {
     static streamType_t type;
     frame_t m17Frame;
+    M17LinkSetupFrame lsf;
     static bool gpsStarted;
+    static int16_t gpsTimer;
+    static uint8_t lsfFragCount;
 
     if(startTx)
     {
@@ -326,10 +334,9 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         lsf.setSource(src);
         if(!dst.empty()) lsf.setDestination(dst);
 
-        type.fields.dataMode   = M17_DATAMODE_STREAM;     // Stream
-        type.fields.dataType   = M17_DATATYPE_VOICE;      // Voice data
-        type.fields.CAN        = status->can;             // Channel access number
-        
+        type.fields.dataMode = M17_DATAMODE_STREAM;     // Stream
+        type.fields.dataType = M17_DATATYPE_VOICE;      // Voice data
+        type.fields.CAN      = status->can;             // Channel access number
 
         lsf.setType(type);
         lsf.updateCrc();
@@ -349,29 +356,17 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
     if(lsfFragCount == 6)
     {
-	   lsfFragCount = 0;
+       lsfFragCount = 0;
        gpsStarted = false;
 
-       // reset metadata if no text message
-       if(last_text_blk == 0xff)
-       {
-           uint8_t buf[14];
-	       memset(buf, 0, 14);
-     	   lsf.setMetaText(buf);
-    	   type.fields.encSubType = M17_META_TEXT;
-    	   lsf.setType(type);
-           lsf.updateCrc();
-    	   encoder.encodeLsf(lsf, m17Frame);
-       }
-
-       // Wait at least 5 seconds between GPS transmissions
-       if((gpsTimer == -1 || gpsTimer >= 150))
+       int16_t minimum_gps_time = 5 * 30; // Wait at least 5 seconds between GPS transmissions
+       if(state.settings.gps_enabled && (gpsTimer == -1 || gpsTimer >= minimum_gps_time))
        {
            gpsStarted = true;
        }
     }
     else
-    	lsfFragCount++;
+        lsfFragCount++;
 
 
     if(gpsStarted)
@@ -380,59 +375,25 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         gpsTimer = 0;
 
         gps_t gps_data;
-        pthread_mutex_lock(&state_mutex);
         gps_data = state.gps_data;
-        pthread_mutex_unlock(&state_mutex);
 
-        if(gps_data.fix_type > 0) //Valid GPS fix
+        if(gps_data.fix_type > 0) // Valid GPS fix
         {
-            platform_ledOn(YELLOW); // Blink LED yellow when sending GNSS
-        	uint8_t gnss[14] = {0};
-
-        	gnss[0] = (M17_GNSS_SOURCE_OPENRTX<<4) | M17_GNSS_STATION_HANDHELD; //OpenRTX source, portable station
-
-            gnss[1] &= ~((uint8_t)0xF0); //zero out gnss data validity field
-
-            gnss[1] &= ~((uint8_t)0x7<<1); //Radius = 0
-            gnss[1] &= ~((uint8_t)0<<4); //Radius invalid
-
-            gnss[1] |= ((uint16_t)gps_data.tmg_true>>8)&1; //Bearing
-            gnss[2] = ((uint16_t)gps_data.tmg_true)&0xFF;
-
-            int32_t lat_tmp, lon_tmp;
-            rtx_to_q(&lat_tmp, &lon_tmp, gps_data.latitude, gps_data.longitude);
-            for(uint8_t i=0; i<3; i++)
-            {
-                gnss[3+i] = *((uint8_t*)&lat_tmp+2-i);
-                gnss[6+i] = *((uint8_t*)&lon_tmp+2-i);
-            }
-            gnss[1] |= (1<<7); //Lat/lon valid
-
-            uint16_t alt = (uint16_t)1000 + gps_data.altitude*2;
-			gnss[9] = alt>>8;
-            gnss[10] = alt&0xFF;
-			gnss[1] |= (1<<6); //Altitude valid
-
-            uint16_t speed = (uint16_t)gps_data.speed*2;
-			gnss[11] = speed>>4;
-            gnss[12] = (speed&0xFF)<<4;
-			gnss[1] |= (1<<5); //Speed and Bearing valid
-
-            gnss[12] &= ~((uint8_t)0x0F);
-            gnss[13] = 0;
-
-        	lsf.setMetaText((uint8_t*)&gnss);
-
-        	type.fields.encSubType = M17_META_GNSS;
-        	lsf.setType(type);
-        	lsf.updateCrc();
-        	encoder.encodeLsf(lsf, m17Frame);
-            platform_ledOn(RED);
+            gpsTransmitting = true; // Set flag for LED control in update()
+            lsf.setGnssData(&gps_data);
+            type.fields.encSubType = M17_META_GNSS;
+            lsf.setType(type);
+            lsf.updateCrc();
+            encoder.encodeLsf(lsf, m17Frame);
         }
     }
+    else
+    {
+        gpsTransmitting = false;
+    }
 
-    if(gpsEnabled)
-    	gpsTimer++;
+    if(state.settings.gps_enabled)
+        gpsTimer++;
 
     payload_t dataFrame;
     bool      lastFrame = false;
@@ -445,7 +406,6 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     {
         lastFrame = true;
         startRx   = true;
-        last_text_blk = 0xff;
         status->opStatus = OFF;
     }
 
@@ -458,6 +418,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         modulator.sendFrame(m17Frame);
         modulator.stop();
         gpsTimer = -1;
+        gpsTransmitting = false;
     }
 }
 
@@ -482,22 +443,4 @@ bool OpMode_M17::compareCallsigns(const std::string& localCs,
         return true;
 
     return false;
-}
-
-void OpMode_M17::rtx_to_q(int32_t* qlat, int32_t* qlon, int32_t lat, int32_t lon)
-{
-	if(qlat!=NULL && qlon!=NULL)
-	{
-		*qlat = lat / 10 - lat / 147 + lat / 105646;  // 90e6/(2^23-1) - 1/(1/10 - 1/147 + 1/105646)  = ~0
-		*qlon = lon / 21 - lon / 985 - lon / 2237284; //180e6/(2^23-1) - 1/(1/21 - 1/985 - 1/2237284) = ~0
-	}
-}
-
-void OpMode_M17::q_to_rtx(int32_t* lat, int32_t* lon, int32_t qlat, int32_t qlon)
-{
-	if(lat!=NULL && lon!=NULL)
-	{
-		*lat = qlat * 11 - qlat / 4 - qlat / 47 + qlat / 8777; // 90e6/(2^23-1) - (11 - 1/4 - 1/47 + 1/8777) = ~0
-		*lon = qlon * 21 + qlon / 2 - qlon / 23 + qlon / 867;  //180e6/(2^23-1) - (21 + 1/2 - 1/23 + 1/867)  = ~0
-	}
 }
