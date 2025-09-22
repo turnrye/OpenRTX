@@ -94,7 +94,6 @@ public:
         return OPMODE_M17;
     }
 
-#if !defined(REPEATER) && !defined(HOTSPOT)
     /**
      * Check if RX squelch is open.
      *
@@ -104,8 +103,6 @@ public:
     {
         return dataValid;
     }
-
-#endif
 
 private:
 
@@ -163,7 +160,6 @@ private:
     pathId txAudioPath;                  ///< Audio path ID for TX
     bool extendedCall;                   ///< Extended callsign data received
 
-#if !defined(REPEATER) && !defined(HOTSPOT)
     bool startRx;                        ///< Flag for RX management.
     bool startTx;                        ///< Flag for TX management.
     bool locked;                         ///< Demodulator locked on data stream.
@@ -175,7 +171,6 @@ private:
     M17::M17FrameDecoder   decoder;      ///< M17 frame decoder
     M17::M17FrameEncoder   encoder;      ///< M17 frame encoder
     M17::M17LinkSetupFrame lsf;          ///< M17 link setup frame
-#endif
 };
 
 #endif /* OPMODE_M17_H */

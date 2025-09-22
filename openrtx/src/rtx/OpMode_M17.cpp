@@ -61,12 +61,12 @@ void OpMode_M17::enable()
     codec_init();
     modulator.init();
     demodulator.init();
-    locked                 = false;
-    dataValid              = false;
-    extendedCall           = false;
-    startRx                = true;
-    startTx                = false;
-    gpsEnabled             = true;
+    locked       = false;
+    dataValid    = false;
+    extendedCall = false;
+    startRx      = true;
+    startTx      = false;
+    gpsEnabled   = true;
 }
 
 void OpMode_M17::disable()
@@ -123,6 +123,7 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
 
         case TX:
             txState(status);
+            break;
 
         default:
             break;
@@ -137,7 +138,6 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
                 platform_ledOn(GREEN);
             else
                 platform_ledOff(GREEN);
-
             break;
 
         case TX:
@@ -179,9 +179,7 @@ void OpMode_M17::offState(rtxStatus_t *const status)
 
 void OpMode_M17::rxState(rtxStatus_t *const status)
 {
-	uint8_t pthSts;
-
-	if(startRx)
+    if(startRx)
     {
         demodulator.startBasebandSampling();
 
@@ -193,7 +191,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
     bool newData = demodulator.update(invertRxPhase);
     bool lock    = demodulator.isLocked();
 
-            // Reset frame decoder when transitioning from unlocked to locked state.
+    // Reset frame decoder when transitioning from unlocked to locked state.
     if((lock == true) && (locked == false))
     {
         decoder.reset();
@@ -213,40 +211,38 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
             if(status->lsfOk)
             {
                 dataValid = true;
-                frameCnt++;
 
-                        // Retrieve stream source and destination data
+                // Retrieve stream source and destination data
                 std::string dst = lsf.getDestination();
                 std::string src = lsf.getSource();
 
-                        // Retrieve extended callsign data
+                // Retrieve extended callsign data
                 streamType_t streamType = lsf.getType();
 
                 if((streamType.fields.encType    == M17_ENCRYPTION_NONE) &&
-                    (streamType.fields.encSubType == M17_META_EXTD_CALLSIGN))
+                   (streamType.fields.encSubType == M17_META_EXTD_CALLSIGN))
                 {
+                    extendedCall = true;
+
                     meta_t& meta = lsf.metadata();
                     std::string exCall1 = decode_callsign(meta.extended_call_sign.call1);
                     std::string exCall2 = decode_callsign(meta.extended_call_sign.call2);
 
-                            //
-                            // The source callsign only contains the last link when
-                            // receiving extended callsign data: in order to always store
-                            // the true source of a transmission, we need to store the first
-                            // extended callsign in M17_src.
-                            //
+                    //
+                    // The source callsign only contains the last link when
+                    // receiving extended callsign data: in order to always store
+                    // the true source of a transmission, we need to store the first
+                    // extended callsign in M17_src.
+                    //
                     strncpy(status->M17_src,  exCall1.c_str(), 10);
                     strncpy(status->M17_refl, exCall2.c_str(), 10);
 
                     extendedCall = true;
-                    if(frameCnt == 6)
-                        frameCnt = 0;
-
                 }
 
-                        // Set source and destination fields.
-                        // If we have received an extended callsign the src will be the RF link address
-                        // The M17_src will already be stored from the extended callsign
+                // Set source and destination fields.
+                // If we have received an extended callsign the src will be the RF link address
+                // The M17_src will already be stored from the extended callsign
                 strncpy(status->M17_dst, dst.c_str(), 10);
 
                 if(extendedCall)
@@ -254,38 +250,35 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                 else
                     strncpy(status->M17_src, src.c_str(), 10);
 
-                        // Check CAN on RX, if enabled.
-                        // If check is disabled, force match to true.
+                // Check CAN on RX, if enabled.
+                // If check is disabled, force match to true.
                 bool canMatch =  (streamType.fields.CAN == status->can)
-                                || (status->canRxEn == false);
+                              || (status->canRxEn == false);
 
-                        // Check if the destination callsign of the incoming transmission
-                        // matches with ours
+                // Check if the destination callsign of the incoming transmission
+                // matches with ours
                 bool callMatch = compareCallsigns(std::string(status->source_address), dst);
 
                 // Open audio path only if CAN and callsign match
-                if((type == M17FrameType::STREAM) && (canMatch == true) && (callMatch == true))
+                uint8_t pthSts = audioPath_getStatus(rxAudioPath);
+                if((pthSts == PATH_CLOSED) && (canMatch == true) && (callMatch == true))
                 {
+                    rxAudioPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_RX);
                     pthSts = audioPath_getStatus(rxAudioPath);
-                	if(pthSts == PATH_CLOSED)
-                	{
-                	    rxAudioPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_RX);
-                	    pthSts = audioPath_getStatus(rxAudioPath);
-                	}
-
-                	// Extract audio data and sent it to codec
-                	if((type == M17FrameType::STREAM) && (pthSts == PATH_OPEN))
-                	{
-                		// (re)start codec2 module if not already up
-                		if(codec_running() == false)
-                			codec_startDecode(rxAudioPath);
-
-                		M17StreamFrame sf = decoder.getStreamFrame();
-                		codec_pushFrame(sf.payload().data(),     false);
-                		codec_pushFrame(sf.payload().data() + 8, false);
-                	}
                 }
-            } // if LSF OK
+
+                // Extract audio data and sent it to codec
+                if((type == M17FrameType::STREAM) && (pthSts == PATH_OPEN))
+                {
+                    // (re)start codec2 module if not already up
+                    if(codec_running() == false)
+                        codec_startDecode(rxAudioPath);
+
+                    M17StreamFrame sf = decoder.getStreamFrame();
+                    codec_pushFrame(sf.payload().data(),     false);
+                    codec_pushFrame(sf.payload().data() + 8, false);
+                }
+            }
         }
     }
 
@@ -298,7 +291,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         status->opStatus = OFF;
     }
 
-            // Force invalidation of LSF data as soon as lock is lost (for whatever cause)
+    // Force invalidation of LSF data as soon as lock is lost (for whatever cause)
     if(locked == false)
     {
         status->lsfOk = false;
@@ -306,10 +299,9 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         extendedCall  = false;
         status->M17_link[0] = '\0';
         status->M17_refl[0] = '\0';
- //       if(codec_running() == true)
-        	codec_stop(rxAudioPath);
-  //      if(pthSts == PATH_OPEN)
-            audioPath_release(rxAudioPath);
+
+        codec_stop(rxAudioPath);
+        audioPath_release(rxAudioPath);
     }
 }
 
