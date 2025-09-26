@@ -160,12 +160,12 @@ uint16_t M17LinkSetupFrame::crc16(const void *data, const size_t len) const
     return crc;
 }
 
-void M17LinkSetupFrame::setGnssData(const gps_t *position) {
+void M17LinkSetupFrame::setGnssData(const gps_t *position, const M17GNSSStationType stationType) {
     gnssData_t gnssData;
     memset(&gnssData, 0, sizeof(gnssData));
 
     gnssData.data_src = M17_GNSS_SOURCE_OPENRTX;
-    gnssData.station_type = M17_GNSS_STATION_HANDHELD;
+    gnssData.station_type = stationType;
 
     gnssData.coords_valid = 1;
     gnssData.alt_valid = 1;

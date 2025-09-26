@@ -147,8 +147,9 @@ public:
      * necessary since M17 is big endian but the runtime is little endian.
      *
      * @param position
+     * @param stationType 
      */
-    void setGnssData(const gps_t *position);
+    void setGnssData(const gps_t *position, const M17GNSSStationType stationType);
 
 private:
 

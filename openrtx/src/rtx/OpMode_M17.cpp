@@ -31,6 +31,7 @@
 #include <utils.h>
 #include <gps.h>
 #include <rtx.h>
+#include <M17/M17Datatypes.hpp>
 
 #ifdef PLATFORM_MOD17
 #include <calibInfo_Mod17.h>
@@ -380,7 +381,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         if(gps_data.fix_type > 0) // Valid GPS fix
         {
             gpsTransmitting = true; // Set flag for LED control in update()
-            lsf.setGnssData(&gps_data);
+            lsf.setGnssData(&gps_data, M17_GNSS_STATION_HANDHELD);
             type.fields.encSubType = M17_META_GNSS;
             lsf.setType(type);
             lsf.updateCrc();

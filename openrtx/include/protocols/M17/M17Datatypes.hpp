@@ -28,13 +28,6 @@
 #error This header is C++ only!
 #endif
 
-// Constants for the GNSS Meta field
-#define M17_GNSS_SOURCE_M17CLIENT        ((uint8_t)0)
-#define M17_GNSS_SOURCE_OPENRTX          ((uint8_t)1)
-#define M17_GNSS_STATION_FIXED           ((uint8_t)0)
-#define M17_GNSS_STATION_MOBILE          ((uint8_t)1)
-#define M17_GNSS_STATION_HANDHELD        ((uint8_t)2)
-
 namespace M17
 {
 
@@ -79,6 +72,15 @@ enum M17ScramblingType
     M17_SCRAMBLING_24BIT    = 2,
 };
 
+enum M17GNSSSource {
+    M17_GNSS_SOURCE_M17CLIENT = 0,
+    M17_GNSS_SOURCE_OPENRTX = 1
+};
+enum M17GNSSStationType {
+    M17_GNSS_STATION_FIXED = 0,
+    M17_GNSS_STATION_MOBILE = 1,
+    M17_GNSS_STATION_HANDHELD = 2
+};
 
 /**
  * Data structure for M17 GNSS metadata field. The fields are individually set to big endian.
@@ -94,22 +96,8 @@ typedef struct __attribute__((packed))
     uint8_t     alt_valid       : 1;  //< Altitude data valid
     uint8_t     coords_valid    : 1;  //< Coordinate data valid
     uint8_t     bearing_2       : 8;  //< Lower 8 bits of bearing, heading direction for the velocity in degrees, never to exceed 359; e.g. north is 0
-    union {
-        struct {
-            int8_t latitude1;         // MSB
-            int8_t latitude2;
-            int8_t latitude3;
-        } latitude_t;
-        int8_t  latitude_bytes[3];    //< Latitude, twos complement, binary fraction of 90 degrees with positive north and negative south
-    };
-    union {
-        struct {
-            int8_t longitude1;        // MSB
-            int8_t longitude2;
-            int8_t longitude3;
-        } longitude_t;
-        int8_t  longitude_bytes[3];   //< Longitude, twos complement, binary fraction of 90 degrees with positive north and negative south
-    };
+    int8_t  latitude_bytes[3];    //< Latitude, twos complement, binary fraction of 90 degrees with positive north and negative south
+    int8_t  longitude_bytes[3];   //< Longitude, twos complement, binary fraction of 90 degrees with positive north and negative south
     uint16_t    altitude        : 16; //< Numeric, in 0.5m steps offset by 500m; e.g. 0 = -500.0m
     uint16_t    speed_1         : 8,  //< Numeric speed in 0.5 km/h steps; MSB
                                 : 4,
