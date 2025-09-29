@@ -183,6 +183,8 @@ typedef struct layout_t
     uint16_t horizontal_pad;
     uint16_t text_v_offset;
     point_t top_pos;
+    point_t top_pos_2;
+    point_t top_pos_3;
     point_t line1_pos;
     point_t line2_pos;
     point_t line3_pos;
@@ -271,5 +273,8 @@ extern const color_t color_black;
 extern const color_t color_grey;
 extern const color_t color_white;
 extern const color_t yellow_fab413;
+extern const color_t color_divider;
+extern const color_t color_background_nav;
+extern const color_t color_secondary;
 
 #endif /* UI_DEFAULT_H */

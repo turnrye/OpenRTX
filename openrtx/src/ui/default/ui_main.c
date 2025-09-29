@@ -26,6 +26,7 @@
 #include <string.h>
 #include "ui/ui_strings.h"
 #include "core/utils.h"
+#include "rtx/rtx.h"
 
 void _ui_drawMainBackground()
 {
@@ -37,14 +38,36 @@ void _ui_drawMainBackground()
 
 void _ui_drawMainTop(ui_state_t * ui_state)
 {
-#ifdef CONFIG_RTC
-    // Print clock on top bar
-    datetime_t local_time = utcToLocalTime(last_state.time,
-                                           last_state.settings.utc_timezone);
-    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
-              color_white, "%02d:%02d:%02d", local_time.hour,
-              local_time.minute, local_time.second);
-#endif
+
+    // NEW STUFF
+    gfx_drawRect((struct point_t){0, 0}, CONFIG_SCREEN_WIDTH, 15, color_background_nav, true);
+    gfx_drawHLine(16, 1, color_divider);
+
+    
+    if(last_state.settings.gps_enabled)
+    {
+        if(last_state.gps_data.fix_quality > 0)
+        {
+            gfx_drawSymbol(layout.top_pos_2, layout.top_symbol_size, TEXT_ALIGN_LEFT,
+                           color_white, SYMBOL_CROSSHAIRS_GPS);
+        }
+        else
+        {
+            gfx_drawSymbol(layout.top_pos_2, layout.top_symbol_size, TEXT_ALIGN_LEFT,
+                           color_white, SYMBOL_CROSSHAIRS);
+        }
+    }
+
+    if(rtx_rxSquelchOpen())
+    { 
+        uint8_t slevel = rssiToSlevel(last_state.rssi);
+
+        gfx_drawSymbol(layout.top_pos, layout.top_symbol_size, TEXT_ALIGN_LEFT,
+                           color_white, (symbol_t)(SYMBOL_WIFI_STRENGTH_1 + (slevel / 3)));
+    }
+
+    // OLD STUFF
+
     // If the radio has no built-in battery, print input voltage
 #ifdef CONFIG_BAT_NONE
     gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_RIGHT,
@@ -121,14 +144,14 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             if (tone_tx_enable || tone_rx_enable)
             {
                 uint16_t tone = ctcss_tone[last_state.channel.fm.txTone];
-                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                          color_white, "%s %d.%d %s", bw_str, (tone / 10),
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_LEFT,
+                          color_secondary, "%s %d.%d %s", bw_str, (tone / 10),
                           (tone % 10), _ui_getToneEnabledString(tone_tx_enable, tone_rx_enable, true));
             }
             else
             {
-                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                          color_white, "%s", bw_str );
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_LEFT,
+                          color_secondary, "%s", bw_str );
             }
             break;
 
@@ -210,12 +233,16 @@ void _ui_drawFrequency()
                                           : last_state.channel.rx_frequency;
 
     // Print big numbers frequency
-    char freq_str[16] = {0};
+    char freq_str[14] = {0};
     sniprintf(freq_str, sizeof(freq_str), "%lu.%06lu", (freq / 1000000lu), (freq % 1000000lu));
-    stripTrailingZeroes(freq_str);
-
-    gfx_print(layout.line3_large_pos, layout.line3_large_font, TEXT_ALIGN_CENTER,
-              color_white, "%s", freq_str);
+    char big_freq[8] = {0};
+    char small_freq[3] = {0};
+    strncpy(big_freq, freq_str, 7);
+    strncpy(small_freq, freq_str + 8, 2); 
+    gfx_print(layout.line1_pos, layout.line3_large_font, TEXT_ALIGN_LEFT,
+              color_white, "%s", big_freq);
+    gfx_print((struct point_t) { 8, 42 }, layout.line1_font, TEXT_ALIGN_RIGHT,
+              color_white, "%s", small_freq);
 }
 
 void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
@@ -276,47 +303,47 @@ void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
 void _ui_drawMainBottom()
 {
     // Squelch bar
-    rssi_t   rssi = last_state.rssi;
-    uint8_t  squelch = last_state.settings.sqlLevel;
-    uint8_t  volume = last_state.volume;
-    uint16_t meter_width = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
-    uint16_t meter_height = layout.bottom_h;
-    point_t meter_pos = { layout.horizontal_pad,
-                          CONFIG_SCREEN_HEIGHT - meter_height - layout.bottom_pad};
-    uint8_t mic_level = platform_getMicLevel();
-    switch(last_state.channel.mode)
-    {
-        case OPMODE_FM:
-            gfx_drawSmeter(meter_pos,
-                           meter_width,
-                           meter_height,
-                           rssi,
-                           squelch,
-                           volume,
-                           true,
-                           yellow_fab413);
-            break;
-        case OPMODE_DMR:
-            gfx_drawSmeterLevel(meter_pos,
-                                meter_width,
-                                meter_height,
-                                rssi,
-                                mic_level,
-                                volume,
-                                true);
-            break;
-        #ifdef CONFIG_M17
-        case OPMODE_M17:
-            gfx_drawSmeterLevel(meter_pos,
-                                meter_width,
-                                meter_height,
-                                rssi,
-                                mic_level,
-                                volume,
-                                true);
-            break;
-        #endif
-    }
+    // rssi_t   rssi = last_state.rssi;
+    // uint8_t  squelch = last_state.settings.sqlLevel;
+    // uint8_t  volume = last_state.volume;
+    // uint16_t meter_width = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
+    // uint16_t meter_height = layout.bottom_h;
+    // point_t meter_pos = { layout.horizontal_pad,
+    //                       CONFIG_SCREEN_HEIGHT - meter_height - layout.bottom_pad};
+    // uint8_t mic_level = platform_getMicLevel();
+    // switch(last_state.channel.mode)
+    // {
+    //     case OPMODE_FM:
+    //         gfx_drawSmeter(meter_pos,
+    //                        meter_width,
+    //                        meter_height,
+    //                        rssi,
+    //                        squelch,
+    //                        volume,
+    //                        true,
+    //                        yellow_fab413);
+    //         break;
+    //     case OPMODE_DMR:
+    //         gfx_drawSmeterLevel(meter_pos,
+    //                             meter_width,
+    //                             meter_height,
+    //                             rssi,
+    //                             mic_level,
+    //                             volume,
+    //                             true);
+    //         break;
+    //     #ifdef CONFIG_M17
+    //     case OPMODE_M17:
+    //         gfx_drawSmeterLevel(meter_pos,
+    //                             meter_width,
+    //                             meter_height,
+    //                             rssi,
+    //                             mic_level,
+    //                             volume,
+    //                             true);
+    //         break;
+    //     #endif
+    // }
 }
 
 void _ui_drawMainVFO(ui_state_t* ui_state)

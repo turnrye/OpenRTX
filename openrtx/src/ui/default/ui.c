@@ -285,6 +285,9 @@ const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 const color_t color_black = {0, 0, 0, 255};
 const color_t color_grey = {60, 60, 60, 255};
 const color_t color_white = {255, 255, 255, 255};
+const color_t color_divider = {25, 25, 25, 255};
+const color_t color_background_nav = {8, 8, 8, 255};
+const color_t color_secondary = {48, 77, 95, 255};
 const color_t yellow_fab413 = {250, 180, 19, 255};
 
 layout_t layout;
@@ -432,7 +435,7 @@ static void _ui_calculateLayout(layout_t *layout)
 
     // Calculate printing positions
     static const uint16_t top_pos   = top_h - status_v_pad - text_v_offset;
-    static const uint16_t line1_pos = top_h + top_pad + line1_h - small_line_v_pad - text_v_offset;
+    static const uint16_t line1_pos = top_h + top_pad + line1_h - small_line_v_pad - text_v_offset + 4;
     static const uint16_t line2_pos = top_h + top_pad + line1_h + line2_h - small_line_v_pad - text_v_offset;
     static const uint16_t line3_pos = top_h + top_pad + line1_h + line2_h + line3_h - small_line_v_pad - text_v_offset;
     static const uint16_t line4_pos = top_h + top_pad + line1_h + line2_h + line3_h + line4_h - small_line_v_pad - text_v_offset;
@@ -455,8 +458,10 @@ static void _ui_calculateLayout(layout_t *layout)
         horizontal_pad,
         text_v_offset,
         {horizontal_pad, top_pos},
-        {horizontal_pad, line1_pos},
-        {horizontal_pad, line2_pos},
+        {horizontal_pad + 16, top_pos},
+        {horizontal_pad + 32, top_pos},
+        {horizontal_pad + 20, line1_pos},
+        {horizontal_pad + 20, line2_pos},
         {horizontal_pad, line3_pos},
         {horizontal_pad, line3_large_pos},
         {horizontal_pad, line4_pos},
