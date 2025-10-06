@@ -67,6 +67,9 @@ void _ui_drawMainTop(ui_state_t * ui_state)
     if (ui_state->input_locked == true)
       gfx_drawSymbol(layout.top_pos, layout.top_symbol_size, TEXT_ALIGN_LEFT,
                      color_white, SYMBOL_LOCK);
+    if (last_state.settings.reverse == true) // todo: find better position for this
+      gfx_drawSymbol(layout.top_pos, layout.top_symbol_size, TEXT_ALIGN_LEFT,
+                     color_white, SYMBOL_ALPHA_R);
 }
 
 void _ui_drawBankChannel()

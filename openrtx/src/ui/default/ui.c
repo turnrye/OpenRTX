@@ -179,6 +179,7 @@ const char *settings_radio_items[] =
     "Offset",
     "Direction",
     "Step",
+    "Reverse",
 };
 
 const char * settings_m17_items[] =
@@ -2263,6 +2264,17 @@ void ui_updateFSM(bool *sync_rtx)
                                 state.step_index += n_freq_steps;
                                 state.step_index--;
                                 state.step_index %= n_freq_steps;
+                            }
+                            break;
+                        case R_REVERSE:
+                            if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                               msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                               msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
+                            {
+                                state.settings.reverse = !state.settings.reverse;
+                                state.channel.rx_frequency = last_state.channel.tx_frequency;
+                                state.channel.tx_frequency = last_state.channel.rx_frequency;
+                                // TODO: do we swap tone modes too?
                             }
                             break;
                         default:

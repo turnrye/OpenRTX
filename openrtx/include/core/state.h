@@ -52,6 +52,7 @@ typedef struct
     uint16_t   bank;
     uint8_t    rtxStatus;
     bool       tone_enabled;
+    bool       reverse; // Temporarily reverse RX and TX details
 
     bool       emergency;
     settings_t settings;

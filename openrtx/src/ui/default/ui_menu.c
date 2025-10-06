@@ -368,6 +368,12 @@ int _ui_getRadioValueName(char *buf, uint8_t max_len, uint8_t index)
         return 0;
     }
 
+    if(index == R_REVERSE)
+    {
+        sniprintf(buf, max_len, "%s", last_state.settings.reverse ? currentLanguage->on : currentLanguage->off);
+        return 0;
+    }
+
     // Return an x.y string
     uint32_t value  = 0;
     switch(index)
