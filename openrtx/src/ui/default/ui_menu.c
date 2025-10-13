@@ -31,6 +31,7 @@
 #include "core/memory_profiling.h"
 #include "ui/ui_strings.h"
 #include "core/voicePromptUtils.h"
+#include "ui/common/TextInputModalCWrapper.h"
 
 #ifdef PLATFORM_TTWRPLUS
 #include "drivers/baseband/SA8x8.h"
@@ -980,6 +981,22 @@ void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state)
 #endif
 
 #ifdef CONFIG_M17
+
+static bool modal_created = false;
+
+static char* m17_callsign_buffer = NULL;
+
+static const char* m17_get_callsign(void) {
+    return m17_callsign_buffer ? m17_callsign_buffer : "";
+}
+
+static void m17_set_callsign(const char* value) {
+    if (m17_callsign_buffer && value) {
+        strncpy(m17_callsign_buffer, value, 9); // 9 is the default maxLength for callsign
+        m17_callsign_buffer[9] = '\0';
+    }
+}
+
 void _ui_drawSettingsM17(ui_state_t* ui_state)
 {
     gfx_clearScreen();
@@ -991,18 +1008,20 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
                   TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
     if((ui_state->edit_mode) && (ui_state->menu_selected == M17_CALLSIGN))
     {
-        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
-        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
-        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
-                               (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
-        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
-        // Print M17 callsign being typed
-        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                      layout.horizontal_pad, layout.input_font,
-                      TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+       // Create modal if not already created
+        if (!modal_created) {
+            m17_callsign_buffer = ui_state->new_callsign;
+            m17_modal_create(currentLanguage->callsign, ui_state->new_callsign, sizeof(ui_state->new_callsign)-1,
+                            m17_get_callsign, m17_set_callsign);
+            modal_created = true;
+        }
+        m17_modal_draw();
     }
     else
     {
+        // Destroy modal if it was created
+        m17_modal_destroy();
+        modal_created = false;
         _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getM17EntryName,
                               _ui_getM17ValueName);
     }
