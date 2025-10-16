@@ -7,6 +7,8 @@
 #ifndef UI_H
 #define UI_H
 
+#define gettext(x) ((const char *)(x)) // Dummy gettext definition for now
+
 #include <stdbool.h>
 #include <stdint.h>
 

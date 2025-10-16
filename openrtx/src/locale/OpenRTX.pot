@@ -1,0 +1,602 @@
+#. i18n: This should be the endonym for the language/locale; it is used in the locale selection menu
+#: openrtx/include/ui/EnglishStrings.h:16
+msgid "English"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:17 openrtx/src/ui/default/ui_menu.c:37
+msgid "OFF"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:18
+msgid "ON"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:19
+msgid "Banks"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:20
+msgid "Channels"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:21
+msgid "Contacts"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:22 openrtx/src/ui/default/ui_menu.c:695
+#: openrtx/src/ui/module17/ui_menu.c:329
+msgid "GPS"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:23 openrtx/src/ui/module17/ui_menu.c:417
+msgid "Settings"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:24
+msgid "Backup & Restore"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:25 openrtx/src/ui/module17/ui_menu.c:427
+msgid "Info"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:26
+msgid "About"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:27 openrtx/src/ui/module17/ui_menu.c:461
+msgid "Display"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:28
+msgid "Time & Date"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:29
+msgid "FM"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:30
+msgid "M17"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:31
+msgid "DMR"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:32
+msgid "Default Settings"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:33
+msgid "Brightness"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:34
+msgid "Contrast"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:35
+msgid "Timer"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:36
+msgid "GPS Enabled"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:37
+msgid "GPS Set Time"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:38
+msgid "UTC Timezone"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:39
+msgid "Voice"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:40
+msgid "Level"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:41
+msgid "Phonetic"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:42
+msgid "Beep"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:43
+msgid "Backup"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:44
+msgid "Restore"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:45
+msgid "Bat. Voltage"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:46
+msgid "Bat. Charge"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:47
+msgid "RSSI"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:48
+msgid "Model"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:49
+msgid "Band"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:50
+msgid "VHF"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:51
+msgid "UHF"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:52
+msgid "LCD Type"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:53
+msgid "Niccolo' IU2KIN"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:54
+msgid "Silvano IU2KWO"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:55
+msgid "Federico IU2NUO"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:56
+msgid "Fred IU2NRO"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:57
+msgid "Joseph VK7JS"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:58
+msgid "All channels"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:59 openrtx/src/ui/module17/ui_main.c:115
+#: openrtx/src/ui/module17/ui_menu.c:317
+msgid "Menu"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:60 openrtx/src/ui/module17/ui_menu.c:334
+msgid "GPS OFF"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:61 openrtx/src/ui/module17/ui_menu.c:337
+msgid "No Fix"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:62 openrtx/src/ui/module17/ui_menu.c:340
+msgid "Fix Lost"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:63 openrtx/src/ui/module17/ui_menu.c:355
+#: openrtx/src/ui/module17/ui_menu.c:371
+msgid "ERROR"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:64
+msgid "Flash Backup"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:65
+msgid "Connect to RTXTool"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:66
+msgid "to backup flash and"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:67
+msgid "press PTT to start."
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:68
+msgid "Flash Restore"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:69
+msgid "to restore flash and"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:70 openrtx/src/ui/module17/ui_menu.c:439
+msgid "OpenRTX"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:71 openrtx/src/ui/module17/ui_menu.c:473
+msgid "GPS Settings"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:72 openrtx/src/ui/module17/ui_menu.c:544
+msgid "M17 Settings"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:73 openrtx/src/ui/module17/ui_menu.c:550
+msgid "Callsign:"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:74 openrtx/src/ui/module17/ui_menu.c:594
+msgid "Reset to Defaults"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:75 openrtx/src/ui/module17/ui_menu.c:600
+msgid "To reset:"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:76 openrtx/src/ui/module17/ui_menu.c:603
+msgid "Press Enter twice"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:77
+msgid "Macro Menu"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:78
+msgid "For emergency use"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:79
+msgid "press any button."
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:80
+msgid "Accessibility"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:81
+msgid "Used heap"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:82
+msgid "ALL"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:83
+msgid "Radio Settings"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:84
+msgid "Offset"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:85
+msgid "Macro Latch"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:86
+msgid "No GPS"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:87
+msgid "Battery Icon"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:88
+msgid "CTCSS Tone"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:89
+msgid "CTCSS En."
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:90
+msgid "Encode"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:91
+msgid "Decode"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:92
+msgid "Both"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:93
+msgid "None"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:94
+msgid "Direction"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:95
+msgid "Step"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:96
+msgid "Radio"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:97
+msgid "CAN"
+msgstr ""
+
+#: openrtx/include/ui/EnglishStrings.h:98
+msgid "CAN RX Check"
+msgstr ""
+
+#. i18n: decimal number
+#: openrtx/src/core/voicePromptUtils.c:358
+#: openrtx/src/core/voicePromptUtils.c:378
+#: openrtx/src/core/voicePromptUtils.c:393 openrtx/src/ui/default/ui_menu.c:461
+#, c-format
+msgid "%d.%d"
+msgstr ""
+
+#. i18n: time shown on top status bar, hh:mm:ss format
+#: openrtx/src/ui/default/ui_main.c:32 openrtx/src/ui/default/ui_menu.c:937
+#: openrtx/src/ui/module17/ui_main.c:29 openrtx/src/ui/module17/ui_menu.c:495
+#, c-format
+msgid "%02d:%02d:%02d"
+msgstr ""
+
+#. i18n: battery voltage string, shown on top status bar
+#: openrtx/src/ui/default/ui_main.c:39
+#, c-format
+msgid "%.1fV"
+msgstr ""
+
+#. i18n: battery percentage string, shown on top status bar
+#. Battery charge
+#. i18n: battery charge percentage
+#: openrtx/src/ui/default/ui_main.c:53 openrtx/src/ui/default/ui_menu.c:551
+#, c-format
+msgid "%d%%"
+msgstr ""
+
+#. i18n: bank number, channel number, and channel name shown on the main screen
+#: openrtx/src/ui/default/ui_main.c:67
+#, c-format
+msgid "%01d-%03d: %.12s"
+msgstr ""
+
+#. i18n: DMR talkgroup shown on main screen
+#: openrtx/src/ui/default/ui_main.c:129
+#, c-format
+msgid "DMR TG%s"
+msgstr ""
+
+#. i18n: M17 destination ID shown on main screen
+#: openrtx/src/ui/default/ui_main.c:191
+#, c-format
+msgid "M17 #%s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:38
+msgid "5 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:39
+msgid "10 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:40
+msgid "15 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:41
+msgid "20 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:42
+msgid "25 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:43
+msgid "30 s"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:44
+msgid "1 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:45
+msgid "2 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:46
+msgid "3 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:47
+msgid "4 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:48
+msgid "5 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:49
+msgid "15 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:50
+msgid "30 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:51
+msgid "45 min"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:52
+msgid "1 hour"
+msgstr ""
+
+#. i18n: Print timezone offset in format +/-HH.MM
+#: openrtx/src/ui/default/ui_menu.c:327
+#, c-format
+msgid "%c%d.%d"
+msgstr ""
+
+#. i18n: SI prefix for mega
+#: openrtx/src/ui/default/ui_menu.c:387
+msgid "M"
+msgstr ""
+
+#. i18n: SI prefix for kilo
+#: openrtx/src/ui/default/ui_menu.c:393
+msgid "k"
+msgstr ""
+
+#. i18n: frequency value
+#. NOTE: casts are there only to squelch -Wformat warnings on the
+#. sniprintf.
+#: openrtx/src/ui/default/ui_menu.c:401 openrtx/src/ui/default/ui_menu.c:1100
+#, c-format
+msgid "%u.%u"
+msgstr ""
+
+#. i18n: frequency value with unit prefix
+#: openrtx/src/ui/default/ui_menu.c:405 openrtx/src/ui/default/ui_menu.c:1106
+#, c-format
+msgid "%s%cHz"
+msgstr ""
+
+#. i18n: decimal number with volts
+#: openrtx/src/ui/default/ui_menu.c:546
+#, c-format
+msgid "%d.%dV"
+msgstr ""
+
+#. RSSI
+#: openrtx/src/ui/default/ui_menu.c:555
+#, c-format
+msgid "%<PRIi32>dBm"
+msgstr ""
+
+#. Heap usage
+#: openrtx/src/ui/default/ui_menu.c:558
+#, c-format
+msgid "%dB"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:698 openrtx/src/ui/module17/ui_menu.c:349
+msgid "DGPS"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:701 openrtx/src/ui/module17/ui_menu.c:352
+msgid "PPS"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:705
+msgid "RTK"
+msgstr ""
+
+#. i18n: type of GPS fix
+#: openrtx/src/ui/default/ui_menu.c:719 openrtx/src/ui/module17/ui_menu.c:365
+msgid "2D"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:723 openrtx/src/ui/module17/ui_menu.c:368
+msgid "3D"
+msgstr ""
+
+#. i18n: latitude direction, string length critical
+#: openrtx/src/ui/default/ui_menu.c:737
+msgid "S     "
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:737 openrtx/src/ui/module17/ui_menu.c:377
+msgid "N     "
+msgstr ""
+
+#. i18n: longitude direction, string length critical
+#: openrtx/src/ui/default/ui_menu.c:751 openrtx/src/ui/module17/ui_menu.c:384
+msgid "W     "
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:751 openrtx/src/ui/module17/ui_menu.c:384
+msgid "E     "
+msgstr ""
+
+#. i18n: speed and altitude in GPS screen
+#: openrtx/src/ui/default/ui_menu.c:759
+#, c-format
+msgid "S %dkm/h  A %dm"
+msgstr ""
+
+#: openrtx/src/ui/default/ui_menu.c:934 openrtx/src/ui/module17/ui_menu.c:492
+#, c-format
+msgid "%02d/%02d/%02d"
+msgstr ""
+
+#. i18n: date placeholder for setting date; string length critical
+#: openrtx/src/ui/default/ui_menu.c:952 openrtx/src/ui/module17/ui_menu.c:509
+msgid "__/__/__"
+msgstr ""
+
+#. i18n: time placeholder for setting time; string length critical
+#: openrtx/src/ui/default/ui_menu.c:954 openrtx/src/ui/module17/ui_menu.c:510
+msgid "__:__:00"
+msgstr ""
+
+#. i18n: transmit power setting
+#: openrtx/src/ui/default/ui_menu.c:1278
+#, c-format
+msgid "%d.%dW"
+msgstr ""
+
+#. i18n: "Unlk" means "Unlock", string length critical
+#: openrtx/src/ui/default/ui_menu.c:1312
+msgid "Unlk"
+msgstr ""
+
+#. i18n: "Lck" means "Lock", string length critical
+#: openrtx/src/ui/default/ui_menu.c:1316
+msgid "Lck"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui.c:273
+msgid ""
+"O P N\n"
+"R T X"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_main.c:97
+#, c-format
+msgid "CAN %02d"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_main.c:107 openrtx/src/ui/module17/ui_menu.c:563
+msgid "Cancel"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_main.c:109 openrtx/src/ui/module17/ui_menu.c:565
+msgid "Accept"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_menu.c:346
+msgid "SPS"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_menu.c:391
+#, c-format
+msgid "S %4.1fkm/h  A %4.1fm"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_menu.c:489 openrtx/src/ui/module17/ui_menu.c:506
+msgid "Time&Date"
+msgstr ""
+
+#: openrtx/src/ui/module17/ui_menu.c:579
+msgid "Module17 Settings"
+msgstr ""
