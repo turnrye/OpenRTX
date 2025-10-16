@@ -18,6 +18,41 @@ The fastest way to get a development environment is to leverage VS Code and the 
 
 Contributions to this project should follow the conventions set in the linux kernel. This project is still adopting this standard (see https://github.com/OpenRTX/OpenRTX/issues/346), and so you'll find existing code may not be compliant. Use the `scripts/clang_format.sh` script to ensure your contributions follow the intended style conventions, and be sure to add your fully formatted files to the script while the adoption is still in progress.
 
+## Localization
+
+This project is utilizing the GNU Gettext ecosystem of tools for localization and translation. Contributors who add or update strings in the UI should follow the conventions created in this project as such.
+
+- Text that is displayed to the user should be wrapped in a `gettext()` function call
+- When the value of the text isn't obvious, add a comment on the preceeding line describing its usage so that translators can understand what is being translated (they likely wont read source code)
+- If there is a string with critical spacing or whitespaces, it must be annotated as such with an appropriate comment
+
+Translations PO files are managed using [weblate](https://hosted.weblate.org/projects/openrtx/openrtx/).
+
+Extract new strings using the following commands:
+
+```bash
+apt install gettext
+git ls-files | grep -E "\.(h|hpp|c|cpp)$" | xargs -r xgettext -c -o openrtx/src/locale/OpenRTX.pot
+```
+
+Then, regenerate the translation files using:
+
+```bash
+msginit -l en_US -i openrtx/src/locale/OpenRTX.pot -o openrtx/src/locale/en_US.po --no-translator
+msginit -l pl_PL -i openrtx/src/locale/OpenRTX.pot -o openrtx/src/locale/pl_PL.po --no-translator
+msginit -l uk_UA -i openrtx/src/locale/OpenRTX.pot -o openrtx/src/locale/uk_UA.po --no-translator
+```
+
+These PO files get updated by users via weblate, which submits its own separate PRs.
+
+As part of the build process, PO files should generate MO files. These MO files are ultimately the localization strings that get used at runtime:
+
+```bash
+msgfmt -o openrtx/src/locale/en_US.mo openrtx/src/locale/en_US.po
+msgfmt -o openrtx/src/locale/uk_UA.mo openrtx/src/locale/uk_UA.po
+msgfmt -o openrtx/src/locale/pl_PL.mo openrtx/src/locale/pl_PL.po
+```
+
 ## Code Organization
 
 The principle of OpenRTX is "write it once for all devices", and the code is organized in such a way to support that. And even within UIs and platforms, there are often specific pieces that can be segmented (i.e. UIs for small screens, drivers for baseband ICs). Please observe the strict separations that the project has put in place.

@@ -87,6 +87,19 @@ jobs:
           name: zephyr-release-bins
           path: |
             app/build/openrtx_*.uf2
+  extract-strings:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: install-deps
+        run: |
+          sudo apt update
+          sudo apt install -y gettext
+          git ls-files | grep -E "\.(h|hpp|c|cpp)$" | xargs -r xgettext -c -o openrtx/src/locale/OpenRTX.pot
+          git diff --quiet && git diff --cached --quiet || (echo "There are strings that need to be extracted for translation. Please see the \"Localization\" section of CONTRIBUTING.md for instructions." && exit 1)
   unit-test:
     runs-on: ubuntu-22.04
     steps:
