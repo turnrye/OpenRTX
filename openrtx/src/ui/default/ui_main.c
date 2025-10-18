@@ -240,6 +240,38 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
                 gfx_print(layout.line1_pos, layout.line2_font, TEXT_ALIGN_CENTER,
                           color_white, "%s", rtxStatus.M17_src);
 
+                // metatext available
+                if((strlen(rtxStatus.M17_Meta_Text) > 13) ||
+                    (rtxStatus.M17_Meta_Text[0] != '\0' && rtxStatus.M17_refl[0] != '\0'))
+                {
+                    if(!scrollStarted)
+                    {
+                        // if reflector info present prepend to message and share line3
+                        if(rtxStatus.M17_refl[0] != '\0')
+                            sprintf(message, "%s--%s", rtxStatus.M17_refl, rtxStatus.M17_Meta_Text);
+                        else
+                            strcpy(message, rtxStatus.M17_Meta_Text);
+                        _ui_scrollString(message, true);
+                        scrollStarted = true;
+                    }
+                    _ui_scrollString(message, false);
+
+                    char msg[14];
+                    strncpy(msg, message, 13);
+                    gfx_print(layout.line3_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "%s", msg);
+                    sleepFor(0, 100);
+                }
+                else
+                    if(strlen(rtxStatus.M17_Meta_Text) > 0)
+                    {
+                        if(rtxStatus.M17_refl[0] != '\0')
+                            sprintf(message, "%s--%s", rtxStatus.M17_refl, rtxStatus.M17_Meta_Text);
+                        else
+                            strcpy(message, rtxStatus.M17_Meta_Text);
+                        gfx_print(layout.line3_pos, layout.line3_font, TEXT_ALIGN_CENTER,
+                                  color_white, "%s", message);
+                    }
 
                 // RF link (if present)
                 if(rtxStatus.M17_link[0] != '\0')
@@ -252,7 +284,7 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
                 }
 
                 // Reflector (if present)
-                if(rtxStatus.M17_refl[0] != '\0')
+                if(rtxStatus.M17_refl[0] != '\0' && rtxStatus.M17_Meta_Text[0] == '\0')
                 {
                     gfx_drawSymbol(layout.line3_pos, layout.line4_symbol_size, TEXT_ALIGN_LEFT,
                                    color_white, SYMBOL_NETWORK);

@@ -251,6 +251,19 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
         case M_CALLSIGN:
             snprintf(buf, max_len, "%s", last_state.settings.callsign);
             return 0;
+        case M_METATEXT:
+            // limit display to 8 characters
+            if (strlen(last_state.settings.M17_meta_text) > 8)
+            {
+                char tmp[9];
+                memcpy(tmp, last_state.settings.M17_meta_text, 8);
+                tmp[8] = 0;
+                // append asterisk to indicate more characters than displayed
+                snprintf(buf, max_len, "%s*", tmp);
+            }
+            else
+                snprintf(buf, max_len, "%s", last_state.settings.M17_meta_text);
+            return 0;
         case M_SMS:
             buf[0] = 0;
             break;

@@ -163,6 +163,7 @@ enum menuM17SMSItems
 enum settingsM17Items
 {
     M17_CALLSIGN = 0,
+    M17_METATEXT,
     M17_SMS,
     M17_CAN,
     M17_CAN_RX

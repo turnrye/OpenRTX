@@ -127,7 +127,43 @@ static void _ui_drawModeInfo(ui_state_t* ui_state)
                 gfx_print(layout.line1_pos, layout.line2_font, TEXT_ALIGN_CENTER,
                           color_white, "%s", rtxStatus.M17_src);
 
-                
+                // metatext available
+                if(strlen(rtxStatus.M17_Meta_Text) > 20)
+                {
+                    if(!scrollStarted)
+                    {
+                        strcpy(message, rtxStatus.M17_Meta_Text);
+                        _ui_scrollString(message, true);
+                        scrollStarted = true;
+                    }
+                    _ui_scrollString(message, false);
+
+                    char msg[21];
+                    strncpy(msg, message, 20);
+                    gfx_print(layout.line5_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "%s", msg);
+                    sleepFor(0, 100);
+                }
+                else
+                    if(strlen(rtxStatus.M17_Meta_Text) > 0)
+                        gfx_print(layout.line5_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                                  color_white, "%s", rtxStatus.M17_Meta_Text);
+
+                        if(rtxStatus.M17_link[0] != '\0')
+                        {
+                            gfx_drawSymbol(layout.line4_pos, layout.line4_symbol_font, TEXT_ALIGN_LEFT,
+                                           color_white, SYMBOL_ACCESS_POINT);
+                            gfx_print(layout.line4_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                                      color_white, "%s", rtxStatus.M17_link);
+                        }
+
+                        if(rtxStatus.M17_refl[0] != '\0')
+                        {
+                            gfx_drawSymbol(layout.line3_pos, layout.line3_symbol_font, TEXT_ALIGN_LEFT,
+                                           color_white, SYMBOL_NETWORK);
+                            gfx_print(layout.line3_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                                      color_white, "%s", rtxStatus.M17_refl);
+                        }
             }
             else
             {

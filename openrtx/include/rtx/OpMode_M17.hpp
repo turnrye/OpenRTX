@@ -29,6 +29,13 @@
 #include <vector>
 #include "OpMode.hpp"
 
+#define M17_GNSS_SOURCE_M17CLIENT        ((uint8_t)0)
+#define M17_GNSS_SOURCE_OPENRTX          ((uint8_t)1)
+#define M17_GNSS_STATION_FIXED           ((uint8_t)0)
+#define M17_GNSS_STATION_MOBILE          ((uint8_t)1)
+#define M17_GNSS_STATION_HANDHELD        ((uint8_t)2)
+
+
 /**
  * Specialisation of the OpMode class for the management of M17 operating mode.
  */
@@ -147,6 +154,11 @@ private:
      */
     bool compareCallsigns(const std::string& localCs, const std::string& incomingCs);
 
+    /**
+     * Convert OpenRTX latitude/longitude format into M17 format and vice versa.
+     */
+    void rtx_to_q(int32_t* qlat, int32_t* qlon, int32_t lat, int32_t lon);
+    void q_to_rtx(int32_t* lat, int32_t* lon, int32_t qlat, int32_t qlon);
 
     bool startRx;                      ///< Flag for RX management.
     bool startTx;                      ///< Flag for TX management.
@@ -162,11 +174,21 @@ private:
     M17::M17FrameDecoder decoder;      ///< M17 frame decoder
     M17::M17FrameEncoder encoder;      ///< M17 frame encoder
 
+    uint8_t  textOffset = 0;              ///< Metatext offset
+    uint8_t  blk_id_tot = 0;              ///< Metatext block Id total
+    uint8_t  frameCnt = 0;                ///< Transmit frame counter
+    uint8_t  last_text_blk =  0;          ///< Last metatext block counter
+    uint8_t  lsfFragCount = 5;            ///< LSF fragment counter
+    int16_t  gpsTimer = -1;               ///< GPS timer to prevent sending more than once every 5 seconds
+    bool     textStarted = false;         ///< Metatext found flag
     uint16_t numPacketbytes = 0;          ///< Number of packet bytes remaining
     uint16_t lastCRC = 0;                 ///< CRC for last valid SMS message
     bool     smsEnabled = false;          ///< SMS enabled
     bool     smsStarted = false;          ///< SMS message started flag
+    bool     gpsEnabled = false;          ///< GPS available and enabled flag
+    bool     gpsStarted = false;          ///< GPS message started flag
     int8_t   smsLastFrame = 0;            ///< SMS frame counter
+    char     textBuffer[53];              ///< Temporary buffer for incoming metatext
     char     smsBuffer[822];              ///< SMS temporary buffer
     uint16_t totalSMSLength;              ///< Total characters in SMS recall buffer
     std::vector<char*> smsSender = {};    ///< SMS Sender Id buffer

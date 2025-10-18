@@ -133,6 +133,7 @@ enum m17smsItems
 enum m17Items
 {
     M_CALLSIGN = 0,
+    M_METATEXT,
     M_SMS,
     M_CAN,
     M_CAN_RX

@@ -105,6 +105,7 @@ const char *m17sms_items[] =
 const char *m17_items[] =
     {
         "Callsign",
+        "Meta Txt",
         "SMS",
         "CAN",
         "CAN RX Check"
@@ -819,6 +820,21 @@ void ui_updateFSM(bool *sync_rtx)
                         _ui_textInputArrows(ui_state.new_callsign, 9, msg);
                 }
                 else
+                    if(ui_state.edit_message)
+                    {
+                        if(msg.keys & KEY_ENTER)
+                        {
+                            _ui_textInputConfirm(ui_state.new_message);
+                            // Save selected message and disable input mode
+                            strncpy(state.settings.M17_meta_text, ui_state.new_message, 52);
+                            ui_state.edit_message = false;
+                        }
+                        else if(msg.keys & KEY_ESC)
+                            ui_state.edit_message = false;
+                        else
+                            _ui_textInputArrows(ui_state.new_message, 52, msg);
+                    }
+                    else
                     {
                         // Not in edit mode: handle CAN setting
                         if(msg.keys & KEY_LEFT)
