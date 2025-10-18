@@ -233,6 +233,7 @@ typedef struct ui_state_t
     bool edit_message;
     bool edit_sms;
     bool view_sms;
+    bool useT9;
     bool input_locked;
     // Variables used for VFO input
     uint8_t input_number;

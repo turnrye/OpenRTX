@@ -82,6 +82,12 @@
 #include "hwconfig.h"
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
+#ifdef CONFIG_M17
+#ifdef CONFIG_T9
+#include "protocols/M17/T9.h"
+#include "protocols/M17/dict_en.h"
+#endif
+#endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -1155,6 +1161,16 @@ static void _ui_textInputReset(char *buf)
     buf[0] = '_';
 }
 
+#ifdef CONFIG_T9
+// for T9 keying
+static char *addCode(char *code, char symbol)
+{
+    code[strlen(code)] = symbol;
+
+    return getWord(dict_en, code);
+}
+#endif
+
 static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
                          bool callsign)
 {
@@ -1164,12 +1180,20 @@ static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
     // Get currently pressed number key
     uint8_t num_key = input_getPressedChar(msg);
 
+#ifdef CONFIG_T9
+    if(num_key == 11)
+    {
+        ui_state.useT9 = !ui_state.useT9;
+        return;
+    }
+#endif
     bool key_timeout = ((now - ui_state.last_keypress) >= input_longPressTimeout);
     bool same_key = ui_state.input_number == num_key;
     // Get number of symbols related to currently pressed key
     uint8_t num_symbols = 0;
     if(callsign)
     {
+        ui_state.useT9 = false;
         num_symbols = strlen(symbols_ITU_T_E161_callsign[num_key]);
         if(num_symbols == 0)
             return;
@@ -1192,6 +1216,7 @@ static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
         // Different key pressed: save current char and change key
         else
         {
+            if(!ui_state.useT9)
             ui_state.input_position += 1;
             ui_state.input_set = 0;
         }
@@ -1201,6 +1226,32 @@ static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
         buf[ui_state.input_position] = symbols_ITU_T_E161_callsign[num_key][ui_state.input_set];
     else
     {
+#ifdef CONFIG_T9
+        if(ui_state.useT9)
+        {
+            if(num_key == 0 || num_key == 1)
+            {
+                if(num_key == 0)
+                    ui_state.input_position = strlen(buf);
+                buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
+                ui_state.input_position += 1;
+                memset((char*)code, 0, strlen((char*)code));
+            }
+            else
+            {
+                uint8_t key = 48 + num_key;
+                if(num_key == 10)
+                    key = 42;
+                char *w = addCode((char*)code, key);
+                if(strlen(w) != 0)
+                    strcpy(&buf[ui_state.input_position], w);
+                else
+                    if(key != 42)
+                        strcpy(&buf[ui_state.input_position], "?");
+            }
+        }
+        else
+#endif
         buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
     }
     // Announce the character
