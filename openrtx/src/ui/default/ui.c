@@ -17,6 +17,8 @@
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
+ *                                                                         *
+ *   (2025) Modified by KD0OSS for new modes on Module17                   *
  ***************************************************************************/
 
 /*
@@ -106,6 +108,7 @@ extern void _ui_drawMenuBackupRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuBackup(ui_state_t* ui_state);
 extern void _ui_drawMenuRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
+extern void _ui_drawSMSMenu(ui_state_t* ui_state);
 extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
@@ -121,7 +124,7 @@ extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
-{
+    {
     "Banks",
     "Channels",
     "Contacts",
@@ -134,7 +137,7 @@ const char *menu_items[] =
 };
 
 const char *settings_items[] =
-{
+    {
     "Display",
 #ifdef CONFIG_RTC
     "Time & Date",
@@ -152,7 +155,7 @@ const char *settings_items[] =
 };
 
 const char *display_items[] =
-{
+    {
 #ifdef CONFIG_SCREEN_BRIGHTNESS
     "Brightness",
 #endif
@@ -165,7 +168,7 @@ const char *display_items[] =
 
 #ifdef CONFIG_GPS
 const char *settings_gps_items[] =
-{
+    {
     "GPS Enabled",
 #ifdef CONFIG_RTC
     "GPS Set Time",
@@ -175,15 +178,23 @@ const char *settings_gps_items[] =
 #endif
 
 const char *settings_radio_items[] =
-{
+    {
     "Offset",
     "Direction",
     "Step",
 };
 
+const char *menu_m17sms_items[] =
+    {
+        "Send Msg",
+        "View Msg",
+        "Match Call"
+};
+
 const char * settings_m17_items[] =
-{
+    {
     "Callsign",
+    "SMS",
     "CAN",
     "CAN RX Check"
 };
@@ -195,20 +206,20 @@ const char* settings_fm_items[] =
 };
 
 const char * settings_accessibility_items[] =
-{
+    {
     "Macro Latch",
     "Voice",
     "Phonetic"
 };
 
 const char *backup_restore_items[] =
-{
+    {
     "Backup",
     "Restore"
 };
 
 const char *info_items[] =
-{
+    {
     "",
     "Bat. Voltage",
     "Bat. Charge",
@@ -225,18 +236,19 @@ const char *info_items[] =
 };
 
 const char *authors[] =
-{
+    {
     "Niccolo' IU2KIN",
     "Silvano IU2KWO",
     "Federico IU2NUO",
     "Fred IU2NRO",
     "Joseph VK7JS",
     "Morgan ON4MOD",
-    "Marco DM4RCO"
+        "Marco DM4RCO",
+        "Rick KD0OSS"
 };
 
 static const char *symbols_ITU_T_E161[] =
-{
+    {
     " 0",
     ",.?1",
     "abc2ABC",
@@ -252,7 +264,7 @@ static const char *symbols_ITU_T_E161[] =
 };
 
 static const char *symbols_ITU_T_E161_callsign[] =
-{
+    {
     "0 ",
     "1",
     "ABC2",
@@ -276,6 +288,7 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 #endif
 const uint8_t settings_radio_num = sizeof(settings_radio_items)/sizeof(settings_radio_items[0]);
 #ifdef CONFIG_M17
+const uint8_t menu_m17sms_num = sizeof(menu_m17sms_items)/sizeof(menu_m17sms_items[0]);
 const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_items[0]);
 #endif
 const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_items[0]);
@@ -315,7 +328,7 @@ static void _ui_calculateLayout(layout_t *layout)
 
     // Calculate UI layout depending on vertical resolution
     // Tytera MD380, MD-UV380
-    #if CONFIG_SCREEN_HEIGHT > 127
+#if CONFIG_SCREEN_HEIGHT > 127
 
     // Height and padding shown in diagram at beginning of file
     static const uint16_t top_h = 16;
@@ -345,6 +358,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const symbolSize_t line3_symbol_size = SYMBOLS_SIZE_8PT;
     static const fontSize_t line4_font = FONT_SIZE_8PT;
     static const symbolSize_t line4_symbol_size = SYMBOLS_SIZE_8PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // Frequency line font: 16 pt
     static const fontSize_t line3_large_font = FONT_SIZE_16PT;
     // Bottom bar font: 8 pt
@@ -355,7 +370,7 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t menu_font = FONT_SIZE_8PT;
 
     // Radioddity GD-77
-    #elif CONFIG_SCREEN_HEIGHT > 63
+#elif CONFIG_SCREEN_HEIGHT > 63
 
     // Height and padding shown in diagram at beginning of file
     static const uint16_t top_h = 11;
@@ -386,6 +401,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t line3_large_font = FONT_SIZE_10PT;
     static const fontSize_t line4_font = FONT_SIZE_6PT;
     static const symbolSize_t line4_symbol_size = SYMBOLS_SIZE_6PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // Bottom bar font: 6 pt
     static const fontSize_t bottom_font = FONT_SIZE_6PT;
     // TimeDate/Frequency input font
@@ -394,7 +411,7 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t menu_font = FONT_SIZE_6PT;
 
     // Radioddity RD-5R
-    #elif CONFIG_SCREEN_HEIGHT > 47
+#elif CONFIG_SCREEN_HEIGHT > 47
 
     // Height and padding shown in diagram at beginning of file
     static const uint16_t top_h = 11;
@@ -420,6 +437,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t line3_font = FONT_SIZE_6PT;
     static const fontSize_t line4_font = FONT_SIZE_6PT;
     static const fontSize_t line3_large_font = FONT_SIZE_12PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // TimeDate/Frequency input font
     static const fontSize_t input_font = FONT_SIZE_8PT;
     // Menu font
@@ -428,9 +447,9 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t line1_font = 0;
     static const fontSize_t bottom_font = 0;
 
-    #else
-    #error Unsupported vertical resolution!
-    #endif
+#else
+#error Unsupported vertical resolution!
+#endif
 
     // Calculate printing positions
     static const uint16_t top_pos   = top_h - status_v_pad - text_v_offset;
@@ -476,6 +495,7 @@ static void _ui_calculateLayout(layout_t *layout)
         line4_symbol_size,
         bottom_font,
         input_font,
+            message_font,
         menu_font
     };
 
@@ -593,7 +613,7 @@ static bool _ui_freq_check_limits(freq_t freq)
 
 static bool _ui_channel_valid(channel_t* channel)
 {
-return _ui_freq_check_limits(channel->rx_frequency) &&
+    return _ui_freq_check_limits(channel->rx_frequency) &&
        _ui_freq_check_limits(channel->tx_frequency);
 }
 
@@ -999,14 +1019,14 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
             }
             break;
         case 5:
-            // Cycle through radio modes
-            #ifdef CONFIG_M17
+// Cycle through radio modes
+#ifdef CONFIG_M17
             if(state.channel.mode == OPMODE_FM)
                 state.channel.mode = OPMODE_M17;
             else if(state.channel.mode == OPMODE_M17)
                 state.channel.mode = OPMODE_FM;
             else //catch any invalid states so they don't get locked out
-            #endif
+#endif
                 state.channel.mode = OPMODE_FM;
             *sync_rtx = true;
             vp_announceRadioMode(state.channel.mode, queueFlags);
@@ -1076,6 +1096,9 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
 
 static void _ui_menuUp(uint8_t menu_entries)
 {
+    if(ui_state.menu_selected > menu_entries - 1)
+        ui_state.menu_selected = 1;
+
     if(ui_state.menu_selected > 0)
         ui_state.menu_selected -= 1;
     else
@@ -1085,6 +1108,9 @@ static void _ui_menuUp(uint8_t menu_entries)
 
 static void _ui_menuDown(uint8_t menu_entries)
 {
+    if(ui_state.menu_selected > menu_entries - 1)
+        ui_state.menu_selected = menu_entries - 1;
+
     if(ui_state.menu_selected < menu_entries - 1)
         ui_state.menu_selected += 1;
     else
@@ -1097,6 +1123,14 @@ static void _ui_menuBack(uint8_t prev_state)
     if(ui_state.edit_mode)
     {
         ui_state.edit_mode = false;
+    }
+    else if(ui_state.edit_message)
+    {
+        ui_state.edit_message = false;
+    }
+    else if(ui_state.edit_sms)
+    {
+        ui_state.edit_sms = false;
     }
     else
     {
@@ -1114,13 +1148,18 @@ static void _ui_textInputReset(char *buf)
     ui_state.input_position = 0;
     ui_state.input_set = 0;
     ui_state.last_keypress = 0;
+    if(ui_state.edit_message || ui_state.edit_sms)
+        memset(buf, 0, 822);
+    else
     memset(buf, 0, 9);
     buf[0] = '_';
 }
 
-static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
+static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
                          bool callsign)
 {
+    static char code[15]="";
+
     long long now = getTick();
     // Get currently pressed number key
     uint8_t num_key = input_getPressedChar(msg);
@@ -1283,17 +1322,17 @@ void ui_drawSplashScreen()
 {
     gfx_clearScreen();
 
-    #if CONFIG_SCREEN_HEIGHT > 64
+#if CONFIG_SCREEN_HEIGHT > 64
     static const point_t    logo_orig = {0, (CONFIG_SCREEN_HEIGHT / 2) - 6};
     static const point_t    call_orig = {0, CONFIG_SCREEN_HEIGHT - 8};
     static const fontSize_t logo_font = FONT_SIZE_12PT;
     static const fontSize_t call_font = FONT_SIZE_8PT;
-    #else
+#else
     static const point_t    logo_orig = {0, 19};
     static const point_t    call_orig = {0, CONFIG_SCREEN_HEIGHT - 8};
     static const fontSize_t logo_font = FONT_SIZE_8PT;
     static const fontSize_t call_font = FONT_SIZE_6PT;
-    #endif
+#endif
 
     gfx_print(logo_orig, logo_font, TEXT_ALIGN_CENTER, yellow_fab413, "O P N\nR T X");
     gfx_print(call_orig, call_font, TEXT_ALIGN_CENTER, color_white, state.settings.callsign);
@@ -1487,7 +1526,7 @@ void ui_updateFSM(bool *sync_rtx)
 
                 if(ui_state.edit_mode)
                 {
-                    #ifdef CONFIG_M17
+#ifdef CONFIG_M17
                     if(state.channel.mode == OPMODE_M17)
                     {
                         if(msg.keys & KEY_ENTER)
@@ -1519,7 +1558,7 @@ void ui_updateFSM(bool *sync_rtx)
                             _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
                         break;
                     }
-                    #endif
+#endif
                 }
                 else
                 {
@@ -1549,7 +1588,7 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else if(msg.keys & KEY_HASH)
                     {
-                        #ifdef CONFIG_M17
+#ifdef CONFIG_M17
                         // Only enter edit mode when using M17
                         if(state.channel.mode == OPMODE_M17)
                         {
@@ -1561,7 +1600,7 @@ void ui_updateFSM(bool *sync_rtx)
                                                queueFlags);
                         }
                         else
-                        #endif
+#endif
                         {
                             if(!state.tone_enabled)
                             {
@@ -2288,6 +2327,79 @@ void ui_updateFSM(bool *sync_rtx)
                     _ui_menuBack(MENU_SETTINGS);
                 break;
 #ifdef CONFIG_M17
+                // M17 SMS Settings
+            case SETTINGS_SMS:
+                if(ui_state.edit_sms)
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_message);
+                        // Save selected message and disable input mode
+                        strncpy(state.sms_message, ui_state.new_message, 821);
+                        //        ui_state.edit_sms = false;
+                        if(strlen(state.sms_message) > 0)
+                            state.havePacketData = true;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                        ui_state.edit_sms = false;
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                             msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                    {
+                        _ui_textInputDel(ui_state.new_message);
+                    }
+                    else if(input_isCharPressed(msg))
+                    {
+                        _ui_textInputKeypad(ui_state.new_message, 821, msg, false);
+                    }
+                    else if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
+                    {
+                        f1Handled=true;
+                    }
+                }
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(ui_state.menu_selected == M17_SMSSEND)
+                    {
+                        ui_state.edit_sms = true;
+                        _ui_textInputReset(ui_state.new_message);
+                    }
+                    else if(ui_state.menu_selected == M17_SMSVIEW)
+                    {
+                        ui_state.view_sms = true;
+                    }
+                    else if(ui_state.menu_selected == M17_SMSMATCHCALL)
+                    {
+                        state.settings.m17_sms_match_call = !state.settings.m17_sms_match_call;
+                        *sync_rtx = true;
+                    }
+                }
+                else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine--;
+                    else
+                        _ui_menuUp(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine++;
+                    else
+                        _ui_menuDown(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_HASH)
+                {
+                    if(ui_state.view_sms)
+                        state.delSMSMessage = true;
+                }
+                else if(msg.keys & KEY_ESC)
+                {
+                    ui_state.view_sms = false;
+                    *sync_rtx = true;
+                    _ui_menuBack(SETTINGS_M17);
+                }
+                break;
+
             // M17 Settings
             case SETTINGS_M17:
                 if(ui_state.edit_mode)
@@ -2366,6 +2478,13 @@ void ui_updateFSM(bool *sync_rtx)
                             _ui_textInputReset(ui_state.new_callsign);
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
+                        }
+                        // If SMS input, reset text input variables
+                        if(ui_state.menu_selected == M17_SMS)
+                        {
+                            ui_state.menu_selected = 0;
+                            ui_state.edit_mode = false;
+                            state.ui_screen = SETTINGS_SMS;
                         }
                     }
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
@@ -2667,6 +2786,10 @@ bool ui_updateGUI()
         // M17 settings screen
         case SETTINGS_M17:
             _ui_drawSettingsM17(&ui_state);
+            break;
+            // SMS menu screen
+        case SETTINGS_SMS:
+            _ui_drawSMSMenu(&ui_state);
             break;
 #endif
         // FM settings screen

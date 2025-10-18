@@ -96,6 +96,10 @@ public:
         return dataValid;
     }
 
+    virtual bool getSMSMessage(uint8_t mesg_num, char *sender, char *message) override;
+
+    virtual void delSMSMessage(uint8_t mesg_num) override;
+
 private:
 
     /**

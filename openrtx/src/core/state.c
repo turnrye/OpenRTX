@@ -82,6 +82,10 @@ void state_init()
     state.step_index    = 4; // Default frequency step 12.5kHz
 #ifdef CONFIG_M17
     state.havePacketData    = false;
+    state.delSMSMessage     = false;
+    state.currentSMSMessage = 0;
+    state.currentSMSLine    = 0;
+    state.totalSMSMessages  = 0;
 #endif
 
     // Force brightness field to be in range 0 - 100

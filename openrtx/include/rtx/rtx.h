@@ -16,6 +16,8 @@
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
+ *                                                                         *
+ *   (2025) Modified by KD0OSS for new modes on Module17                   *
  ***************************************************************************/
 
 #ifndef RTX_H
@@ -145,6 +147,11 @@ rssi_t rtx_getRssi();
  * @return true if RX squelch is open.
  */
 bool rtx_rxSquelchOpen();
+
+
+bool rtx_getSMSMessage(uint8_t mesg_num, char *sender, char *message);
+
+void rtx_delSMSMessage(uint8_t mesg_num);
 
 #ifdef __cplusplus
 }
