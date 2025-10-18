@@ -226,9 +226,9 @@ void OpMode_M17::offState(rtxStatus_t *const status)
 
 void OpMode_M17::rxState(rtxStatus_t *const status)
 {
-	uint8_t pthSts;
+    uint8_t pthSts;
 
-	if(startRx)
+    if(startRx)
     {
         demodulator.startBasebandSampling();
 
@@ -353,97 +353,97 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                 if((type == M17FrameType::STREAM) && (canMatch == true) && (callMatch == true))
                 {
                     pthSts = audioPath_getStatus(rxAudioPath);
-                	if(pthSts == PATH_CLOSED)
-                	{
-                	    rxAudioPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_RX);
-                	    pthSts = audioPath_getStatus(rxAudioPath);
-                	}
+                    if(pthSts == PATH_CLOSED)
+                    {
+                        rxAudioPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_RX);
+                        pthSts = audioPath_getStatus(rxAudioPath);
+                    }
 
-                	// Extract audio data and sent it to codec
-                	if((type == M17FrameType::STREAM) && (pthSts == PATH_OPEN))
-                	{
-                		// (re)start codec2 module if not already up
-                		if(codec_running() == false)
-                			codec_startDecode(rxAudioPath);
+                    // Extract audio data and sent it to codec
+                    if((type == M17FrameType::STREAM) && (pthSts == PATH_OPEN))
+                    {
+                        // (re)start codec2 module if not already up
+                        if(codec_running() == false)
+                            codec_startDecode(rxAudioPath);
 
-                		M17StreamFrame sf = decoder.getStreamFrame();
-                		codec_pushFrame(sf.payload().data(),     false);
-                		codec_pushFrame(sf.payload().data() + 8, false);
-                	}
+                        M17StreamFrame sf = decoder.getStreamFrame();
+                        codec_pushFrame(sf.payload().data(),     false);
+                        codec_pushFrame(sf.payload().data() + 8, false);
+                    }
                 } // check if packet SMS message and SMS receive enabled
                 else if(type == M17FrameType::PACKET && smsEnabled && (canMatch == true) &&
-                		((callMatch == true) || !state.settings.m17_sms_match_call))
+                        ((callMatch == true) || !state.settings.m17_sms_match_call))
                 {
-                	// grab decoded packet data
+                    // grab decoded packet data
                     M17PacketFrame pf = decoder.getPacketFrame();
 
                     if(!smsStarted && pf.payload()[0] == 0x05)
                     {  // check if we need to delete oldest message to make room
-                    	if(state.totalSMSMessages == 0)
-                    		lastCRC = 0;
-                    	if(state.totalSMSMessages == 10)
-                    	{
-                    		free(smsSender[0]);
-                    		free(smsMessage[0]);
-                    		smsSender.erase(smsSender.begin());
-                    		smsMessage.erase(smsMessage.begin());
-                    		state.totalSMSMessages--;
-                    	}
-                		smsLastFrame = 0;
-                		// start new message by saving senders call
-                		char *tmp = (char*)malloc(strlen(status->M17_src)+1);
-                		if(tmp != NULL)
-                		{
-                			memset(tmp, 0, strlen(status->M17_src)+1);
-                			memcpy(tmp, status->M17_src, strlen(status->M17_src));
-                			smsSender.push_back(tmp);
-                			smsStarted = true;
-                			totalSMSLength = 0;
-                			memset(smsBuffer, 0, 821);
-                		}
+                        if(state.totalSMSMessages == 0)
+                            lastCRC = 0;
+                        if(state.totalSMSMessages == 10)
+                        {
+                            free(smsSender[0]);
+                            free(smsMessage[0]);
+                            smsSender.erase(smsSender.begin());
+                            smsMessage.erase(smsMessage.begin());
+                            state.totalSMSMessages--;
+                        }
+                        smsLastFrame = 0;
+                        // start new message by saving senders call
+                        char *tmp = (char*)malloc(strlen(status->M17_src)+1);
+                        if(tmp != NULL)
+                        {
+                            memset(tmp, 0, strlen(status->M17_src)+1);
+                            memcpy(tmp, status->M17_src, strlen(status->M17_src));
+                            smsSender.push_back(tmp);
+                            smsStarted = true;
+                            totalSMSLength = 0;
+                            memset(smsBuffer, 0, 821);
+                        }
                     }
 
-                	// store next frame of message
-                	if(smsStarted)
+                    // store next frame of message
+                    if(smsStarted)
                     {
                         uint8_t rx_fn   = (pf.payload()[25] >> 2) & 0x1F;
-                    	uint8_t rx_last =  pf.payload()[25] >> 7;
+                        uint8_t rx_last =  pf.payload()[25] >> 7;
 
-                    	if(rx_fn <= 31 && rx_fn == smsLastFrame && !rx_last)
-                    	{
-                   		    memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), 25);
-                    		smsLastFrame++;
-                    		totalSMSLength += 25;
-                    	}
-                    	else if(rx_last)
-                    	{
-                   		    memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), rx_fn < 25 ? rx_fn : 25);
-                    		totalSMSLength += rx_fn < 25 ? rx_fn : 25;
+                        if(rx_fn <= 31 && rx_fn == smsLastFrame && !rx_last)
+                        {
+                               memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), 25);
+                            smsLastFrame++;
+                            totalSMSLength += 25;
+                        }
+                        else if(rx_last)
+                        {
+                               memcpy(&smsBuffer[totalSMSLength], pf.payload().data(), rx_fn < 25 ? rx_fn : 25);
+                            totalSMSLength += rx_fn < 25 ? rx_fn : 25;
 
-                    		// check crc matches
-                			uint16_t packet_crc = lsf.m17Crc(smsBuffer, totalSMSLength - 2);
-                			uint16_t crc;
-                			memcpy((uint8_t*)&crc, &smsBuffer[totalSMSLength - 2], 2);
-                			// store completed message into message queue
-                			char *tmp = (char*)malloc(totalSMSLength-3);
-                			if(tmp != NULL && crc == packet_crc && crc != lastCRC)
-                			{
-                				memset(tmp, 0, totalSMSLength-3);
-                				memcpy(tmp, &smsBuffer[1], totalSMSLength-3);
-                				smsMessage.push_back(tmp);
-                        		state.totalSMSMessages++;
-                        		lastCRC = crc;
-                			}
-                			else
-                			{  // if message memory allocation fails, crc does not match
-                			   // or duplicate message delete sender call
-                				if(tmp != NULL)
-                					free(tmp);
-                				free(smsSender[state.totalSMSMessages]);
-                				smsSender.pop_back();
-                			}
-                	        smsStarted = false;
-                		}
+                            // check crc matches
+                            uint16_t packet_crc = lsf.m17Crc(smsBuffer, totalSMSLength - 2);
+                            uint16_t crc;
+                            memcpy((uint8_t*)&crc, &smsBuffer[totalSMSLength - 2], 2);
+                            // store completed message into message queue
+                            char *tmp = (char*)malloc(totalSMSLength-3);
+                            if(tmp != NULL && crc == packet_crc && crc != lastCRC)
+                            {
+                                memset(tmp, 0, totalSMSLength-3);
+                                memcpy(tmp, &smsBuffer[1], totalSMSLength-3);
+                                smsMessage.push_back(tmp);
+                                state.totalSMSMessages++;
+                                lastCRC = crc;
+                            }
+                            else
+                            {  // if message memory allocation fails, crc does not match
+                               // or duplicate message delete sender call
+                                if(tmp != NULL)
+                                    free(tmp);
+                                free(smsSender[state.totalSMSMessages]);
+                                smsSender.pop_back();
+                            }
+                            smsStarted = false;
+                        }
                     } // if SMS started
                 } // if type PACKET
             } // if LSF OK
@@ -471,7 +471,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         status->M17_link[0] = '\0';
         status->M17_refl[0] = '\0';
  //       if(codec_running() == true)
-        	codec_stop(rxAudioPath);
+            codec_stop(rxAudioPath);
   //      if(pthSts == PATH_OPEN)
             audioPath_release(rxAudioPath);
     }
@@ -510,35 +510,35 @@ void OpMode_M17::txState(rtxStatus_t *const status)
             type.fields.encType    = M17_ENCRYPTION_NONE; // No encryption
             type.fields.encSubType = M17_META_TEXT;       // Meta text
 
-    		uint8_t buf[14];
-    		memset(buf, 32, 14); // set to all spaces
-    		// this should return number of meta blocks needed
-    		uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
-    		// set control byte upper nibble for number of text blocks
-    		// 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
-    		buf[0] = (0x0f >> (4 - msglen)) << 4;
+            uint8_t buf[14];
+            memset(buf, 32, 14); // set to all spaces
+            // this should return number of meta blocks needed
+            uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
+            // set control byte upper nibble for number of text blocks
+            // 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
+            buf[0] = (0x0f >> (4 - msglen)) << 4;
 
-    		// check if less than 13 characters remain
-    		uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
-    		// if over 13 then limit to 13
-    		if(len > 13)
-    			len = 13;
-    		memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
+            // check if less than 13 characters remain
+            uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
+            // if over 13 then limit to 13
+            if(len > 13)
+                len = 13;
+            memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
 
-    		// set control byte lower nibble to block id
-    		// 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
-    		buf[0] += (1 << last_text_blk++);
-    		lsf.setMetaText(buf);
-    		encoder.encodeLsf(lsf, m17Frame);
+            // set control byte lower nibble to block id
+            // 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
+            buf[0] += (1 << last_text_blk++);
+            lsf.setMetaText(buf);
+            encoder.encodeLsf(lsf, m17Frame);
 
-    		// if all blocks sent then reset
-    		if(last_text_blk == msglen)
-    		{
-    			last_text_blk = 0;
-    		}
+            // if all blocks sent then reset
+            if(last_text_blk == msglen)
+            {
+                last_text_blk = 0;
+            }
         }
         else
-        	last_text_blk = 0xff;   // no text to send
+            last_text_blk = 0xff;   // no text to send
 
         lsf.setType(type);
         lsf.updateCrc();
@@ -558,7 +558,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
     if(lsfFragCount == 6)
     {
-	   lsfFragCount = 0;
+       lsfFragCount = 0;
        textStarted = false;
        gpsStarted = false;
 
@@ -566,12 +566,12 @@ void OpMode_M17::txState(rtxStatus_t *const status)
        if(last_text_blk == 0xff)
        {
            uint8_t buf[14];
-	       memset(buf, 0, 14);
-     	   lsf.setMetaText(buf);
-    	   type.fields.encSubType = M17_META_TEXT;
-    	   lsf.setType(type);
+           memset(buf, 0, 14);
+            lsf.setMetaText(buf);
+           type.fields.encSubType = M17_META_TEXT;
+           lsf.setType(type);
            lsf.updateCrc();
-    	   encoder.encodeLsf(lsf, m17Frame);
+           encoder.encodeLsf(lsf, m17Frame);
        }
 
        // Wait at least 5 seconds between GPS transmissions
@@ -582,42 +582,42 @@ void OpMode_M17::txState(rtxStatus_t *const status)
        }
     }
     else
-    	lsfFragCount++;
+        lsfFragCount++;
 
     // 0xff indicates no text to send
     if(last_text_blk != 0xff && !gpsStarted && !textStarted) // send meta text
     {
         textStarted = true;
 
-    	uint8_t buf[14];
-    	memset(buf, 32, 14); // set to all spaces
-    	// this should return number of meta blocks needed
-    	uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
-    	// set control byte upper nibble for number of text blocks
-    	// 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
-    	buf[0] = (0x0f >> (4 - msglen)) << 4;
+        uint8_t buf[14];
+        memset(buf, 32, 14); // set to all spaces
+        // this should return number of meta blocks needed
+        uint8_t msglen = ceilf((float)strlen(state.settings.M17_meta_text) / 13.0f);
+        // set control byte upper nibble for number of text blocks
+        // 0001 = 1 blk. 0011 = 2 blks, 0111 = 3 blks, 1111 = 4 blks
+        buf[0] = (0x0f >> (4 - msglen)) << 4;
 
-    	// check if less than 13 characters remain
-    	uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
-    	// if over 13 then limit to 13
-    	if(len > 13)
-    	    len = 13;
-    	memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
+        // check if less than 13 characters remain
+        uint8_t len = (uint8_t)(strlen(state.settings.M17_meta_text) - (last_text_blk * 13));
+        // if over 13 then limit to 13
+        if(len > 13)
+            len = 13;
+        memcpy(buf+1, state.settings.M17_meta_text+(last_text_blk * 13), len);
 
-    	// set control byte lower nibble to block id
-    	// 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
-    	buf[0] += (1 << last_text_blk++);
-    	lsf.setMetaText(buf);
-    	type.fields.encSubType = M17_META_TEXT;
-    	lsf.setType(type);
+        // set control byte lower nibble to block id
+        // 0001 = blk1, 0010 = blk2, 0100 = blk3, 1000 = blk4
+        buf[0] += (1 << last_text_blk++);
+        lsf.setMetaText(buf);
+        type.fields.encSubType = M17_META_TEXT;
+        lsf.setType(type);
         lsf.updateCrc();
-    	encoder.encodeLsf(lsf, m17Frame);
+        encoder.encodeLsf(lsf, m17Frame);
 
-    	// if all blocks sent then reset
-    	if(last_text_blk == msglen)
-    	{
-    		last_text_blk = 0;
-    	}
+        // if all blocks sent then reset
+        if(last_text_blk == msglen)
+        {
+            last_text_blk = 0;
+        }
     }
 
     if(gpsStarted)
@@ -633,9 +633,9 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         if(gps_data.fix_type > 0) //Valid GPS fix
         {
             platform_ledOn(YELLOW); // Blink LED yellow when sending GNSS
-        	uint8_t gnss[14] = {0};
+            uint8_t gnss[14] = {0};
 
-        	gnss[0] = (M17_GNSS_SOURCE_OPENRTX<<4) | M17_GNSS_STATION_HANDHELD; //OpenRTX source, portable station
+            gnss[0] = (M17_GNSS_SOURCE_OPENRTX<<4) | M17_GNSS_STATION_HANDHELD; //OpenRTX source, portable station
 
             gnss[1] &= ~((uint8_t)0xF0); //zero out gnss data validity field
 
@@ -655,30 +655,30 @@ void OpMode_M17::txState(rtxStatus_t *const status)
             gnss[1] |= (1<<7); //Lat/lon valid
 
             uint16_t alt = (uint16_t)1000 + gps_data.altitude*2;
-			gnss[9] = alt>>8;
+            gnss[9] = alt>>8;
             gnss[10] = alt&0xFF;
-			gnss[1] |= (1<<6); //Altitude valid
+            gnss[1] |= (1<<6); //Altitude valid
 
             uint16_t speed = (uint16_t)gps_data.speed*2;
-			gnss[11] = speed>>4;
+            gnss[11] = speed>>4;
             gnss[12] = (speed&0xFF)<<4;
-			gnss[1] |= (1<<5); //Speed and Bearing valid
+            gnss[1] |= (1<<5); //Speed and Bearing valid
 
             gnss[12] &= ~((uint8_t)0x0F);
             gnss[13] = 0;
 
-        	lsf.setMetaText((uint8_t*)&gnss);
+            lsf.setMetaText((uint8_t*)&gnss);
 
-        	type.fields.encSubType = M17_META_GNSS;
-        	lsf.setType(type);
-        	lsf.updateCrc();
-        	encoder.encodeLsf(lsf, m17Frame);
+            type.fields.encSubType = M17_META_GNSS;
+            lsf.setType(type);
+            lsf.updateCrc();
+            encoder.encodeLsf(lsf, m17Frame);
             platform_ledOn(RED);
         }
     }
 
     if(gpsEnabled)
-    	gpsTimer++;
+        gpsTimer++;
 
     payload_t dataFrame;
     bool      lastFrame = false;
@@ -694,7 +694,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         if(strlen(state.settings.M17_meta_text) > 0) //do we have text to send
             last_text_blk = 0;
         else
-        	last_text_blk = 0xff;
+            last_text_blk = 0xff;
         status->opStatus = OFF;
     }
 
@@ -703,7 +703,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
     if(lastFrame)
     {
-    	lastCRC = 0;
+        lastCRC = 0;
         encoder.encodeEotFrame(m17Frame);
         modulator.sendFrame(m17Frame);
         modulator.stop();
@@ -713,7 +713,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
 void OpMode_M17::txPacketState(rtxStatus_t *const status)
 {
-	frame_t      m17Frame;
+    frame_t      m17Frame;
     pktPayload_t packetFrame;
     uint8_t      full_packet_data[33*25] = {0};
 
@@ -727,75 +727,75 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     // do not transmit if sms message empty
     if(strlen(state.sms_message) == 0)
     {
-    	// do not enter normal tx mode until de-key from SMS send
+        // do not enter normal tx mode until de-key from SMS send
         if(platform_getPttStatus() == false)
-        	state.havePacketData = false;
-    	startRx = true;
+            state.havePacketData = false;
+        startRx = true;
         status->opStatus = OFF;
-    	return;
+        return;
     }
-	startTx = false;
+    startTx = false;
 
-	std::string src(status->source_address);
-	std::string dst(status->destination_address);
+    std::string src(status->source_address);
+    std::string dst(status->destination_address);
 
-	lsf.clear();
-	lsf.setSource(src);
-	if(!dst.empty()) lsf.setDestination(dst);
+    lsf.clear();
+    lsf.setSource(src);
+    if(!dst.empty()) lsf.setDestination(dst);
 
-//	strcpy(state.sms_message, "Hello this is OpenRTX.");
-	memset(full_packet_data, 0, 33*25);
-	full_packet_data[0] = 0x05;
-	memcpy((char*)&full_packet_data[1], state.sms_message, strlen(state.sms_message));
-	numPacketbytes                     = strlen(state.sms_message) + 2; //0x05 and 0x00
-	uint16_t packet_crc                = lsf.m17Crc(full_packet_data, numPacketbytes);
-	full_packet_data[numPacketbytes]   = packet_crc & 0xFF;
-	full_packet_data[numPacketbytes+1] = packet_crc >> 8;
-	numPacketbytes += 2; //count 2-byte CRC too
+//    strcpy(state.sms_message, "Hello this is OpenRTX.");
+    memset(full_packet_data, 0, 33*25);
+    full_packet_data[0] = 0x05;
+    memcpy((char*)&full_packet_data[1], state.sms_message, strlen(state.sms_message));
+    numPacketbytes                     = strlen(state.sms_message) + 2; //0x05 and 0x00
+    uint16_t packet_crc                = lsf.m17Crc(full_packet_data, numPacketbytes);
+    full_packet_data[numPacketbytes]   = packet_crc & 0xFF;
+    full_packet_data[numPacketbytes+1] = packet_crc >> 8;
+    numPacketbytes += 2; //count 2-byte CRC too
 
-	streamType_t type;
-	type.fields.dataMode   = M17_DATAMODE_PACKET;     // Packet
-	type.fields.dataType   = 0;
-	type.fields.CAN        = status->can;             // Channel access number
+    streamType_t type;
+    type.fields.dataMode   = M17_DATAMODE_PACKET;     // Packet
+    type.fields.dataType   = 0;
+    type.fields.CAN        = status->can;             // Channel access number
 
-	lsf.setType(type);
-	lsf.updateCrc();
+    lsf.setType(type);
+    lsf.updateCrc();
 
-	encoder.reset();
+    encoder.reset();
     encoder.encodeLsf(lsf, m17Frame);
 
-	radio_enableTx();
+    radio_enableTx();
 
-	modulator.invertPhase(invertTxPhase);
-	modulator.start();
-	modulator.sendPreamble();
-	modulator.sendFrame(m17Frame);
+    modulator.invertPhase(invertTxPhase);
+    modulator.start();
+    modulator.sendPreamble();
+    modulator.sendFrame(m17Frame);
 
-	uint8_t cnt = 0;
-	while(numPacketbytes > 25)
-	{
-		memcpy(packetFrame.data(), &full_packet_data[cnt*25], 25);
-		packetFrame[25] = cnt << 2;
-		encoder.encodePacketFrame(packetFrame, m17Frame);
-		modulator.sendFrame(m17Frame);
-		cnt++;
-		numPacketbytes -= 25;
-	}
+    uint8_t cnt = 0;
+    while(numPacketbytes > 25)
+    {
+        memcpy(packetFrame.data(), &full_packet_data[cnt*25], 25);
+        packetFrame[25] = cnt << 2;
+        encoder.encodePacketFrame(packetFrame, m17Frame);
+        modulator.sendFrame(m17Frame);
+        cnt++;
+        numPacketbytes -= 25;
+    }
 
-	memset(packetFrame.data(), 0, 26);
-	memcpy(packetFrame.data(), &full_packet_data[cnt*25], numPacketbytes);
-	packetFrame[25] = 0x80 | (numPacketbytes << 2);
-	encoder.encodePacketFrame(packetFrame, m17Frame);
-	modulator.sendFrame(m17Frame);
+    memset(packetFrame.data(), 0, 26);
+    memcpy(packetFrame.data(), &full_packet_data[cnt*25], numPacketbytes);
+    packetFrame[25] = 0x80 | (numPacketbytes << 2);
+    encoder.encodePacketFrame(packetFrame, m17Frame);
+    modulator.sendFrame(m17Frame);
 
-	encoder.encodeEotFrame(m17Frame);
-	modulator.sendFrame(m17Frame);
-	modulator.stop();
+    encoder.encodeEotFrame(m17Frame);
+    modulator.sendFrame(m17Frame);
+    modulator.stop();
 
-	startRx = true;
-//	if(platform_getPttStatus() == false)
-		state.havePacketData = false;
-	memset(state.sms_message, 0, 821);
+    startRx = true;
+//    if(platform_getPttStatus() == false)
+        state.havePacketData = false;
+    memset(state.sms_message, 0, 821);
     lastCRC = 0;
     status->txDisable = 1;
     status->opStatus = OFF;
@@ -822,7 +822,7 @@ bool OpMode_M17::compareCallsigns(const std::string& localCs,
         return true;
     else
     {
-    	// Remove any appended characters from callsign
+        // Remove any appended characters from callsign
         int spacePos = truncatedLocal.find_first_of(' ');
         if(spacePos >= 4)
             truncatedLocal = truncatedLocal.substr(0, spacePos);
@@ -840,18 +840,18 @@ bool OpMode_M17::compareCallsigns(const std::string& localCs,
 
 void OpMode_M17::rtx_to_q(int32_t* qlat, int32_t* qlon, int32_t lat, int32_t lon)
 {
-	if(qlat!=NULL && qlon!=NULL)
-	{
-		*qlat = lat / 10 - lat / 147 + lat / 105646;  // 90e6/(2^23-1) - 1/(1/10 - 1/147 + 1/105646)  = ~0
-		*qlon = lon / 21 - lon / 985 - lon / 2237284; //180e6/(2^23-1) - 1/(1/21 - 1/985 - 1/2237284) = ~0
-	}
+    if(qlat!=NULL && qlon!=NULL)
+    {
+        *qlat = lat / 10 - lat / 147 + lat / 105646;  // 90e6/(2^23-1) - 1/(1/10 - 1/147 + 1/105646)  = ~0
+        *qlon = lon / 21 - lon / 985 - lon / 2237284; //180e6/(2^23-1) - 1/(1/21 - 1/985 - 1/2237284) = ~0
+    }
 }
 
 void OpMode_M17::q_to_rtx(int32_t* lat, int32_t* lon, int32_t qlat, int32_t qlon)
 {
-	if(lat!=NULL && lon!=NULL)
-	{
-		*lat = qlat * 11 - qlat / 4 - qlat / 47 + qlat / 8777; // 90e6/(2^23-1) - (11 - 1/4 - 1/47 + 1/8777) = ~0
-		*lon = qlon * 21 + qlon / 2 - qlon / 23 + qlon / 867;  //180e6/(2^23-1) - (21 + 1/2 - 1/23 + 1/867)  = ~0
-	}
+    if(lat!=NULL && lon!=NULL)
+    {
+        *lat = qlat * 11 - qlat / 4 - qlat / 47 + qlat / 8777; // 90e6/(2^23-1) - (11 - 1/4 - 1/47 + 1/8777) = ~0
+        *lon = qlon * 21 + qlon / 2 - qlon / 23 + qlon / 867;  //180e6/(2^23-1) - (21 + 1/2 - 1/23 + 1/867)  = ~0
+    }
 }

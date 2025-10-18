@@ -163,25 +163,25 @@ private:
     void rtx_to_q(int32_t* qlat, int32_t* qlon, int32_t lat, int32_t lon);
     void q_to_rtx(int32_t* lat, int32_t* lon, int32_t qlat, int32_t qlon);
 
-	uint8_t  textOffset = 0;              ///< Metatext offset
-	uint8_t  blk_id_tot = 0;              ///< Metatext block Id total
-	uint8_t  frameCnt = 0;                ///< Transmit frame counter
-	uint8_t  last_text_blk =  0;          ///< Last metatext block counter
-	uint8_t  lsfFragCount = 5;            ///< LSF fragment counter
-	uint16_t numPacketbytes = 0;          ///< Number of packet bytes remaining
-	uint16_t lastCRC = 0;                 ///< CRC for last valid SMS message
-	int16_t  gpsTimer = -1;               ///< GPS timer to prevent sending more than once every 5 seconds
-	bool     textStarted = false;         ///< Metatext found flag
-	bool     smsEnabled = false;          ///< SMS enabled
-	bool     smsStarted = false;          ///< SMS message started flag
-	bool     gpsEnabled = false;          ///< GPS available and enabled flag
-	bool     gpsStarted = false;          ///< GPS message started flag
-	int8_t   smsLastFrame = 0;            ///< SMS frame counter
-	char     textBuffer[53];              ///< Temporary buffer for incoming metatext
-	char     smsBuffer[822];              ///< SMS temporary buffer
-	uint16_t totalSMSLength;              ///< Total characters in SMS recall buffer
-	std::vector<char*> smsSender = {};    ///< SMS Sender Id buffer
-	std::vector<char*> smsMessage = {};   ///< SMS message buffer
+    uint8_t  textOffset = 0;              ///< Metatext offset
+    uint8_t  blk_id_tot = 0;              ///< Metatext block Id total
+    uint8_t  frameCnt = 0;                ///< Transmit frame counter
+    uint8_t  last_text_blk =  0;          ///< Last metatext block counter
+    uint8_t  lsfFragCount = 5;            ///< LSF fragment counter
+    uint16_t numPacketbytes = 0;          ///< Number of packet bytes remaining
+    uint16_t lastCRC = 0;                 ///< CRC for last valid SMS message
+    int16_t  gpsTimer = -1;               ///< GPS timer to prevent sending more than once every 5 seconds
+    bool     textStarted = false;         ///< Metatext found flag
+    bool     smsEnabled = false;          ///< SMS enabled
+    bool     smsStarted = false;          ///< SMS message started flag
+    bool     gpsEnabled = false;          ///< GPS available and enabled flag
+    bool     gpsStarted = false;          ///< GPS message started flag
+    int8_t   smsLastFrame = 0;            ///< SMS frame counter
+    char     textBuffer[53];              ///< Temporary buffer for incoming metatext
+    char     smsBuffer[822];              ///< SMS temporary buffer
+    uint16_t totalSMSLength;              ///< Total characters in SMS recall buffer
+    std::vector<char*> smsSender = {};    ///< SMS Sender Id buffer
+    std::vector<char*> smsMessage = {};   ///< SMS message buffer
 
     pathId rxAudioPath;                  ///< Audio path ID for RX
     pathId txAudioPath;                  ///< Audio path ID for TX

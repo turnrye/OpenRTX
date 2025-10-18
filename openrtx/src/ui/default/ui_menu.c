@@ -314,7 +314,7 @@ int _ui_getDisplayValueName(char *buf, uint8_t max_len, uint8_t index)
                      (last_state.settings.showBatteryIcon) ?
                      currentLanguage->on :
                      currentLanguage->off);
-	    return 0;
+        return 0;
     }
     sniprintf(buf, max_len, "%d", value);
     return 0;

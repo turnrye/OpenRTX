@@ -2471,7 +2471,7 @@ void ui_updateFSM(bool *sync_rtx)
                         _ui_textInputConfirm(ui_state.new_message);
                         // Save selected message and disable input mode
                         strncpy(state.sms_message, ui_state.new_message, 821);
-                        //		ui_state.edit_sms = false;
+                        //        ui_state.edit_sms = false;
                         if(strlen(state.sms_message) > 0)
                             state.havePacketData = true;
                     }

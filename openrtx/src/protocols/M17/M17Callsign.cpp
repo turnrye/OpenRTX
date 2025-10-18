@@ -35,10 +35,10 @@ bool M17::encode_callsign(const std::string& callsign, call_t& encodedCall,
     // if callsign empty or ALL set to broadcast address
     if(callsign.empty() || callsign == "ALL")
     {
-    	encoded = 0xffffffffffff;
+        encoded = 0xffffffffffff;
         auto *ptr = reinterpret_cast< uint8_t *>(&encoded);
         std::copy(ptr, ptr + 6, encodedCall.rbegin());
-    	return true;
+        return true;
     }
 
     for(auto it = callsign.rbegin(); it != callsign.rend(); ++it)
