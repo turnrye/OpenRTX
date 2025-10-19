@@ -20,7 +20,7 @@
 
 #include <cstring>
 #include "protocols/M17/M17Golay.hpp"
-#include "protocols/M17/M17Callsign.hpp"
+#include "protocols/M17/Callsign.hpp"
 #include "protocols/M17/M17LinkSetupFrame.hpp"
 
 using namespace M17;
