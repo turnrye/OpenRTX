@@ -43,7 +43,7 @@ namespace M17
  * function return an error.
  * @return true if the callsign was successfully encoded, false on error.
  */
-bool encode_callsign(const std::string& callsign, call_t& encodedCall,
+bool encode_callsign(const std::string &callsign, call_t &encodedCall,
                      bool strict = false);
 
 /**
@@ -53,8 +53,8 @@ bool encode_callsign(const std::string& callsign, call_t& encodedCall,
  * \param encodedCall base-40 encoded callsign.
  * \return a string containing the decoded text.
  */
-std::string decode_callsign(const call_t& encodedCall);
+std::string decode_callsign(const call_t &encodedCall);
 
-}      // namespace M17
+} // namespace M17
 
 #endif // M17_CALLSIGN_H
