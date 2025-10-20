@@ -28,6 +28,7 @@
 #include <string>
 #include <array>
 #include "M17Datatypes.hpp"
+#include "protocols/M17/Callsign.hpp"
 
 namespace M17
 {
@@ -69,9 +70,9 @@ public:
     /**
      * Get source callsign.
      *
-     * @return: string containing the source callsign.
+     * @return: the source callsign.
      */
-    std::string getSource();
+    Callsign getSource();
 
     /**
      * Set destination callsign.
@@ -83,9 +84,9 @@ public:
     /**
      * Get destination callsign.
      *
-     * @return: string containing the destination callsign.
+     * @return: the destination callsign.
      */
-    std::string getDestination();
+    Callsign getDestination();
 
     /**
      * Get stream type field.

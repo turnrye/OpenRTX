@@ -20,7 +20,6 @@
 
 #include <cstring>
 #include "protocols/M17/M17Golay.hpp"
-#include "protocols/M17/Callsign.hpp"
 #include "protocols/M17/M17LinkSetupFrame.hpp"
 
 using namespace M17;
@@ -38,27 +37,27 @@ M17LinkSetupFrame::~M17LinkSetupFrame()
 void M17LinkSetupFrame::clear()
 {
     memset(&data, 0x00, sizeof(data));
-    data.dst.fill(0xFF);
+    data.dst = static_cast<call_t>(getBroadcastCallsign());
 }
 
 void M17LinkSetupFrame::setSource(const std::string& callsign)
 {
-    encode_callsign(callsign, data.src);
+    data.src = Callsign(callsign);
 }
 
-std::string M17LinkSetupFrame::getSource()
+Callsign M17LinkSetupFrame::getSource()
 {
-    return decode_callsign(data.src);
+    return Callsign(data.src);
 }
 
 void M17LinkSetupFrame::setDestination(const std::string& callsign)
 {
-    encode_callsign(callsign, data.dst);
+    data.dst = Callsign(callsign);
 }
 
-std::string M17LinkSetupFrame::getDestination()
+Callsign M17LinkSetupFrame::getDestination()
 {
-    return decode_callsign(data.dst);
+    return Callsign(data.dst);
 }
 
 streamType_t M17LinkSetupFrame::getType()
