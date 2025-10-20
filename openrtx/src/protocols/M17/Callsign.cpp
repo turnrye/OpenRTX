@@ -21,15 +21,56 @@
  ***************************************************************************/
 
 #include <string>
+#include <cstring>
 #include "protocols/M17/Callsign.hpp"
 
-bool M17::encode_callsign(const std::string &callsign, call_t &encodedCall,
-                          bool strict)
+namespace M17
 {
-    encodedCall.fill(0x00);
+
+static constexpr const call_t BROADCAST_CALL = { 0xFF, 0xFF, 0xFF,
+                                                 0xFF, 0xFF, 0xFF };
+static constexpr const char BROADCAST_CALL_STR[] = "ALL";
+
+Callsign &getBroadcastCallsign()
+{
+    static Callsign instance(BROADCAST_CALL);
+    return instance;
+}
+
+} // namespace M17
+
+using namespace M17;
+
+Callsign::Callsign(std::string callsign)
+{
+    std::strncpy(call, callsign.c_str(), CALLSIGN_MAX_CHARS);
+    call[CALLSIGN_MAX_CHARS] = '\0';
+}
+
+Callsign::Callsign(const char *callsign)
+{
+    std::strncpy(call, callsign, CALLSIGN_MAX_CHARS);
+    call[CALLSIGN_MAX_CHARS] = '\0';
+}
+
+Callsign::Callsign(const call_t encodedCall)
+{
+    std::strncpy(call, decode_callsign(encodedCall).c_str(),
+                 CALLSIGN_MAX_CHARS);
+    call[CALLSIGN_MAX_CHARS] = '\0';
+}
+
+bool Callsign::encode_callsign(const std::string &callsign, call_t &encodedCall,
+                               bool strict) const
+{
     if (callsign.size() > 9)
         return false;
-
+    // Return the special broadcast callsign if "ALL"
+    if (callsign.compare(BROADCAST_CALL_STR) == 0) {
+        encodedCall = BROADCAST_CALL;
+        return true;
+    }
+    encodedCall.fill(0x00);
     // Encode the characters to base-40 digits.
     uint64_t encoded = 0;
 
@@ -56,7 +97,7 @@ bool M17::encode_callsign(const std::string &callsign, call_t &encodedCall,
     return true;
 }
 
-std::string M17::decode_callsign(const call_t &encodedCall)
+std::string Callsign::decode_callsign(const call_t &encodedCall) const
 {
     // First of all, check if encoded address is a broadcast one
     bool isBroadcast = true;
@@ -68,7 +109,7 @@ std::string M17::decode_callsign(const call_t &encodedCall)
     }
 
     if (isBroadcast)
-        return "ALL";
+        return BROADCAST_CALL_STR;
 
     /*
      * Address is not broadcast, decode it.
@@ -90,7 +131,54 @@ std::string M17::decode_callsign(const call_t &encodedCall)
         encoded /= 40;
     }
 
-    result[index] = '\0';
-
     return result;
+}
+
+Callsign::operator std::string() const
+{
+    return std::string(this->call);
+}
+
+Callsign::operator const char *() const
+{
+    return this->call;
+}
+
+Callsign::operator call_t() const
+{
+    call_t encodedCall;
+    encode_callsign(std::string(this->call), encodedCall);
+    return encodedCall;
+}
+
+/**
+ * NOTE! since only incomingCs is checked for special values, the second arg must be the incoming station
+ */
+bool compareCallsigns(const std::string &localCs, const std::string &incomingCs)
+{
+    if ((incomingCs == BROADCAST_CALL_STR) || (incomingCs == "INFO")
+        || (incomingCs == "ECHO"))
+        return true;
+
+    std::string truncatedLocal(localCs);
+    std::string truncatedIncoming(incomingCs);
+
+    int slashPos = localCs.find_first_of('/');
+    if (slashPos <= 2)
+        truncatedLocal = localCs.substr(slashPos + 1);
+
+    slashPos = incomingCs.find_first_of('/');
+    if (slashPos <= 2)
+        truncatedIncoming = incomingCs.substr(slashPos + 1);
+
+    if (truncatedLocal == truncatedIncoming)
+        return true;
+
+    return false;
+}
+
+// NOTE! Since this uses compareCallsigns internally, always have the right side of the equality check be the incoming callsign
+bool Callsign::operator==(const Callsign &other) const
+{
+    return compareCallsigns(this->call, other.call);
 }
