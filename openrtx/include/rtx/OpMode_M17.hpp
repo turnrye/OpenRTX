@@ -26,6 +26,7 @@
 #include "protocols/M17/M17Demodulator.hpp"
 #include "protocols/M17/M17Modulator.hpp"
 #include "core/audio_path.h"
+#include <vector>
 #include "OpMode.hpp"
 
 /**
@@ -122,6 +123,14 @@ private:
     void txState(rtxStatus_t *const status);
 
     /**
+     * Function handling the Packet Data TX operating state.
+     *
+     * @param status: pointer to the rtxStatus_t structure containing the
+     * current RTX status.
+     */
+    void txPacketState(rtxStatus_t *const status);
+
+    /**
      * Compare two callsigns in plain text form.
      * The comparison does not take into account the country prefixes (strips
      * the '/' and whatever is in front from all callsigns). It does take into
@@ -148,6 +157,17 @@ private:
     M17::M17Demodulator  demodulator;  ///< M17 demodulator.
     M17::M17FrameDecoder decoder;      ///< M17 frame decoder
     M17::M17FrameEncoder encoder;      ///< M17 frame encoder
+
+    uint16_t numPacketbytes = 0;          ///< Number of packet bytes remaining
+    uint16_t lastCRC = 0;                 ///< CRC for last valid SMS message
+    bool     smsEnabled = false;          ///< SMS enabled
+    bool     smsStarted = false;          ///< SMS message started flag
+    int8_t   smsLastFrame = 0;            ///< SMS frame counter
+    char     smsBuffer[822];              ///< SMS temporary buffer
+    uint16_t totalSMSLength;              ///< Total characters in SMS recall buffer
+    std::vector<char*> smsSender = {};    ///< SMS Sender Id buffer
+    std::vector<char*> smsMessage = {};   ///< SMS message buffer
+    M17::M17LinkSetupFrame lsf;          ///< M17 link setup frame
 };
 
 #endif /* OPMODE_M17_H */
