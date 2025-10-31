@@ -154,7 +154,9 @@ enum settingsM17Items
 {
     M17_CALLSIGN = 0,
     M17_CAN,
-    M17_CAN_RX
+    M17_CAN_RX,
+    M17_RX_GAIN,
+    M17_TX_GAIN
 };
 
 enum settingsFMItems

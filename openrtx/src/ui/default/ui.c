@@ -185,7 +185,9 @@ const char * settings_m17_items[] =
 {
     "Callsign",
     "CAN",
-    "CAN RX Check"
+    "CAN RX Check",
+    "RX Gain",
+    "TX Gain"
 };
 
 const char* settings_fm_items[] =
@@ -796,6 +798,16 @@ static inline void _ui_changeM17Can(int variation)
 {
     uint8_t can = state.settings.m17_can;
     state.settings.m17_can = (can + variation) % 16;
+}
+static inline void _ui_changeM17RxGain(int variation)
+{
+    uint8_t gain = state.settings.m17_rx_gain;
+    state.settings.m17_rx_gain = (gain + variation) % 255;
+}
+static inline void _ui_changeM17TxGain(int variation)
+{
+    uint8_t gain = state.settings.m17_tx_gain;
+    state.settings.m17_tx_gain = (gain + variation) % 255;
 }
 #endif
 
@@ -2333,6 +2345,26 @@ void ui_updateFSM(bool *sync_rtx)
                                 _ui_changeM17Can(-1);
                             else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                                 _ui_changeM17Can(+1);
+                            else if(msg.keys & KEY_ENTER)
+                                ui_state.edit_mode = !ui_state.edit_mode;
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
+                        case M17_RX_GAIN:
+                            if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
+                                _ui_changeM17RxGain(-1);
+                            else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
+                                _ui_changeM17RxGain(+1);
+                            else if(msg.keys & KEY_ENTER)
+                                ui_state.edit_mode = !ui_state.edit_mode;
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
+                        case M17_TX_GAIN:
+                            if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
+                                _ui_changeM17TxGain(-1);
+                            else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
+                                _ui_changeM17TxGain(+1);
                             else if(msg.keys & KEY_ENTER)
                                 ui_state.edit_mode = !ui_state.edit_mode;
                             else if(msg.keys & KEY_ESC)
