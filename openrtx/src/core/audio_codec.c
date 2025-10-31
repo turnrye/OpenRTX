@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include "core/dsp.h"
+#include "core/state.h"
 
 #define BUF_SIZE 4
 
@@ -52,14 +53,6 @@ static uint8_t          readPos;
 static uint8_t          writePos;
 static uint8_t          numElements;
 static uint64_t         dataBuffer[BUF_SIZE];
-
-#ifdef PLATFORM_MOD17
-static const uint8_t micGain = 12;
-#else
-#ifndef PLATFORM_LINUX
-static const uint8_t micGain = 32;
-#endif
-#endif
 
 static void *encodeFunc(void *arg);
 static void *decodeFunc(void *arg);
@@ -221,7 +214,8 @@ static void *encodeFunc(void *arg)
             int16_t sample;
 
             sample = dsp_dcBlockFilter(&dcBlock, audio.data[i]);
-            audio.data[i] = sample * micGain;
+            audio.data[i] = sample * state.settings.m17_tx_gain;
+            // TODO: what happens when this overflows?
         }
         #endif
 
@@ -323,10 +317,9 @@ static void *decodeFunc(void *arg)
         {
             codec2_decode(codec2, audioBuf, ((uint8_t *) &frame));
 
-            #ifdef PLATFORM_MD3x0
-            // Bump up volume a little bit, as on MD3x0 is quite low
-            for(size_t i = 0; i < 160; i++) audioBuf[i] *= 2;
-            #endif
+            // TODO: what happens when this overflows? What is this 160 magic number?
+            // TODO: how to handle that this also applies to reading voice prompts?
+            for(size_t i = 0; i < 160; i++) audioBuf[i] *= state.settings.m17_rx_gain;
 
         }
         else
