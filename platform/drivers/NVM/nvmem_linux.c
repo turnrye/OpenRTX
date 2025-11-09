@@ -181,14 +181,14 @@ int nvm_readVfoChannelData(channel_t *channel)
     return -1;
 }
 
-int nvm_readSettings(settings_t *settings)
+int nvm_readSettings(uint8_t *settings, size_t len)
 {
-    int ret = nvm_read(0, 1, 0, settings, sizeof(settings_t));
+    int ret = nvm_read(0, 1, 0, settings, len);
     if(ret < 0)
         return ret;
 
     // TODO: implement a more serious integrity check
-    for(size_t i = 0; i < sizeof(settings_t); i++)
+    for(size_t i = 0; i < len; i++)
     {
         const uint8_t *p = (const uint8_t *) settings;
         if(p[i] != 0x00)
@@ -198,9 +198,9 @@ int nvm_readSettings(settings_t *settings)
     return -1;
 }
 
-int nvm_writeSettings(const settings_t *settings)
+int nvm_writeSettingsSlice(uint8_t *slice, size_t len, size_t offset)
 {
-    return nvm_write(0, 1, 0, settings, sizeof(settings_t));
+    return nvm_write(0, 1, 0 + offset, slice, len);
 }
 
 int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)

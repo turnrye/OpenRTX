@@ -48,7 +48,7 @@ void state_init()
      * Try loading settings from nonvolatile memory and default to sane values
      * in case of failure.
      */
-    if(nvm_readSettings(&state.settings) < 0)
+    if(nvm_readSettings((uint8_t *)&state.settings, sizeof(settings_t)) < 0)
     {
         state.settings = default_settings;
         strncpy(state.settings.callsign, "OPNRTX", 10);

@@ -193,10 +193,11 @@ int nvm_readVfoChannelData(channel_t *channel);
 /**
  * Read OpenRTX settings from storage.
  *
- * @param settings: pointer to the settings_t data structure to be populated.
+ * @param settings: pointer to the byte array to be populated
+ * @param len: length of array, aka number of bytes to read
  * @return 0 on success, -1 on failure
  */
-int nvm_readSettings(settings_t *settings);
+int nvm_readSettings(uint8_t *settings, size_t len);
 
 /**
  * Write OpenRTX settings to storage.
@@ -204,7 +205,7 @@ int nvm_readSettings(settings_t *settings);
  * @param settings: pointer to the settings_t data structure to be written.
  * @return 0 on success, -1 on failure
  */
-int nvm_writeSettings(const settings_t *settings);
+int nvm_writeSettingsSlice(uint8_t *slice, size_t len, size_t offset);
 
 /**
  * Write OpenRTX settings and VFO channel configuration to storage.

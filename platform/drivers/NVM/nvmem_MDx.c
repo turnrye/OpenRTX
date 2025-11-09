@@ -211,7 +211,7 @@ void nvm_readHwInfo(hwInfo_t *info)
  * TODO: functions temporarily implemented in "nvmem_settings_MDx.c"
 
 int nvm_readVFOChannelData(channel_t *channel)
-int nvm_readSettings(settings_t *settings)
+int nvm_readSettings(uint8_t *settings, size_t len)
 int nvm_writeSettings(const settings_t *settings)
 
 */

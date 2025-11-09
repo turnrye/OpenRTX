@@ -158,14 +158,14 @@ int nvm_readVfoChannelData(channel_t *channel)
     return 0;
 }
 
-int nvm_readSettings(settings_t *settings)
+int nvm_readSettings(uint8_t *settings, size_t len)
 {
-    memset(settings, 0x00, sizeof(settings_t));
-    int ret = nvm_read(1, -1, 0x0002, settings, sizeof(settings_t));
+    memset(settings, 0x00, len);
+    int ret = nvm_read(1, -1, 0x0002, settings, len);
     if(ret < 0)
         return -1;
 
-    settingsCrc = crc_ccitt(settings, sizeof(settings_t));
+    settingsCrc = crc_ccitt(settings, len);
 
     return 0;
 }

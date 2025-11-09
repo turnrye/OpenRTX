@@ -146,14 +146,14 @@ int nvm_readVfoChannelData(channel_t *channel)
     return 0;
 }
 
-int nvm_readSettings(settings_t *settings)
+int nvm_readSettings(uint8_t *settings, size_t len)
 {
     int block = findActiveBlock();
 
     // Invalid data found
     if(block < 0) return -1;
 
-    memcpy(settings,      &(memory->data[block].settings),    sizeof(settings_t));
+    memcpy(settings,      &(memory->data[block].settings),    len);
     memcpy(&mod17CalData, &(memory->data[block].calibration), sizeof(mod17Calib_t));
 
     return 0;

@@ -181,7 +181,7 @@ int nvm_readVfoChannelData(channel_t *channel)
     return -1;
 }
 
-int nvm_readSettings(settings_t *settings)
+int nvm_readSettings(uint8_t *settings, size_t len)
 {
     (void) settings;
     return -1;
