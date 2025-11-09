@@ -516,7 +516,7 @@ int _ui_getAccessibilityValueName(char *buf, uint8_t max_len, uint8_t index)
             sniprintf(buf, max_len, "%s", last_state.settings.vpPhoneticSpell ? currentLanguage->on : currentLanguage->off);
             break;
         case A_MACRO_LATCH:
-            sniprintf(buf, max_len, "%s", last_state.settings.macroMenuLatch ? currentLanguage->on : currentLanguage->off);
+            sniprintf(buf, max_len, "%s", last_state.settings.macroMenuUnlatch ? currentLanguage->on : currentLanguage->off);
             break;
     }
     return 0;

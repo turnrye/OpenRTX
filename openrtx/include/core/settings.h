@@ -54,12 +54,12 @@ typedef struct
     int8_t  utc_timezone;         // Timezone, in units of half hours
     bool    gps_enabled;          // GPS active
     char    callsign[10];         // Plaintext callsign
-    uint8_t display_timer   : 4,  // Standby timer
-            m17_can         : 4;  // M17 CAN
-    uint8_t vpLevel         : 3,  // Voice prompt level
-            vpPhoneticSpell : 1,  // Phonetic spell enabled
-            macroMenuLatch  : 1,  // Automatic latch of macro menu
-            _reserved       : 3;
+    uint8_t display_timer    : 4, // Standby timer
+            m17_can          : 4; // M17 CAN
+    uint8_t vpLevel          : 3, // Voice prompt level
+            vpPhoneticSpell  : 1, // Phonetic spell enabled
+            macroMenuUnlatch : 1, // Automatic unlatch of macro menu
+            _reserved        : 3;
     bool    m17_can_rx;           // Check M17 CAN on RX
     char    m17_dest[10];         // M17 destination
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage
@@ -85,7 +85,7 @@ static const settings_t default_settings =
     0,                            // M17 CAN
     0,                            // Voice prompts off
     0,                            // Phonetic spell off
-    1,                            // Automatic latch of macro menu enabled
+    false,                        // Automatic unlatch of macro menu enabled
     0,                            // not used
     false,                        // Check M17 CAN on RX
     "",                           // Empty M17 destination

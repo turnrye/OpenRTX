@@ -785,10 +785,10 @@ static void _ui_changeTimer(int variation)
 
 static void _ui_changeMacroLatch(bool newVal)
 {
-    state.settings.macroMenuLatch = newVal ? 1 : 0;
+    state.settings.macroMenuUnlatch = !newVal ? 1 : 0;
     vp_announceSettingsOnOffToggle(&currentLanguage->macroLatching,
                                    vp_getVoiceLevelQueueFlags(),
-                                   state.settings.macroMenuLatch);
+                                   !state.settings.macroMenuUnlatch);
 }
 
 #ifdef CONFIG_M17
@@ -1427,7 +1427,7 @@ void ui_updateFSM(bool *sync_rtx)
         {
             macro_menu = true;
 
-            if(state.settings.macroMenuLatch == 1)
+            if(!state.settings.macroMenuUnlatch == 1)
             {
                 // long press moni on its own latches function.
                 if (moniPressed && msg.long_press && !macro_latched)
