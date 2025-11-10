@@ -100,10 +100,8 @@ const char *MetaText::getText()
     // According to M17 spec: OR the control bytes together, and once
     // the most significant and least significant four bits are the same,
     // a complete message has been received.
-    if (blockMask == 0 || blockMask != expectedBlockMask) {
-        static const char empty[] = "";
-        return empty;
-    }
+    if (blockMask == 0 || blockMask != expectedBlockMask)
+        return nullptr;
 
     // All expected blocks received, compute total length
     size_t len = __builtin_popcount(blockMask) * META_TEXT_BLOCK_LEN;
