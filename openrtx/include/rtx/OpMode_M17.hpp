@@ -11,6 +11,7 @@
 #include "protocols/M17/M17FrameEncoder.hpp"
 #include "protocols/M17/M17Demodulator.hpp"
 #include "protocols/M17/M17Modulator.hpp"
+#include "protocols/M17/MetaText.hpp"
 #include "core/audio_path.h"
 #include "OpMode.hpp"
 
@@ -136,6 +137,8 @@ private:
     M17::M17FrameDecoder decoder;      ///< M17 frame decoder
     M17::M17FrameEncoder encoder;      ///< M17 frame encoder
     uint16_t gpsTimer;                 ///< GPS data transmission interval timer
+    M17::M17LinkSetupFrame lsf;        ///< M17 link setup frame
+    M17::MetaText metaTextHandler;     ///< M17 metatext handler
 };
 
 #endif /* OPMODE_M17_H */

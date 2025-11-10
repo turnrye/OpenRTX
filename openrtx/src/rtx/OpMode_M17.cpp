@@ -207,9 +207,19 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                             strncpy(status->M17_refl, extCall->getCall2().c_str(), 10);
                             break;
                         }
+                        case M17::MetadataType::TEXT: {
+                            auto* textBlock = static_cast<M17::TextBlockMetadata*>(metadata);
+                            metaTextHandler.addBlock(textBlock->getMeta());
+                            const char* metatext = metaTextHandler.get();
+                            if(metatext != nullptr && strlen(metatext) > 0) {
+                                strncpy(status->M17_meta_text, metatext, 53);
+                            }
+                            break;
+                        }
+                        default:
+                            break;
                     }
                 }
-
                 metadata->~Metadata();
 
                 // Retrieve stream source and destination data
@@ -294,9 +304,11 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         status->lsfOk = false;
         dataValid     = false;
         extendedCall  = false;
+        status->M17_meta_text[0] = '\0';
         status->M17_link[0] = '\0';
         status->M17_refl[0] = '\0';
 
+        metaTextHandler.reset();
         codec_stop(rxAudioPath);
         audioPath_release(rxAudioPath);
     }
