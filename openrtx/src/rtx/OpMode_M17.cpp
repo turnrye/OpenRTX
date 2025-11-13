@@ -9,7 +9,7 @@
 #include "interfaces/audio.h"
 #include "interfaces/radio.h"
 #include "protocols/M17/M17Callsign.hpp"
-#include "protocols/M17/M17Datatypes.hpp"
+#include "protocols/M17/Metadata.hpp"
 #include "rtx/OpMode_M17.hpp"
 #include "core/audio_codec.h"
 #include <errno.h>
@@ -195,6 +195,23 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
             {
                 dataValid = true;
 
+                uint8_t metadataStorage[M17::MetadataFactory::getMaxStorageSize()];
+                M17::Metadata* metadata = M17::MetadataFactory::create(lsf, metadataStorage);
+
+                if(metadata != nullptr) {
+                    switch(metadata->getType()) {
+                        case M17::MetadataType::EXTENDED_CALLSIGN: {
+                            auto* extCall = static_cast<M17::ExtendedCallsignMetadata*>(metadata);
+                            extendedCall = true;
+                            strncpy(status->M17_src, extCall->getCall1().c_str(), 10);
+                            strncpy(status->M17_refl, extCall->getCall2().c_str(), 10);
+                            break;
+                        }
+                    }
+                }
+
+                metadata->~Metadata();
+
                 // Retrieve stream source and destination data
                 Callsign dst = lsf.getDestination();
                 Callsign src = lsf.getSource();
@@ -231,7 +248,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
                 // Check CAN on RX, if enabled.
                 // If check is disabled, force match to true.
-                bool canMatch =  (streamType.fields.CAN == status->can)
+                bool canMatch =  (lsf.getType().fields.CAN == status->can)
                               || (status->canRxEn == false);
 
                 // Check if the destination callsign of the incoming transmission
