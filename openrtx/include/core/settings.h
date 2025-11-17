@@ -52,7 +52,6 @@ display_timer_t;
  */
 typedef struct
 {
-    uint8_t header[2];            // Reserved header bytes (used by settings_manager)
     uint8_t brightness;           // Display brightness
     uint8_t contrast;             // Display contrast
     uint8_t sqlLevel;             // Squelch level
@@ -77,7 +76,6 @@ __attribute__((packed)) settings_t;
 
 static const settings_t default_settings =
 {
-    { 0 , 0 },                      // Reserved header bytes
     100,                          // Brightness
 #ifdef CONFIG_SCREEN_CONTRAST
     CONFIG_DEFAULT_CONTRAST,      // Contrast
