@@ -77,6 +77,8 @@ extern const struct gpsDevice gps;
 /* Use extended addressing for external flash memory */
 #define CONFIG_W25Qx_EXT_ADDR
 
+#define NVM_SETTINGS_BASE 0x0002
+
 #ifdef __cplusplus
 }
 #endif

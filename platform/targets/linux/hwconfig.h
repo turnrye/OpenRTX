@@ -39,6 +39,8 @@ enum Mod17Flags
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+#define NVM_SETTINGS_BASE 0
+
 #ifdef __cplusplus
 }
 #endif

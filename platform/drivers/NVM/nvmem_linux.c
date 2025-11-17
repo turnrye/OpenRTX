@@ -200,7 +200,7 @@ int nvm_readSettings(uint8_t *settings, size_t len)
 
 int nvm_writeSettingsSlice(uint8_t *slice, size_t len, size_t offset)
 {
-    return nvm_write(0, 1, 0 + offset, slice, len);
+    return nvm_write(0, 1, NVM_SETTINGS_BASE + offset, slice, len);
 }
 
 int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)

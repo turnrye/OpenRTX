@@ -170,11 +170,9 @@ int nvm_readSettings(uint8_t *settings, size_t len)
     return 0;
 }
 
-int nvm_writeSettings(const settings_t *settings)
+int nvm_writeSettingsSlice(uint8_t *slice, size_t len, size_t offset)
 {
-    (void) settings;
-
-    return -1;
+    return nvm_write(1, -1, NVM_SETTINGS_BASE + offset, slice, len);
 }
 
 int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)
@@ -185,7 +183,7 @@ int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)
 
     crc = crc_ccitt(settings, sizeof(settings_t));
     if(crc != settingsCrc)
-        nvm_write(1, -1, 0x0002, settings, sizeof(settings_t));
+        nvm_write(1, -1, NVM_SETTINGS_BASE, settings, sizeof(settings_t));
 
     return 0;
 }
