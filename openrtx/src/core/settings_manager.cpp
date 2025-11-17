@@ -1,3 +1,23 @@
+/***************************************************************************
+ *   Copyright (C)        2025 by Federico Amedeo Izzo IU2NUO,             *
+ *                                Niccolò Izzo IU2KIN                      *
+ *                                Frederik Saraci IU2NRO                   *
+ *                                Silvano Seva IU2KWO                      *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 3 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
+ ***************************************************************************/
+
 #include <cstddef>
 #include <cstdint>
 #include <array>
@@ -116,6 +136,15 @@ bool loadSettingsFromSlice(settings_t &settings, const slice_t &slice,
     }
     return !checksumFailed;
 }
+
+/**
+ * @brief Read a specific slice from memory
+ */
+slice_t readSlice(settings_nvmem_segment_t memory, size_t sliceIndex) {
+    slice_t slice;
+    std::copy_n(memory.data() + sliceIndex * sizeof(slice_t), sizeof(slice_t), reinterpret_cast<uint8_t*>(&slice));
+    return slice;
+}
 } // namespace
 
 /**
@@ -135,8 +164,7 @@ int settings_load(settings_t *out)
         return ret;
 
     for (size_t i = 0; i < REQUIRED_SLICE_COUNT; ++i) {
-        slice_t slice;
-        std::copy_n(r.data() + i * sizeof(slice_t), sizeof(slice_t), reinterpret_cast<uint8_t*>(&slice));
+        slice_t slice = readSlice(r, i);
         loadSettingsFromSlice(*out, slice, i);
     }
 
@@ -154,12 +182,20 @@ int settings_save(const settings_t *in)
     if (!in)
         return -1;
 
+    // Read memory first so that we can compare crcs for slices
+    settings_nvmem_segment_t nvmem;
+    int ret = nvm_readSettings(nvmem.data(), nvmem.size());
+    if (ret < 0)
+        return ret;
+
     for (size_t i = 0; i < REQUIRED_SLICE_COUNT; ++i) {
+        // Read slice from nvmem and compare checksums; only write if the checksum is different (meaning the settings are actually different)
         auto slice = sliceFromSettings(*in, i);
-        // TODO: read checksum, if it's different then write
-        auto ret = nvm_writeSettingsSlice(reinterpret_cast<uint8_t*>(&slice), sizeof(slice_t), i * sizeof(slice_t));
-        if (ret < 0)
-            return ret;
+        if(readSlice(nvmem, i).checksum != slice.checksum) {
+            auto ret = nvm_writeSettingsSlice(reinterpret_cast<uint8_t*>(&slice), sizeof(slice_t), i * sizeof(slice_t));
+            if (ret < 0)
+                return ret;
+        }
     }
     return 0;
 }
