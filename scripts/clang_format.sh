@@ -58,7 +58,7 @@ openrtx/include/core/data_conversion.h
 openrtx/include/core/datatypes.h
 openrtx/include/core/memory_profiling.h
 openrtx/include/core/openrtx.h
-openrtx/include/core/settings_manager.hpp
+openrtx/include/core/nvm_slice_manager.h
 openrtx/include/core/ui.h
 openrtx/include/core/utils.h
 openrtx/include/core/xmodem.h
@@ -74,7 +74,7 @@ openrtx/include/protocols/M17/M17FrameDecoder.hpp
 openrtx/src/core/dsp.cpp
 openrtx/src/core/memory_profiling.cpp
 openrtx/src/protocols/M17/M17FrameDecoder.cpp
-openrtx/src/core/settings_manager.cpp
+openrtx/src/core/nvm_slice_manager.cpp
 platform/drivers/ADC/ADC0_GDx.h
 platform/drivers/audio/MAX9814.h
 platform/drivers/baseband/MCP4551.h

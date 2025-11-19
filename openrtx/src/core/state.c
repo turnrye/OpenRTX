@@ -29,7 +29,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/nvmem.h"
 #include "interfaces/delays.h"
-#include "core/settings_manager.hpp"
+#include "core/nvm_slice_manager.h"
 
 state_t state;
 pthread_mutex_t state_mutex;
