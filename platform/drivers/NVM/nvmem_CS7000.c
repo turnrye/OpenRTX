@@ -161,7 +161,7 @@ int nvm_readVfoChannelData(channel_t *channel)
 int nvm_readSettings(uint8_t *settings, size_t len)
 {
     memset(settings, 0x00, len);
-    int ret = nvm_read(1, -1, 0x0002, settings, len);
+    int ret = nvm_read(1, -1, NVM_SETTINGS_BASE, settings, len);
     if(ret < 0)
         return -1;
 

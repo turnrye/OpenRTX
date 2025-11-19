@@ -67,6 +67,8 @@ extern const struct Adc adc1;
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+#define NVM_SETTINGS_BASE 0x0002
+
 /*
  * To enable pwm for display backlight dimming uncomment this directive.
  *

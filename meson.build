@@ -388,6 +388,7 @@ md3x0_def += openrtx_def + stm32f405_def
 ##
 mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/targets/MD-UV3x0/platform.c',
+               'platform/drivers/NVM/eeep.c',
                'platform/targets/MD-UV3x0/hwconfig.c',
                'platform/drivers/GPS/gps_stm32.cpp',
                'platform/drivers/GPS/nmea_rbuf.c',

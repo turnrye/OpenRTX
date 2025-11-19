@@ -27,6 +27,8 @@
 #include "wchar.h"
 #include "core/utils.h"
 #include "drivers/NVM/W25Qx.h"
+#include "drivers/NVM/eeep.h"
+#include "core/crc.h"
 
 #define SECREG_READ(dev, offs, data, len) \
     nvm_devRead((const struct nvmDevice *) dev, offs, data, len)
@@ -46,13 +48,32 @@ W25Qx_SECREG_DEFINE(cal1,   eflashCfg, 0x1000, 0x100)    // 256 byte
 W25Qx_SECREG_DEFINE(cal2,   eflashCfg, 0x2000, 0x100)    // 256 byte
 W25Qx_SECREG_DEFINE(hwInfo, eflashCfg, 0x3000, 0x100)    // 256 byte
 
+EEEP_DEVICE_DEFINE(eeep)
+
+
+const struct nvmPartition eflashPartitions[] = 
+{
+    {
+        .offset = 0x0000,    // Calibration data (keep existing)
+        .size   = 0x100000   // 1MB for cal data
+    },
+    {
+        .offset = 0x100000,  // EEEP storage partition
+        .size   = 0x10000    // 64kB for settings // TODO change to 16kB
+    },
+    {
+        .offset = 0x110000,  // Remaining space
+        .size   = 0xEF0000   // Rest of 16MB flash
+    }
+};
+
 static const struct nvmDescriptor nvmDevices[] =
 {
     {
         .name       = "External flash",
         .dev        = &eflash,
-        .partNum    = 0,
-        .partitions = NULL
+        .partNum    = 3,
+        .partitions = eflashPartitions  // Add this
     },
     {
         .name       = "Cal. data 1",
@@ -65,9 +86,18 @@ static const struct nvmDescriptor nvmDevices[] =
         .dev        = (const struct nvmDevice *) &cal2,
         .partNum    = 0,
         .partitions = NULL
+    },
+    {
+        .name       = "Virtual EEPROM", 
+        .dev        = &eeep,
+        .partNum    = 0,
+        .partitions = NULL
     }
 };
 
+
+static uint16_t settingsCrc;
+static uint16_t vfoCrc;
 
 void nvm_init()
 {
@@ -80,10 +110,12 @@ void nvm_init()
     #endif
 
     W25Qx_init(&eflash);
+    eeep_init(&eeep, 0, 1); // Use appropriate partition
 }
 
 void nvm_terminate()
 {
+    eeep_terminate(&eeep);
     W25Qx_terminate(&eflash);
 }
 
@@ -206,6 +238,24 @@ void nvm_readHwInfo(hwInfo_t *info)
     info->uhf_band = 1;
     #endif
 }
+
+int nvm_readSettings(uint8_t *settings, size_t len)
+{
+    memset(settings, 0x00, len);
+    int ret = nvm_read(3, -1, NVM_SETTINGS_BASE, settings, len);
+    if(ret < 0)
+        return -1;
+
+    settingsCrc = crc_ccitt(settings, len);
+
+    return 0;
+}
+
+int nvm_writeSettingsSlice(uint8_t *slice, size_t len, size_t offset)
+{
+    return nvm_write(3, -1, NVM_SETTINGS_BASE + offset, slice, len);
+}
+
 
 /**
  * TODO: functions temporarily implemented in "nvmem_settings_MDx.c"
