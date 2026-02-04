@@ -2,142 +2,157 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.20)
 
-#
-# Zephyr build system imposes to have a fixed folder structure for the target-specific
-# files, that is [...]/boards/ARCH/BOARDNAME because it infers the target
-# architecture by looking at the name of the parent folder of the board folder.
-#
-# This does not make sense, because:
-# 1) The folder with the target-specific files should be put anywhere, given that
-#    the project using Zephyr may have its own conventions.
-# 2) Inferring the target architecture only from the folder tree is an idiocy.
-#
-# So: to make Zephyr play happily in his sandpit without complaints, we create a
-# board_root subfolder inside the build one and we copy the board-specific config
-# files there from our platform/targets tree creating the necessary folder tree.
-#
-# NOTE: the board-specific CMakeLists.txt files have to use the ${OPENRTX_ROOT}
-# variable as the base path. E.g. ${OPENRTX_ROOT}/platform/drivers/somedriver.c
-#
-if (${BOARD} STREQUAL "ttwrplus")
-    set(ARCH xtensa)
-    set(CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/platform/mcu/ESP32S3/zephyr.conf)
+set(OPENRTX_VERSION "0.4.3")
+
+set(OPENRTX_AVAILABLE_TARGETS
+    linux linux_smallscreen linux_mod17
+    md3x0 mduv3x0 md9600
+    gd77 dm1801 dm1701
+    mod17 cs7000 cs7000p
+    ttwrplus
+)
+
+set(OPENRTX_TARGET "linux" CACHE STRING "Build target")
+set_property(CACHE OPENRTX_TARGET PROPERTY STRINGS ${OPENRTX_AVAILABLE_TARGETS})
+
+option(OPENRTX_ASAN "Enable AddressSanitizer" OFF)
+option(OPENRTX_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+
+set(OPENRTX_TEST "" CACHE STRING "Replace main with specialized platform test")
+
+if(NOT OPENRTX_TARGET IN_LIST OPENRTX_AVAILABLE_TARGETS)
+    message(FATAL_ERROR "OPENRTX_TARGET must be one of: ${OPENRTX_AVAILABLE_TARGETS}")
 endif()
 
-#
-# Create the board_root folder and the proper folder tree for the targets
-#
-execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_LIST_DIR}/platform/targets/${BOARD}
-                ${CMAKE_CURRENT_LIST_DIR}/build/board_root/boards/${ARCH}/${BOARD})
+if(OPENRTX_TARGET STREQUAL "ttwrplus")
+    message(FATAL_ERROR "Zephyr targets should be built using west. See CMakeLists.txt.zephyr")
+endif()
 
-#
-# Set the BOARD_ROOT and OPENRTX_ROOT variables
-#
-set(BOARD_ROOT ${CMAKE_CURRENT_LIST_DIR}/build/board_root)
-set(OPENRTX_ROOT ${CMAKE_CURRENT_LIST_DIR})
+include(cmake/ConfigureTarget.cmake)
 
-#
-# Finally, set up the project
-#
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(openrtx)
+project(OpenRTX
+    VERSION ${OPENRTX_VERSION}
+    LANGUAGES C CXX ASM
+)
 
-execute_process(COMMAND git describe --tags --dirty --always
-                OUTPUT_VARIABLE GIT_VER_ID
-                ERROR_QUIET
-                OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-target_compile_definitions(app
-  PRIVATE
-    _GNU_SOURCE
+execute_process(
+    COMMAND git describe --tags --dirty --always
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_VERSION)
+    set(GIT_VERSION "unknown")
+endif()
+
+message(STATUS "OpenRTX ${OPENRTX_VERSION} (${GIT_VERSION})")
+message(STATUS "Target: ${OPENRTX_TARGET}")
+
+add_compile_definitions(
     FONT_UBUNTU_REGULAR
-    CODEC2_MODE_EN_DEFAULT=0
-    FREEDV_MODE_EN_DEFAULT=0
-    CODEC2_MODE_3200_EN=1
-    M_PI=3.14159265358979323846f
-    GIT_VERSION="${GIT_VER_ID}"
+    GIT_VERSION="${GIT_VERSION}"
 )
 
-target_include_directories(app
-  PRIVATE
+if(OPENRTX_TARGET MATCHES "^linux")
+    if(OPENRTX_ASAN)
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+        message(STATUS "AddressSanitizer enabled")
+    endif()
+    if(OPENRTX_UBSAN)
+        add_compile_options(-fsanitize=undefined)
+        add_link_options(-fsanitize=undefined)
+        message(STATUS "UndefinedBehaviorSanitizer enabled")
+    endif()
+endif()
 
-    openrtx/include
-    platform
+include(cmake/TargetOptions.cmake)
 
-    subprojects/codec2
-    subprojects/codec2/src
+add_subdirectory(lib)
+add_subdirectory(subprojects)
+add_subdirectory(openrtx)
+add_subdirectory(platform)
 
-    lib/minmea/include
-    lib/qdec/include
+add_executable(openrtx_${OPENRTX_TARGET})
+
+if(OPENRTX_TEST)
+    target_sources(openrtx_${OPENRTX_TARGET} PRIVATE tests/platform/${OPENRTX_TEST}.c)
+    target_compile_definitions(openrtx_${OPENRTX_TARGET} PRIVATE RUNNING_TESTSUITE)
+else()
+    target_sources(openrtx_${OPENRTX_TARGET} PRIVATE openrtx/src/main.c)
+endif()
+
+# Create an INTERFACE library for the combined openrtx libraries
+# to handle circular dependencies between static libraries
+add_library(openrtx_all INTERFACE)
+
+# Use linker group to handle circular dependencies
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    if(NOT OPENRTX_TARGET MATCHES "^linux")
+        # Embedded targets - include miosix and stdlib in the linker group
+        # The linker group allows circular dependencies between our libs
+        # and the standard libraries (e.g., libm needs __errno from miosix)
+        set(OPENRTX_LIBS
+            -Wl,--start-group
+            openrtx_ui
+            openrtx_rtx
+            openrtx_protocols
+            openrtx_core
+            openrtx_platform
+            openrtx_minmea
+            openrtx_codec2
+            openrtx_miosix
+            stdc++ c m gcc atomic
+            -Wl,--end-group
+        )
+    else()
+        # Linux targets
+        set(OPENRTX_LIBS
+            -Wl,--start-group
+            openrtx_ui
+            openrtx_rtx
+            openrtx_protocols
+            openrtx_core
+            openrtx_platform
+            openrtx_minmea
+            openrtx_codec2
+            -Wl,--end-group
+        )
+    endif()
+else()
+    # For other compilers, repeat the libraries
+    set(OPENRTX_LIBS
+        openrtx_ui
+        openrtx_rtx
+        openrtx_protocols
+        openrtx_core
+        openrtx_platform
+        openrtx_ui
+        openrtx_rtx
+        openrtx_protocols
+        openrtx_core
+        openrtx_platform
+        openrtx_minmea
+        openrtx_codec2
+    )
+endif()
+
+target_link_libraries(openrtx_${OPENRTX_TARGET}
+    PRIVATE
+        ${OPENRTX_LIBS}
 )
 
-target_sources(app
-  PRIVATE
+include(cmake/PostBuild.cmake)
 
-    openrtx/src/main.c
-    openrtx/src/core/state.c
-    openrtx/src/core/threads.c
-    openrtx/src/core/battery.c
-    openrtx/src/core/graphics.c
-    openrtx/src/core/input.c
-    openrtx/src/core/utils.c
-    openrtx/src/core/queue.c
-    openrtx/src/core/chan.c
-    openrtx/src/core/gps.c
-    openrtx/src/core/dsp.cpp
-    openrtx/src/core/cps.c
-    openrtx/src/core/crc.c
-    openrtx/src/core/datetime.c
-    openrtx/src/core/openrtx.c
-    openrtx/src/core/audio_codec.c
-    openrtx/src/core/audio_stream.c
-    openrtx/src/core/audio_path.cpp
-    openrtx/src/core/data_conversion.c
-    openrtx/src/core/memory_profiling.cpp
-    openrtx/src/core/voicePrompts.c
-    openrtx/src/core/voicePromptUtils.c
-    openrtx/src/core/voicePromptData.S
-    openrtx/src/core/nvmem_access.c
-    openrtx/src/rtx/rtx.cpp
-    openrtx/src/rtx/OpMode_FM.cpp
-    openrtx/src/rtx/OpMode_M17.cpp
-    openrtx/src/protocols/M17/M17DSP.cpp
-    openrtx/src/protocols/M17/M17Golay.cpp
-    openrtx/src/protocols/M17/M17Callsign.cpp
-    openrtx/src/protocols/M17/Callsign.cpp
-    openrtx/src/protocols/M17/M17Modulator.cpp
-    openrtx/src/protocols/M17/M17Demodulator.cpp
-    openrtx/src/protocols/M17/M17FrameEncoder.cpp
-    openrtx/src/protocols/M17/M17FrameDecoder.cpp
-    openrtx/src/protocols/M17/M17LinkSetupFrame.cpp
-
-    openrtx/src/ui/default/ui.c
-    openrtx/src/ui/default/ui_main.c
-    openrtx/src/ui/default/ui_menu.c
-    openrtx/src/ui/default/ui_strings.c
-
-    subprojects/codec2/src/dump.c
-    subprojects/codec2/src/lpc.c
-    subprojects/codec2/src/nlp.c
-    subprojects/codec2/src/phase.c
-    subprojects/codec2/src/quantise.c
-    subprojects/codec2/src/postfilter.c
-    subprojects/codec2/src/codec2.c
-    subprojects/codec2/src/codec2_fft.c
-    subprojects/codec2/src/lsp.c
-    subprojects/codec2/src/sine.c
-    subprojects/codec2/src/interp.c
-    subprojects/codec2/src/kiss_fft.c
-    subprojects/codec2/src/kiss_fftr.c
-    subprojects/codec2/src/newamp1.c
-    subprojects/codec2/src/codebook.c
-    subprojects/codec2/src/codebookd.c
-    subprojects/codec2/src/pack.c
-    subprojects/codec2/src/codebooknewamp1.c
-    subprojects/codec2/src/codebooknewamp1_energy.c
-
-    lib/minmea/minmea.c
-)
+if(OPENRTX_TARGET MATCHES "^linux")
+    enable_testing()
+    add_subdirectory(tests)
+endif()

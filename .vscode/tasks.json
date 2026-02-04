@@ -1,144 +1,88 @@
 {
-  // See https://go.microsoft.com/fwlink/?LinkId=733558
-  // for the documentation about the tasks.json format
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "setup arm build",
-      "type": "shell",
-      "command": "meson setup --cross-file cross_arm.txt build_arm"
-    },
-    {
       "label": "build TYT MD-380, MD-390, Retevis RT3, Retevis RT8",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_md3x0",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_md3x0 -DOPENRTX_TARGET=md3x0 && cmake --build build_md3x0",
+      "group": "build"
     },
     {
       "label": "build TYT MD-UV380, MD-UV390, Retevis RT3s",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_mduv3x0",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_mduv3x0 -DOPENRTX_TARGET=mduv3x0 && cmake --build build_mduv3x0",
+      "group": "build"
     },
     {
       "label": "build TYT MD-9600",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_md9600",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_md9600 -DOPENRTX_TARGET=md9600 && cmake --build build_md9600",
+      "group": "build"
     },
     {
       "label": "build Radioddity GD-77",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_gd77",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_gd77 -DOPENRTX_TARGET=gd77 && cmake --build build_gd77",
+      "group": "build"
     },
     {
       "label": "build Baofeng DM1701",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_dm1701",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_dm1701 -DOPENRTX_TARGET=dm1701 && cmake --build build_dm1701",
+      "group": "build"
     },
     {
       "label": "build Baofeng DM1801",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_dm1801",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_dm1801 -DOPENRTX_TARGET=dm1801 && cmake --build build_dm1801",
+      "group": "build"
     },
     {
       "label": "build Module17",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_mod17",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
+      "command": "cmake -B build_mod17 -DOPENRTX_TARGET=mod17 && cmake --build build_mod17",
+      "group": "build"
     },
     {
       "label": "build Connect Systems CS7000-M17",
       "type": "shell",
-      "command": "meson compile -C build_arm openrtx_cs7000",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup arm build",
-      ]
-    },
-    {
-      "label": "setup cm7 build",
-      "type": "shell",
-      "command": "meson setup --cross-file cross_cm7.txt build_cm7"
+      "command": "cmake -B build_cs7000 -DOPENRTX_TARGET=cs7000 && cmake --build build_cs7000",
+      "group": "build"
     },
     {
       "label": "build Connect Systems CS7000-M17 Plus",
       "type": "shell",
-      "command": "meson compile -C build_cm7 openrtx_cs7000p",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup cm7 build",
-      ]
-    },
-    {
-      "label": "setup linux build",
-      "type": "shell",
-      "command": "meson setup build_linux"
+      "command": "cmake -B build_cs7000p -DOPENRTX_TARGET=cs7000p && cmake --build build_cs7000p",
+      "group": "build"
     },
     {
       "label": "build linux",
       "type": "shell",
-      "command": "meson compile -C build_linux openrtx_linux",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup linux build",
-      ]
+      "command": "cmake -B build_linux -DOPENRTX_TARGET=linux && cmake --build build_linux",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     },
     {
       "label": "run linux unit tests",
       "type": "shell",
-      "command": "meson test -C build_linux",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "build linux",
-      ]
-    },
-    {
-      "label": "setup linux build with address sanitizer",
-      "type": "shell",
-      "command": "meson setup build_linux_address -Dasan=true"
+      "command": "ctest --test-dir build_linux --output-on-failure",
+      "group": "test",
+      "dependsOn": ["build linux"]
     },
     {
       "label": "build linux with address sanitizer",
       "type": "shell",
-      "command": "meson compile -C build_linux_address openrtx_linux",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "setup linux build with address sanitizer",
-      ]
+      "command": "cmake -B build_linux_asan -DOPENRTX_TARGET=linux -DOPENRTX_ASAN=ON && cmake --build build_linux_asan",
+      "group": "build"
     },
     {
       "label": "run linux unit tests with address sanitizer",
       "type": "shell",
-      "command": "meson test -C build_linux_address",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "build linux with address sanitizer",
-      ]
+      "command": "ctest --test-dir build_linux_asan --output-on-failure",
+      "group": "test",
+      "dependsOn": ["build linux with address sanitizer"]
     }
   ]
 }

@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+cmake_minimum_required(VERSION 3.20)
+
+##
+## CMakeLists.txt.zephyr - Zephyr-specific build configuration
+##
+## This file is used for Zephyr-based builds (ttwrplus target).
+## Copy this file to CMakeLists.txt before running 'west build -b ttwrplus'
+##
+
+# Handle Zephyr's board folder structure requirements
+if(${BOARD} STREQUAL "ttwrplus")
+    set(ARCH xtensa)
+    set(CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/../platform/mcu/ESP32S3/zephyr.conf)
+endif()
+
+# Copy board files to satisfy Zephyr's folder structure
+execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_LIST_DIR}/../platform/targets/${BOARD}
+    ${CMAKE_CURRENT_LIST_DIR}/build/board_root/boards/${ARCH}/${BOARD})
+
+set(BOARD_ROOT ${CMAKE_CURRENT_LIST_DIR}/build/board_root)
+set(OPENRTX_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
+
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(openrtx)
+
+# Include shared source definitions
+set(OPENRTX_SOURCE_DIR ${OPENRTX_ROOT})
+include(${OPENRTX_ROOT}/cmake/Sources.cmake)
+
+# Add all sources to app target (Zephyr convention)
+target_sources(app PRIVATE
+    ${OPENRTX_SOURCE_DIR}/openrtx/src/main.c
+    ${OPENRTX_CORE_SOURCES}
+    ${OPENRTX_PROTOCOLS_SOURCES}
+    ${OPENRTX_RTX_SOURCES}
+    ${OPENRTX_UI_DEFAULT_SOURCES}
+    ${OPENRTX_MINMEA_SOURCES}
+    
+    # Codec2 sources for embedded/Zephyr builds
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/dump.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/lpc.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/nlp.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/phase.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/quantise.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/postfilter.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codec2.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codec2_fft.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/lsp.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/sine.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/interp.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/kiss_fft.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/kiss_fftr.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/newamp1.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebook.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebookd.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/pack.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebooknewamp1.c
+    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebooknewamp1_energy.c
+)
+
+target_include_directories(app PRIVATE ${OPENRTX_INCLUDE_DIRS})
+target_compile_definitions(app PRIVATE ${OPENRTX_COMMON_DEFINITIONS})
+
+# Add platform-specific sources
+# Note: The platform/targets/ttwrplus/CMakeLists.txt should handle adding platform sources

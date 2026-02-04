@@ -10,10 +10,10 @@
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools-extension-pack",
-        "mesonbuild.mesonbuild",
+        "ms-vscode.cmake-tools",
         "ms-python.python"
       ]
     }
   },
-  "postCreateCommand": "meson setup --cross-file cross_arm.txt build_arm && meson setup --cross-file cross_cm7.txt build_cm7 && meson setup build_linux"
+  "postCreateCommand": "cmake -B build_linux -DOPENRTX_TARGET=linux"
 }

@@ -19,38 +19,57 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           runCmd: |
-            meson setup build_linux &&
-            meson setup --cross-file cross_arm.txt build_arm &&
-            meson setup --cross-file cross_cm7.txt build_cm7 &&
-            meson compile -C build_linux openrtx_linux &&
-            meson compile -C build_linux openrtx_linux_smallscreen &&
-            meson compile -C build_linux openrtx_linux_mod17 &&
-            meson compile -C build_arm openrtx_cs7000_bin &&
-            meson compile -C build_arm openrtx_cs7000_dfu &&
-            meson compile -C build_arm openrtx_dm1701_wrap &&
-            meson compile -C build_arm openrtx_dm1801_wrap &&
-            meson compile -C build_arm openrtx_md3x0_wrap &&
-            meson compile -C build_arm openrtx_md9600_wrap &&
-            meson compile -C build_arm openrtx_mduv3x0_wrap &&
-            meson compile -C build_arm openrtx_mod17_bin &&
-            meson compile -C build_arm openrtx_gd77_wrap &&
-            meson compile -C build_cm7 openrtx_cs7000p_wrap &&
-            meson compile -C build_cm7 openrtx_cs7000p_dfu &&
+            # Build Linux targets
+            cmake -B build_linux -DOPENRTX_TARGET=linux &&
+            cmake --build build_linux &&
+            cmake -B build_linux_small -DOPENRTX_TARGET=linux_smallscreen &&
+            cmake --build build_linux_small &&
+            cmake -B build_linux_mod17 -DOPENRTX_TARGET=linux_mod17 &&
+            cmake --build build_linux_mod17 &&
+            # Build ARM targets
+            cmake -B build_cs7000 -DOPENRTX_TARGET=cs7000 &&
+            cmake --build build_cs7000 &&
+            cmake --build build_cs7000 --target openrtx_cs7000_bin &&
+            cmake --build build_cs7000 --target openrtx_cs7000_dfu &&
+            cmake -B build_dm1701 -DOPENRTX_TARGET=dm1701 &&
+            cmake --build build_dm1701 &&
+            cmake --build build_dm1701 --target openrtx_dm1701_wrap &&
+            cmake -B build_dm1801 -DOPENRTX_TARGET=dm1801 &&
+            cmake --build build_dm1801 &&
+            cmake --build build_dm1801 --target openrtx_dm1801_wrap &&
+            cmake -B build_md3x0 -DOPENRTX_TARGET=md3x0 &&
+            cmake --build build_md3x0 &&
+            cmake --build build_md3x0 --target openrtx_md3x0_wrap &&
+            cmake -B build_md9600 -DOPENRTX_TARGET=md9600 &&
+            cmake --build build_md9600 &&
+            cmake --build build_md9600 --target openrtx_md9600_wrap &&
+            cmake -B build_mduv3x0 -DOPENRTX_TARGET=mduv3x0 &&
+            cmake --build build_mduv3x0 &&
+            cmake --build build_mduv3x0 --target openrtx_mduv3x0_wrap &&
+            cmake -B build_mod17 -DOPENRTX_TARGET=mod17 &&
+            cmake --build build_mod17 &&
+            cmake --build build_mod17 --target openrtx_mod17_bin &&
+            cmake -B build_gd77 -DOPENRTX_TARGET=gd77 &&
+            cmake --build build_gd77 &&
+            cmake --build build_gd77 --target openrtx_gd77_wrap &&
+            # Build CM7 targets
+            cmake -B build_cs7000p -DOPENRTX_TARGET=cs7000p &&
+            cmake --build build_cs7000p &&
+            cmake --build build_cs7000p --target openrtx_cs7000p_wrap &&
+            cmake --build build_cs7000p --target openrtx_cs7000p_dfu &&
             chmod -R 777 * &&
-            ls build_cm7/ &&
-            ls build_arm/ &&
-            ls build_linux/ &&
-            mv build_cm7/openrtx_cs7000p_wrap openrtx_cs7000p_${{ env.BRANCH_NAME }}.bin &&
-            mv build_cm7/openrtx_cs7000p_dfu openrtx_cs7000p_${{ env.BRANCH_NAME }}.dfu &&
-            mv build_arm/openrtx_cs7000_bin openrtx_cs7000_${{ env.BRANCH_NAME }}.bin &&
-            mv build_arm/openrtx_cs7000_dfu openrtx_cs7000_${{ env.BRANCH_NAME }}.dfu &&
-            mv build_arm/openrtx_dm1701_wrap openrtx_dm1701_${{ env.BRANCH_NAME }}.bin &&
-            mv build_arm/openrtx_dm1801_bin.sgl openrtx_dm1801_${{ env.BRANCH_NAME }}.sgl &&
-            mv build_arm/openrtx_gd77_bin.sgl openrtx_gd77_${{ env.BRANCH_NAME }}.sgl &&
+            ls build_*/ &&
+            mv build_cs7000p/openrtx_cs7000p_wrap openrtx_cs7000p_${{ env.BRANCH_NAME }}.bin &&
+            mv build_cs7000p/openrtx_cs7000p_dfu openrtx_cs7000p_${{ env.BRANCH_NAME }}.dfu &&
+            mv build_cs7000/openrtx_cs7000_bin openrtx_cs7000_${{ env.BRANCH_NAME }}.bin &&
+            mv build_cs7000/openrtx_cs7000_dfu openrtx_cs7000_${{ env.BRANCH_NAME }}.dfu &&
+            mv build_dm1701/openrtx_dm1701_wrap openrtx_dm1701_${{ env.BRANCH_NAME }}.bin &&
+            mv build_dm1801/openrtx_dm1801_bin.sgl openrtx_dm1801_${{ env.BRANCH_NAME }}.sgl &&
+            mv build_gd77/openrtx_gd77_bin.sgl openrtx_gd77_${{ env.BRANCH_NAME }}.sgl &&
             mv build_linux/openrtx_linux openrtx_linux_${{ env.BRANCH_NAME }} &&
-            mv build_arm/openrtx_md3x0_wrap openrtx_md3x0_${{ env.BRANCH_NAME }}.bin &&
-            mv build_arm/openrtx_mduv3x0_wrap openrtx_mduv3x0_${{ env.BRANCH_NAME }}.bin &&
-            mv build_arm/openrtx_mod17_bin openrtx_mod17_${{ env.BRANCH_NAME }}.bin
+            mv build_md3x0/openrtx_md3x0_wrap openrtx_md3x0_${{ env.BRANCH_NAME }}.bin &&
+            mv build_mduv3x0/openrtx_mduv3x0_wrap openrtx_mduv3x0_${{ env.BRANCH_NAME }}.bin &&
+            mv build_mod17/openrtx_mod17_bin openrtx_mod17_${{ env.BRANCH_NAME }}.bin
       - uses: actions/upload-artifact@v4
         with:
           name: release-bins
@@ -78,7 +97,7 @@ jobs:
       - name: install-deps
         run: |
           sudo apt update
-          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2
+          sudo apt install -y git pkg-config build-essential libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -91,15 +110,17 @@ jobs:
           sdk-version: 0.17.0
       - name: Compile zephyr
         run: |
-          cd app
-          meson setup build
-          meson compile -C build openrtx_ttwrplus_uf2
+          cd app/zephyr
+          # Zephyr builds use the CMakeLists.txt.zephyr file via west
+          cp CMakeLists.txt.zephyr CMakeLists.txt
+          west build -b ttwrplus -d build
+          python ../scripts/uf2conv.py build/zephyr/zephyr.bin -c -f ESP32S3 -b 0x0 -o openrtx_ttwrplus.uf2
         shell: bash
       - uses: actions/upload-artifact@v4
         with:
           name: zephyr-release-bins
           path: |
-            app/build/openrtx_*.uf2
+            app/zephyr/openrtx_ttwrplus.uf2
   unit-test:
     runs-on: ubuntu-22.04
     steps:
@@ -110,25 +131,11 @@ jobs:
       - name: install-deps
         run: |
           sudo apt update
-          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2
-      - name: setup meson
+          sudo apt install -y git pkg-config build-essential libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2
+      - name: setup cmake
         run: |
           cd ${{github.workspace}}
-          meson setup build
-      - name: M17 Viterbi Unit Test
-        run: meson test -C build "M17 Viterbi Unit Test"
-      - name: M17 Golay Unit Test
-        run: meson test -C build "M17 Golay Unit Test"
-      - name: M17 RRC Test
-        run: meson test -C build "M17 RRC Test"
-      - name: M17 Callsign Unit Test
-        run: meson test -C build "M17 Callsign Unit Test"
-      - name: Codeplug Test
-        run: meson test -C build "Codeplug Test"
-      - name: minmea Conversion Test
-        run: meson test -C build "minmea conversion Test"
-      # The following tests are disabled because they appear to be flakey when run in CI
-      # - name: Sine Test
-      #   run: meson test -C build "Sine Test"
-      # - name: Linux InputStream Test
-      #   run: meson test -C build "Linux InputStream Test"
+          cmake -B build -DOPENRTX_TARGET=linux
+          cmake --build build
+      - name: Run all unit tests
+        run: ctest --test-dir build --output-on-failure
