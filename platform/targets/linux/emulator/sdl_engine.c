@@ -67,6 +67,7 @@ static bool sdk_key_code_to_key(SDL_Keycode sym, keyboard_t *key)
             return true;
 
         case SDLK_ASTERISK:
+        case SDLK_s:
             *key = KEY_STAR;
             return true;
 
@@ -87,6 +88,7 @@ static bool sdk_key_code_to_key(SDL_Keycode sym, keyboard_t *key)
             return true;
 
         case SDLK_HASH:
+        case SDLK_h:
             *key = KEY_HASH;
             return true;
 

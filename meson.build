@@ -304,6 +304,8 @@ linux_src = ['platform/targets/linux/emulator/emulator.c',
              'platform/drivers/baseband/radio_linux.cpp',
              'platform/drivers/audio/audio_linux.c',
              'platform/drivers/audio/file_source.c',
+             'platform/drivers/audio/file_sink.c',
+             'platform/drivers/audio/discard_sink.c',
              'platform/targets/linux/platform.c',
              'platform/drivers/CPS/cps_io_libc.c',
              'platform/drivers/NVM/posix_file.c']
@@ -315,10 +317,23 @@ linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':''}
 
 sdl_dep     = dependency('SDL2',     required: false)
 threads_dep = dependency('threads',  required: false)
+
+if get_option('linux_audio') == 'pulse'
+  pulse_simple_dep = dependency('libpulse-simple', required: true)
+  linux_def += {'LINUX_AUDIO_PULSE': ''}
+else
+  pulse_simple_dep = dependency('', required: false)
+endif
+
 linux_src  += openrtx_src
 linux_inc  += openrtx_inc
 linux_def  += openrtx_def
 linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
+
+if get_option('linux_audio') == 'pulse'
+  linux_src += ['platform/drivers/audio/pulse_sink.c',
+                'platform/drivers/audio/pulse_source.c']
+endif
 
 #
 # Standard UI
@@ -683,7 +698,7 @@ endforeach
 linux_opts = {
   'sources'            : linux_default_src,
   'include_directories': linux_inc,
-  'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+  'dependencies'       : [sdl_dep, threads_dep, codec2_dep, pulse_simple_dep],
   'c_args'             : linux_c_args,
   'cpp_args'           : linux_cpp_args,
   'link_args'          : linux_l_args
@@ -692,7 +707,7 @@ linux_opts = {
 linux_small_opts = {
     'sources'            : linux_default_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : [sdl_dep, threads_dep, codec2_dep, pulse_simple_dep],
     'c_args'             : linux_small_c_args,
     'cpp_args'           : linux_small_cpp_args,
     'link_args'          : linux_l_args
@@ -701,7 +716,7 @@ linux_small_opts = {
 linux_mod17_opts = {
     'sources'            : linux_mod17_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : [sdl_dep, threads_dep, codec2_dep, pulse_simple_dep],
     'c_args'             : linux_mod17_c_args,
     'cpp_args'           : linux_mod17_cpp_args,
     'link_args'          : linux_l_args
@@ -1045,7 +1060,7 @@ endforeach
 unit_test_opts = {'c_args'             : linux_c_args,
                   'cpp_args'           : linux_cpp_args,
                   'include_directories': linux_inc,
-                  'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+                  'dependencies'       : [sdl_dep, threads_dep, codec2_dep, pulse_simple_dep],
                   'link_args'          : linux_l_args}
 
 unit_test_src = linux_src + ui_src_default
@@ -1100,3 +1115,4 @@ test('Codeplug Test',         cps_test)
 ## test('Sine Test',             sine_test)
 ## test('Voice Prompts Test',    vp_test) # Skipped for now as this test no longer works
 test('minmea conversion Test', minmea_conversion_test)
+

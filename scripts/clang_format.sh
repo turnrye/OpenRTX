@@ -65,6 +65,14 @@ openrtx/src/protocols/M17/Callsign.cpp
 openrtx/src/protocols/M17/M17FrameDecoder.cpp
 platform/drivers/ADC/ADC0_GDx.h
 platform/drivers/audio/MAX9814.h
+platform/drivers/audio/discard_sink.c
+platform/drivers/audio/discard_sink.h
+platform/drivers/audio/file_sink.c
+platform/drivers/audio/file_sink.h
+platform/drivers/audio/pulse_sink.c
+platform/drivers/audio/pulse_sink.h
+platform/drivers/audio/pulse_source.c
+platform/drivers/audio/pulse_source.h
 platform/drivers/baseband/MCP4551.h
 platform/drivers/baseband/SA8x8.h
 platform/drivers/chSelector/chSelector.h
