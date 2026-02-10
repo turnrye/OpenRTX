@@ -66,7 +66,7 @@
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
 
-/* UI main screen functions, their implementation is in "ui_main.c" */
+/* UI main screen functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop(ui_state_t* ui_state);
 extern void _ui_drawVFOMiddle();
@@ -76,7 +76,7 @@ extern void _ui_drawMEMBottom();
 extern void _ui_drawMainVFO(ui_state_t* ui_state);
 extern void _ui_drawMainVFOInput(ui_state_t* ui_state);
 extern void _ui_drawMainMEM(ui_state_t* ui_state);
-/* UI menu functions, their implementation is in "ui_menu.c" */
+/* UI menu functions, their implementation is in "ui_menu.cpp" */
 extern void _ui_drawMenuTop(ui_state_t* ui_state);
 extern void _ui_drawMenuBank(ui_state_t* ui_state);
 extern void _ui_drawMenuChannel(ui_state_t* ui_state);
@@ -517,7 +517,7 @@ static void _ui_timedate_add_digit(datetime_t *timedate, uint8_t pos,
         vp_queuePrompt(PROMPT_SLASH);
     // just indicates separation of date and time.
     if (pos==6) // start of time.
-        vp_queueString("hh:mm", vpAnnounceCommonSymbols|vpAnnounceLessCommonSymbols);
+        vp_queueString("hh:mm", vpAnnounceCommonSymbols | vpAnnounceLessCommonSymbols);
     if (pos == 8)
         vp_queuePrompt(PROMPT_COLON);
     vp_play();
@@ -605,7 +605,8 @@ static int _ui_fsm_loadChannel(int16_t channel_index, bool *sync_rtx)
     // If a bank is active, get index from current bank
     if(state.bank_enabled)
     {
-        bankHdr_t bank = { 0 };
+        bankHdr_t bank;
+        memset(&bank, 0, sizeof(bank));
         cps_readBankHeader(&bank, state.bank);
         if((channel_index < 0) || (channel_index >= bank.ch_count))
             return -1;
@@ -979,7 +980,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.rxTone,
                                  state.channel.fm.txToneEn,
                                  state.channel.fm.txTone,
-                                 queueFlags |vpqIncludeDescriptions);
+                                 queueFlags | vpqIncludeDescriptions);
             }
             break;
         case 4:
@@ -1266,10 +1267,8 @@ void ui_init()
     redraw_needed = true;
     _ui_calculateLayout(&layout);
     layout_ready = true;
-    // Initialize struct ui_state to all zeroes
-    // This syntax is called compound literal
-    // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
-    ui_state = (const struct ui_state_t){ 0 };
+    // Initialize ui_state to all zeroes
+    memset(&ui_state, 0, sizeof(ui_state));
 }
 
 void ui_drawSplashScreen()

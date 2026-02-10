@@ -6,6 +6,11 @@
 
 #ifndef BEEPS_H_INCLUDED
 #define BEEPS_H_INCLUDED
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Duration in tenths of a second.
 #define SHORT_BEEP 3
 #define LONG_BEEP 7
@@ -17,5 +22,9 @@
 #define BEEP_FUNCTION_LATCH_OFF 400
 #define BEEP_KEY_GENERIC 750
 extern const uint16_t BOOT_MELODY[];
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // BEEPS_H_INCLUDED

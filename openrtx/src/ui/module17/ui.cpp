@@ -18,7 +18,7 @@
 #include "core/input.h"
 #include "hwconfig.h"
 
-/* UI main screen functions, their implementation is in "ui_main.c" */
+/* UI main screen functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop();
 extern void _ui_drawVFOMiddle();
@@ -28,7 +28,7 @@ extern void _ui_drawMEMBottom();
 extern void _ui_drawMainVFO(ui_state_t* ui_state);
 extern void _ui_drawMainVFOInput(ui_state_t* ui_state);
 extern void _ui_drawMainMEM(ui_state_t* ui_state);
-/* UI menu functions, their implementation is in "ui_menu.c" */
+/* UI menu functions, their implementation is in "ui_menu.cpp" */
 extern void _ui_drawMenuTop(ui_state_t* ui_state);
 #ifdef CONFIG_GPS
 extern void _ui_drawMenuGPS();
@@ -263,10 +263,8 @@ void ui_init()
 {
     layout = _ui_calculateLayout();
     layout_ready = true;
-    // Initialize struct ui_state to all zeroes
-    // This syntax is called compound literal
-    // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
-    ui_state = (const struct ui_state_t){ 0 };
+    // Initialize ui_state to all zeroes
+    memset(&ui_state, 0, sizeof(ui_state));
 }
 
 void ui_drawSplashScreen()

@@ -10,6 +10,10 @@
 #include "core/datatypes.h"
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * List of voice prompts for spoken words or phrases which are not in the UI
  * string table. The voice prompt data file stores these first, then after the
@@ -327,5 +331,25 @@ void vp_beep(uint16_t freq, uint16_t duration);
  * Array is freq, duration, ... 0, 0 to terminate series.
  */
 void vp_beepSeries(const uint16_t* beepSeries);
+
+#ifdef __cplusplus
+}
+
+inline vpFlags_t operator|(vpFlags_t a, vpFlags_t b)
+{ return static_cast<vpFlags_t>(static_cast<int>(a) | static_cast<int>(b)); }
+
+inline vpQueueFlags_t operator|(vpQueueFlags_t a, vpQueueFlags_t b)
+{ return static_cast<vpQueueFlags_t>(static_cast<int>(a) | static_cast<int>(b)); }
+
+inline vpQueueFlags_t& operator|=(vpQueueFlags_t& a, vpQueueFlags_t b)
+{ return a = a | b; }
+
+inline vpGPSInfoFlags_t operator|(vpGPSInfoFlags_t a, vpGPSInfoFlags_t b)
+{ return static_cast<vpGPSInfoFlags_t>(static_cast<int>(a) | static_cast<int>(b)); }
+
+inline vpGPSInfoFlags_t& operator|=(vpGPSInfoFlags_t& a, vpGPSInfoFlags_t b)
+{ return a = a | b; }
+
+#endif
 
 #endif

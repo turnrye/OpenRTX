@@ -16,7 +16,7 @@
 #include "core/memory_profiling.h"
 #include "hwconfig.h"
 
-/* UI main screen helper functions, their implementation is in "ui_main.c" */
+/* UI main screen helper functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBottom();
 
 

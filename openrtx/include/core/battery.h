@@ -9,11 +9,19 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * This function computes the battery's state of charge given its current voltage.
  * @param vbat: battery voltage in millivolt.
  * @return state of charge percentage, from 0% to 100%.
  */
 uint8_t battery_getCharge(uint16_t vbat);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* BATTERY_H */

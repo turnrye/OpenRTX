@@ -22,7 +22,7 @@
 #include "drivers/baseband/SA8x8.h"
 #endif
 
-/* UI main screen helper functions, their implementation is in "ui_main.c" */
+/* UI main screen helper functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBottom();
 extern const char* _ui_getToneEnabledString(bool tone_tx_enable,
                             bool tone_rx_enable, bool use_abbreviation);
@@ -736,7 +736,7 @@ void _ui_drawMenuGPS()
         int32_t latitude     = abs(last_state.gps_data.latitude);
         uint8_t latitude_int = latitude / 1000000;
         int32_t latitude_dec = latitude % 1000000;
-        char *direction_lat  = (last_state.gps_data.latitude < 0) ? "S     " : "N     ";
+        const char *direction_lat  = (last_state.gps_data.latitude < 0) ? "S     " : "N     ";
 
         gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_CENTER,
                   color_white, direction_lat);
@@ -749,7 +749,7 @@ void _ui_drawMenuGPS()
         int32_t longitude     = abs(last_state.gps_data.longitude);
         uint8_t longitude_int = longitude / 1000000;
         int32_t longitude_dec = longitude % 1000000;
-        char *direction_lon   = (last_state.gps_data.longitude < 0) ? "W     " : "E     ";
+        const char *direction_lon   = (last_state.gps_data.longitude < 0) ? "W     " : "E     ";
 
         gfx_print(layout.line2_pos, layout.top_font, TEXT_ALIGN_CENTER,
                   color_white, direction_lon);
