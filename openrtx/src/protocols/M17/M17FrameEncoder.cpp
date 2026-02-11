@@ -99,6 +99,39 @@ uint16_t M17FrameEncoder::encodeStreamFrame(const payload_t& payload,
     return streamFrame.getFrameNumber();
 }
 
+void M17::M17FrameEncoder::encodePacketFrame(const payload_t& payload,
+                                            frame_t& output,
+                                            const uint8_t frameNumber,
+                                            const bool isLast)
+{
+    M17PacketFrame packetFrame;
+
+    packetFrame.setEofBit(isLast);
+    packetFrame.setCounter(frameNumber);
+    std::copy(payload.begin(), payload.end(), packetFrame.payload().begin());
+
+    // Encode frame: 206 Type 1 bits (25 bytes payload + 1 byte metadata = 26 bytes)
+    // Add 4 flush bits -> 210 bits
+    // Convolutional encode -> 420 Type 2 bits (53 bytes)
+    std::array<uint8_t, 53> encoded;
+    encoder.reset();
+    encoder.encode(packetFrame.getData(), encoded.data(), sizeof(M17PacketFrame));
+    encoded[52] = encoder.flush();
+
+    // Puncture with P3 pattern (420 bits -> 368 bits = 46 bytes)
+    std::array<uint8_t, 46> punctured;
+    puncture(encoded, punctured, PACKET_PUNCTURE);
+
+    // Interleave and decorrelate
+    interleave(punctured);
+    decorrelate(punctured);
+
+    // Copy data to output buffer, prepended with packet sync word
+    auto it = std::copy(PACKET_SYNC_WORD.begin(), PACKET_SYNC_WORD.end(),
+                        output.begin());
+    std::copy(punctured.begin(), punctured.end(), it);
+}
+
 void M17::M17FrameEncoder::encodeEotFrame(M17::frame_t& output)
 {
     for(size_t i = 0; i < output.size(); i += 2)
