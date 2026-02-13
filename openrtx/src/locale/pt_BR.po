@@ -8,8 +8,8 @@ msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-10-17 07:55-0500\n"
-"PO-Revision-Date: 2025-11-10 17:30+0000\n"
-"Last-Translator: Paulo Dutra <mcpauloh@gmail.com>\n"
+"PO-Revision-Date: 2026-02-13 23:48+0000\n"
+"Last-Translator: Guilherme Parisotto <guilhermeparisotto17@gmail.com>\n"
 "Language-Team: Portuguese (Brazil) <https://hosted.weblate.org/projects/"
 "openrtx/openrtx/pt_BR/>\n"
 "Language: pt_BR\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n > 1;\n"
-"X-Generator: Weblate 5.15-dev\n"
+"X-Generator: Weblate 5.16-dev\n"
 
 #. i18n: This should be the endonym for the language/locale; it is used in the locale selection menu
 #: openrtx/include/ui/EnglishStrings.h:30
@@ -66,7 +66,6 @@ msgid "About"
 msgstr "Sobre"
 
 #: openrtx/include/ui/EnglishStrings.h:41 openrtx/src/ui/module17/ui_menu.c:475
-#, fuzzy
 msgid "Display"
 msgstr "Mostrador"
 
@@ -107,9 +106,8 @@ msgid "GPS Enabled"
 msgstr "GPS Ativado"
 
 #: openrtx/include/ui/EnglishStrings.h:51
-#, fuzzy
 msgid "GPS Set Time"
-msgstr "Hora definida pelo GPS"
+msgstr "Horario GPS"
 
 #: openrtx/include/ui/EnglishStrings.h:52
 msgid "UTC Timezone"
@@ -148,9 +146,8 @@ msgid "Bat. Charge"
 msgstr "Carga da Bateria"
 
 #: openrtx/include/ui/EnglishStrings.h:61
-#, fuzzy
 msgid "RSSI"
-msgstr "Indicador de Força de Sinal Recebido (RSSI)"
+msgstr "Indicador de Sinal Recebido (RSSI)"
 
 #: openrtx/include/ui/EnglishStrings.h:62
 msgid "Model"
@@ -267,9 +264,8 @@ msgid "To reset:"
 msgstr "Para Resetar:"
 
 #: openrtx/include/ui/EnglishStrings.h:90 openrtx/src/ui/module17/ui_menu.c:617
-#, fuzzy
 msgid "Press Enter twice"
-msgstr "Aperte Entrar duas vezes"
+msgstr "Aperte Enter duas vezes"
 
 #: openrtx/include/ui/EnglishStrings.h:91
 msgid "Macro Menu"
@@ -288,9 +284,8 @@ msgid "Accessibility"
 msgstr "Acessibilidade"
 
 #: openrtx/include/ui/EnglishStrings.h:95
-#, fuzzy
 msgid "Used heap"
-msgstr "Pilha (heap) usada"
+msgstr "Pilha usada"
 
 #: openrtx/include/ui/EnglishStrings.h:96
 msgid "ALL"
@@ -305,7 +300,6 @@ msgid "Offset"
 msgstr "Desvio"
 
 #: openrtx/include/ui/EnglishStrings.h:99
-#, fuzzy
 msgid "Macro Latch"
 msgstr "Trava do Macro"
 
@@ -334,7 +328,6 @@ msgid "Decode"
 msgstr "Decodificar"
 
 #: openrtx/include/ui/EnglishStrings.h:106
-#, fuzzy
 msgid "Both"
 msgstr "Ambos"
 
@@ -577,13 +570,11 @@ msgstr "%d.%dW"
 
 #. i18n: "Unlk" means "Unlock", string length critical
 #: openrtx/src/ui/default/ui_menu.c:1326
-#, fuzzy
 msgid "Unlk"
 msgstr "DESB"
 
 #. i18n: "Lck" means "Lock", string length critical
 #: openrtx/src/ui/default/ui_menu.c:1330
-#, fuzzy
 msgid "Lck"
 msgstr "BLO"
 
