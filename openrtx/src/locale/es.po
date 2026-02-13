@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-10-17 07:55-0500\n"
-"PO-Revision-Date: 2025-11-11 01:09+0000\n"
+"PO-Revision-Date: 2026-02-13 23:49+0000\n"
 "Last-Translator: Wojciech Kaczmarski <w.kaczmarski@teletra.pl>\n"
 "Language-Team: Spanish <https://hosted.weblate.org/projects/openrtx/openrtx/"
 "es/>\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.15-dev\n"
+"X-Generator: Weblate 5.16-dev\n"
 
 #. i18n: This should be the endonym for the language/locale; it is used in the locale selection menu
 #: openrtx/include/ui/EnglishStrings.h:30
