@@ -9,7 +9,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-10-17 07:55-0500\n"
 "PO-Revision-Date: 2026-02-13 23:49+0000\n"
-"Last-Translator: \"Carl (Superminaren)\" <c.vargklint@gmail.com>\n"
+"Last-Translator: Wojciech Kaczmarski <w.kaczmarski@teletra.pl>\n"
 "Language-Team: Swedish <https://hosted.weblate.org/projects/openrtx/openrtx/"
 "sv/>\n"
 "Language: sv\n"
@@ -550,12 +550,12 @@ msgstr ""
 #: openrtx/src/ui/default/ui_menu.c:948 openrtx/src/ui/module17/ui_menu.c:506
 #, c-format
 msgid "%02d/%02d/%02d"
-msgstr ""
+msgstr "%02d-%02d-%02d"
 
 #. i18n: date placeholder for setting date; string length critical
 #: openrtx/src/ui/default/ui_menu.c:966 openrtx/src/ui/module17/ui_menu.c:523
 msgid "__/__/__"
-msgstr ""
+msgstr "__-__-__"
 
 #. i18n: time placeholder for setting time; string length critical
 #: openrtx/src/ui/default/ui_menu.c:968 openrtx/src/ui/module17/ui_menu.c:524
