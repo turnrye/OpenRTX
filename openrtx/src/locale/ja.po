@@ -9,7 +9,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-10-17 07:55-0500\n"
 "PO-Revision-Date: 2026-02-13 23:49+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Last-Translator: Wojciech Kaczmarski <w.kaczmarski@teletra.pl>\n"
 "Language-Team: Japanese <https://hosted.weblate.org/projects/openrtx/openrtx/"
 "ja/>\n"
 "Language: ja\n"
@@ -22,7 +22,7 @@ msgstr ""
 #. i18n: This should be the endonym for the language/locale; it is used in the locale selection menu
 #: openrtx/include/ui/EnglishStrings.h:30
 msgid "English"
-msgstr ""
+msgstr "日本語"
 
 #: openrtx/include/ui/EnglishStrings.h:31 openrtx/src/ui/default/ui_menu.c:51
 msgid "OFF"
