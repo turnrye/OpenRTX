@@ -28,12 +28,15 @@ static const uint16_t input_longPressTimeout = 700;
  */
 typedef union
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
     struct
     {
         uint32_t long_press : 1,
                  keys       : 29,
                  _padding   : 2;
     };
+#pragma GCC diagnostic pop
 
     uint32_t value;
 }
