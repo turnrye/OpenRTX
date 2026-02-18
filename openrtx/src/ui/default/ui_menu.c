@@ -846,41 +846,6 @@ void _ui_drawMenuInfo(ui_state_t* ui_state)
                            _ui_getInfoValueName);
 }
 
-void _ui_drawMenuAbout(ui_state_t* ui_state)
-{
-    gfx_clearScreen();
-
-    point_t logo_pos;
-    if(CONFIG_SCREEN_HEIGHT >= 100)
-    {
-        logo_pos.x = 0;
-        logo_pos.y = CONFIG_SCREEN_HEIGHT / 5;
-        gfx_print(logo_pos, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, yellow_fab413,
-                  "O P N\nR T X");
-    }
-    else
-    {
-        logo_pos.x = layout.horizontal_pad;
-        logo_pos.y = layout.line3_large_h;
-        gfx_print(logo_pos, layout.line3_large_font, TEXT_ALIGN_CENTER,
-                  yellow_fab413, currentLanguage->openRTX);
-    }
-
-    point_t pos = {CONFIG_SCREEN_WIDTH / 7, CONFIG_SCREEN_HEIGHT - (layout.menu_h * 3) - 5};
-    uint8_t entries_in_screen = (CONFIG_SCREEN_HEIGHT - 1 - pos.y) / layout.menu_h + 1;
-    uint8_t max_scroll = author_num - entries_in_screen;
-
-    if(ui_state->menu_selected >= max_scroll)
-        ui_state->menu_selected = max_scroll;
-
-    for(uint8_t item = 0; item < entries_in_screen; item++)
-    {
-        uint8_t elem = ui_state->menu_selected + item;
-        gfx_print(pos, layout.menu_font, TEXT_ALIGN_LEFT, color_white, authors[elem]);
-        pos.y += layout.menu_h;
-    }
-}
-
 void _ui_drawSettingsDisplay(ui_state_t* ui_state)
 {
     gfx_clearScreen();

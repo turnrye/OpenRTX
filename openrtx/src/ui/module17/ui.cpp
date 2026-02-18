@@ -18,6 +18,12 @@
 #include "core/input.h"
 #include "hwconfig.h"
 
+#include "ui/ScreenManager.h"
+#include "ui/UIContext.h"
+
+static ScreenManager screenMgr;
+static UIContext uiCtx;
+
 extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -37,7 +43,6 @@ extern void _ui_drawSettingsGPS(ui_state_t* ui_state);
 #endif
 extern void _ui_drawMenuSettings(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
-extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
 extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
@@ -115,16 +120,6 @@ const char *info_items[] =
     "BB Tuning Pot",
 };
 
-const char *authors[] =
-{
-    "Niccolo' IU2KIN",
-    "Silvano IU2KWO",
-    "Federico IU2NUO",
-    "Mathis DB9MAT",
-    "Morgan ON4MOD",
-    "Marco DM4RCO"
-};
-
 static const char symbols_callsign[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890/-.";
 
 // Calculate number of menu entries
@@ -137,7 +132,6 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 const uint8_t m17_num = sizeof(m17_items)/sizeof(m17_items[0]);
 const uint8_t module17_num = sizeof(module17_items)/sizeof(module17_items[0]);
 const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
-const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};
 const color_t color_grey = {60, 60, 60, 255};
@@ -609,17 +603,13 @@ void ui_updateFSM(bool *sync_rtx)
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
-            // About screen, scroll without rollover
+            // About screen — handled by MenuAboutScreen via ScreenManager
             case MENU_ABOUT:
-                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
-                {
-                    if(ui_state.menu_selected > 0)
-                        ui_state.menu_selected -= 1;
-                }
-                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
-                    ui_state.menu_selected += 1;
-                else if(msg.keys & KEY_ESC)
-                    _ui_menuBack(MENU_TOP);
+                uiCtx.ui_state = ui_state;
+                if (screenMgr.activeId() != MENU_ABOUT)
+                    screenMgr.setActive(MENU_ABOUT, uiCtx);
+                screenMgr.handleInput(uiCtx, event, sync_rtx);
+                ui_state = uiCtx.ui_state;
                 break;
 
             case SETTINGS_DISPLAY:
@@ -867,9 +857,14 @@ bool ui_updateGUI()
         case MENU_INFO:
             _ui_drawMenuInfo(&ui_state);
             break;
-        // About menu screen
+        // About menu screen — handled by MenuAboutScreen via ScreenManager
         case MENU_ABOUT:
-            _ui_drawMenuAbout(&ui_state);
+            uiCtx.layout = layout;
+            uiCtx.ui_state = ui_state;
+            if (screenMgr.activeId() != MENU_ABOUT)
+                screenMgr.setActive(MENU_ABOUT, uiCtx);
+            screenMgr.draw(uiCtx);
+            ui_state = uiCtx.ui_state;
             break;
         // Display settings screen
         case SETTINGS_DISPLAY:
