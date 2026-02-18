@@ -18,6 +18,7 @@
 #include "core/input.h"
 #include "hwconfig.h"
 
+extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop();
@@ -46,6 +47,7 @@ extern void _ui_drawSettingsM17(ui_state_t* ui_state);
 extern void _ui_drawSettingsModule17(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
+} // extern "C"
 
 const char *menu_items[] =
 {
@@ -249,7 +251,9 @@ static layout_t _ui_calculateLayout()
         input_font,
         menu_font,
         mode_font_big,
-        mode_font_small
+        mode_font_small,
+        line3_h,
+        line3_font
     };
     return new_layout;
 }
@@ -259,10 +263,11 @@ void ui_init()
 {
     layout = _ui_calculateLayout();
     layout_ready = true;
-    // Initialize struct ui_state to all zeroes
-    // This syntax is called compound literal
-    // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
-    ui_state = (const struct ui_state_t){ 0 };
+    // Initialize ui_state to all zeroes
+    memset(&ui_state, 0, sizeof(ui_state));
+
+    extern Screen* getMenuAboutScreen();
+    screenMgr.registerScreen(MENU_ABOUT, getMenuAboutScreen());
 }
 
 void ui_drawSplashScreen()
