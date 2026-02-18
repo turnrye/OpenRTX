@@ -66,6 +66,12 @@
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
 
+#include "ui/ScreenManager.h"
+#include "ui/UIContext.h"
+
+static ScreenManager screenMgr;
+static UIContext uiCtx;
+
 extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -92,7 +98,6 @@ extern void _ui_drawMenuBackupRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuBackup(ui_state_t* ui_state);
 extern void _ui_drawMenuRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
-extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
 extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
@@ -211,17 +216,6 @@ const char *info_items[] =
 #endif
 };
 
-const char *authors[] =
-{
-    "Niccolo' IU2KIN",
-    "Silvano IU2KWO",
-    "Federico IU2NUO",
-    "Fred IU2NRO",
-    "Joseph VK7JS",
-    "Morgan ON4MOD",
-    "Marco DM4RCO"
-};
-
 static const char *symbols_ITU_T_E161[] =
 {
     " 0",
@@ -269,7 +263,6 @@ const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_i
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
 const uint8_t backup_restore_num = sizeof(backup_restore_items)/sizeof(backup_restore_items[0]);
 const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
-const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};
 const color_t color_grey = {60, 60, 60, 255};
@@ -973,7 +966,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.rxTone,
                                  state.channel.fm.txToneEn,
                                  state.channel.fm.txTone,
-                                 (vpQueueFlags_t)(queueFlags | vpqIncludeDescriptions));
+                                 (vpQueueFlags_t)(queueFlags |vpqIncludeDescriptions));
             }
             break;
         case 4:
@@ -1264,6 +1257,9 @@ void ui_init()
     // This syntax is called compound literal
     // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
     ui_state = (const struct ui_state_t){ 0 };
+
+    extern Screen* getMenuAboutScreen();
+    screenMgr.registerScreen(MENU_ABOUT, getMenuAboutScreen());
 }
 
 void ui_drawSplashScreen()
@@ -2001,17 +1997,13 @@ void ui_updateFSM(bool *sync_rtx)
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
-            // About screen, scroll without rollover
+            // About screen — handled by MenuAboutScreen via ScreenManager
             case MENU_ABOUT:
-                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
-                {
-                    if(ui_state.menu_selected > 0)
-                        ui_state.menu_selected -= 1;
-                }
-                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
-                    ui_state.menu_selected += 1;
-                else if(msg.keys & KEY_ESC)
-                    _ui_menuBack(MENU_TOP);
+                uiCtx.ui_state = ui_state;
+                if (screenMgr.activeId() != MENU_ABOUT)
+                    screenMgr.setActive(MENU_ABOUT, uiCtx);
+                screenMgr.handleInput(uiCtx, event, sync_rtx);
+                ui_state = uiCtx.ui_state;
                 break;
 #ifdef CONFIG_RTC
             // Time&Date settings screen
@@ -2626,9 +2618,14 @@ bool ui_updateGUI()
         case MENU_INFO:
             _ui_drawMenuInfo(&ui_state);
             break;
-        // About menu screen
+        // About menu screen — handled by MenuAboutScreen via ScreenManager
         case MENU_ABOUT:
-            _ui_drawMenuAbout(&ui_state);
+            uiCtx.layout = layout;
+            uiCtx.ui_state = ui_state;
+            if (screenMgr.activeId() != MENU_ABOUT)
+                screenMgr.setActive(MENU_ABOUT, uiCtx);
+            screenMgr.draw(uiCtx);
+            ui_state = uiCtx.ui_state;
             break;
 #ifdef CONFIG_RTC
         // Time&Date settings screen
