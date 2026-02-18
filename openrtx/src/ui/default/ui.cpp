@@ -66,6 +66,7 @@
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
 
+extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop(ui_state_t* ui_state);
@@ -104,6 +105,7 @@ extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
+} // extern "C"
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
 {
@@ -509,7 +511,7 @@ static void _ui_timedate_add_digit(datetime_t *timedate, uint8_t pos,
         vp_queuePrompt(PROMPT_SLASH);
     // just indicates separation of date and time.
     if (pos==6) // start of time.
-        vp_queueString("hh:mm", vpAnnounceCommonSymbols|vpAnnounceLessCommonSymbols);
+        vp_queueString("hh:mm", (vpFlags_t)(vpAnnounceCommonSymbols|vpAnnounceLessCommonSymbols));
     if (pos == 8)
         vp_queuePrompt(PROMPT_COLON);
     vp_play();
@@ -795,13 +797,13 @@ static void _ui_changeVoiceLevel(int variation)
     state.settings.vpLevel += variation;
 
     // Force these flags to ensure the changes are spoken for levels 1 through 3.
-    vpQueueFlags_t flags = vpqInit
+    vpQueueFlags_t flags = (vpQueueFlags_t)(vpqInit
                          | vpqAddSeparatingSilence
-                         | vpqPlayImmediately;
+                         | vpqPlayImmediately);
 
     if (!vp_isPlaying())
     {
-        flags |= vpqIncludeDescriptions;
+        flags = (vpQueueFlags_t)(flags | vpqIncludeDescriptions);
     }
 
     vp_announceSettingsVoiceLevel(flags);
@@ -934,7 +936,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                 vp_announceCTCSS(
                     state.channel.fm.rxToneEn, state.channel.fm.rxTone,
                     state.channel.fm.txToneEn, state.channel.fm.txTone,
-                    queueFlags | vpqIncludeDescriptions);
+                    (vpQueueFlags_t)(queueFlags | vpqIncludeDescriptions));
             }
             break;
         case 2:
@@ -971,7 +973,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.rxTone,
                                  state.channel.fm.txToneEn,
                                  state.channel.fm.txTone,
-                                 queueFlags |vpqIncludeDescriptions);
+                                 (vpQueueFlags_t)(queueFlags | vpqIncludeDescriptions));
             }
             break;
         case 4:
@@ -1313,37 +1315,37 @@ static vpGPSInfoFlags_t GetGPSDirectionOrSpeedChanged()
 
     if (state.gps_data.fix_quality != priorGPSFixQuality)
     {
-        whatChanged |= vpGPSFixQuality;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSFixQuality);
         priorGPSFixQuality= state.gps_data.fix_quality;
     }
 
     if (state.gps_data.fix_type != priorGPSFixType)
     {
-        whatChanged |= vpGPSFixType;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSFixType);
         priorGPSFixType = state.gps_data.fix_type;
     }
 
     if (state.gps_data.speed != priorGPSSpeed)
     {
-        whatChanged |= vpGPSSpeed;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSSpeed);
         priorGPSSpeed = state.gps_data.speed;
     }
 
     if (state.gps_data.altitude != priorGPSAltitude)
     {
-        whatChanged |= vpGPSAltitude;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSAltitude);
         priorGPSAltitude = state.gps_data.altitude;
     }
 
     if (state.gps_data.tmg_true != priorGPSDirection)
     {
-        whatChanged |= vpGPSDirection;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSDirection);
         priorGPSDirection = state.gps_data.tmg_true;
     }
 
     if (state.gps_data.satellites_in_view != priorSatellitesInView)
     {
-        whatChanged |= vpGPSSatCount;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSSatCount);
         priorSatellitesInView = state.gps_data.satellites_in_view;
     }
 

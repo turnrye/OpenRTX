@@ -75,7 +75,7 @@ openrtx_inc = ['openrtx/include', 'platform']
 ## OpenRTX UI sources
 ##
 
-ui_src_default = ['openrtx/src/ui/default/ui.c',
+ui_src_default = ['openrtx/src/ui/default/ui.cpp',
                   'openrtx/src/ui/default/ui_main.c',
                   'openrtx/src/ui/default/ui_menu.c',
                   'openrtx/src/ui/default/ui_strings.c']
