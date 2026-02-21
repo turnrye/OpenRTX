@@ -45,7 +45,10 @@ target_sources(app PRIVATE
         # codec2 sources removed
 )
 
-target_include_directories(app PRIVATE ${OPENRTX_INCLUDE_DIRS})
+target_include_directories(app PRIVATE
+    ${OPENRTX_INCLUDE_DIRS}
+    ${OPENRTX_ROOT}/subprojects/XPowersLib/src
+)
 target_compile_definitions(app PRIVATE ${OPENRTX_COMMON_DEFINITIONS})
 
 # Add platform-specific sources
