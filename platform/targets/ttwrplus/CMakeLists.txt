@@ -26,16 +26,13 @@ target_sources(app
     ${OPENRTX_ROOT}/platform/drivers/NVM/nvmem_ttwrplus.c
 
     ${OPENRTX_ROOT}/platform/drivers/stubs/cps_io_stub.c
-
-    ${CMAKE_SOURCE_DIR}/subprojects/XPowersLib/src/XPowersLibInterface.cpp
+      # XPowersLib source removed
 )
 
 target_include_directories(app
   PRIVATE
     ${OPENRTX_ROOT}/platform/targets/ttwrplus
-
-    ${OPENRTX_ROOT}/subprojects/XPowersLib/src
-    ${OPENRTX_ROOT}/subprojects/XPowersLib/src/REG
+      # XPowersLib include removed
 )
 
 target_compile_definitions(app PRIVATE PLATFORM_TTWRPLUS CONFIG_SCREEN_BRIGHTNESS CONFIG_UI_NO_KEYBOARD)

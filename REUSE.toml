@@ -35,9 +35,7 @@ path = [
     "cross_*.txt",
     "meson*",
     "subprojects/tinyusb.wrap",
-    "subprojects/radio_tool.wrap",
-    "subprojects/codec2.wrap",
-    "subprojects/XPowersLib.wrap",
+        # Removed stale subproject .wrap files
     "scripts/uf2families.json",
     "scripts/generate_symbols.py",
 ]

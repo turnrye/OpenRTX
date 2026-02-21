@@ -1,0 +1,9 @@
+[submodule "subprojects/XPowersLib"]
+	path = subprojects/XPowersLib
+	url = https://github.com/lewisxhe/XPowersLib.git
+[submodule "subprojects/codec2"]
+	path = subprojects/codec2
+	url = https://github.com/drowe67/codec2-dev
+[submodule "subprojects/tinyusb"]
+	path = subprojects/tinyusb
+	url = https://github.com/hathach/tinyusb.git

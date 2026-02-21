@@ -15,7 +15,6 @@ find_program(OBJCOPY_EXECUTABLE
 # Look for radio_tool in subprojects first, then in PATH
 find_program(RADIO_TOOL_EXECUTABLE
     NAMES radio_tool
-    PATHS ${CMAKE_SOURCE_DIR}/subprojects/radio_tool
     DOC "Path to radio_tool"
 )
 find_program(DFU_UTIL_EXECUTABLE dfu-util DOC "Path to dfu-util")

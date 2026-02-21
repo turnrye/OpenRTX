@@ -100,8 +100,6 @@ set(OPENRTX_MINMEA_SOURCES
 set(OPENRTX_INCLUDE_DIRS
     ${OPENRTX_SOURCE_DIR}/openrtx/include
     ${OPENRTX_SOURCE_DIR}/platform
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src
     ${OPENRTX_SOURCE_DIR}/lib/minmea/include
     ${OPENRTX_SOURCE_DIR}/lib/qdec/include
 )

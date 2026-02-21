@@ -42,25 +42,7 @@ target_sources(app PRIVATE
     ${OPENRTX_MINMEA_SOURCES}
     
     # Codec2 sources for embedded/Zephyr builds
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/dump.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/lpc.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/nlp.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/phase.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/quantise.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/postfilter.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codec2.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codec2_fft.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/lsp.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/sine.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/interp.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/kiss_fft.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/kiss_fftr.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/newamp1.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebook.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebookd.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/pack.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebooknewamp1.c
-    ${OPENRTX_SOURCE_DIR}/subprojects/codec2/src/codebooknewamp1_energy.c
+        # codec2 sources removed
 )
 
 target_include_directories(app PRIVATE ${OPENRTX_INCLUDE_DIRS})
