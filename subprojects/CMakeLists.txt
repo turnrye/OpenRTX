@@ -22,7 +22,6 @@ if(OPENRTX_TARGET MATCHES "^linux")
 else()
     # For embedded, compile codec2 from source
     add_library(openrtx_codec2 STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/codec2/src/dump.c
         ${CMAKE_CURRENT_SOURCE_DIR}/codec2/src/lpc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/codec2/src/nlp.c
         ${CMAKE_CURRENT_SOURCE_DIR}/codec2/src/phase.c

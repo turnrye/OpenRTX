@@ -27,7 +27,7 @@ target_sources(app
 
     ${OPENRTX_ROOT}/platform/drivers/stubs/cps_io_stub.c
 
-    ${OPENRTX_ROOT}/subprojects/XPowersLib/src/XPowersLibInterface.cpp
+    ${CMAKE_SOURCE_DIR}/subprojects/XPowersLib/src/XPowersLibInterface.cpp
 )
 
 target_include_directories(app
