@@ -120,6 +120,10 @@ static void _ui_drawModeInfo(ui_state_t* ui_state)
                 else
                     last = rtxStatus.M17_src;
 
+                // Show envelope if SMS received
+                if(state.totalSMSMessages > 0)
+                    gfx_drawSymbol(layout.top_pos, layout.top_symbol_font, TEXT_ALIGN_CENTER,
+                                   color_white, SYMBOL_MAIL);
                 // Print CAN
                 gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_RIGHT,
                           color_white, "CAN %02d", state.settings.m17_can);
