@@ -36,6 +36,7 @@ extern void _ui_drawSettingsGPS(ui_state_t* ui_state);
 #endif
 extern void _ui_drawMenuSettings(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
+extern void _ui_drawSMSMenu(ui_state_t* ui_state);
 extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
@@ -81,8 +82,16 @@ const char *m17_items[] =
 {
     "Callsign",
     "Meta Txt",
+    "SMS",
     "CAN",
     "CAN RX Check"
+};
+
+const char *menu_m17sms_items[] =
+{
+    "Send Msg",
+    "View Msg",
+    "Match Call"
 };
 
 const char *module17_items[] =
@@ -134,6 +143,7 @@ const uint8_t display_num = sizeof(display_items)/sizeof(display_items[0]);
 const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_items[0]);
 #endif
 const uint8_t m17_num = sizeof(m17_items)/sizeof(m17_items[0]);
+const uint8_t menu_m17sms_num = sizeof(menu_m17sms_items)/sizeof(menu_m17sms_items[0]);
 const uint8_t module17_num = sizeof(module17_items)/sizeof(module17_items[0]);
 const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
 const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
@@ -423,6 +433,18 @@ static void _ui_menuBack(uint8_t prev_state)
     {
         ui_state.edit_mode = false;
     }
+    else if(ui_state.edit_message)
+    {
+        ui_state.edit_message = false;
+    }
+    else if(ui_state.edit_sms)
+    {
+        ui_state.edit_sms = false;
+    }
+    else if(ui_state.view_sms)
+    {
+        ui_state.view_sms = false;
+    }
     else
     {
         // Return to previous menu
@@ -438,7 +460,10 @@ static void _ui_textInputReset(char *buf)
     ui_state.input_position = 0;
     ui_state.input_set = 0;
     ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
+    if(ui_state.edit_message || ui_state.edit_sms)
+        memset(buf, 0, 822);
+    else
+        memset(buf, 0, 9);
 }
 
 static void _ui_textInputArrows(char *buf, uint8_t max_len, kbd_msg_t msg)
@@ -671,6 +696,66 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 break;
 
+            case SETTINGS_SMS:
+                if(ui_state.edit_sms)
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_message);
+                        // Save selected message and disable input mode
+                        strncpy(state.sms_message, ui_state.new_message, 821);
+                        //        ui_state.edit_sms = false;
+                        if(strlen(state.sms_message) > 0)
+                            state.havePacketData = true;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                        ui_state.edit_sms = false;
+                    else
+                        _ui_textInputArrows(ui_state.new_message, 821, msg);
+                }
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(ui_state.menu_selected == M17_SMSSEND)
+                    {
+                        ui_state.edit_sms = true;
+                        _ui_textInputReset(ui_state.new_message);
+                    }
+                    else if(ui_state.menu_selected == M17_SMSVIEW && !ui_state.view_sms)
+                    {
+                        ui_state.view_sms = true;
+                    }
+                    else if(ui_state.menu_selected == M17_SMSMATCHCALL)
+                    {
+                        state.settings.m17_sms_match_call = !state.settings.m17_sms_match_call;
+                        *sync_rtx = true;
+                    }
+                    else if(ui_state.view_sms)
+                    {
+                        state.delSMSMessage = true;
+                    }
+                }
+                else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine--;
+                    else
+                        _ui_menuUp(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine++;
+                    else
+                        _ui_menuDown(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_ESC)
+                {
+                    ui_state.view_sms = false;
+                    *sync_rtx = true;
+                    _ui_menuBack(SETTINGS_M17);
+                }
+                break;
+
             // M17 Settings
             case SETTINGS_M17:
 
@@ -748,6 +833,10 @@ void ui_updateFSM(bool *sync_rtx)
                             case M_METATEXT:
                                 ui_state.edit_message = true;
                                 _ui_textInputReset(ui_state.new_message);
+                                break;
+                            case M_SMS:
+                                ui_state.menu_selected = 0;
+                                state.ui_screen = SETTINGS_SMS;
                                 break;
                             default:
                                 state.ui_screen = SETTINGS_M17;
@@ -914,6 +1003,10 @@ bool ui_updateGUI()
         // M17 settings screen
         case SETTINGS_M17:
             _ui_drawSettingsM17(&ui_state);
+            break;
+        // SMS menu screen
+        case SETTINGS_SMS:
+            _ui_drawSMSMenu(&ui_state);
             break;
         // Module 17 settings screen
         case SETTINGS_MODULE17:
