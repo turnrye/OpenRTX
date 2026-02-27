@@ -76,6 +76,13 @@ void M17LinkSetupFrame::updateCrc()
     data.crc     = __builtin_bswap16(crc);
 }
 
+uint16_t M17LinkSetupFrame::m17Crc(const void *data, const size_t len)
+{
+    // Compute CRC over len bytes, then return it in big endian format.
+    uint16_t crc = crc16(data, len);
+    return __builtin_bswap16(crc);
+}
+
 bool M17LinkSetupFrame::valid() const
 {
     uint16_t crc = crc_m17(&data, 28);
