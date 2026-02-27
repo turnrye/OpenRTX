@@ -47,6 +47,7 @@ typedef struct
             macroMenuLatch  : 1,  // Automatic latch of macro menu
             _reserved       : 3;
     bool    m17_can_rx;           // Check M17 CAN on RX
+    bool    m17_sms_match_call;   // SMS match callsign to receive
     char    m17_dest[10];         // M17 destination
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage
     bool    gpsSetTime;           // Use GPS to ajust RTC time
@@ -75,6 +76,7 @@ static const settings_t default_settings =
     1,                            // Automatic latch of macro menu enabled
     0,                            // not used
     false,                        // Check M17 CAN on RX
+    true,                         // SMS match callsign
     "",                           // Empty M17 destination
     false,                        // Display battery icon
     false,                        // Update RTC with GPS
