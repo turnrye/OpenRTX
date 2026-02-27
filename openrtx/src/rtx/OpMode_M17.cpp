@@ -141,7 +141,10 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
             break;
 
         case TX:
-            txState(status);
+            if(state.havePacketData)
+                txPacketState(status);
+            else
+                txState(status);
             break;
 
         default:
@@ -516,6 +519,97 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         modulator.sendFrame(m17Frame);
         modulator.stop();
     }
+}
+
+void OpMode_M17::txPacketState(rtxStatus_t *const status)
+{
+    frame_t      m17Frame;
+    pktPayload_t packetFrame;
+    uint8_t      full_packet_data[33 * 25] = {0};
+
+    if(!startRx && locked)
+    {
+        demodulator.stopBasebandSampling();
+        locked = false;
+        status->opStatus = OFF;
+    }
+
+    // Do not transmit if SMS message is empty
+    if(strlen(state.sms_message) == 0)
+    {
+        if(platform_getPttStatus() == false)
+            state.havePacketData = false;
+        startRx = true;
+        status->opStatus = OFF;
+        return;
+    }
+
+    startTx = false;
+
+    M17LinkSetupFrame lsf;
+    lsf.clear();
+    lsf.setSource(std::string(status->source_address));
+
+    std::string dst(status->destination_address);
+    if(!dst.empty())
+        lsf.setDestination(dst);
+
+    memset(full_packet_data, 0, 33 * 25);
+    full_packet_data[0] = 0x05;
+    memcpy(&full_packet_data[1], state.sms_message, strlen(state.sms_message));
+    numPacketbytes = strlen(state.sms_message) + 2;  // 0x05 and 0x00
+
+    uint16_t packet_crc    = __builtin_bswap16(crc_m17(full_packet_data,
+                                                       numPacketbytes));
+    full_packet_data[numPacketbytes]     = packet_crc & 0xFF;
+    full_packet_data[numPacketbytes + 1] = packet_crc >> 8;
+    numPacketbytes += 2;  // Count 2-byte CRC
+
+    streamType_t type;
+    type.fields.dataMode = M17_DATAMODE_PACKET;
+    type.fields.dataType = 0;
+    type.fields.CAN      = status->can;
+
+    lsf.setType(type);
+    lsf.updateCrc();
+
+    encoder.reset();
+    encoder.encodeLsf(lsf, m17Frame);
+
+    radio_enableTx();
+
+    modulator.invertPhase(invertTxPhase);
+    modulator.start();
+    modulator.sendPreamble();
+    modulator.sendFrame(m17Frame);
+
+    uint8_t cnt = 0;
+    while(numPacketbytes > 25)
+    {
+        memcpy(packetFrame.data(), &full_packet_data[cnt * 25], 25);
+        packetFrame[25] = cnt << 2;
+        encoder.encodePacketFrame(packetFrame, m17Frame);
+        modulator.sendFrame(m17Frame);
+        cnt++;
+        numPacketbytes -= 25;
+    }
+
+    memset(packetFrame.data(), 0, 26);
+    memcpy(packetFrame.data(), &full_packet_data[cnt * 25], numPacketbytes);
+    packetFrame[25] = 0x80 | (numPacketbytes << 2);
+    encoder.encodePacketFrame(packetFrame, m17Frame);
+    modulator.sendFrame(m17Frame);
+
+    encoder.encodeEotFrame(m17Frame);
+    modulator.sendFrame(m17Frame);
+    modulator.stop();
+
+    startRx = true;
+    state.havePacketData = false;
+    memset(state.sms_message, 0, 821);
+    lastCRC = 0;
+    status->txDisable = 1;
+    status->opStatus = OFF;
 }
 
 bool OpMode_M17::compareCallsigns(const std::string& localCs,
