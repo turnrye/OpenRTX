@@ -11,9 +11,11 @@
 #include "protocols/M17/M17FrameEncoder.hpp"
 #include "protocols/M17/M17Demodulator.hpp"
 #include "protocols/M17/M17Modulator.hpp"
+#include "protocols/M17/M17LinkSetupFrame.hpp"
 #include "protocols/M17/MetaText.hpp"
 #include "core/audio_path.h"
 #include "OpMode.hpp"
+#include <vector>
 
 /**
  * Specialisation of the OpMode class for the management of M17 operating mode.
@@ -82,6 +84,23 @@ public:
         return dataValid;
     }
 
+    /**
+     * Return selected SMS message from queue if any.
+     *
+     * @param mesg_num: message index to retrieve.
+     * @param sender: buffer to receive the sender callsign.
+     * @param message: buffer to receive the message text.
+     * @return true if a message was returned.
+     */
+    virtual bool getSMSMessage(uint8_t mesg_num, char *sender, char *message) override;
+
+    /**
+     * Delete an SMS message from the queue.
+     *
+     * @param mesg_num: message index to delete.
+     */
+    virtual void delSMSMessage(uint8_t mesg_num) override;
+
 private:
 
     /**
@@ -140,6 +159,15 @@ private:
     M17::M17FrameEncoder encoder;      ///< M17 frame encoder
     uint16_t gpsTimer;                 ///< GPS data transmission interval timer
     M17::MetaText metaText;            ///< M17 metatext accumulator
+    bool     smsEnabled;               ///< SMS enabled
+    bool     smsStarted;               ///< SMS message started flag
+    int8_t   smsLastFrame;             ///< SMS frame counter
+    uint16_t lastCRC;                  ///< CRC for last valid SMS message
+    uint16_t totalSMSLength;           ///< Total characters in SMS recall buffer
+    uint16_t numPacketbytes;           ///< Number of packet bytes remaining
+    char     smsBuffer[822];           ///< SMS temporary buffer
+    std::vector<char*> smsSender;      ///< SMS Sender Id buffer
+    std::vector<char*> smsMessage;     ///< SMS message buffer
 };
 
 #endif /* OPMODE_M17_H */
