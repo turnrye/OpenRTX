@@ -16,6 +16,7 @@
 #include "M17ConvolutionalEncoder.hpp"
 #include "M17LinkSetupFrame.hpp"
 #include "M17StreamFrame.hpp"
+#include "M17PacketFrame.hpp"
 
 namespace M17
 {
@@ -70,6 +71,18 @@ public:
      */
     uint16_t encodeStreamFrame(const payload_t& payload, frame_t& output,
                                const bool isLast = false);
+
+    /**
+     * Prepare and encode a packet data frame into a frame ready for
+     * transmission, prepended with the corresponding sync word.
+     *
+     * @param payload: payload data (25 bytes).
+     * @param output: destination buffer for the encoded data.
+     * @param frameNumber: packet frame counter (0-31) or byte count (1-25) if isLast is true.
+     * @param isLast: if true, current frame is marked as the last one with EOF bit set.
+     */
+    void encodePacketFrame(const payload_t& payload, frame_t& output,
+                          const uint8_t frameNumber, const bool isLast = false);
 
     /**
      * Encode an End Of Transmission marker frame.

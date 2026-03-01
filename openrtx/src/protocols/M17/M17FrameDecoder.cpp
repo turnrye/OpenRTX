@@ -29,6 +29,7 @@ void M17FrameDecoder::reset()
     lsf.clear();
     lsfFromLich.clear();
     streamFrame.clear();
+    packetFrame.clear();
 }
 
 M17FrameType M17FrameDecoder::decodeFrame(const frame_t &frame)
@@ -52,6 +53,10 @@ M17FrameType M17FrameDecoder::decodeFrame(const frame_t &frame)
 
         case M17FrameType::STREAM:
             decodeStream(data);
+            break;
+
+        case M17FrameType::PACKET:
+            decodePacket(data);
             break;
 
         default:
@@ -84,6 +89,15 @@ M17FrameDecoder::getFrameType(const std::array<uint8_t, 2> &syncWord)
 
     if (hammDistance < minDistance) {
         type = M17FrameType::STREAM;
+        minDistance = hammDistance;
+    }
+
+    // Packet frame
+    hammDistance = hammingDistance(syncWord[0], PACKET_SYNC_WORD[0])
+                 + hammingDistance(syncWord[1], PACKET_SYNC_WORD[1]);
+
+    if (hammDistance < minDistance) {
+        type = M17FrameType::PACKET;
         minDistance = hammDistance;
     }
 
@@ -145,6 +159,18 @@ void M17FrameDecoder::decodeStream(const std::array<uint8_t, 46> &data)
     uint16_t bitErrs = viterbi.decodePunctured(punctured, tmp, DATA_PUNCTURE);
     if (bitErrs < MAX_VITERBI_ERRORS)
         memcpy(&streamFrame.data, tmp.data(), tmp.size());
+}
+
+void M17FrameDecoder::decodePacket(const std::array<uint8_t, 46> &data)
+{
+    // Decode packet data: 368 Type 3 bits -> 420 Type 2 bits -> 210 Type 1 bits
+    // 210 bits = 26 bytes + 2 flush bits
+    std::array<uint8_t, sizeof(M17PacketFrame)> tmp;
+
+    // Depuncture with P3 pattern and decode with Viterbi
+    uint16_t bitErrs = viterbi.decodePunctured(data, tmp, PACKET_PUNCTURE);
+    if (bitErrs < MAX_VITERBI_ERRORS)
+        memcpy(&packetFrame.data, tmp.data(), tmp.size());
 }
 
 bool M17FrameDecoder::decodeLich(std::array<uint8_t, 6> &segment,
