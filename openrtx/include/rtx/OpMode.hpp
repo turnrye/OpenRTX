@@ -84,6 +84,34 @@ public:
     {
         return false;
     }
+
+    /**
+     * Return selected SMS message from queue if any.
+     * This is only valid for M17 mode.
+     *
+     * @param mesg_num: message index to retrieve.
+     * @param sender: buffer to receive the sender callsign.
+     * @param message: buffer to receive the message text.
+     * @return true if a message was returned.
+     */
+    virtual bool getSMSMessage(uint8_t mesg_num, char *sender, char *message)
+    {
+        (void) sender;
+        (void) message;
+        (void) mesg_num;
+        return false;
+    }
+
+    /**
+     * Delete an SMS message from the queue.
+     * This is only valid for M17 mode.
+     *
+     * @param mesg_num: message index to delete.
+     */
+    virtual void delSMSMessage(uint8_t mesg_num)
+    {
+        (void) mesg_num;
+    }
 };
 
 #endif /* OPMODE_H */

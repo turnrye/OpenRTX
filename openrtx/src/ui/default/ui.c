@@ -65,6 +65,12 @@
 #include "hwconfig.h"
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
+#ifdef CONFIG_M17
+#ifdef CONFIG_T9
+#include "protocols/M17/T9.h"
+#include "protocols/M17/dict_en.h"
+#endif
+#endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -91,6 +97,7 @@ extern void _ui_drawMenuBackupRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuBackup(ui_state_t* ui_state);
 extern void _ui_drawMenuRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
+extern void _ui_drawSMSMenu(ui_state_t* ui_state);
 extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
@@ -170,8 +177,16 @@ const char * settings_m17_items[] =
 {
     "Callsign",
     "Meta Txt",
+    "SMS",
     "CAN",
     "CAN RX Check"
+};
+
+const char *menu_m17sms_items[] =
+{
+    "Send Msg",
+    "View Msg",
+    "Match Call"
 };
 
 const char* settings_fm_items[] =
@@ -262,6 +277,7 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 #endif
 const uint8_t settings_radio_num = sizeof(settings_radio_items)/sizeof(settings_radio_items[0]);
 #ifdef CONFIG_M17
+const uint8_t menu_m17sms_num = sizeof(menu_m17sms_items)/sizeof(menu_m17sms_items[0]);
 const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_items[0]);
 #endif
 const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_items[0]);
@@ -1091,6 +1107,14 @@ static void _ui_menuBack(uint8_t prev_state)
     {
         ui_state.edit_mode = false;
     }
+    else if(ui_state.edit_message)
+    {
+        ui_state.edit_message = false;
+    }
+    else if(ui_state.edit_sms)
+    {
+        ui_state.edit_sms = false;
+    }
     else
     {
         // Return to previous menu
@@ -1107,23 +1131,48 @@ static void _ui_textInputReset(char *buf)
     ui_state.input_position = 0;
     ui_state.input_set = 0;
     ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
+    if(ui_state.edit_message || ui_state.edit_sms)
+        memset(buf, 0, 822);
+    else
+        memset(buf, 0, 9);
     buf[0] = '_';
 }
 
-static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
+#ifdef CONFIG_T9
+// for T9 keying
+static char *addCode(char *code, char symbol)
+{
+    code[strlen(code)] = symbol;
+
+    return getWord(dict_en, code);
+}
+#endif
+
+static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
                          bool callsign)
 {
+#ifdef CONFIG_T9
+    static char code[15]="";
+#endif
+
     long long now = getTick();
     // Get currently pressed number key
     uint8_t num_key = input_getPressedChar(msg);
 
+#ifdef CONFIG_T9
+    if(num_key == 11)
+    {
+        ui_state.useT9 = !ui_state.useT9;
+        return;
+    }
+#endif
     bool key_timeout = ((now - ui_state.last_keypress) >= input_longPressTimeout);
     bool same_key = ui_state.input_number == num_key;
     // Get number of symbols related to currently pressed key
     uint8_t num_symbols = 0;
     if(callsign)
     {
+        ui_state.useT9 = false;
         num_symbols = strlen(symbols_ITU_T_E161_callsign[num_key]);
         if(num_symbols == 0)
             return;
@@ -1146,7 +1195,8 @@ static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
         // Different key pressed: save current char and change key
         else
         {
-            ui_state.input_position += 1;
+            if(!ui_state.useT9)
+                ui_state.input_position += 1;
             ui_state.input_set = 0;
         }
     }
@@ -1155,6 +1205,32 @@ static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
         buf[ui_state.input_position] = symbols_ITU_T_E161_callsign[num_key][ui_state.input_set];
     else
     {
+#ifdef CONFIG_T9
+        if(ui_state.useT9)
+        {
+            if(num_key == 0 || num_key == 1)
+            {
+                if(num_key == 0)
+                    ui_state.input_position = strlen(buf);
+                buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
+                ui_state.input_position += 1;
+                memset((char*)code, 0, strlen((char*)code));
+            }
+            else
+            {
+                uint8_t key = 48 + num_key;
+                if(num_key == 10)
+                    key = 42;
+                char *w = addCode((char*)code, key);
+                if(strlen(w) != 0)
+                    strcpy(&buf[ui_state.input_position], w);
+                else
+                    if(key != 42)
+                        strcpy(&buf[ui_state.input_position], "?");
+            }
+        }
+        else
+#endif
         buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
     }
     // Announce the character
@@ -2404,6 +2480,13 @@ void ui_updateFSM(bool *sync_rtx)
                             vp_announceBuffer(&currentLanguage->metaText,
                                             true, true, ui_state.new_message);
                         }
+                        // If SMS input, navigate to SMS menu
+                        if(ui_state.menu_selected == M17_SMS)
+                        {
+                            ui_state.menu_selected = 0;
+                            ui_state.edit_mode = false;
+                            state.ui_screen = SETTINGS_SMS;
+                        }
                     }
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
                         _ui_menuUp(settings_m17_num);
@@ -2418,6 +2501,77 @@ void ui_updateFSM(bool *sync_rtx)
                         *sync_rtx = true;
                         _ui_menuBack(MENU_SETTINGS);
                     }
+                }
+                break;
+            case SETTINGS_SMS:
+                if(ui_state.edit_sms)
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_message);
+                        // Save selected message and disable input mode
+                        strncpy(state.sms_message, ui_state.new_message, 821);
+                        //              ui_state.edit_sms = false;
+                        if(strlen(state.sms_message) > 0)
+                            state.havePacketData = true;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                        ui_state.edit_sms = false;
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                             msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                    {
+                        _ui_textInputDel(ui_state.new_message);
+                    }
+                    else if(input_isCharPressed(msg))
+                    {
+                        _ui_textInputKeypad(ui_state.new_message, 821, msg, false);
+                    }
+                    else if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
+                    {
+                        f1Handled=true;
+                    }
+                }
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(ui_state.menu_selected == M17_SMSSEND)
+                    {
+                        ui_state.edit_sms = true;
+                        _ui_textInputReset(ui_state.new_message);
+                    }
+                    else if(ui_state.menu_selected == M17_SMSVIEW)
+                    {
+                        ui_state.view_sms = true;
+                    }
+                    else if(ui_state.menu_selected == M17_SMSMATCHCALL)
+                    {
+                        state.settings.m17_sms_match_call = !state.settings.m17_sms_match_call;
+                        *sync_rtx = true;
+                    }
+                }
+                else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine--;
+                    else
+                        _ui_menuUp(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                {
+                    if(ui_state.view_sms)
+                        state.currentSMSLine++;
+                    else
+                        _ui_menuDown(menu_m17sms_num);
+                }
+                else if(msg.keys & KEY_HASH)
+                {
+                    if(ui_state.view_sms)
+                        state.delSMSMessage = true;
+                }
+                else if(msg.keys & KEY_ESC)
+                {
+                    ui_state.view_sms = false;
+                    *sync_rtx = true;
+                    _ui_menuBack(SETTINGS_M17);
                 }
                 break;
 #endif
@@ -2704,6 +2858,10 @@ bool ui_updateGUI()
         // M17 settings screen
         case SETTINGS_M17:
             _ui_drawSettingsM17(&ui_state);
+            break;
+        // SMS menu screen
+        case SETTINGS_SMS:
+            _ui_drawSMSMenu(&ui_state);
             break;
 #endif
         // FM settings screen
