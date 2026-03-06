@@ -26,7 +26,6 @@ class M17FrameDecoder;
 class M17PacketFrame
 {
 public:
-
     /**
      * Constructor.
      */
@@ -38,7 +37,9 @@ public:
     /**
      * Destructor.
      */
-    ~M17PacketFrame(){ }
+    ~M17PacketFrame()
+    {
+    }
 
     /**
      * Clear the frame content, filling it with zeroes.
@@ -54,7 +55,7 @@ public:
      * @return a reference to frame's payload field, allowing for both read and
      * write access.
      */
-    pktPayload_t& payload()
+    pktPayload_t &payload()
     {
         return data.payload;
     }
@@ -66,21 +67,18 @@ public:
      */
     const uint8_t *getData()
     {
-        return reinterpret_cast < const uint8_t * > (&data);
+        return reinterpret_cast<const uint8_t *>(&data);
     }
 
 private:
-
-    struct __attribute__((packed))
-    {
-        pktPayload_t payload;   // Payload data
-    }
-    data;
-                                                   ///< Frame data.
+    struct __attribute__((packed)) {
+        pktPayload_t payload; // Payload data
+    } data;
+    ///< Frame data.
     // Frame decoder class needs to access raw frame data
     friend class M17FrameDecoder;
 };
 
-}      // namespace M17
+} // namespace M17
 
 #endif // M17_PACKET_FRAME_H
