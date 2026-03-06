@@ -14,6 +14,6 @@
 #include <string.h>
 
 uint8_t getDigit(const char c);
-char* getWord(char *dict, char *code);
+char *getWord(char *dict, char *code);
 
 #endif /* OPENRTX_INCLUDE_PROTOCOLS_M17_T9_H_ */
