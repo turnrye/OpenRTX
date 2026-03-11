@@ -68,9 +68,11 @@
 
 #include "ui/ScreenManager.h"
 #include "ui/UIContext.h"
+#include "ui/TextInputControl.h"
 
 static ScreenManager screenMgr;
 static UIContext uiCtx;
+static TextInputControl callsignInput;
 
 extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
@@ -214,38 +216,6 @@ const char *info_items[] =
     "Radio",
     "Radio FW",
 #endif
-};
-
-static const char *symbols_ITU_T_E161[] =
-{
-    " 0",
-    ",.?1",
-    "abc2ABC",
-    "def3DEF",
-    "ghi4GHI",
-    "jkl5JKL",
-    "mno6MNO",
-    "pqrs7PQRS",
-    "tuv8TUV",
-    "wxyz9WXYZ",
-    "-/*",
-    "#"
-};
-
-static const char *symbols_ITU_T_E161_callsign[] =
-{
-    "0 ",
-    "1",
-    "ABC2",
-    "DEF3",
-    "GHI4",
-    "JKL5",
-    "MNO6",
-    "PQRS7",
-    "TUV8",
-    "WXYZ9",
-    "-/",
-    ""
 };
 
 // Calculate number of menu entries
@@ -1088,97 +1058,6 @@ static void _ui_menuBack(uint8_t prev_state)
     }
 }
 
-static void _ui_textInputReset(char *buf)
-{
-    ui_state.input_number = 0;
-    ui_state.input_position = 0;
-    ui_state.input_set = 0;
-    ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
-    buf[0] = '_';
-}
-
-static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
-                         bool callsign)
-{
-    long long now = getTick();
-    // Get currently pressed number key
-    uint8_t num_key = input_getPressedChar(msg);
-
-    bool key_timeout = ((now - ui_state.last_keypress) >= input_longPressTimeout);
-    bool same_key = ui_state.input_number == num_key;
-    // Get number of symbols related to currently pressed key
-    uint8_t num_symbols = 0;
-    if(callsign)
-    {
-        num_symbols = strlen(symbols_ITU_T_E161_callsign[num_key]);
-        if(num_symbols == 0)
-            return;
-    }
-    else
-        num_symbols = strlen(symbols_ITU_T_E161[num_key]);
-
-    // Return if max length is reached or finished editing last character
-    if((ui_state.input_position >= max_len) || ((ui_state.input_position == (max_len-1)) && (key_timeout || !same_key)))
-        return;
-
-    // Skip keypad logic for first keypress
-    if(ui_state.last_keypress != 0)
-    {
-        // Same key pressed and timeout not expired: cycle over chars of current key
-        if(same_key && !key_timeout)
-        {
-            ui_state.input_set = (ui_state.input_set + 1) % num_symbols;
-        }
-        // Different key pressed: save current char and change key
-        else
-        {
-            ui_state.input_position += 1;
-            ui_state.input_set = 0;
-        }
-    }
-    // Show current character on buffer
-    if(callsign)
-        buf[ui_state.input_position] = symbols_ITU_T_E161_callsign[num_key][ui_state.input_set];
-    else
-    {
-        buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
-    }
-    // Announce the character
-    vp_announceInputChar(buf[ui_state.input_position]);
-    // Update reference values
-    ui_state.input_number = num_key;
-    ui_state.last_keypress = now;
-}
-
-static void _ui_textInputConfirm(char *buf)
-{
-    buf[ui_state.input_position + 1] = '\0';
-}
-
-static void _ui_textInputDel(char *buf)
-{
-    // announce the char about to be backspaced.
-    // Note this assumes editing callsign.
-    // If we edit a different buffer which allows the underline char, we may
-    // not want to exclude it, but when editing callsign, we do not want to say
-    // underline since it means the field is empty.
-    if(buf[ui_state.input_position]
-    && buf[ui_state.input_position]!='_')
-        vp_announceInputChar(buf[ui_state.input_position]);
-
-    buf[ui_state.input_position] = '\0';
-    // Move back input cursor
-    if(ui_state.input_position > 0)
-    {
-        ui_state.input_position--;
-    // If we deleted the initial character, reset starting condition
-    }
-    else
-        ui_state.last_keypress = 0;
-    ui_state.input_set = 0;
-}
-
 static void _ui_numberInputKeypad(uint32_t *num, kbd_msg_t msg)
 {
     long long now = getTick();
@@ -1473,33 +1352,31 @@ void ui_updateFSM(bool *sync_rtx)
                     #ifdef CONFIG_M17
                     if(state.channel.mode == OPMODE_M17)
                     {
-                        if(msg.keys & KEY_ENTER)
+                        if(msg.keys & KEY_HASH)
                         {
-                            _ui_textInputConfirm(ui_state.new_callsign);
-                            // Save selected dst ID and disable input mode
-                            strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
-                            ui_state.edit_mode = false;
-                            *sync_rtx = true;
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
-                                               queueFlags);
-                        }
-                        else if(msg.keys & KEY_HASH)
-                        {
-                            // Save selected dst ID and disable input mode
+                            // Clear destination and disable input mode
                             strncpy(state.settings.m17_dest, "", 1);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
+                            vp_announceM17Info(NULL, ui_state.edit_mode,
                                                queueFlags);
                         }
-                        else if(msg.keys & KEY_ESC)
-                            // Discard selected dst ID and disable input mode
-                            ui_state.edit_mode = false;
-                        else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            _ui_textInputDel(ui_state.new_callsign);
-                        else if(input_isCharPressed(msg))
-                            _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
+                        else
+                        {
+                            InputResult result = callsignInput.handleKey(uiCtx, event);
+                            if(result == InputResult::Confirmed)
+                            {
+                                strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                                vp_announceM17Info(NULL, ui_state.edit_mode,
+                                                   queueFlags);
+                            }
+                            else if(result == InputResult::Cancelled)
+                            {
+                                ui_state.edit_mode = false;
+                            }
+                        }
                         break;
                     }
                     #endif
@@ -1538,9 +1415,8 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                            vp_announceM17Info(NULL, ui_state.edit_mode,
                                                queueFlags);
                         }
                         else
@@ -1661,53 +1537,48 @@ void ui_updateFSM(bool *sync_rtx)
                 // M17 Destination callsign input
                 if(ui_state.edit_mode)
                 {
+                    if(msg.keys & KEY_HASH)
                     {
-                        if(msg.keys & KEY_ENTER)
+                        // Clear destination and disable input mode
+                        strncpy(state.settings.m17_dest, "", 1);
+                        ui_state.edit_mode = false;
+                        *sync_rtx = true;
+                    }
+                    else if(msg.keys & KEY_F1)
+                    {
+                        if (state.settings.vpLevel > vpBeep)
                         {
-                            _ui_textInputConfirm(ui_state.new_callsign);
-                            // Save selected dst ID and disable input mode
+                            if (msg.long_press)
+                            {
+                                vp_announceChannelSummary(
+                                        &state.channel,
+                                        state.channel_index,
+                                        state.bank,
+                                        vpAllInfo);
+                            }
+                            else
+                            {
+                                vp_replayLastPrompt();
+                            }
+
+                            f1Handled = true;
+                        }
+                    }
+                    else
+                    {
+                        InputResult result = callsignInput.handleKey(uiCtx, event);
+                        if(result == InputResult::Confirmed)
+                        {
                             strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                         }
-                        else if(msg.keys & KEY_HASH)
+                        else if(result == InputResult::Cancelled)
                         {
-                            // Save selected dst ID and disable input mode
-                            strncpy(state.settings.m17_dest, "", 1);
                             ui_state.edit_mode = false;
-                            *sync_rtx = true;
                         }
-                        else if(msg.keys & KEY_ESC)
-                            // Discard selected dst ID and disable input mode
-                            ui_state.edit_mode = false;
-                        else if(msg.keys & KEY_F1)
-                        {
-                            if (state.settings.vpLevel > vpBeep)
-                            {
-                                // Quick press repeat vp, long press summary.
-                                if (msg.long_press)
-                                {
-                                    vp_announceChannelSummary(
-                                            &state.channel,
-                                            state.channel_index,
-                                            state.bank,
-                                            vpAllInfo);
-                                }
-                                else
-                                {
-                                    vp_replayLastPrompt();
-                                }
-
-                                f1Handled = true;
-                            }
-                        }
-                        else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            _ui_textInputDel(ui_state.new_callsign);
-                        else if(input_isCharPressed(msg))
-                            _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
-                        break;
                     }
+                    break;
                 }
                 else
                 {
@@ -1734,8 +1605,7 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                         }
                         else
                         {
@@ -2274,37 +2144,28 @@ void ui_updateFSM(bool *sync_rtx)
                     switch (ui_state.menu_selected)
                     {
                         case M17_CALLSIGN:
-                            // Handle text input for M17 callsign
-                            if(msg.keys & KEY_ENTER)
-                            {
-                                _ui_textInputConfirm(ui_state.new_callsign);
-                                // Save selected callsign and disable input mode
-                                strncpy(state.settings.callsign, ui_state.new_callsign, 10);
-                                ui_state.edit_mode = false;
-                                vp_announceBuffer(&currentLanguage->callsign,
-                                                  false, true, state.settings.callsign);
-                            }
-                            else if(msg.keys & KEY_ESC)
-                            {
-                                // Discard selected callsign and disable input mode
-                                ui_state.edit_mode = false;
-                                vp_announceBuffer(&currentLanguage->callsign,
-                                                  false, true, state.settings.callsign);
-                            }
-                            else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                     msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            {
-                                _ui_textInputDel(ui_state.new_callsign);
-                            }
-                            else if(input_isCharPressed(msg))
-                            {
-                                _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
-                            }
-                            else if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
+                            if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
                             {
                                 vp_announceBuffer(&currentLanguage->callsign,
                                                   true, true, ui_state.new_callsign);
                                 f1Handled=true;
+                            }
+                            else
+                            {
+                                InputResult result = callsignInput.handleKey(uiCtx, event);
+                                if(result == InputResult::Confirmed)
+                                {
+                                    strncpy(state.settings.callsign, ui_state.new_callsign, 10);
+                                    ui_state.edit_mode = false;
+                                    vp_announceBuffer(&currentLanguage->callsign,
+                                                      false, true, state.settings.callsign);
+                                }
+                                else if(result == InputResult::Cancelled)
+                                {
+                                    ui_state.edit_mode = false;
+                                    vp_announceBuffer(&currentLanguage->callsign,
+                                                      false, true, state.settings.callsign);
+                                }
                             }
                             break;
                         case M17_CAN:
@@ -2342,7 +2203,7 @@ void ui_updateFSM(bool *sync_rtx)
                         // If callsign input, reset text input variables
                         if(ui_state.menu_selected == M17_CALLSIGN)
                         {
-                            _ui_textInputReset(ui_state.new_callsign);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
                         }
