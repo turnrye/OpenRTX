@@ -1134,4 +1134,50 @@ test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
+##
+## ---------------------------------- E2E Tests --------------------------------
+##
 
+bash = find_program('bash')
+compare = find_program('compare', required : false)
+faketime = find_program('faketime', required : false)
+
+if compare.found() and faketime.found()
+  e2e_runner = meson.project_source_root() / 'tests' / 'e2e' / 'run_e2e.sh'
+  e2e_dir    = meson.project_source_root() / 'tests' / 'e2e'
+
+  e2e_variants = [
+    ['default',   meson.project_build_root() / 'openrtx_linux'],
+    ['module17',  meson.project_build_root() / 'openrtx_linux_mod17'],
+  ]
+
+  # Shared tests: same script runs against all variants
+  e2e_shared_tests = [
+    'main_menu',
+  ]
+
+  foreach t : e2e_shared_tests
+    foreach v : e2e_variants
+      test('E2E ' + t + ' (' + v[0] + ')',
+           bash,
+           args : [e2e_runner, e2e_dir / t + '.txt', v[1], v[0]],
+           timeout : 60)
+    endforeach
+  endforeach
+
+  # Per-variant tests: script named <test>_<variant>.txt
+  e2e_variant_tests = [
+    'about',
+    'settings_m17_callsign',
+    'vfo_m17_callsign',
+  ]
+
+  foreach t : e2e_variant_tests
+    foreach v : e2e_variants
+      test('E2E ' + t + ' (' + v[0] + ')',
+           bash,
+           args : [e2e_runner, e2e_dir / t + '_' + v[0] + '.txt', v[1], v[0]],
+           timeout : 60)
+    endforeach
+  endforeach
+endif
