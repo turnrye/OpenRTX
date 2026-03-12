@@ -18,6 +18,15 @@
 #include "core/input.h"
 #include "hwconfig.h"
 
+#include "ui/ScreenManager.h"
+#include "ui/UIContext.h"
+#include "ui/TextInputControl.h"
+
+static ScreenManager screenMgr;
+static UIContext uiCtx;
+static TextInputControl callsignInput;
+
+extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop();
@@ -36,7 +45,6 @@ extern void _ui_drawSettingsGPS(ui_state_t* ui_state);
 #endif
 extern void _ui_drawMenuSettings(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
-extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
 extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
@@ -46,6 +54,7 @@ extern void _ui_drawSettingsM17(ui_state_t* ui_state);
 extern void _ui_drawSettingsModule17(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
+} // extern "C"
 
 const char *menu_items[] =
 {
@@ -113,18 +122,6 @@ const char *info_items[] =
     "BB Tuning Pot",
 };
 
-const char *authors[] =
-{
-    "Niccolo' IU2KIN",
-    "Silvano IU2KWO",
-    "Federico IU2NUO",
-    "Mathis DB9MAT",
-    "Morgan ON4MOD",
-    "Marco DM4RCO"
-};
-
-static const char symbols_callsign[] = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890/-.";
-
 // Calculate number of menu entries
 const uint8_t menu_num = sizeof(menu_items)/sizeof(menu_items[0]);
 const uint8_t settings_num = sizeof(settings_items)/sizeof(settings_items[0]);
@@ -135,7 +132,6 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 const uint8_t m17_num = sizeof(m17_items)/sizeof(m17_items[0]);
 const uint8_t module17_num = sizeof(module17_items)/sizeof(module17_items[0]);
 const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
-const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};
 const color_t color_grey = {60, 60, 60, 255};
@@ -249,7 +245,9 @@ static layout_t _ui_calculateLayout()
         input_font,
         menu_font,
         mode_font_big,
-        mode_font_small
+        mode_font_small,
+        line3_h,
+        line3_font
     };
     return new_layout;
 }
@@ -259,10 +257,11 @@ void ui_init()
 {
     layout = _ui_calculateLayout();
     layout_ready = true;
-    // Initialize struct ui_state to all zeroes
-    // This syntax is called compound literal
-    // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
-    ui_state = (const struct ui_state_t){ 0 };
+    // Initialize ui_state to all zeroes
+    memset(&ui_state, 0, sizeof(ui_state));
+
+    extern Screen* getMenuAboutScreen();
+    screenMgr.registerScreen(MENU_ABOUT, getMenuAboutScreen());
 }
 
 void ui_drawSplashScreen()
@@ -428,55 +427,6 @@ static void _ui_menuBack(uint8_t prev_state)
     }
 }
 
-static void _ui_textInputReset(char *buf)
-{
-    ui_state.input_number = 0;
-    ui_state.input_position = 0;
-    ui_state.input_set = 0;
-    ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
-}
-
-static void _ui_textInputArrows(char *buf, uint8_t max_len, kbd_msg_t msg)
-{
-    if(ui_state.input_position >= max_len)
-        return;
-
-    uint8_t num_symbols = 0;
-    num_symbols = strlen(symbols_callsign);
-
-    if (msg.keys & KEY_RIGHT)
-    {
-        if (ui_state.input_position < (max_len - 1))
-        {
-            ui_state.input_position = ui_state.input_position + 1;
-            ui_state.input_set = 0;
-        }
-    }
-    else if (msg.keys & KEY_LEFT)
-    {
-        if (ui_state.input_position > 0)
-        {
-            buf[ui_state.input_position] = '\0';
-            ui_state.input_position = ui_state.input_position - 1;
-        }
-
-        // get index of current selected character in symbol table
-        ui_state.input_set = strcspn(symbols_callsign, &buf[ui_state.input_position]);
-    }
-    else if (msg.keys & KEY_UP)
-        ui_state.input_set = (ui_state.input_set + 1) % num_symbols;
-    else if (msg.keys & KEY_DOWN)
-        ui_state.input_set = ui_state.input_set==0 ? num_symbols-1 : ui_state.input_set-1;
-
-    buf[ui_state.input_position] = symbols_callsign[ui_state.input_set];
-}
-
-static void _ui_textInputConfirm(char *buf)
-{
-    buf[ui_state.input_position + 1] = '\0';
-}
-
 void ui_saveState()
 {
     last_state = state;
@@ -504,18 +454,17 @@ void ui_updateFSM(bool *sync_rtx)
             case MAIN_VFO:
                 if(ui_state.edit_mode)
                 {
-                    if(msg.keys & KEY_ENTER)
+                    InputResult result = callsignInput.handleKey(uiCtx, event);
+                    if(result == InputResult::Confirmed)
                     {
-                        _ui_textInputConfirm(ui_state.new_callsign);
-                        // Save selected callsign and disable input mode
                         strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
                         *sync_rtx = true;
                         ui_state.edit_mode = false;
                     }
-                    else if(msg.keys & KEY_ESC)
+                    else if(result == InputResult::Cancelled)
+                    {
                         ui_state.edit_mode = false;
-                    else
-                        _ui_textInputArrows(ui_state.new_callsign, 9, msg);
+                    }
                 }
                 else
                 {
@@ -529,6 +478,7 @@ void ui_updateFSM(bool *sync_rtx)
                     else if (msg.keys & KEY_RIGHT)
                     {
                         ui_state.edit_mode = true;
+                        callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                     }
                 }
                 break;
@@ -604,17 +554,13 @@ void ui_updateFSM(bool *sync_rtx)
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
-            // About screen, scroll without rollover
+            // About screen — handled by MenuAboutScreen via ScreenManager
             case MENU_ABOUT:
-                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
-                {
-                    if(ui_state.menu_selected > 0)
-                        ui_state.menu_selected -= 1;
-                }
-                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
-                    ui_state.menu_selected += 1;
-                else if(msg.keys & KEY_ESC)
-                    _ui_menuBack(MENU_TOP);
+                uiCtx.ui_state = ui_state;
+                if (screenMgr.activeId() != MENU_ABOUT)
+                    screenMgr.setActive(MENU_ABOUT, uiCtx);
+                screenMgr.handleInput(uiCtx, event, sync_rtx);
+                ui_state = uiCtx.ui_state;
                 break;
 
             case SETTINGS_DISPLAY:
@@ -656,17 +602,16 @@ void ui_updateFSM(bool *sync_rtx)
 
                 if(ui_state.edit_mode)
                 {
-                    if(msg.keys & KEY_ENTER)
+                    InputResult result = callsignInput.handleKey(uiCtx, event);
+                    if(result == InputResult::Confirmed)
                     {
-                        _ui_textInputConfirm(ui_state.new_callsign);
-                        // Save selected callsign and disable input mode
                         strncpy(state.settings.callsign, ui_state.new_callsign, 10);
                         ui_state.edit_mode = false;
                     }
-                    else if(msg.keys & KEY_ESC)
+                    else if(result == InputResult::Cancelled)
+                    {
                         ui_state.edit_mode = false;
-                    else
-                        _ui_textInputArrows(ui_state.new_callsign, 9, msg);
+                    }
                 }
                 else
                 {
@@ -706,7 +651,7 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable callsign input
                             case M_CALLSIGN:
                                 ui_state.edit_mode = true;
-                                _ui_textInputReset(ui_state.new_callsign);
+                                callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                                 break;
                             default:
                                 state.ui_screen = SETTINGS_M17;
@@ -862,9 +807,14 @@ bool ui_updateGUI()
         case MENU_INFO:
             _ui_drawMenuInfo(&ui_state);
             break;
-        // About menu screen
+        // About menu screen — handled by MenuAboutScreen via ScreenManager
         case MENU_ABOUT:
-            _ui_drawMenuAbout(&ui_state);
+            uiCtx.layout = layout;
+            uiCtx.ui_state = ui_state;
+            if (screenMgr.activeId() != MENU_ABOUT)
+                screenMgr.setActive(MENU_ABOUT, uiCtx);
+            screenMgr.draw(uiCtx);
+            ui_state = uiCtx.ui_state;
             break;
         // Display settings screen
         case SETTINGS_DISPLAY:

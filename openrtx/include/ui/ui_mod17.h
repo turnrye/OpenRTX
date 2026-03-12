@@ -170,6 +170,9 @@ typedef struct layout_t
     fontSize_t menu_font;
     fontSize_t mode_font_big;
     fontSize_t mode_font_small;
+    // Cross-UI compatibility fields
+    uint16_t line3_large_h;
+    fontSize_t line3_large_font;
 } layout_t;
 
 /**
@@ -215,7 +218,6 @@ extern const char *m17_items[];
 extern const char *module17_items[];
 extern const char *backup_restore_items[];
 extern const char *info_items[];
-extern const char *authors[];
 extern const uint8_t menu_num;
 extern const uint8_t settings_num;
 extern const uint8_t display_num;
@@ -224,7 +226,6 @@ extern const uint8_t backup_restore_num;
 extern const uint8_t m17_num;
 extern const uint8_t module17_num;
 extern const uint8_t info_num;
-extern const uint8_t author_num;
 extern const color_t color_black;
 extern const color_t color_grey;
 extern const color_t color_white;

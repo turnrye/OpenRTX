@@ -66,6 +66,15 @@
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
 
+#include "ui/ScreenManager.h"
+#include "ui/UIContext.h"
+#include "ui/TextInputControl.h"
+
+static ScreenManager screenMgr;
+static UIContext uiCtx;
+static TextInputControl callsignInput;
+
+extern "C" {
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
 extern void _ui_drawMainTop(ui_state_t* ui_state);
@@ -91,7 +100,6 @@ extern void _ui_drawMenuBackupRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuBackup(ui_state_t* ui_state);
 extern void _ui_drawMenuRestore(ui_state_t* ui_state);
 extern void _ui_drawMenuInfo(ui_state_t* ui_state);
-extern void _ui_drawMenuAbout(ui_state_t* ui_state);
 #ifdef CONFIG_RTC
 extern void _ui_drawSettingsTimeDate();
 extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
@@ -104,6 +112,7 @@ extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
+} // extern "C"
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
 {
@@ -209,49 +218,6 @@ const char *info_items[] =
 #endif
 };
 
-const char *authors[] =
-{
-    "Niccolo' IU2KIN",
-    "Silvano IU2KWO",
-    "Federico IU2NUO",
-    "Fred IU2NRO",
-    "Joseph VK7JS",
-    "Morgan ON4MOD",
-    "Marco DM4RCO"
-};
-
-static const char *symbols_ITU_T_E161[] =
-{
-    " 0",
-    ",.?1",
-    "abc2ABC",
-    "def3DEF",
-    "ghi4GHI",
-    "jkl5JKL",
-    "mno6MNO",
-    "pqrs7PQRS",
-    "tuv8TUV",
-    "wxyz9WXYZ",
-    "-/*",
-    "#"
-};
-
-static const char *symbols_ITU_T_E161_callsign[] =
-{
-    "0 ",
-    "1",
-    "ABC2",
-    "DEF3",
-    "GHI4",
-    "JKL5",
-    "MNO6",
-    "PQRS7",
-    "TUV8",
-    "WXYZ9",
-    "-/",
-    ""
-};
-
 // Calculate number of menu entries
 const uint8_t menu_num = sizeof(menu_items)/sizeof(menu_items[0]);
 const uint8_t settings_num = sizeof(settings_items)/sizeof(settings_items[0]);
@@ -267,7 +233,6 @@ const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_i
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
 const uint8_t backup_restore_num = sizeof(backup_restore_items)/sizeof(backup_restore_items[0]);
 const uint8_t info_num = sizeof(info_items)/sizeof(info_items[0]);
-const uint8_t author_num = sizeof(authors)/sizeof(authors[0]);
 
 const color_t color_black = {0, 0, 0, 255};
 const color_t color_grey = {60, 60, 60, 255};
@@ -509,7 +474,7 @@ static void _ui_timedate_add_digit(datetime_t *timedate, uint8_t pos,
         vp_queuePrompt(PROMPT_SLASH);
     // just indicates separation of date and time.
     if (pos==6) // start of time.
-        vp_queueString("hh:mm", vpAnnounceCommonSymbols|vpAnnounceLessCommonSymbols);
+        vp_queueString("hh:mm", (vpFlags_t)(vpAnnounceCommonSymbols|vpAnnounceLessCommonSymbols));
     if (pos == 8)
         vp_queuePrompt(PROMPT_COLON);
     vp_play();
@@ -795,13 +760,13 @@ static void _ui_changeVoiceLevel(int variation)
     state.settings.vpLevel += variation;
 
     // Force these flags to ensure the changes are spoken for levels 1 through 3.
-    vpQueueFlags_t flags = vpqInit
+    vpQueueFlags_t flags = (vpQueueFlags_t)(vpqInit
                          | vpqAddSeparatingSilence
-                         | vpqPlayImmediately;
+                         | vpqPlayImmediately);
 
     if (!vp_isPlaying())
     {
-        flags |= vpqIncludeDescriptions;
+        flags = (vpQueueFlags_t)(flags | vpqIncludeDescriptions);
     }
 
     vp_announceSettingsVoiceLevel(flags);
@@ -816,7 +781,7 @@ static void _ui_changePhoneticSpell(bool newVal)
                                    state.settings.vpPhoneticSpell);
 }
 
-bool _ui_checkStandby(long long time_since_last_event)
+extern "C" bool _ui_checkStandby(long long time_since_last_event)
 {
     if (standby)
     {
@@ -934,7 +899,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                 vp_announceCTCSS(
                     state.channel.fm.rxToneEn, state.channel.fm.rxTone,
                     state.channel.fm.txToneEn, state.channel.fm.txTone,
-                    queueFlags | vpqIncludeDescriptions);
+                    (vpQueueFlags_t)(queueFlags | vpqIncludeDescriptions));
             }
             break;
         case 2:
@@ -971,7 +936,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.rxTone,
                                  state.channel.fm.txToneEn,
                                  state.channel.fm.txTone,
-                                 queueFlags |vpqIncludeDescriptions);
+                                 (vpQueueFlags_t)(queueFlags |vpqIncludeDescriptions));
             }
             break;
         case 4:
@@ -1093,97 +1058,6 @@ static void _ui_menuBack(uint8_t prev_state)
     }
 }
 
-static void _ui_textInputReset(char *buf)
-{
-    ui_state.input_number = 0;
-    ui_state.input_position = 0;
-    ui_state.input_set = 0;
-    ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
-    buf[0] = '_';
-}
-
-static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
-                         bool callsign)
-{
-    long long now = getTick();
-    // Get currently pressed number key
-    uint8_t num_key = input_getPressedChar(msg);
-
-    bool key_timeout = ((now - ui_state.last_keypress) >= input_longPressTimeout);
-    bool same_key = ui_state.input_number == num_key;
-    // Get number of symbols related to currently pressed key
-    uint8_t num_symbols = 0;
-    if(callsign)
-    {
-        num_symbols = strlen(symbols_ITU_T_E161_callsign[num_key]);
-        if(num_symbols == 0)
-            return;
-    }
-    else
-        num_symbols = strlen(symbols_ITU_T_E161[num_key]);
-
-    // Return if max length is reached or finished editing last character
-    if((ui_state.input_position >= max_len) || ((ui_state.input_position == (max_len-1)) && (key_timeout || !same_key)))
-        return;
-
-    // Skip keypad logic for first keypress
-    if(ui_state.last_keypress != 0)
-    {
-        // Same key pressed and timeout not expired: cycle over chars of current key
-        if(same_key && !key_timeout)
-        {
-            ui_state.input_set = (ui_state.input_set + 1) % num_symbols;
-        }
-        // Different key pressed: save current char and change key
-        else
-        {
-            ui_state.input_position += 1;
-            ui_state.input_set = 0;
-        }
-    }
-    // Show current character on buffer
-    if(callsign)
-        buf[ui_state.input_position] = symbols_ITU_T_E161_callsign[num_key][ui_state.input_set];
-    else
-    {
-        buf[ui_state.input_position] = symbols_ITU_T_E161[num_key][ui_state.input_set];
-    }
-    // Announce the character
-    vp_announceInputChar(buf[ui_state.input_position]);
-    // Update reference values
-    ui_state.input_number = num_key;
-    ui_state.last_keypress = now;
-}
-
-static void _ui_textInputConfirm(char *buf)
-{
-    buf[ui_state.input_position + 1] = '\0';
-}
-
-static void _ui_textInputDel(char *buf)
-{
-    // announce the char about to be backspaced.
-    // Note this assumes editing callsign.
-    // If we edit a different buffer which allows the underline char, we may
-    // not want to exclude it, but when editing callsign, we do not want to say
-    // underline since it means the field is empty.
-    if(buf[ui_state.input_position]
-    && buf[ui_state.input_position]!='_')
-        vp_announceInputChar(buf[ui_state.input_position]);
-
-    buf[ui_state.input_position] = '\0';
-    // Move back input cursor
-    if(ui_state.input_position > 0)
-    {
-        ui_state.input_position--;
-    // If we deleted the initial character, reset starting condition
-    }
-    else
-        ui_state.last_keypress = 0;
-    ui_state.input_set = 0;
-}
-
 static void _ui_numberInputKeypad(uint32_t *num, kbd_msg_t msg)
 {
     long long now = getTick();
@@ -1262,6 +1136,9 @@ void ui_init()
     // This syntax is called compound literal
     // https://stackoverflow.com/questions/6891720/initialize-reset-struct-to-zero-null
     ui_state = (const struct ui_state_t){ 0 };
+
+    extern Screen* getMenuAboutScreen();
+    screenMgr.registerScreen(MENU_ABOUT, getMenuAboutScreen());
 }
 
 void ui_drawSplashScreen()
@@ -1313,37 +1190,37 @@ static vpGPSInfoFlags_t GetGPSDirectionOrSpeedChanged()
 
     if (state.gps_data.fix_quality != priorGPSFixQuality)
     {
-        whatChanged |= vpGPSFixQuality;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSFixQuality);
         priorGPSFixQuality= state.gps_data.fix_quality;
     }
 
     if (state.gps_data.fix_type != priorGPSFixType)
     {
-        whatChanged |= vpGPSFixType;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSFixType);
         priorGPSFixType = state.gps_data.fix_type;
     }
 
     if (state.gps_data.speed != priorGPSSpeed)
     {
-        whatChanged |= vpGPSSpeed;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSSpeed);
         priorGPSSpeed = state.gps_data.speed;
     }
 
     if (state.gps_data.altitude != priorGPSAltitude)
     {
-        whatChanged |= vpGPSAltitude;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSAltitude);
         priorGPSAltitude = state.gps_data.altitude;
     }
 
     if (state.gps_data.tmg_true != priorGPSDirection)
     {
-        whatChanged |= vpGPSDirection;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSDirection);
         priorGPSDirection = state.gps_data.tmg_true;
     }
 
     if (state.gps_data.satellites_in_view != priorSatellitesInView)
     {
-        whatChanged |= vpGPSSatCount;
+        whatChanged = (vpGPSInfoFlags_t)(whatChanged | vpGPSSatCount);
         priorSatellitesInView = state.gps_data.satellites_in_view;
     }
 
@@ -1475,33 +1352,31 @@ void ui_updateFSM(bool *sync_rtx)
                     #ifdef CONFIG_M17
                     if(state.channel.mode == OPMODE_M17)
                     {
-                        if(msg.keys & KEY_ENTER)
+                        if(msg.keys & KEY_HASH)
                         {
-                            _ui_textInputConfirm(ui_state.new_callsign);
-                            // Save selected dst ID and disable input mode
-                            strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
-                            ui_state.edit_mode = false;
-                            *sync_rtx = true;
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
-                                               queueFlags);
-                        }
-                        else if(msg.keys & KEY_HASH)
-                        {
-                            // Save selected dst ID and disable input mode
+                            // Clear destination and disable input mode
                             strncpy(state.settings.m17_dest, "", 1);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
+                            vp_announceM17Info(NULL, ui_state.edit_mode,
                                                queueFlags);
                         }
-                        else if(msg.keys & KEY_ESC)
-                            // Discard selected dst ID and disable input mode
-                            ui_state.edit_mode = false;
-                        else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            _ui_textInputDel(ui_state.new_callsign);
-                        else if(input_isCharPressed(msg))
-                            _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
+                        else
+                        {
+                            InputResult result = callsignInput.handleKey(uiCtx, event);
+                            if(result == InputResult::Confirmed)
+                            {
+                                strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                                vp_announceM17Info(NULL, ui_state.edit_mode,
+                                                   queueFlags);
+                            }
+                            else if(result == InputResult::Cancelled)
+                            {
+                                ui_state.edit_mode = false;
+                            }
+                        }
                         break;
                     }
                     #endif
@@ -1540,9 +1415,8 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
-                            vp_announceM17Info(NULL,  ui_state.edit_mode,
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                            vp_announceM17Info(NULL, ui_state.edit_mode,
                                                queueFlags);
                         }
                         else
@@ -1663,53 +1537,48 @@ void ui_updateFSM(bool *sync_rtx)
                 // M17 Destination callsign input
                 if(ui_state.edit_mode)
                 {
+                    if(msg.keys & KEY_HASH)
                     {
-                        if(msg.keys & KEY_ENTER)
+                        // Clear destination and disable input mode
+                        strncpy(state.settings.m17_dest, "", 1);
+                        ui_state.edit_mode = false;
+                        *sync_rtx = true;
+                    }
+                    else if(msg.keys & KEY_F1)
+                    {
+                        if (state.settings.vpLevel > vpBeep)
                         {
-                            _ui_textInputConfirm(ui_state.new_callsign);
-                            // Save selected dst ID and disable input mode
+                            if (msg.long_press)
+                            {
+                                vp_announceChannelSummary(
+                                        &state.channel,
+                                        state.channel_index,
+                                        state.bank,
+                                        vpAllInfo);
+                            }
+                            else
+                            {
+                                vp_replayLastPrompt();
+                            }
+
+                            f1Handled = true;
+                        }
+                    }
+                    else
+                    {
+                        InputResult result = callsignInput.handleKey(uiCtx, event);
+                        if(result == InputResult::Confirmed)
+                        {
                             strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                         }
-                        else if(msg.keys & KEY_HASH)
+                        else if(result == InputResult::Cancelled)
                         {
-                            // Save selected dst ID and disable input mode
-                            strncpy(state.settings.m17_dest, "", 1);
                             ui_state.edit_mode = false;
-                            *sync_rtx = true;
                         }
-                        else if(msg.keys & KEY_ESC)
-                            // Discard selected dst ID and disable input mode
-                            ui_state.edit_mode = false;
-                        else if(msg.keys & KEY_F1)
-                        {
-                            if (state.settings.vpLevel > vpBeep)
-                            {
-                                // Quick press repeat vp, long press summary.
-                                if (msg.long_press)
-                                {
-                                    vp_announceChannelSummary(
-                                            &state.channel,
-                                            state.channel_index,
-                                            state.bank,
-                                            vpAllInfo);
-                                }
-                                else
-                                {
-                                    vp_replayLastPrompt();
-                                }
-
-                                f1Handled = true;
-                            }
-                        }
-                        else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            _ui_textInputDel(ui_state.new_callsign);
-                        else if(input_isCharPressed(msg))
-                            _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
-                        break;
                     }
+                    break;
                 }
                 else
                 {
@@ -1736,8 +1605,7 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                         }
                         else
                         {
@@ -1999,17 +1867,13 @@ void ui_updateFSM(bool *sync_rtx)
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
-            // About screen, scroll without rollover
+            // About screen — handled by MenuAboutScreen via ScreenManager
             case MENU_ABOUT:
-                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
-                {
-                    if(ui_state.menu_selected > 0)
-                        ui_state.menu_selected -= 1;
-                }
-                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
-                    ui_state.menu_selected += 1;
-                else if(msg.keys & KEY_ESC)
-                    _ui_menuBack(MENU_TOP);
+                uiCtx.ui_state = ui_state;
+                if (screenMgr.activeId() != MENU_ABOUT)
+                    screenMgr.setActive(MENU_ABOUT, uiCtx);
+                screenMgr.handleInput(uiCtx, event, sync_rtx);
+                ui_state = uiCtx.ui_state;
                 break;
 #ifdef CONFIG_RTC
             // Time&Date settings screen
@@ -2280,37 +2144,28 @@ void ui_updateFSM(bool *sync_rtx)
                     switch (ui_state.menu_selected)
                     {
                         case M17_CALLSIGN:
-                            // Handle text input for M17 callsign
-                            if(msg.keys & KEY_ENTER)
-                            {
-                                _ui_textInputConfirm(ui_state.new_callsign);
-                                // Save selected callsign and disable input mode
-                                strncpy(state.settings.callsign, ui_state.new_callsign, 10);
-                                ui_state.edit_mode = false;
-                                vp_announceBuffer(&currentLanguage->callsign,
-                                                  false, true, state.settings.callsign);
-                            }
-                            else if(msg.keys & KEY_ESC)
-                            {
-                                // Discard selected callsign and disable input mode
-                                ui_state.edit_mode = false;
-                                vp_announceBuffer(&currentLanguage->callsign,
-                                                  false, true, state.settings.callsign);
-                            }
-                            else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
-                                     msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
-                            {
-                                _ui_textInputDel(ui_state.new_callsign);
-                            }
-                            else if(input_isCharPressed(msg))
-                            {
-                                _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
-                            }
-                            else if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
+                            if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
                             {
                                 vp_announceBuffer(&currentLanguage->callsign,
                                                   true, true, ui_state.new_callsign);
                                 f1Handled=true;
+                            }
+                            else
+                            {
+                                InputResult result = callsignInput.handleKey(uiCtx, event);
+                                if(result == InputResult::Confirmed)
+                                {
+                                    strncpy(state.settings.callsign, ui_state.new_callsign, 10);
+                                    ui_state.edit_mode = false;
+                                    vp_announceBuffer(&currentLanguage->callsign,
+                                                      false, true, state.settings.callsign);
+                                }
+                                else if(result == InputResult::Cancelled)
+                                {
+                                    ui_state.edit_mode = false;
+                                    vp_announceBuffer(&currentLanguage->callsign,
+                                                      false, true, state.settings.callsign);
+                                }
                             }
                             break;
                         case M17_CAN:
@@ -2348,7 +2203,7 @@ void ui_updateFSM(bool *sync_rtx)
                         // If callsign input, reset text input variables
                         if(ui_state.menu_selected == M17_CALLSIGN)
                         {
-                            _ui_textInputReset(ui_state.new_callsign);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
                         }
@@ -2624,9 +2479,14 @@ bool ui_updateGUI()
         case MENU_INFO:
             _ui_drawMenuInfo(&ui_state);
             break;
-        // About menu screen
+        // About menu screen — handled by MenuAboutScreen via ScreenManager
         case MENU_ABOUT:
-            _ui_drawMenuAbout(&ui_state);
+            uiCtx.layout = layout;
+            uiCtx.ui_state = ui_state;
+            if (screenMgr.activeId() != MENU_ABOUT)
+                screenMgr.setActive(MENU_ABOUT, uiCtx);
+            screenMgr.draw(uiCtx);
+            ui_state = uiCtx.ui_state;
             break;
 #ifdef CONFIG_RTC
         // Time&Date settings screen

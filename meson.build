@@ -75,14 +75,21 @@ openrtx_inc = ['openrtx/include', 'platform']
 ## OpenRTX UI sources
 ##
 
-ui_src_default = ['openrtx/src/ui/default/ui.c',
+ui_src_default = ['openrtx/src/ui/default/ui.cpp',
                   'openrtx/src/ui/default/ui_main.c',
                   'openrtx/src/ui/default/ui_menu.c',
-                  'openrtx/src/ui/default/ui_strings.c']
+                  'openrtx/src/ui/default/ui_strings.c',
+                  'openrtx/src/ui/default/ScreenManager.cpp',
+                  'openrtx/src/ui/default/TextInputControl.cpp',
+                  'openrtx/src/ui/default/screens/MenuAboutScreen.cpp']
 
-ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
+ui_src_module17 = ['openrtx/src/ui/module17/ui.cpp',
                    'openrtx/src/ui/module17/ui_main.c',
-                   'openrtx/src/ui/module17/ui_menu.c']
+                   'openrtx/src/ui/module17/ui_menu.c',
+                   'openrtx/src/ui/default/ui_strings.c',
+                   'openrtx/src/ui/default/ScreenManager.cpp',
+                   'openrtx/src/ui/default/TextInputControl.cpp',
+                   'openrtx/src/ui/default/screens/MenuAboutScreen.cpp']
 
 ##
 ## Selection of main entrypoint
@@ -344,7 +351,7 @@ linux_small_def   = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HE
 # Module17 UI
 #
 linux_mod17_src = linux_src + ui_src_module17
-linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': ''}
+linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': '', 'CONFIG_UI_MODULE17': ''}
 
 linux_c_args   = ['-ffunction-sections', '-fdata-sections', '-std=gnu17']
 linux_cpp_args = ['-ffunction-sections', '-fdata-sections', '-std=c++14']
@@ -477,7 +484,7 @@ mod17_src = ['platform/targets/Module17/platform.c',
              'platform/drivers/baseband/MCP4551.c']
 
 mod17_inc = ['platform/targets/Module17']
-mod17_def = {'PLATFORM_MOD17': ''}
+mod17_def = {'PLATFORM_MOD17': '', 'CONFIG_UI_MODULE17': ''}
 
 mod17_src += openrtx_src + stm32f405_src + ui_src_module17
 mod17_inc += openrtx_inc + stm32f405_inc
@@ -1134,4 +1141,50 @@ test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
+##
+## ---------------------------------- E2E Tests --------------------------------
+##
 
+bash = find_program('bash')
+compare = find_program('compare', required : false)
+faketime = find_program('faketime', required : false)
+
+if compare.found() and faketime.found()
+  e2e_runner = meson.project_source_root() / 'tests' / 'e2e' / 'run_e2e.sh'
+  e2e_dir    = meson.project_source_root() / 'tests' / 'e2e'
+
+  e2e_variants = [
+    ['default',   meson.project_build_root() / 'openrtx_linux'],
+    ['module17',  meson.project_build_root() / 'openrtx_linux_mod17'],
+  ]
+
+  # Shared tests: same script runs against all variants
+  e2e_shared_tests = [
+    'main_menu',
+  ]
+
+  foreach t : e2e_shared_tests
+    foreach v : e2e_variants
+      test('E2E ' + t + ' (' + v[0] + ')',
+           bash,
+           args : [e2e_runner, e2e_dir / t + '.txt', v[1], v[0]],
+           timeout : 60)
+    endforeach
+  endforeach
+
+  # Per-variant tests: script named <test>_<variant>.txt
+  e2e_variant_tests = [
+    'about',
+    'settings_m17_callsign',
+    'vfo_m17_callsign',
+  ]
+
+  foreach t : e2e_variant_tests
+    foreach v : e2e_variants
+      test('E2E ' + t + ' (' + v[0] + ')',
+           bash,
+           args : [e2e_runner, e2e_dir / t + '_' + v[0] + '.txt', v[1], v[0]],
+           timeout : 60)
+    endforeach
+  endforeach
+endif

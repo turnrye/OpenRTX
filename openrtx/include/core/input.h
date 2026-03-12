@@ -11,6 +11,10 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Time interval in milliseconds after which a keypress is considered a long-press
  */
@@ -24,12 +28,15 @@ static const uint16_t input_longPressTimeout = 700;
  */
 typedef union
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
     struct
     {
         uint32_t long_press : 1,
                  keys       : 29,
                  _padding   : 2;
     };
+#pragma GCC diagnostic pop
 
     uint32_t value;
 }
@@ -81,5 +88,9 @@ uint8_t input_getPressedNumber(kbd_msg_t msg);
  * @return the smallest number associated to a char.
  */
 uint8_t input_getPressedChar(kbd_msg_t msg);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* INPUT_H */
