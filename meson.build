@@ -1155,6 +1155,9 @@ m17_packet_framing_test = executable('m17_packet_framing_test',
 m17_sms_tx_test = executable('m17_sms_tx_test',
                               sources : unit_test_src + ['tests/unit/M17_sms_tx.cpp'],
                               kwargs  : unit_test_opts)
+t9_test = executable('t9_test',
+                      sources : unit_test_src + ['tests/unit/T9_test.cpp'],
+                      kwargs  : unit_test_opts)
 
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
@@ -1171,3 +1174,4 @@ test('M17 OpMode SMS Unit Test', m17_opmode_sms_test)
 test('M17 Packet Disassembly Test', m17_packet_disassembly_test)
 test('M17 Packet Framing Test', m17_packet_framing_test)
 test('M17 SMS TX Packet Test', m17_sms_tx_test)
+test('T9 Predictive Text Test', t9_test)

@@ -108,6 +108,7 @@ tests/unit/M17_opmode_sms.cpp
 tests/unit/M17_packet_disassembly.cpp
 tests/unit/M17_sms_tx.cpp
 tests/unit/M17_packet_framing.cpp
+tests/unit/T9_test.cpp
 openrtx/include/rtx/SMSQueue.hpp
 openrtx/src/rtx/SMSQueue.cpp
 openrtx/include/rtx/SmsTxPacket.hpp
