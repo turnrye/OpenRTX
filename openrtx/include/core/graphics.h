@@ -265,6 +265,19 @@ point_t gfx_drawSymbol(point_t start, symbolSize_t size, textAlign_t alignment,
                        color_t color, symbol_t symbol);
 
 /**
+ * Draw a string of symbols.
+ *
+ * @param start: start point, in pixel coordinates.
+ * @param size: symbol size, from the symbolSize_t enum.
+ * @param alignment: text alignment type.
+ * @param color: text color, in color_t format.
+ * @param symbols: null-terminated string of symbol characters.
+ * @return text width and height as point_t coordinates
+ */
+point_t gfx_drawSymbols(point_t start, symbolSize_t size, textAlign_t alignment,
+                        color_t color, const char* symbols);
+
+/**
  * Function to draw battery of arbitrary size.
  * Starting coordinates are relative to the top left point.
  * @param start: battery icon start point, in pixel coordinates.

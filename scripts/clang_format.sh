@@ -99,6 +99,8 @@ tests/unit/M17_rrc.cpp
 tests/unit/M17_viterbi.cpp
 tests/unit/ui_check_standby.cpp
 tests/unit/M17_metatext.cpp
+tests/unit/M17_packet.cpp
+tests/unit/T9_test.cpp
 EOF
 )
 

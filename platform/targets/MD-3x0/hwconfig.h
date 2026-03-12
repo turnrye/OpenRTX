@@ -56,6 +56,7 @@ extern const struct Adc adc1;
 
 /* Device supports M17 mode */
 #define CONFIG_M17
+#define CONFIG_T9
 
 #ifdef __cplusplus
 }

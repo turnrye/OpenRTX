@@ -79,6 +79,7 @@ openrtx_inc = ['openrtx/include', 'platform']
 ui_src_default = ['openrtx/src/ui/default/ui.c',
                   'openrtx/src/ui/default/ui_main.c',
                   'openrtx/src/ui/default/ui_menu.c',
+                  'openrtx/src/protocols/M17/T9.c',
                   'openrtx/src/ui/default/ui_strings.c']
 
 ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
@@ -1130,6 +1131,14 @@ ui_check_standby_test = executable('ui_check_standby_test',
                                     sources : unit_test_src + ['tests/unit/ui_check_standby.cpp'],
                                     kwargs  : unit_test_opts)
 
+m17_packet_test = executable('m17_packet_test',
+                              sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
+                              kwargs  : unit_test_opts)
+
+t9_test = executable('t9_test',
+                      sources : unit_test_src + ['tests/unit/T9_test.cpp'],
+                      kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1140,4 +1149,5 @@ test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
-
+test('M17 Packet Frame Test', m17_packet_test)
+test('T9 Predictive Text Test', t9_test)

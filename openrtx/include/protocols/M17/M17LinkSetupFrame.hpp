@@ -104,6 +104,15 @@ public:
     void updateCrc();
 
     /**
+     * Compute the M17 CRC over a given block of data.
+     *
+     * @param data: pointer to the data block.
+     * @param len: length of the data block, in bytes.
+     * @return computed CRC16 in big endian format.
+     */
+    uint16_t m17Crc(const void *data, const size_t len);
+
+    /**
      * Check if frame data is valid that is, if the CRC computed over the LSF
      * fields matches the one carried by the LSF itself.
      *
