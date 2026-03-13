@@ -329,22 +329,32 @@ void M17Demodulator::reset()
 void M17Demodulator::unlockedState()
 {
     int32_t syncThresh = static_cast< int32_t >(corrThreshold * 33.0f);
-    int8_t  syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
+
+    // Try LSF sync first
+    int8_t syncStatus = lsfSync.update(correlator, syncThresh, -syncThresh);
+
+    if(syncStatus != 0) {
+        demodState = DemodState::SYNCED;
+        return;
+    }
+
+    // If no LSF, try stream sync
+    syncStatus = streamSync.update(correlator, syncThresh, -syncThresh);
 
     if(syncStatus != 0)
         demodState = DemodState::SYNCED;
 }
 
-void M17Demodulator::syncedState()
+uint8_t M17Demodulator::trySync(
+    Synchronizer< M17_SYNCWORD_SYMBOLS, SAMPLES_PER_SYMBOL >& sync,
+    const syncw_t& syncWord)
 {
-    // Set sampling point and deviation, zero frame symbol count
-    samplingPoint  = streamSync.samplingIndex();
+    samplingPoint  = sync.samplingIndex();
     auto deviation = correlator.maxDeviation(samplingPoint);
     frameIndex     = 0;
     devEstimator.init(deviation);
 
-    // Quantize the syncword taking data from the correlator
-    // memory.
+    // Quantize the syncword taking data from the correlator memory.
     for(size_t i = 0; i < SYNCWORD_SAMPLES; i++) {
         size_t  pos = (correlator.index() + i) % SYNCWORD_SAMPLES;
 
@@ -354,10 +364,18 @@ void M17Demodulator::syncedState()
         }
     }
 
-    uint8_t hd = hammingDistance((*demodFrame)[0], STREAM_SYNC_WORD[0])
-               + hammingDistance((*demodFrame)[1], STREAM_SYNC_WORD[1]);
+    return hammingDistance((*demodFrame)[0], syncWord[0])
+         + hammingDistance((*demodFrame)[1], syncWord[1]);
+}
 
-    if(hd == 0)
+void M17Demodulator::syncedState()
+{
+    if(trySync(lsfSync, LSF_SYNC_WORD) == 0) {
+        demodState = DemodState::LOCKED;
+        return;
+    }
+
+    if(trySync(streamSync, STREAM_SYNC_WORD) == 0)
         demodState = DemodState::LOCKED;
     else
         demodState = DemodState::UNLOCKED;
@@ -382,21 +400,47 @@ void M17Demodulator::lockedState(int16_t sample)
     }
 }
 
+bool M17Demodulator::trySyncUpdate(
+    Synchronizer< M17_SYNCWORD_SYMBOLS, SAMPLES_PER_SYMBOL >& sync,
+    const syncw_t& syncWord,
+    bool updateSamplingPoint)
+{
+    int32_t syncThresh = static_cast< int32_t >(corrThreshold * 33.0f);
+    int8_t  syncStatus = sync.update(correlator, syncThresh, -syncThresh);
+
+    if(syncStatus == 0 || frameIndex != M17_SYNCWORD_SYMBOLS)
+        return false;
+
+    uint8_t hd = hammingDistance((*demodFrame)[0], syncWord[0])
+               + hammingDistance((*demodFrame)[1], syncWord[1]);
+
+    if(hd > 1)
+        return false;
+
+    auto deviation = correlator.maxDeviation(samplingPoint);
+    devEstimator.init(deviation);
+
+    if(updateSamplingPoint)
+        samplingPoint = sync.samplingIndex();
+
+    missedSyncs = 0;
+    demodState  = DemodState::LOCKED;
+    return true;
+}
+
 void M17Demodulator::syncUpdateState()
 {
-    uint8_t streamHd = hammingDistance((*demodFrame)[0], STREAM_SYNC_WORD[0])
-                     + hammingDistance((*demodFrame)[1], STREAM_SYNC_WORD[1]);
+    if(trySyncUpdate(packetSync, PACKET_SYNC_WORD))
+        return;
+    if(trySyncUpdate(streamSync, STREAM_SYNC_WORD))
+        return;
+    if(trySyncUpdate(eotSync, EOT_SYNC_WORD, false))
+        return;
 
-    uint8_t eotHd = hammingDistance((*demodFrame)[0], EOT_SYNC_WORD[0])
-                  + hammingDistance((*demodFrame)[1], EOT_SYNC_WORD[1]);
-
-    if(streamHd <= 1)
-        missedSyncs = 0;
-    else
-        missedSyncs += 1;
-
-    // The lock is lost after four consecutive sync misses or an EOT frame.
-    if((missedSyncs > 4) || (eotHd <= 1))
+    // No syncword found, increase missed sync counter.
+    // The lock is lost after four consecutive sync misses.
+    missedSyncs += 1;
+    if(missedSyncs > 4)
         demodState = DemodState::UNLOCKED;
     else
         demodState = DemodState::LOCKED;
