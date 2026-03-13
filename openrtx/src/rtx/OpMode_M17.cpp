@@ -525,7 +525,6 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
 {
     frame_t      m17Frame;
     pktPayload_t packetFrame;
-    uint8_t      full_packet_data[33 * 25] = {0};
 
     if(!startRx && locked)
     {
