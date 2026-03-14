@@ -352,22 +352,22 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
                     if(smsStarted)
                     {
-                        uint8_t rx_fn   = (pf.payload()[25] >> 2) & 0x1F;
-                        uint8_t rx_last =  pf.payload()[25] >> 7;
+                        uint8_t counter = pf.getCounter();
+                        bool    eof     = pf.isEof();
 
-                        if(rx_fn <= 31 && rx_fn == smsLastFrame && !rx_last)
+                        if(counter <= 31 && counter == smsLastFrame && !eof)
                         {
                             memcpy(&packetBuffer[totalSMSLength],
                                    pf.payload().data(), 25);
                             smsLastFrame++;
                             totalSMSLength += 25;
                         }
-                        else if(rx_last)
+                        else if(eof)
                         {
                             memcpy(&packetBuffer[totalSMSLength],
                                    pf.payload().data(),
-                                   rx_fn < 25 ? rx_fn : 25);
-                            totalSMSLength += rx_fn < 25 ? rx_fn : 25;
+                                   counter < 25 ? counter : 25);
+                            totalSMSLength += counter < 25 ? counter : 25;
 
                             uint16_t packet_crc = __builtin_bswap16(
                                 crc_m17(packetBuffer, totalSMSLength - 2));
@@ -523,8 +523,8 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
 void OpMode_M17::txPacketState(rtxStatus_t *const status)
 {
-    frame_t      m17Frame;
-    pktPayload_t packetFrame;
+    frame_t         m17Frame;
+    M17PacketFrame  packetFrame;
 
     if(!startRx && locked)
     {
@@ -585,18 +585,20 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     uint8_t cnt = 0;
     while(numPacketbytes > 25)
     {
-        memcpy(packetFrame.data(), &packetBuffer[cnt * 25], 25);
-        packetFrame[25] = cnt << 2;
-        encoder.encodePacketFrame(packetFrame, m17Frame);
+        packetFrame.clear();
+        memcpy(packetFrame.payload().data(), &packetBuffer[cnt * 25], 25);
+        packetFrame.setCounter(cnt);
+        encoder.encodePacketFrame(packetFrame.payload(), m17Frame);
         modulator.sendFrame(m17Frame);
         cnt++;
         numPacketbytes -= 25;
     }
 
-    memset(packetFrame.data(), 0, 26);
-    memcpy(packetFrame.data(), &packetBuffer[cnt * 25], numPacketbytes);
-    packetFrame[25] = 0x80 | (numPacketbytes << 2);
-    encoder.encodePacketFrame(packetFrame, m17Frame);
+    packetFrame.clear();
+    memcpy(packetFrame.payload().data(), &packetBuffer[cnt * 25], numPacketbytes);
+    packetFrame.setEof(true);
+    packetFrame.setCounter(numPacketbytes);
+    encoder.encodePacketFrame(packetFrame.payload(), m17Frame);
     modulator.sendFrame(m17Frame);
 
     encoder.encodeEotFrame(m17Frame);
