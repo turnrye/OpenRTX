@@ -618,7 +618,7 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
         packetFrame.clear();
         memcpy(packetFrame.payload().data(), &packetBuffer[cnt * 25], 25);
         packetFrame.setCounter(cnt);
-        encoder.encodePacketFrame(packetFrame.payload(), m17Frame);
+        encoder.encodePacketFrame(packetFrame, m17Frame);
         modulator.sendFrame(m17Frame);
         cnt++;
         numPacketbytes -= 25;
@@ -628,7 +628,7 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     memcpy(packetFrame.payload().data(), &packetBuffer[cnt * 25], numPacketbytes);
     packetFrame.setEof(true);
     packetFrame.setCounter(numPacketbytes);
-    encoder.encodePacketFrame(packetFrame.payload(), m17Frame);
+    encoder.encodePacketFrame(packetFrame, m17Frame);
     modulator.sendFrame(m17Frame);
 
     encoder.encodeEotFrame(m17Frame);
