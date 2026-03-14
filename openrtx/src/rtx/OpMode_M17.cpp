@@ -346,7 +346,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                             smsSender.push_back(tmp);
                             smsStarted = true;
                             totalSMSLength = 0;
-                            memset(smsBuffer, 0, 821);
+                            memset(packetBuffer, 0, sizeof(packetBuffer));
                         }
                     }
 
@@ -357,29 +357,29 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
                         if(rx_fn <= 31 && rx_fn == smsLastFrame && !rx_last)
                         {
-                            memcpy(&smsBuffer[totalSMSLength],
+                            memcpy(&packetBuffer[totalSMSLength],
                                    pf.payload().data(), 25);
                             smsLastFrame++;
                             totalSMSLength += 25;
                         }
                         else if(rx_last)
                         {
-                            memcpy(&smsBuffer[totalSMSLength],
+                            memcpy(&packetBuffer[totalSMSLength],
                                    pf.payload().data(),
                                    rx_fn < 25 ? rx_fn : 25);
                             totalSMSLength += rx_fn < 25 ? rx_fn : 25;
 
                             uint16_t packet_crc = __builtin_bswap16(
-                                crc_m17(smsBuffer, totalSMSLength - 2));
+                                crc_m17(packetBuffer, totalSMSLength - 2));
                             uint16_t crc;
                             memcpy((uint8_t*)&crc,
-                                   &smsBuffer[totalSMSLength - 2], 2);
+                                   &packetBuffer[totalSMSLength - 2], 2);
 
                             char *tmp = (char*)malloc(totalSMSLength - 3);
                             if(tmp != NULL && crc == packet_crc && crc != lastCRC)
                             {
                                 memset(tmp, 0, totalSMSLength - 3);
-                                memcpy(tmp, &smsBuffer[1], totalSMSLength - 3);
+                                memcpy(tmp, &packetBuffer[1], totalSMSLength - 3);
                                 smsMessage.push_back(tmp);
                                 state.totalSMSMessages++;
                                 lastCRC = crc;
@@ -553,15 +553,15 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     if(!dst.empty())
         lsf.setDestination(dst);
 
-    memset(full_packet_data, 0, 33 * 25);
-    full_packet_data[0] = 0x05;
-    memcpy(&full_packet_data[1], state.sms_message, strlen(state.sms_message));
+    memset(packetBuffer, 0, sizeof(packetBuffer));
+    packetBuffer[0] = 0x05;
+    memcpy(&packetBuffer[1], state.sms_message, strlen(state.sms_message));
     numPacketbytes = strlen(state.sms_message) + 2;  // 0x05 and 0x00
 
-    uint16_t packet_crc    = __builtin_bswap16(crc_m17(full_packet_data,
+    uint16_t packet_crc    = __builtin_bswap16(crc_m17(packetBuffer,
                                                        numPacketbytes));
-    full_packet_data[numPacketbytes]     = packet_crc & 0xFF;
-    full_packet_data[numPacketbytes + 1] = packet_crc >> 8;
+    packetBuffer[numPacketbytes]     = packet_crc & 0xFF;
+    packetBuffer[numPacketbytes + 1] = packet_crc >> 8;
     numPacketbytes += 2;  // Count 2-byte CRC
 
     streamType_t type;
@@ -585,7 +585,7 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     uint8_t cnt = 0;
     while(numPacketbytes > 25)
     {
-        memcpy(packetFrame.data(), &full_packet_data[cnt * 25], 25);
+        memcpy(packetFrame.data(), &packetBuffer[cnt * 25], 25);
         packetFrame[25] = cnt << 2;
         encoder.encodePacketFrame(packetFrame, m17Frame);
         modulator.sendFrame(m17Frame);
@@ -594,7 +594,7 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     }
 
     memset(packetFrame.data(), 0, 26);
-    memcpy(packetFrame.data(), &full_packet_data[cnt * 25], numPacketbytes);
+    memcpy(packetFrame.data(), &packetBuffer[cnt * 25], numPacketbytes);
     packetFrame[25] = 0x80 | (numPacketbytes << 2);
     encoder.encodePacketFrame(packetFrame, m17Frame);
     modulator.sendFrame(m17Frame);
