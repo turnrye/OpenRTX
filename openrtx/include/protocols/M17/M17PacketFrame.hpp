@@ -12,16 +12,21 @@
 #endif
 
 #include "M17Datatypes.hpp"
+#include <cstring>
 
 namespace M17
 {
 
 /**
  * This class describes and handles a generic M17 packet frame.
+ *
+ * The frame is 26 bytes on the wire: 25 bytes of packet data followed by a
+ * 1-byte metadata field (EOF flag, 5-bit counter, 2 reserved bits).
+ * The payload() accessor exposes only the 25-byte data portion; metadata
+ * is manipulated exclusively through setEof()/isEof()/setCounter()/getCounter().
  */
 class M17PacketFrame
 {
-    static constexpr size_t META_INDEX = 25;
     static constexpr uint8_t EOF_BIT = 0x80;
     static constexpr uint8_t COUNTER_MASK = 0x1F;
     static constexpr uint8_t COUNTER_SHIFT = 2;
@@ -29,6 +34,8 @@ class M17PacketFrame
         static_cast<uint8_t>(~(COUNTER_MASK << COUNTER_SHIFT));
 
 public:
+    static constexpr size_t DATA_SIZE = 25;
+
     /**
      * Constructor.
      */
@@ -42,28 +49,29 @@ public:
      */
     void clear()
     {
-        data.fill(0);
+        data.payloadData.fill(0);
+        data.metadata = 0;
     }
 
     /**
-     * Access frame payload.
+     * Access frame payload (data portion only, excluding metadata byte).
      *
-     * @return a reference to frame's payload field, allowing for both read and
-     * write access.
+     * @return a reference to frame's 25-byte data field, allowing for both
+     * read and write access.
      */
-    pktPayload_t &payload()
+    std::array<uint8_t, DATA_SIZE> &payload()
     {
-        return data;
+        return data.payloadData;
     }
 
     /**
      * Access frame payload (const overload).
      *
-     * @return a const reference to frame's payload field.
+     * @return a const reference to frame's 25-byte data field.
      */
-    const pktPayload_t &payload() const
+    const std::array<uint8_t, DATA_SIZE> &payload() const
     {
-        return data;
+        return data.payloadData;
     }
 
     /**
@@ -74,9 +82,9 @@ public:
     void setEof(bool eof)
     {
         if (eof)
-            data[META_INDEX] |= EOF_BIT;
+            data.metadata |= EOF_BIT;
         else
-            data[META_INDEX] &= ~EOF_BIT;
+            data.metadata &= ~EOF_BIT;
     }
 
     /**
@@ -86,7 +94,7 @@ public:
      */
     bool isEof() const
     {
-        return (data[META_INDEX] & EOF_BIT) != 0;
+        return (data.metadata & EOF_BIT) != 0;
     }
 
     /**
@@ -96,8 +104,8 @@ public:
      */
     void setCounter(uint8_t counter)
     {
-        data[META_INDEX] = (data[META_INDEX] & COUNTER_CLEAR)
-                         | ((counter & COUNTER_MASK) << COUNTER_SHIFT);
+        data.metadata = (data.metadata & COUNTER_CLEAR)
+                      | ((counter & COUNTER_MASK) << COUNTER_SHIFT);
     }
 
     /**
@@ -107,21 +115,26 @@ public:
      */
     uint8_t getCounter() const
     {
-        return (data[META_INDEX] >> COUNTER_SHIFT) & COUNTER_MASK;
+        return (data.metadata >> COUNTER_SHIFT) & COUNTER_MASK;
     }
 
     /**
-     * Get underlying data.
+     * Get underlying data (all 26 bytes: payload + metadata).
      *
      * @return a pointer to const uint8_t allowing direct access to frame data.
      */
     const uint8_t *getData() const
     {
-        return data.data();
+        return reinterpret_cast<const uint8_t *>(&data);
     }
 
 private:
-    pktPayload_t data;
+    struct __attribute__((packed)) {
+        std::array<uint8_t, DATA_SIZE> payloadData;
+        uint8_t metadata;
+    } data;
+
+    friend class M17FrameDecoder;
 };
 
 } // namespace M17
