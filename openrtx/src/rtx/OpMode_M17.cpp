@@ -60,8 +60,10 @@ void OpMode_M17::enable()
     lastCRC                = 0;
     smsStarted             = false;
     smsLastFrame           = 0;
+#ifdef CONFIG_M17
     state.totalSMSMessages = 0;
     state.havePacketData   = false;
+#endif
 }
 
 void OpMode_M17::disable()
@@ -76,22 +78,31 @@ void OpMode_M17::disable()
     radio_disableRtx();
     modulator.terminate();
     demodulator.terminate();
+#ifdef CONFIG_M17
     for(size_t i = 0; i < state.totalSMSMessages; i++)
     {
         free(smsSender[i]);
         free(smsMessage[i]);
     }
+#endif
     smsSender.clear();
     smsMessage.clear();
 }
 
 bool OpMode_M17::getSMSMessage(uint8_t mesg_num, char *sender, char *message)
 {
+#ifdef CONFIG_M17
     if(state.totalSMSMessages == 0 || mesg_num > (state.totalSMSMessages - 1))
         return false;
     strcpy(sender, smsSender[mesg_num]);
     strcpy(message, smsMessage[mesg_num]);
     return true;
+#else
+    (void) mesg_num;
+    (void) sender;
+    (void) message;
+    return false;
+#endif
 }
 
 void OpMode_M17::delSMSMessage(uint8_t mesg_num)
@@ -141,9 +152,11 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
             break;
 
         case TX:
+#ifdef CONFIG_M17
             if(state.havePacketData)
                 txPacketState(status);
             else
+#endif
                 txState(status);
             break;
 
@@ -194,6 +207,7 @@ void OpMode_M17::offState(rtxStatus_t *const status)
         return;
     }
 
+#ifdef CONFIG_M17
     if(state.havePacketData)
     {
         startTx = true;
@@ -201,6 +215,7 @@ void OpMode_M17::offState(rtxStatus_t *const status)
         status->txDisable = 0;
         return;
     }
+#endif
 
     // Sleep for 30ms if there is nothing else to do in order to prevent the
     // rtx thread looping endlessly and locking up all the other tasks
@@ -317,6 +332,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                     codec_pushFrame(sf.payload().data(),     false);
                     codec_pushFrame(sf.payload().data() + 8, false);
                 }
+#ifdef CONFIG_M17
                 // Check if packet SMS message and SMS receive enabled
                 else if(type == M17FrameType::PACKET && smsEnabled &&
                         (canMatch == true) &&
@@ -395,18 +411,28 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                         }
                     }
                 }
+#endif
             }
         }
     }
 
     locked = lock;
 
+#ifdef CONFIG_M17
     if(platform_getPttStatus() || state.havePacketData)
     {
         demodulator.stopBasebandSampling();
         locked = false;
         status->opStatus = OFF;
     }
+#else
+    if(platform_getPttStatus())
+    {
+        demodulator.stopBasebandSampling();
+        locked = false;
+        status->opStatus = OFF;
+    }
+#endif
 
     // Force invalidation of LSF data as soon as lock is lost (for whatever cause)
     if(locked == false)
@@ -523,6 +549,10 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
 void OpMode_M17::txPacketState(rtxStatus_t *const status)
 {
+#ifndef CONFIG_M17
+    (void) status;
+    return;
+#else
     frame_t         m17Frame;
     M17PacketFrame  packetFrame;
 
@@ -611,4 +641,5 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     lastCRC = 0;
     status->txDisable = 1;
     status->opStatus = OFF;
+#endif
 }
