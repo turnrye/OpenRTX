@@ -11,9 +11,11 @@
 #include "protocols/M17/M17FrameEncoder.hpp"
 #include "protocols/M17/M17Demodulator.hpp"
 #include "protocols/M17/M17Modulator.hpp"
+#include "protocols/M17/M17LinkSetupFrame.hpp"
 #include "protocols/M17/MetaText.hpp"
 #include "core/audio_path.h"
 #include "OpMode.hpp"
+#include <vector>
 
 /**
  * Specialisation of the OpMode class for the management of M17 operating mode.
@@ -82,6 +84,23 @@ public:
         return dataValid;
     }
 
+    /**
+     * Return selected SMS message from queue if any.
+     *
+     * @param mesg_num: message index to retrieve.
+     * @param sender: buffer to receive the sender callsign.
+     * @param message: buffer to receive the message text.
+     * @return true if a message was returned.
+     */
+    virtual bool getSMSMessage(uint8_t mesg_num, char *sender, char *message) override;
+
+    /**
+     * Delete an SMS message from the queue.
+     *
+     * @param mesg_num: message index to delete.
+     */
+    virtual void delSMSMessage(uint8_t mesg_num) override;
+
 private:
 
     /**
@@ -109,17 +128,12 @@ private:
     void txState(rtxStatus_t *const status);
 
     /**
-     * Compare two callsigns in plain text form.
-     * The comparison does not take into account the country prefixes (strips
-     * the '/' and whatever is in front from all callsigns). It does take into
-     * account the dash and whatever is after it. In case the incoming callsign
-     * is "ALL" the function returns true.
+     * Function handling packet TX (SMS send).
      *
-     * \param localCs plain text callsign from the user
-     * \param incomingCs plain text destination callsign
-     * \return true if local an incoming callsigns match.
+     * @param status: pointer to the rtxStatus_t structure containing the
+     * current RTX status.
      */
-    bool compareCallsigns(const std::string& localCs, const std::string& incomingCs);
+    void txPacketState(rtxStatus_t *const status);
 
     // GPS update interval in superframes. Each superframe is 6 LICH frames
     // (~240 ms), so 25 superframes ≈ 6 seconds.
@@ -140,6 +154,15 @@ private:
     M17::M17FrameEncoder encoder;      ///< M17 frame encoder
     uint16_t gpsTimer;                 ///< GPS data transmission interval timer
     M17::MetaText metaText;            ///< M17 metatext accumulator
+    bool     smsEnabled;               ///< SMS enabled
+    bool     smsStarted;               ///< SMS message started flag
+    int8_t   smsLastFrame;             ///< SMS frame counter
+    uint16_t lastCRC;                  ///< CRC for last valid SMS message
+    uint16_t totalSMSLength;           ///< Total characters in SMS recall buffer
+    uint16_t numPacketbytes;           ///< Number of packet bytes remaining
+    uint8_t  packetBuffer[33 * 25];    ///< Shared RX/TX packet data buffer
+    std::vector<char*> smsSender;      ///< SMS Sender Id buffer
+    std::vector<char*> smsMessage;     ///< SMS message buffer
 };
 
 #endif /* OPMODE_M17_H */

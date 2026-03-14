@@ -362,6 +362,9 @@ uint8_t M17Demodulator::trySync(
 {
     uint32_t sp    = sync.samplingIndex();
     auto deviation = correlator.maxDeviation(sp);
+
+    // Reset for re-quantization: each sync candidate needs a fresh pass
+    // through the correlator buffer starting from symbol index 0.
     frameIndex     = 0;
 
     // Quantize the syncword taking data from the correlator memory.

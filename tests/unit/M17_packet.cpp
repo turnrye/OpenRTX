@@ -32,7 +32,7 @@ TEST_CASE("Freshly constructed PacketFrame is zeroed", "[m17][packet]")
 TEST_CASE("Payload provides read/write access", "[m17][packet]")
 {
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
 
     // Write a known pattern
     for (size_t i = 0; i < payload.size(); i++)
@@ -48,10 +48,12 @@ TEST_CASE("Payload provides read/write access", "[m17][packet]")
 TEST_CASE("clear() resets every byte to zero", "[m17][packet]")
 {
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
 
     for (size_t i = 0; i < payload.size(); i++)
         payload[i] = 0xFF;
+    frame.setEof(true);
+    frame.setCounter(31);
 
     frame.clear();
     const uint8_t *data = frame.getData();
@@ -66,12 +68,10 @@ TEST_CASE("Encode then decode round-trip", "[m17][packet]")
     M17FrameDecoder decoder;
 
     // Build a test payload: "HELLO M17 PACKET!!" padded with zeros.
-    // Byte 25's bottom 2 bits are reserved (always zero per spec).
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     const char msg[] = "HELLO M17 PACKET!!";
     std::copy_n(msg, sizeof(msg) - 1, payload.begin());
-    payload[25] &= 0xFC;
 
     // Encode
     frame_t encoded;
@@ -86,7 +86,7 @@ TEST_CASE("Encode then decode round-trip", "[m17][packet]")
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &decoded = decoder.getPacketFrame();
-    const pktPayload_t &decodedPayload = decoded.payload();
+    const auto &decodedPayload = decoded.payload();
 
     REQUIRE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
 }
@@ -97,7 +97,7 @@ TEST_CASE("Round-trip with all-zeros payload", "[m17][packet]")
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -106,7 +106,7 @@ TEST_CASE("Round-trip with all-zeros payload", "[m17][packet]")
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &decoded = decoder.getPacketFrame();
-    const pktPayload_t &decodedPayload = decoded.payload();
+    const auto &decodedPayload = decoded.payload();
 
     REQUIRE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
 }
@@ -117,10 +117,9 @@ TEST_CASE("Round-trip with sequential byte pattern", "[m17][packet]")
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     for (size_t i = 0; i < payload.size(); i++)
         payload[i] = static_cast<uint8_t>(i * 7 + 3); // arbitrary non-trivial
-    payload[25] &= 0xFC; // bottom 2 bits are reserved per spec
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -129,7 +128,7 @@ TEST_CASE("Round-trip with sequential byte pattern", "[m17][packet]")
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &decoded = decoder.getPacketFrame();
-    const pktPayload_t &decodedPayload = decoded.payload();
+    const auto &decodedPayload = decoded.payload();
 
     REQUIRE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
 }
@@ -146,7 +145,7 @@ TEST_CASE("Encoded frame is exactly 48 bytes with PACKET_SYNC_WORD",
     M17FrameEncoder encoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     payload[0] = 0xAB;
 
     frame_t encoded;
@@ -163,7 +162,7 @@ TEST_CASE("Encoding the same payload twice produces identical frames",
     M17FrameEncoder encoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     const char msg[] = "DETERMINISTIC";
     std::copy_n(msg, sizeof(msg) - 1, payload.begin());
 
@@ -180,9 +179,8 @@ TEST_CASE("Round-trip with all-0xFF payload", "[m17][packet]")
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     payload.fill(0xFF);
-    payload[25] &= 0xFC; // bottom 2 bits are reserved per spec
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -191,7 +189,7 @@ TEST_CASE("Round-trip with all-0xFF payload", "[m17][packet]")
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &decoded = decoder.getPacketFrame();
-    const pktPayload_t &decodedPayload = decoded.payload();
+    const auto &decodedPayload = decoded.payload();
 
     REQUIRE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
 }
@@ -202,7 +200,7 @@ TEST_CASE("Round-trip with single non-zero byte", "[m17][packet]")
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     payload[0] = 0x42;
 
     frame_t encoded;
@@ -212,7 +210,7 @@ TEST_CASE("Round-trip with single non-zero byte", "[m17][packet]")
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &decoded = decoder.getPacketFrame();
-    const pktPayload_t &decodedPayload = decoded.payload();
+    const auto &decodedPayload = decoded.payload();
 
     REQUIRE(std::equal(payload.begin(), payload.end(), decodedPayload.begin()));
 }
@@ -225,7 +223,7 @@ TEST_CASE("Decoder distinguishes PACKET from STREAM frame type",
 
     // Encode a packet frame
     M17PacketFrame pktFrame;
-    pktPayload_t &pktPayload = pktFrame.payload();
+    auto &pktPayload = pktFrame.payload();
     pktPayload[0] = 0x01;
     frame_t pktEncoded;
     encoder.encodePacketFrame(pktFrame, pktEncoded);
@@ -277,7 +275,7 @@ TEST_CASE("Decoder reset clears previous packet frame data", "[m17][packet]")
 
     // Decode a non-zero payload so decoder has data
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     payload.fill(0xAA);
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -301,13 +299,11 @@ TEST_CASE("Consecutive encodes with different payloads are independent",
     M17FrameDecoder decoder;
 
     M17PacketFrame frame1;
-    pktPayload_t &payload1 = frame1.payload();
+    auto &payload1 = frame1.payload();
     payload1.fill(0x11);
-    payload1[25] &= 0xFC; // bottom 2 bits are reserved per spec
     M17PacketFrame frame2;
-    pktPayload_t &payload2 = frame2.payload();
+    auto &payload2 = frame2.payload();
     payload2.fill(0x22);
-    payload2[25] &= 0xFC; // bottom 2 bits are reserved per spec
 
     frame_t encoded1, encoded2;
     encoder.encodePacketFrame(frame1, encoded1);
@@ -318,11 +314,11 @@ TEST_CASE("Consecutive encodes with different payloads are independent",
 
     // Each should decode back to its own payload
     decoder.decodeFrame(encoded1);
-    const pktPayload_t &dec1 = decoder.getPacketFrame().payload();
+    const auto &dec1 = decoder.getPacketFrame().payload();
     REQUIRE(std::equal(payload1.begin(), payload1.end(), dec1.begin()));
 
     decoder.decodeFrame(encoded2);
-    const pktPayload_t &dec2 = decoder.getPacketFrame().payload();
+    const auto &dec2 = decoder.getPacketFrame().payload();
     REQUIRE(std::equal(payload2.begin(), payload2.end(), dec2.begin()));
 }
 
@@ -393,10 +389,10 @@ TEST_CASE("EOF and counter round-trip through encode/decode", "[m17][packet]")
 
     // Intermediate frame: counter=3, not EOF
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     const char msg[] = "COUNTER TEST";
     std::copy_n(msg, sizeof(msg) - 1, payload.begin());
-    payload[25] = 3 << 2; // counter=3, eof=0
+    frame.setCounter(3);
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -410,10 +406,11 @@ TEST_CASE("EOF and counter round-trip through encode/decode", "[m17][packet]")
 
     // Final frame: counter=12 (remaining bytes), EOF set
     M17PacketFrame lastFrame;
-    pktPayload_t &lastPayload = lastFrame.payload();
+    auto &lastPayload = lastFrame.payload();
     const char msg2[] = "LAST FRAME";
     std::copy_n(msg2, sizeof(msg2) - 1, lastPayload.begin());
-    lastPayload[25] = 0x80 | (12 << 2); // eof=1, counter=12
+    lastFrame.setEof(true);
+    lastFrame.setCounter(12);
 
     encoder.encodePacketFrame(lastFrame, encoded);
     type = decoder.decodeFrame(encoded);
@@ -431,10 +428,9 @@ TEST_CASE("Viterbi recovers payload after single bit flip in encoded frame",
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     const char msg[] = "HELLO M17 PACKET!!";
     std::copy_n(msg, sizeof(msg) - 1, payload.begin());
-    payload[25] &= 0xFC;
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -457,10 +453,9 @@ TEST_CASE("Viterbi recovers payload after scattered bit flips in encoded frame",
     M17FrameDecoder decoder;
 
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     const char msg[] = "BIT ERROR TEST";
     std::copy_n(msg, sizeof(msg) - 1, payload.begin());
-    payload[25] &= 0xFC;
 
     frame_t encoded;
     encoder.encodePacketFrame(frame, encoded);
@@ -495,13 +490,14 @@ TEST_CASE("Reference vector: assemble, encode, decode SMS packet",
 
     // --- Assemble payload from first principles ---
     M17PacketFrame frame;
-    pktPayload_t &payload = frame.payload();
+    auto &payload = frame.payload();
     payload[0] = 0x05;                                    // SMS protocol ID
     std::copy_n(sms_text, sizeof(sms_text), &payload[1]); // text + '\0'
     uint16_t crc = crc_m17(payload.data(), 9);
     payload[9] = static_cast<uint8_t>(crc >> 8);          // CRC high byte
     payload[10] = static_cast<uint8_t>(crc & 0xFF);       // CRC low byte
-    payload[25] = 0x80 | (11 << 2);                       // EOF=1, counter=11
+    frame.setEof(true);
+    frame.setCounter(11);
 
     // --- Encode and compare to reference ---
     M17FrameEncoder encoder;
@@ -515,7 +511,7 @@ TEST_CASE("Reference vector: assemble, encode, decode SMS packet",
     REQUIRE(type == M17FrameType::PACKET);
 
     const M17PacketFrame &pf = decoder.getPacketFrame();
-    const pktPayload_t &pl = pf.payload();
+    const auto &pl = pf.payload();
 
     // Protocol ID
     REQUIRE(pl[0] == 0x05);
@@ -527,9 +523,11 @@ TEST_CASE("Reference vector: assemble, encode, decode SMS packet",
     // Null terminator
     REQUIRE(pl[8] == 0x00);
 
-    // CRC-16
+    // CRC-16: verify individual bytes and validate independently
     REQUIRE(pl[9] == 0xB8);
     REQUIRE(pl[10] == 0x34);
+    uint16_t decodedCrc = crc_m17(pl.data(), 9);
+    REQUIRE(decodedCrc == static_cast<uint16_t>((pl[9] << 8) | pl[10]));
 
     // Padding
     for (size_t i = 11; i <= 24; i++)
@@ -538,5 +536,5 @@ TEST_CASE("Reference vector: assemble, encode, decode SMS packet",
     // Metadata byte: EOF, counter, reserved bits
     REQUIRE(pf.isEof() == true);
     REQUIRE(pf.getCounter() == 11);
-    REQUIRE((pl[25] & 0x03) == 0x00);
+    REQUIRE((pf.getData()[25] & 0x03) == 0x00);
 }

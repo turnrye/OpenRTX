@@ -133,6 +133,21 @@ rssi_t rtx_getRssi();
  */
 bool rtx_rxSquelchOpen();
 
+/**
+ * Get an SMS message from the receive queue.
+ * @param mesg_num: message index to retrieve.
+ * @param sender: buffer to receive the sender callsign.
+ * @param message: buffer to receive the message text.
+ * @return true if a message was returned.
+ */
+bool rtx_getSMSMessage(uint8_t mesg_num, char *sender, char *message);
+
+/**
+ * Delete an SMS message from the receive queue.
+ * @param mesg_num: message index to delete.
+ */
+void rtx_delSMSMessage(uint8_t mesg_num);
+
 #ifdef __cplusplus
 }
 #endif

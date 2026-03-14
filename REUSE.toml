@@ -48,21 +48,7 @@ SPDX-FileCopyrightText = "OpenRTX Contributors"
 # This section is for font glyph sources that were taken from Pictogrammers
 [[annotations]]
 path = [
-    "openrtx/include/fonts/symbols/sources/access-point.svg",
-    "openrtx/include/fonts/symbols/sources/access-point.svg",
-    "openrtx/include/fonts/symbols/sources/alpha-m-box-outline.svg",
-    "openrtx/include/fonts/symbols/sources/call-made.svg",
-    "openrtx/include/fonts/symbols/sources/call-received.svg",
-    "openrtx/include/fonts/symbols/sources/cog.svg",
-    "openrtx/include/fonts/symbols/sources/crosshairs-gps.svg",
-    "openrtx/include/fonts/symbols/sources/crosshairs.svg",
-    "openrtx/include/fonts/symbols/sources/lock.svg",
-    "openrtx/include/fonts/symbols/sources/network.svg",
-    "openrtx/include/fonts/symbols/sources/transmission-tower.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-1.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-2.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-3.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-4.svg"
+    "openrtx/include/fonts/symbols/sources/*.svg"
 ]
 SPDX-License-Identifier = "Apache-2.0"
 SPDX-FileCopyrightText = "Pictogrammers"
