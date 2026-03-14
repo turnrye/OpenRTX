@@ -59,6 +59,9 @@ M17FrameType M17FrameDecoder::decodeFrame(const frame_t &frame)
             decodePacket(data);
             break;
 
+        case M17FrameType::EOT:
+            break; // EOT conveys termination only; no payload to decode.
+
         default:
             break;
     }
@@ -132,7 +135,7 @@ void M17FrameDecoder::decodePacket(const std::array<uint8_t, 46> &data)
     packetFrame.clear();
 
     // Extract and decode packet data
-    std::array<uint8_t, 26> tmp;
+    std::array<uint8_t, sizeof(pktPayload_t)> tmp;
 
     uint16_t bitErrs = viterbi.decodePunctured(data, tmp, PACKET_PUNCTURE);
 
@@ -149,7 +152,7 @@ void M17FrameDecoder::decodePacket(const std::array<uint8_t, 46> &data)
     }
 
     if (bitErrs < MAX_VITERBI_ERRORS)
-        std::copy(tmp.begin(), tmp.end(), packetFrame.payload().begin());
+        memcpy(&packetFrame.data, tmp.data(), tmp.size());
 }
 
 void M17FrameDecoder::decodeStream(const std::array<uint8_t, 46> &data)
