@@ -173,8 +173,7 @@ private:
     uint16_t lastCRC;                  ///< CRC for last valid SMS message
     uint16_t totalSMSLength;           ///< Total characters in SMS recall buffer
     uint16_t numPacketbytes;           ///< Number of packet bytes remaining
-    char     smsBuffer[822];           ///< SMS temporary buffer
-    uint8_t  full_packet_data[33 * 25]; ///< Packet TX data buffer
+    uint8_t  packetBuffer[33 * 25];    ///< Shared RX/TX packet data buffer
     std::vector<char*> smsSender;      ///< SMS Sender Id buffer
     std::vector<char*> smsMessage;     ///< SMS message buffer
 };
