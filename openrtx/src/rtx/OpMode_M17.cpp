@@ -612,38 +612,3 @@ void OpMode_M17::txPacketState(rtxStatus_t *const status)
     status->txDisable = 1;
     status->opStatus = OFF;
 }
-
-bool OpMode_M17::compareCallsigns(const std::string& localCs,
-                                  const std::string& incomingCs)
-{
-    if((incomingCs == "ALL") || (incomingCs == "INFO") || (incomingCs == "ECHO"))
-        return true;
-
-    std::string truncatedLocal(localCs);
-    std::string truncatedIncoming(incomingCs);
-
-    int slashPos = localCs.find_first_of('/');
-    if(slashPos <= 2)
-        truncatedLocal = localCs.substr(slashPos + 1);
-
-    slashPos = incomingCs.find_first_of('/');
-    if(slashPos <= 2)
-        truncatedIncoming = incomingCs.substr(slashPos + 1);
-
-    if(truncatedLocal == truncatedIncoming)
-        return true;
-
-    // Remove any appended spaces from callsign
-    int spacePos = truncatedLocal.find_first_of(' ');
-    if(spacePos >= 4)
-        truncatedLocal = truncatedLocal.substr(0, spacePos);
-
-    spacePos = truncatedIncoming.find_first_of(' ');
-    if(spacePos >= 4)
-        truncatedIncoming = truncatedIncoming.substr(0, spacePos);
-
-    if(truncatedLocal == truncatedIncoming)
-        return true;
-
-    return false;
-}
