@@ -7,6 +7,13 @@
 #include "interfaces/audio.h"
 #include "hwconfig.h"
 #include "file_source.h"
+#include "file_sink.h"
+#include "discard_sink.h"
+
+#ifdef LINUX_AUDIO_PULSE
+#include "pulse_sink.h"
+#include "pulse_source.h"
+#endif
 
 static const uint8_t pathCompatibilityMatrix[9][9] =
 {
@@ -24,16 +31,24 @@ static const uint8_t pathCompatibilityMatrix[9][9] =
 
 const struct audioDevice outputDevices[] =
 {
-    {NULL, 0, 0, SINK_MCU},
-    {NULL, 0, 0, SINK_RTX},
-    {NULL, 0, 0, SINK_SPK},
+    {NULL,                       0,                       0, SINK_MCU},
+    {&file_sink_audio_driver,    "/tmp/baseband_tx.raw",  0, SINK_RTX},
+#ifdef LINUX_AUDIO_PULSE
+    {&pulse_sink_audio_driver,   NULL, 0, SINK_SPK},
+#else
+    {NULL,                       0,    0, SINK_SPK},
+#endif
 };
 
 const struct audioDevice inputDevices[] =
 {
     {NULL,                      0,                   0, SOURCE_MCU},
     {&file_source_audio_driver, "/tmp/baseband.raw", 0, SOURCE_RTX},
-    {NULL,                      0,                   0, SOURCE_MIC},
+#ifdef LINUX_AUDIO_PULSE
+    {&pulse_source_audio_driver, NULL, 0, SOURCE_MIC},
+#else
+    {NULL,                       0,    0, SOURCE_MIC},
+#endif
 };
 
 void audio_init()
