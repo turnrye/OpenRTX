@@ -17,6 +17,11 @@
 #include "core/battery.h"
 #include "core/input.h"
 #include "hwconfig.h"
+#include "ui/UIContext.h"
+#include "ui/ArrowInputControl.h"
+
+static UIContext uiCtx(layout);
+static ArrowInputControl callsignInput;
 
 /* UI main screen functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBackground();
@@ -506,18 +511,17 @@ void ui_updateFSM(bool *sync_rtx)
             case MAIN_VFO:
                 if(ui_state.edit_mode)
                 {
-                    if(msg.keys & KEY_ENTER)
+                    InputResult result = callsignInput.handleKey(uiCtx, event);
+                    if(result == InputResult::Confirmed)
                     {
-                        _ui_textInputConfirm(ui_state.new_callsign);
-                        // Save selected callsign and disable input mode
                         strncpy(state.settings.m17_dest, ui_state.new_callsign, 10);
                         *sync_rtx = true;
                         ui_state.edit_mode = false;
                     }
-                    else if(msg.keys & KEY_ESC)
+                    else if(result == InputResult::Cancelled)
+                    {
                         ui_state.edit_mode = false;
-                    else
-                        _ui_textInputArrows(ui_state.new_callsign, 9, msg);
+                    }
                 }
                 else if(ui_state.edit_message)
                 {
@@ -547,6 +551,7 @@ void ui_updateFSM(bool *sync_rtx)
                     else if (msg.keys & KEY_RIGHT)
                     {
                         ui_state.edit_mode = true;
+                        callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                     }
                 }
                 break;
@@ -674,17 +679,16 @@ void ui_updateFSM(bool *sync_rtx)
 
                 if(ui_state.edit_mode)
                 {
-                    if(msg.keys & KEY_ENTER)
+                    InputResult result = callsignInput.handleKey(uiCtx, event);
+                    if(result == InputResult::Confirmed)
                     {
-                        _ui_textInputConfirm(ui_state.new_callsign);
-                        // Save selected callsign and disable input mode
                         strncpy(state.settings.callsign, ui_state.new_callsign, 10);
                         ui_state.edit_mode = false;
                     }
-                    else if(msg.keys & KEY_ESC)
+                    else if(result == InputResult::Cancelled)
+                    {
                         ui_state.edit_mode = false;
-                    else
-                        _ui_textInputArrows(ui_state.new_callsign, 9, msg);
+                    }
                 }
                 else if(ui_state.edit_message)
                 {
@@ -740,7 +744,7 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable callsign input
                             case M_CALLSIGN:
                                 ui_state.edit_mode = true;
-                                _ui_textInputReset(ui_state.new_callsign);
+                                callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
                                 break;
                             // Enable meta text input
                             case M_METATEXT:
