@@ -119,6 +119,7 @@ target_sources(app
     openrtx/src/ui/default/ui_main.cpp
     openrtx/src/ui/default/ui_menu.cpp
     openrtx/src/ui/default/ui_strings.c
+    openrtx/src/ui/default/T9InputControl.cpp
 
     subprojects/codec2/src/dump.c
     subprojects/codec2/src/lpc.c

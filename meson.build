@@ -78,11 +78,13 @@ openrtx_inc = ['openrtx/include', 'platform']
 ui_src_default = ['openrtx/src/ui/default/ui.cpp',
                   'openrtx/src/ui/default/ui_main.cpp',
                   'openrtx/src/ui/default/ui_menu.cpp',
-                  'openrtx/src/ui/default/ui_strings.c']
+                  'openrtx/src/ui/default/ui_strings.c',
+                  'openrtx/src/ui/default/T9InputControl.cpp']
 
 ui_src_module17 = ['openrtx/src/ui/module17/ui.cpp',
                    'openrtx/src/ui/module17/ui_main.cpp',
-                   'openrtx/src/ui/module17/ui_menu.cpp']
+                   'openrtx/src/ui/module17/ui_menu.cpp',
+                   'openrtx/src/ui/module17/ArrowInputControl.cpp']
 
 ##
 ## Selection of main entrypoint
@@ -346,7 +348,7 @@ linux_small_def   = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HE
 # Module17 UI
 #
 linux_mod17_src = linux_src + ui_src_module17
-linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': ''}
+linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': '', 'CONFIG_UI_MODULE17': ''}
 
 linux_c_args   = ['-ffunction-sections', '-fdata-sections', '-std=gnu17']
 linux_cpp_args = ['-ffunction-sections', '-fdata-sections', '-std=c++14']
@@ -479,7 +481,7 @@ mod17_src = ['platform/targets/Module17/platform.c',
              'platform/drivers/baseband/MCP4551.c']
 
 mod17_inc = ['platform/targets/Module17']
-mod17_def = {'PLATFORM_MOD17': ''}
+mod17_def = {'PLATFORM_MOD17': '', 'CONFIG_UI_MODULE17': ''}
 
 mod17_src += openrtx_src + stm32f405_src + ui_src_module17
 mod17_inc += openrtx_inc + stm32f405_inc
@@ -1135,6 +1137,10 @@ m17_packet_test = executable('m17_packet_test',
                               sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
                               kwargs  : unit_test_opts)
 
+text_input_control_test = executable('text_input_control_test',
+                                      sources : unit_test_src + ['tests/unit/T9InputControl.cpp'],
+                                      kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1146,3 +1152,4 @@ test('Codeplug Test',         cps_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
 test('M17 Packet Frame Test', m17_packet_test)
+test('TextInputControl Test', text_input_control_test)
