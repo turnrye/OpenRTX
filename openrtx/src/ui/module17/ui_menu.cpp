@@ -19,6 +19,9 @@
 /* UI main screen helper functions, their implementation is in "ui_main.cpp" */
 extern void _ui_drawMainBottom();
 
+/* UI input rendering, implementation is in "ui.cpp" */
+#include "ui/ui_input.h"
+
 
 const char *mic_gain_values[] =
 {
@@ -562,15 +565,7 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
                     layout.horizontal_pad, layout.menu_font,
                     TEXT_ALIGN_LEFT, color_white, "Callsign:");
 
-        // uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
-        // uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
-        // point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
-        //                        (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
-        // gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
-        // Print M17 callsign being typed
-        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                      layout.horizontal_pad, layout.input_font,
-                      TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+        _ui_drawCallsignInput(false);
         // Print Button Info
         gfx_print(layout.line5_pos, layout.line5_font, TEXT_ALIGN_LEFT,
                   color_white, "Cancel");
@@ -584,10 +579,7 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
                     layout.horizontal_pad, layout.menu_font,
                     TEXT_ALIGN_LEFT, color_white, "Meta Txt:");
 
-        // Print M17 message being typed
-        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                      layout.horizontal_pad, layout.message_font,
-                      TEXT_ALIGN_CENTER, color_white, ui_state->new_message);
+        _ui_drawMessageInput(false);
         // Print Button Info
         gfx_print(layout.line5_pos, layout.line5_font, TEXT_ALIGN_LEFT,
                   color_white, "Cancel");

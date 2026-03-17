@@ -27,6 +27,8 @@ extern void _ui_drawMainBottom();
 extern const char* _ui_getToneEnabledString(bool tone_tx_enable,
                             bool tone_rx_enable, bool use_abbreviation);
 
+#include "ui/ui_input.h"
+
 static char priorSelectedMenuName[MAX_ENTRY_LEN] = "\0";
 static char priorSelectedMenuValue[MAX_ENTRY_LEN] = "\0";
 static bool priorEditMode = false;
@@ -991,28 +993,12 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
                   TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
     if((ui_state->edit_mode) && (ui_state->menu_selected == M17_CALLSIGN))
     {
-        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
-        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
-        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
-                               (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
-        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
-        // Print M17 callsign being typed
-        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                      layout.horizontal_pad, layout.input_font,
-                      TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+        _ui_drawCallsignInput(true);
     }
     else
     if((ui_state->edit_message) && (ui_state->menu_selected == M17_METATEXT))
     {
-        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
-        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
-        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
-            (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
-            gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
-            // Print M17 message being typed
-            gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                          layout.horizontal_pad, layout.message_font,
-                          TEXT_ALIGN_CENTER, color_white, ui_state->new_message);
+        _ui_drawMessageInput(true);
     }
     else
     {

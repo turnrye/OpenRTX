@@ -53,6 +53,16 @@ extern void _ui_drawSettingsModule17(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 
+void _ui_drawCallsignInput(bool overlay)
+{
+    callsignInput.draw(uiCtx, overlay);
+}
+
+void _ui_drawMessageInput(bool overlay)
+{
+    messageInput.draw(uiCtx, overlay);
+}
+
 const char *menu_items[] =
 {
     "Settings",
@@ -499,7 +509,7 @@ void ui_updateFSM(bool *sync_rtx)
                     else if (msg.keys & KEY_RIGHT)
                     {
                         ui_state.edit_mode = true;
-                        callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                        callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols, layout.input_font);
                     }
                 }
                 break;
@@ -690,12 +700,12 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable callsign input
                             case M_CALLSIGN:
                                 ui_state.edit_mode = true;
-                                callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                                callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols, layout.input_font);
                                 break;
                             // Enable meta text input
                             case M_METATEXT:
                                 ui_state.edit_message = true;
-                                messageInput.start(ui_state.new_message, 52, t9TextSymbols);
+                                messageInput.start(ui_state.new_message, 52, t9TextSymbols, layout.message_font);
                                 break;
                             default:
                                 state.ui_screen = SETTINGS_M17;

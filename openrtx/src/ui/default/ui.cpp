@@ -110,6 +110,17 @@ extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
+
+void _ui_drawCallsignInput(bool overlay)
+{
+    callsignInput.draw(uiCtx, overlay);
+}
+
+void _ui_drawMessageInput(bool overlay)
+{
+    messageInput.draw(uiCtx, overlay);
+}
+
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
 {
@@ -1428,7 +1439,7 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols, layout.input_font);
                             vp_announceM17Info(NULL, ui_state.edit_mode,
                                                queueFlags);
                         }
@@ -1618,7 +1629,7 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
-                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols, layout.input_font);
                         }
                         else
                         {
@@ -2247,7 +2258,7 @@ void ui_updateFSM(bool *sync_rtx)
                         // If callsign input, reset text input variables
                         if(ui_state.menu_selected == M17_CALLSIGN)
                         {
-                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols);
+                            callsignInput.start(ui_state.new_callsign, 9, m17CallsignSymbols, layout.input_font);
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
                         }
@@ -2255,7 +2266,7 @@ void ui_updateFSM(bool *sync_rtx)
                         if(ui_state.menu_selected == M17_METATEXT)
                         {
                             ui_state.edit_message = true;
-                            messageInput.start(ui_state.new_message, 52, t9TextSymbols);
+                            messageInput.start(ui_state.new_message, 52, t9TextSymbols, layout.message_font);
                             vp_announceBuffer(&currentLanguage->metaText,
                                             true, true, ui_state.new_message);
                         }
