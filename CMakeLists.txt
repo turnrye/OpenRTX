@@ -115,10 +115,11 @@ target_sources(app
     openrtx/src/protocols/M17/FrameDecoder.cpp
     openrtx/src/protocols/M17/LinkSetupFrame.cpp
 
-    openrtx/src/ui/default/ui.c
-    openrtx/src/ui/default/ui_main.c
-    openrtx/src/ui/default/ui_menu.c
+    openrtx/src/ui/default/ui.cpp
+    openrtx/src/ui/default/ui_main.cpp
+    openrtx/src/ui/default/ui_menu.cpp
     openrtx/src/ui/default/ui_strings.c
+    openrtx/src/ui/default/T9InputControl.cpp
 
     subprojects/codec2/src/dump.c
     subprojects/codec2/src/lpc.c
