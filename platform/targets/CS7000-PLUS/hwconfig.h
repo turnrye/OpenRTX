@@ -28,6 +28,7 @@ enum AdcChannels
     ADC_RSSI_CH  = 9,   /* PB0  */
     ADC_MIC_CH   = 7,   /* PA7  */
     ADC_CTCSS_CH = 2,   /* PA2  */
+    ADC_VOX_CH   = 4,   /* PC4  */
 };
 
 extern const struct Adc adc1;
@@ -65,6 +66,9 @@ extern const struct gpsDevice gps;
 
 /* Use extended addressing for external flash memory */
 #define CONFIG_W25Qx_EXT_ADDR
+
+/* Device has a vibration motor */
+#define CONFIG_VIBRATION
 
 #ifdef __cplusplus
 }
