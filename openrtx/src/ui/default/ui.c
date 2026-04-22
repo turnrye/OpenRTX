@@ -1005,10 +1005,21 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
             vp_announceRadioMode(state.channel.mode, queueFlags);
             break;
         case 6:
-            if (state.channel.power == 1000)
-                state.channel.power = 5000;
-            else
-                state.channel.power = 1000;
+
+            switch(state.channel.power)
+            {
+                case 1000:
+                    state.channel.power = 2500;
+                    break;
+
+                case 2500:
+                    state.channel.power = 5000;
+                    break;
+
+                default:
+                    state.channel.power = 1000;
+            }
+
             *sync_rtx = true;
             vp_announcePower(state.channel.power, queueFlags);
             break;
@@ -2199,11 +2210,16 @@ void ui_updateFSM(bool *sync_rtx)
                             if(msg.keys & KEY_ENTER)
                             {
 #endif
-                                // Apply new offset
-                                state.channel.tx_frequency = state.channel.rx_frequency + ui_state.new_offset;
-                                vp_queueStringTableEntry(&currentLanguage->offset);
-                                vp_queueFrequency(ui_state.new_offset);
-                                ui_state.edit_mode = false;
+                                // Apply new offset if it is within the hardware
+                                // limits of the radio
+                                freq_t new_freq = state.channel.rx_frequency + ui_state.new_offset;
+                                if (_ui_freq_check_limits(new_freq))
+                                {
+                                    state.channel.tx_frequency = new_freq;
+                                    vp_queueStringTableEntry(&currentLanguage->offset);
+                                    vp_queueFrequency(ui_state.new_offset);
+                                    ui_state.edit_mode = false;
+                                }
                             }
                             else
                             if(msg.keys & KEY_ESC)
