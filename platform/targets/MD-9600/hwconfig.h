@@ -11,6 +11,12 @@
 #include "pinmap.h"
 
 #ifdef __cplusplus
+
+// Export the HR_C6000 driver only for C++ sources
+#include "drivers/baseband/HR_C6000.h"
+
+extern HR_C6000 C6000;
+
 extern "C" {
 #endif
 
@@ -26,6 +32,7 @@ enum adcChannel {
 };
 
 extern const struct gpsDevice gps;
+extern const struct spiCustomDevice c6000_spi;
 extern const struct spiDevice spi2;
 extern const struct Adc adc1;
 

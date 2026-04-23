@@ -4,7 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include "hwconfig.h"
 #include "interfaces/radio.h"
+#include "drivers/baseband/HR_C6000.h"
+
+HR_C6000 C6000((const struct spiDevice *) &c6000_spi, { DMR_CS }); // HR_C6000 driver
 
 void radio_init(const rtxStatus_t *rtxState)
 {

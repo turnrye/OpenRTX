@@ -16,7 +16,7 @@
 #include "stm32_pwm.h"
 #include "stm32_adc.h"
 
-#if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
+#if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
 #include "drivers/baseband/HR_C6000.h"
 #include "Cx000_dac.h"
 #endif
@@ -59,7 +59,7 @@ static const struct PwmChannelCfg stm32pwm_cfg =
     stm32pwm_stopCbk
 };
 
-#if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
+#if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
 static void *audio_thread(void *arg)
 {
     (void) arg;
@@ -95,7 +95,7 @@ static void *audio_thread(void *arg)
 const struct audioDevice outputDevices[] =
 {
     {NULL,                    NULL,          0, SINK_MCU},
-    #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
+    #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
     {&Cx000_dac_audio_driver, NULL,          0, SINK_SPK},
     #else
     {&stm32_pwm_audio_driver, &stm32pwm_cfg, 0, SINK_SPK},
@@ -135,7 +135,7 @@ void audio_init()
     stm32pwm_init();
     stm32adc_init(STM32_ADC_ADC2);
 
-    #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
+    #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
     gpio_setMode(DMR_CLK,  OUTPUT);
     gpio_setMode(DMR_MOSI, OUTPUT);
     gpio_setMode(DMR_MISO, INPUT);

@@ -69,10 +69,11 @@ extern "C" {
 #define GPS_DATA GPIOA,10
 
 /* HR_C6000 control interface */
-#define DMR_CS    GPIOE,2
+#define DMR_CS    &GpioE,2
 #define DMR_CLK   GPIOE,3
 #define DMR_MOSI  GPIOE,4
 #define DMR_MISO  GPIOE,5
+#define DMR_SLEEP GPIOE,6
 
 #ifdef __cplusplus
 }

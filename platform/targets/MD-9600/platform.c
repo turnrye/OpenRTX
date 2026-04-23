@@ -19,6 +19,7 @@
 #include "drivers/SPI/spi_stm32.h"
 #include "drivers/GPS/gps_stm32.h"
 #include "drivers/chSelector/chSelector.h"
+#include "drivers/audio/Cx000_dac.h"
 #include "core/gps.h"
 
 static hwInfo_t hwInfo;
@@ -181,13 +182,12 @@ void platform_ledOff(led_t led)
 
 void platform_beepStart(uint16_t freq)
 {
-    /* TODO */
-    (void) freq;
+    Cx000dac_startBeep(freq);
 }
 
 void platform_beepStop()
 {
-    /* TODO */
+    Cx000dac_stopBeep();
 }
 
 datetime_t platform_getCurrentTime()

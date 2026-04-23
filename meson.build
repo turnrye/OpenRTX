@@ -472,8 +472,10 @@ md9600_src = ['platform/targets/MD-9600/platform.c',
               'platform/drivers/keyboard/keyboard_MD9600.c',
               'platform/drivers/backlight/backlight_MDx.c',
               'platform/drivers/chSelector/chSelector_MD9600.c',
+              'platform/drivers/audio/Cx000_dac.cpp',
               'platform/drivers/baseband/radio_MD9600.cpp',
-              'platform/drivers/CPS/cps_io_native_MD9600.c']
+              'platform/drivers/CPS/cps_io_native_MD9600.c',
+              'platform/drivers/baseband/HR_C6000_MD9600.cpp']
 
 md9600_inc = ['platform/targets/MD-9600']
 md9600_def = {'PLATFORM_MD9600': ''}
