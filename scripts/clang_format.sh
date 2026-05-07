@@ -128,6 +128,14 @@ tests/unit/ui_check_standby.cpp
 tests/unit/M17_metatext.cpp
 tests/unit/M17_packet.cpp
 tests/unit/dsp_oversampling.cpp
+openrtx/include/rtx/OpMode_M17.hpp
+openrtx/src/rtx/OpMode_M17.cpp
+openrtx/include/protocols/M17/PacketDeframer.hpp
+openrtx/src/protocols/M17/PacketDeframer.cpp
+openrtx/include/protocols/M17/PacketFramer.hpp
+openrtx/src/protocols/M17/PacketFramer.cpp
+tests/unit/M17_packet_disassembly.cpp
+tests/unit/M17_packet_framing.cpp
 EOF
 )
 
