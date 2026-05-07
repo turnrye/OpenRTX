@@ -154,6 +154,13 @@ private:
     friend class FrameDecoder;
 };
 
+/**
+ * Maximum number of bytes in an M17 Single Packet (application data + CRC).
+ * Per the spec, up to 823 bytes of application data plus 2 bytes of CRC,
+ * yielding at most 33 frames of 25 bytes each.
+ */
+static constexpr size_t MAX_PACKET_DATA = 33 * 25;
+
 } // namespace M17
 
 #endif // M17_PACKETFRAME_H
