@@ -137,8 +137,11 @@ openrtx/include/protocols/M17/PacketDeframer.hpp
 openrtx/src/protocols/M17/PacketDeframer.cpp
 openrtx/include/protocols/M17/PacketFramer.hpp
 openrtx/src/protocols/M17/PacketFramer.cpp
+openrtx/include/protocols/M17/SmsPacket.hpp
+openrtx/src/protocols/M17/SmsPacket.cpp
 tests/unit/M17_packet_disassembly.cpp
 tests/unit/M17_packet_framing.cpp
+tests/unit/M17_sms_packet.cpp
 EOF
 )
 
