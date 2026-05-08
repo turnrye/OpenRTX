@@ -218,6 +218,7 @@ typedef struct ui_state_t
     bool edit_mode;
     bool edit_sms;
     bool view_sms;
+    bool useT9;
     int  currentSMSMessage;
     int  currentSMSLine;
     bool input_locked;

@@ -67,6 +67,10 @@
 #include "core/beeps.h"
 #ifdef CONFIG_M17
 #include "core/sms.h"
+#ifdef CONFIG_T9
+#include "protocols/M17/T9.h"
+#include "protocols/M17/dict_en.h" /* extern char dict_en[] */
+#endif
 #endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
@@ -1149,6 +1153,9 @@ static void _ui_textInputReset(char *buf)
 static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
                          bool callsign)
 {
+#ifdef CONFIG_T9
+    static char t9_code[15] = "";
+#endif
     long long now = getTick();
     // Get currently pressed number key
     uint8_t num_key = input_getPressedChar(msg);
@@ -1167,6 +1174,7 @@ static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
     uint8_t num_symbols = 0;
     if(callsign)
     {
+        ui_state.useT9 = false;
         num_symbols = strlen(symbols_ITU_T_E161_callsign[num_key]);
         if(num_symbols == 0)
             return;
@@ -1189,6 +1197,9 @@ static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
         // Different key pressed: save current char and change key
         else
         {
+#ifdef CONFIG_T9
+            if(!ui_state.useT9)
+#endif
                 ui_state.input_position += 1;
             ui_state.input_set = 0;
         }
@@ -2535,7 +2546,8 @@ void ui_updateFSM(bool *sync_rtx)
                 } else if(msg.keys & KEY_ENTER) {
                     if(ui_state.menu_selected == M17_SMSSEND) {
                         ui_state.edit_sms = true;
-                                        _ui_textInputReset(ui_state.new_message);
+                        ui_state.useT9    = false;
+                        _ui_textInputReset(ui_state.new_message);
                     } else if(ui_state.menu_selected == M17_SMSVIEW) {
                         ui_state.view_sms = true;
                     } else if(ui_state.menu_selected == M17_SMSMATCHCALL) {
