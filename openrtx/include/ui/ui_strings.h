@@ -100,6 +100,7 @@ typedef struct
     const char* CAN;
     const char* canRxCheck;
     const char* metaText;
+    const char* m17smsmenu;
 }
 stringsTable_t;
 
