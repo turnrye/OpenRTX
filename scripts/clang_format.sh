@@ -138,6 +138,8 @@ openrtx/include/protocols/M17/SmsPacket.hpp
 openrtx/src/protocols/M17/SmsPacket.cpp
 openrtx/include/core/SMSQueue.hpp
 openrtx/src/core/SMSQueue.cpp
+openrtx/include/core/sms.h
+openrtx/src/core/sms.cpp
 tests/unit/M17_packet_disassembly.cpp
 tests/unit/M17_packet_framing.cpp
 tests/unit/M17_sms_packet.cpp
