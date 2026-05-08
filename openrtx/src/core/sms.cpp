@@ -12,6 +12,7 @@
 #include "rtx/rtx.h"
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 /*
@@ -82,8 +83,11 @@ void sms_task(void)
                 accept = callsign_match || broadcast;
             }
 
-            if (accept)
+            if (accept) {
                 inbox.push(status.M17_src, msg);
+                fprintf(stderr, "SMS_RECEIVED from '%s': '%s'\n",
+                        status.M17_src, msg);
+            }
         }
 
         arm_rx();

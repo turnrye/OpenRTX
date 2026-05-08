@@ -1,0 +1,5 @@
+nop Start in M17 RX mode (emulator memory must already have M17 opmode selected)
+nop Wait for the looped baseband file to be decoded as an SMS
+sleep 8000
+screenshot sms_rx_done.bmp
+quit

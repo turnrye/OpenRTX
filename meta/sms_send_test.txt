@@ -1,0 +1,26 @@
+nop Navigate to SMS send: Menu -> Settings -> M17 -> SMS -> Send SMS
+key enter
+sleep 200
+nop Down 3 to Settings
+key down down down down enter
+screenshot sms_settings_menu.bmp
+nop Down 2 to M17
+key down down down down enter
+screenshot sms_m17_menu.bmp
+nop Down 2 to SMS entry
+sleep 200
+key down down enter
+sleep 200
+screenshot sms_sms_menu.bmp
+nop Send SMS is already selected (index 0), press enter to open compose screen
+key enter
+screenshot sms_compose.bmp
+nop Type 'a': single press of key 2 (first symbol, no multi-tap timing needed)
+key 2
+sleep 100
+screenshot sms_typed.bmp
+nop Send the message
+key enter
+sleep 3000
+screenshot sms_sent.bmp
+quit
