@@ -17,6 +17,9 @@
 #include "core/memory_profiling.h"
 #include "ui/ui_strings.h"
 #include "core/voicePromptUtils.h"
+#ifdef CONFIG_M17
+#include "core/sms.h"
+#endif
 
 #ifdef PLATFORM_TTWRPLUS
 #include "drivers/baseband/SA8x8.h"
@@ -231,6 +234,26 @@ void _ui_drawMenuListValue(ui_state_t* ui_state, uint8_t selected,
     }
 }
 
+#ifdef CONFIG_M17
+static bool _ui_viewSubString(char *in_string, char *out_string,
+                               uint16_t start_pos, uint16_t num_chars)
+{
+    uint16_t totalLen = strlen(in_string);
+    if(start_pos >= totalLen || (num_chars + start_pos) > totalLen)
+        return false;
+    memset(out_string, 0, num_chars + 1);
+    uint16_t i;
+    for(i = 0; i < num_chars; i++) {
+        out_string[i] = in_string[start_pos + i];
+        if(out_string[i] == 0x09 || out_string[i] == 0x0a ||
+           out_string[i] == 0x0d)
+            out_string[i] = 0x20;
+    }
+    out_string[i] = 0;
+    return true;
+}
+#endif
+
 int _ui_getMenuTopEntryName(char *buf, uint8_t max_len, uint8_t index)
 {
     if(index >= menu_num) return -1;
@@ -435,6 +458,10 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
             else
                 sniprintf(buf, max_len, "%s", last_state.settings.M17_meta_text);
         break;
+
+        case M17_SMS:
+            buf[0] = 0;
+            break;
 
         case M17_CAN:
             sniprintf(buf, max_len, "%d", last_state.settings.m17_can);
@@ -1018,6 +1045,182 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
     {
         _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getM17EntryName,
                               _ui_getM17ValueName);
+    }
+}
+
+static int _ui_getSMSEntryName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= menu_m17sms_num) return -1;
+    sniprintf(buf, max_len, "%s", menu_m17sms_items[index]);
+    return 0;
+}
+
+static int _ui_getSMSValueName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= menu_m17sms_num)
+        return -1;
+    switch(index) {
+        case M17_SMSSEND:
+            buf[0] = 0;
+            break;
+        case M17_SMSVIEW:
+            buf[0] = 0;
+            break;
+        case M17_SMSMATCHCALL:
+            sniprintf(buf, max_len, "%s",
+                      last_state.settings.m17_sms_match_call
+                          ? currentLanguage->on
+                          : currentLanguage->off);
+            break;
+    }
+    return 0;
+}
+
+void _ui_drawSMSMenu(ui_state_t *ui_state)
+{
+    char title[20];
+
+    gfx_clearScreen();
+    point_t top_pos      = layout.top_pos;
+    point_t top_rect_pos = {0, top_pos.y - layout.menu_h + 3};
+    point_t bot_pos      = layout.bottom_pos;
+    point_t bot_rect_pos = {0, bot_pos.y - layout.menu_h + 3};
+
+    if(ui_state->edit_sms) {
+        char     text[41];
+        uint16_t mesgLen = strlen(ui_state->new_message);
+
+        gfx_drawRect(top_rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h,
+                     color_white, true);
+        gfx_print(top_pos, layout.top_font, TEXT_ALIGN_CENTER, color_black,
+                  "SMS Message:");
+
+        if(mesgLen > 40)
+            _ui_viewSubString(ui_state->new_message, text, mesgLen - 40, 40);
+        else
+            strcpy(text, ui_state->new_message);
+
+        gfx_printLine(1, 4, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.message_font,
+                      TEXT_ALIGN_CENTER, color_white, text);
+
+        gfx_drawRect(bot_rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h,
+                     color_white, true);
+#ifdef CONFIG_T9
+        if(ui_state->useT9)
+            sprintf(title, "#: T9");
+        else
+            sprintf(title, "#: abc");
+        gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_CENTER, color_black,
+                  title);
+#endif
+        gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_RIGHT, color_black,
+                  "Back");
+        gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_LEFT, color_black,
+                  "Send");
+    } else if(ui_state->view_sms) {
+        char     sender[10];
+        char     message[822];
+        char     text[41];
+        uint16_t mesgLen  = 0;
+        uint16_t curPos   = 0;
+        uint16_t charsLeft = 0;
+
+        if(ui_state->currentSMSLine < 0) {
+            ui_state->currentSMSMessage--;
+            ui_state->currentSMSLine = 0;
+        }
+        if(ui_state->currentSMSMessage < 0)
+            ui_state->currentSMSMessage = (int)sms_count() - 1;
+
+        if(sms_get((uint8_t)ui_state->currentSMSMessage, sender,
+                   sizeof(sender), message, sizeof(message))) {
+            gfx_drawRect(top_rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h,
+                         color_white, true);
+            sprintf(title, "%s  M#: %d", sender,
+                    ui_state->currentSMSMessage + 1);
+            gfx_print(top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+                      color_black, title);
+
+            gfx_drawRect(bot_rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h,
+                         color_white, true);
+            gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_LEFT, color_black,
+                      "Scroll:");
+
+            gfx_drawSymbol(bot_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_CENTER, color_black, SYMBOL_UP_ARROW);
+            /* draw down arrow slightly right of up arrow */
+            point_t down_pos = {bot_pos.x + 10, bot_pos.y};
+            gfx_drawSymbol(down_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_CENTER, color_black, SYMBOL_DOWN_ARROW);
+
+            gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_RIGHT, color_black,
+                      "Del: #");
+
+            mesgLen  = strlen(message);
+            curPos   = 22 * ui_state->currentSMSLine;
+            if(curPos >= mesgLen) curPos = mesgLen;
+            charsLeft = mesgLen - curPos;
+            if(charsLeft > 0) {
+                _ui_viewSubString(message, text, curPos,
+                                  charsLeft < 22 ? charsLeft : 22);
+                gfx_print(layout.line1_pos, layout.message_font,
+                          TEXT_ALIGN_LEFT, color_white, text);
+
+                curPos    = 22 * (ui_state->currentSMSLine + 1);
+                if(curPos >= mesgLen) curPos = mesgLen;
+                charsLeft = mesgLen - curPos;
+                if(charsLeft > 0) {
+                    _ui_viewSubString(message, text, curPos,
+                                      charsLeft < 22 ? charsLeft : 22);
+                    gfx_print(layout.line2_pos, layout.message_font,
+                              TEXT_ALIGN_LEFT, color_white, text);
+                }
+
+                curPos    = 22 * (ui_state->currentSMSLine + 2);
+                if(curPos >= mesgLen) curPos = mesgLen;
+                charsLeft = mesgLen - curPos;
+                if(charsLeft > 0) {
+                    _ui_viewSubString(message, text, curPos,
+                                      charsLeft < 22 ? charsLeft : 22);
+                    gfx_print(layout.line3_pos, layout.message_font,
+                              TEXT_ALIGN_LEFT, color_white, text);
+                }
+
+                curPos    = 22 * (ui_state->currentSMSLine + 3);
+                if(curPos >= mesgLen) curPos = mesgLen;
+                charsLeft = mesgLen - curPos;
+                if(charsLeft > 0) {
+                    _ui_viewSubString(message, text, curPos,
+                                      charsLeft < 22 ? charsLeft : 22);
+                    gfx_print(layout.line4_pos, layout.message_font,
+                              TEXT_ALIGN_LEFT, color_white, text);
+                }
+            } else {
+                ui_state->currentSMSMessage++;
+                if(ui_state->currentSMSMessage >= (int)sms_count())
+                    ui_state->currentSMSMessage = 0;
+                ui_state->currentSMSLine = 0;
+            }
+        } else {
+            ui_state->view_sms = false;
+            gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+                      color_white, "SMS Menu");
+            _ui_drawMenuListValue(ui_state, 0, _ui_getSMSEntryName,
+                                  _ui_getSMSValueName);
+        }
+    } else {
+        if(ui_state->menu_selected > menu_m17sms_num - 1)
+            ui_state->menu_selected = 0;
+
+        gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+                  color_white, "SMS Menu");
+        _ui_drawMenuListValue(ui_state, ui_state->menu_selected,
+                              _ui_getSMSEntryName, _ui_getSMSValueName);
+
+        ui_state->currentSMSMessage = 0;
+        ui_state->currentSMSLine    = 0;
     }
 }
 #endif

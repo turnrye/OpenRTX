@@ -21,6 +21,9 @@
 #include "core/backup.h"
 #include "core/gps.h"
 #include "core/voicePrompts.h"
+#ifdef CONFIG_M17
+#include "core/sms.h"
+#endif
 
 #if defined(PLATFORM_TTWRPLUS)
 #include "pmu.h"
@@ -43,6 +46,9 @@ void *ui_threadFunc(void *arg)
 
     // Load initial state and update the UI
     ui_saveState();
+#ifdef CONFIG_M17
+    sms_init();
+#endif
     ui_updateGUI();
 
     // Keep the splash screen for one second  before rendering the new UI screen
@@ -60,6 +66,9 @@ void *ui_threadFunc(void *arg)
 
         pthread_mutex_lock(&state_mutex);   // Lock r/w access to radio state
         ui_updateFSM(&sync_rtx);            // Update UI FSM
+#ifdef CONFIG_M17
+        sms_task();                         // Poll SMS RX/TX descriptors
+#endif
         ui_saveState();                     // Save local state copy
         pthread_mutex_unlock(&state_mutex); // Unlock r/w access to radio state
 

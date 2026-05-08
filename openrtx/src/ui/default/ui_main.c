@@ -14,6 +14,9 @@
 #include "ui/ui_strings.h"
 #include "core/utils.h"
 #include "ui/utils.h"
+#ifdef CONFIG_M17
+#include "core/sms.h"
+#endif
 
 void _ui_drawMainBackground()
 {
@@ -52,9 +55,30 @@ void _ui_drawMainTop(ui_state_t * ui_state)
         color_white,"%d%%", last_state.charge);
     }
 #endif
+#ifdef CONFIG_M17
+    /* Show envelope icon if SMS messages are waiting. */
+    if(sms_count() > 0) {
+        if(ui_state->input_locked) {
+            gfx_drawSymbol(layout.top_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_LEFT, color_white, SYMBOL_LOCK);
+            /* offset right of the lock icon */
+            point_t mail_pos = {layout.top_pos.x + 8, layout.top_pos.y};
+            gfx_drawSymbol(mail_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_LEFT, color_white, SYMBOL_MAIL);
+        } else {
+            gfx_drawSymbol(layout.top_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_LEFT, color_white, SYMBOL_MAIL);
+        }
+    } else {
+        if(ui_state->input_locked)
+            gfx_drawSymbol(layout.top_pos, layout.top_symbol_size,
+                           TEXT_ALIGN_LEFT, color_white, SYMBOL_LOCK);
+    }
+#else
     if (ui_state->input_locked == true)
       gfx_drawSymbol(layout.top_pos, layout.top_symbol_size, TEXT_ALIGN_LEFT,
                      color_white, SYMBOL_LOCK);
+#endif
 }
 
 void _ui_drawBankChannel()
