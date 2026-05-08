@@ -71,6 +71,8 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/PacketDeframer.cpp',
                'openrtx/src/protocols/M17/PacketFramer.cpp',
                'openrtx/src/protocols/M17/SmsPacket.cpp',
+               'openrtx/src/protocols/M17/T9.cpp',
+               'openrtx/src/protocols/M17/dict_en.cpp',
                'openrtx/src/core/SMSQueue.cpp',
                'openrtx/src/core/sms.cpp']
 

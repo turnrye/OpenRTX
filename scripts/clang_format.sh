@@ -136,6 +136,10 @@ openrtx/include/protocols/M17/PacketFramer.hpp
 openrtx/src/protocols/M17/PacketFramer.cpp
 openrtx/include/protocols/M17/SmsPacket.hpp
 openrtx/src/protocols/M17/SmsPacket.cpp
+openrtx/include/protocols/M17/T9.h
+openrtx/src/protocols/M17/T9.cpp
+openrtx/include/protocols/M17/dict_en.h
+openrtx/src/protocols/M17/dict_en.cpp
 openrtx/include/core/SMSQueue.hpp
 openrtx/src/core/SMSQueue.cpp
 openrtx/include/core/sms.h
@@ -145,6 +149,7 @@ tests/unit/M17_packet_framing.cpp
 tests/unit/M17_sms_packet.cpp
 tests/unit/M17_packet_opmode.cpp
 tests/unit/M17_sms_queue.cpp
+tests/unit/T9_test.cpp
 EOF
 )
 

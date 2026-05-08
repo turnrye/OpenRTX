@@ -27,6 +27,9 @@ enum Mod17Flags {
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/* Device supports T9 predictive text input */
+#define CONFIG_T9
+
 #ifdef __cplusplus
 }
 #endif
