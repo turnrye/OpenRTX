@@ -88,7 +88,10 @@ enum opstatus {
  */
 enum pktStatus {
     PKT_STATUS_IDLE,      /**< No operation in progress */
-    PKT_STATUS_SUBMITTED, /**< Submitted to RX/TX queue */
+    PKT_STATUS_SUBMITTED, /**< Acquired by the rtx subsystem; descriptor
+                           *   fields must not be modified by the
+                           *   application layer until status transitions
+                           *   to DONE or ERROR. */
     PKT_STATUS_DONE,      /**< RX/TX done */
     PKT_STATUS_ERROR,     /**< RX/TX error */
 };
@@ -101,6 +104,7 @@ struct pktDesc {
     void *buffer;
     size_t size;
     ssize_t res;
+    char destination[10]; /**< TX destination callsign; empty string = use global config. */
 };
 
 /**
@@ -129,6 +133,15 @@ void rtx_configure(const rtxStatus_t *cfg);
  * @return copy of the RTX driver's internal status data structure.
  */
 rtxStatus_t rtx_getCurrentStatus();
+
+/**
+ * Obtain a read-only pointer to the RTX driver's internal status.
+ * The pointer is valid for the lifetime of the process.  Callers must
+ * not write through it.  No copy is made; suitable for use on threads
+ * with small stacks (e.g. the 512-byte embedded RTX thread).
+ * @return pointer to the RTX driver's internal status data structure.
+ */
+const rtxStatus_t *rtx_getStatus();
 
 /**
  * High-level code is in charge of calling this function periodically, since it

@@ -93,6 +93,11 @@ rtxStatus_t rtx_getCurrentStatus()
     return rtxStatus;
 }
 
+const rtxStatus_t *rtx_getStatus()
+{
+    return &rtxStatus;
+}
+
 void rtx_task()
 {
     // Check if there is a pending new configuration and, in case, read it.

@@ -142,6 +142,7 @@ openrtx/src/protocols/M17/SmsPacket.cpp
 tests/unit/M17_packet_disassembly.cpp
 tests/unit/M17_packet_framing.cpp
 tests/unit/M17_sms_packet.cpp
+tests/unit/M17_packet_opmode.cpp
 EOF
 )
 
