@@ -69,7 +69,8 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/FrameDecoder.cpp',
                'openrtx/src/protocols/M17/LinkSetupFrame.cpp',
                'openrtx/src/protocols/M17/PacketDeframer.cpp',
-               'openrtx/src/protocols/M17/PacketFramer.cpp']
+               'openrtx/src/protocols/M17/PacketFramer.cpp',
+               'openrtx/src/protocols/M17/SmsPacket.cpp']
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -1149,6 +1150,10 @@ m17_packet_framing_test = executable('m17_packet_framing_test',
                                      sources : unit_test_src + ['tests/unit/M17_packet_framing.cpp'],
                                      kwargs  : unit_test_opts)
 
+m17_sms_packet_test = executable('m17_sms_packet_test',
+                                  sources : unit_test_src + ['tests/unit/M17_sms_packet.cpp'],
+                                  kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1163,3 +1168,4 @@ test('M17 Packet Frame Test', m17_packet_test)
 test('DSP Oversampling Test', dsp_oversampling_test)
 test('M17 Packet Disassembly Test', m17_packet_disassembly_test)
 test('M17 Packet Framing Test', m17_packet_framing_test)
+test('M17 SMS Packet Test', m17_sms_packet_test)
