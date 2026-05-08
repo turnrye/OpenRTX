@@ -44,7 +44,7 @@ static void arm_rx(void)
     rx_desc.buffer = rx_buf;
     rx_desc.size   = sizeof(rx_buf);
     rx_desc.res    = 0;
-    rx_desc.status = PKT_STATUS_SUBMITTED;
+    rx_desc.status = PKT_STATUS_IDLE;
     rtx_addPacketRx(&rx_desc);
 }
 
@@ -131,7 +131,7 @@ int sms_send(const char *message, size_t msgLen)
     tx_desc.buffer = tx_buf;
     tx_desc.size   = len;
     tx_desc.res    = 0;
-    tx_desc.status = PKT_STATUS_SUBMITTED;
+    tx_desc.status = PKT_STATUS_IDLE;
 
     int ret = rtx_addPacketTx(&tx_desc);
     if (ret != 0)
