@@ -257,7 +257,7 @@ TEST_CASE("SMS pipeline: format/frame/deframe/parse round-trip recovers message"
     REQUIRE(framer.init(buf, appLen) == true);
 
     // Deframe
-    uint8_t rxBuf[64];
+    static uint8_t rxBuf[825]; /* 33 * 25 = M17 max packet payload */
     PacketDeframer deframer;
     REQUIRE(deframer.init(rxBuf, sizeof(rxBuf)) == true);
     PacketFrame frame;

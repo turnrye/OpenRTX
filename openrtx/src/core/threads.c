@@ -23,6 +23,10 @@
 #include "core/voicePrompts.h"
 #include "core/messages.h"
 
+#ifdef CONFIG_M17
+#include "core/m17_sms.h"
+#endif
+
 #if defined(PLATFORM_TTWRPLUS)
 #include "pmu.h"
 #endif
@@ -171,9 +175,16 @@ void *rtx_threadFunc(void *arg)
 
     rtx_init(&rtx_mutex);
 
+#ifdef CONFIG_M17
+    m17_sms_init();
+#endif
+
     while(state.devStatus == RUNNING)
     {
         rtx_task();
+#ifdef CONFIG_M17
+        m17_sms_task();
+#endif
     }
 
     rtx_terminate();

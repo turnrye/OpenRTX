@@ -11,6 +11,10 @@
 #include "core/messages_demo.h"
 #endif
 
+#ifdef CONFIG_M17
+#include "core/m17_sms.h"
+#endif
+
 #include <cerrno>
 
 /* ------------------------------------------------------------------

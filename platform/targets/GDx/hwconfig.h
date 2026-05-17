@@ -48,8 +48,8 @@ extern const struct spiDevice c6000_spi;
 #endif
 
 /* M17 SMS inbox capacity. */
-#define M17_SMS_MAX_MESSAGES 64
-#define M17_SMS_POOL_BYTES 4096
+#define M17_SMS_MAX_MESSAGES 32   /* 32 entries * ~68B + 3200B pool ≈ 5.4KB BSS; sized for MK22FN512 (96KB RAM) */
+#define M17_SMS_POOL_BYTES 3200
 #define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
 
 #endif /* HWCONFIG_H */
