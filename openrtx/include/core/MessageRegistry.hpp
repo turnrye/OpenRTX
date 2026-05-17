@@ -12,23 +12,22 @@
 #endif
 
 #include "core/messages.h"
-#include <cstddef>
 #include "hwconfig.h"
+#include <cstddef>
 
 /**
- * Maximum number of concurrently registered message sources.
+ * @brief A single message source entry: vtable + opaque context.
+ *
+ * Build an array of these at compile time and pass it to
+ * `MessageRegistry::init()`.
  */
-static constexpr size_t MAX_SOURCES = 4;
+struct SourceEntry {
+    const message_type_vtable_t *vtable;
+    void *ctx;
+};
 
 /**
- * Maximum number of entries held in a single snapshot across all sources.
- * Entries beyond this cap are silently dropped (oldest first per source order).
- * Configured per target in hwconfig.h via CONFIG_MSG_SNAPSHOT_SIZE.
- */
-static constexpr size_t MAX_MESSAGES_SNAPSHOT = CONFIG_MSG_SNAPSHOT_SIZE;
-
-/**
- * \brief Protocol-agnostic message registry.
+ * @brief Protocol-agnostic message registry.
  *
  * The registry is a multiplexer — it does **not** own message storage.
  * Each registered source provides a `count()` / `get(i)` callback pair;
@@ -43,38 +42,33 @@ static constexpr size_t MAX_MESSAGES_SNAPSHOT = CONFIG_MSG_SNAPSHOT_SIZE;
 class MessageRegistry
 {
 public:
-    /**
-     * \brief Initialise the registry; clears all slots and the snapshot.
-     */
-    void init();
+    /** Maximum snapshot entries across all sources.
+     *  Configured per target in hwconfig.h via CONFIG_MSG_SNAPSHOT_SIZE. */
+    static constexpr size_t MAX_MESSAGES_SNAPSHOT = CONFIG_MSG_SNAPSHOT_SIZE;
 
     /**
-     * \brief Release all registrations and clear the snapshot.
+     * @brief Compare two datetime_t values chronologically.
+     *
+     * @return negative if a < b, zero if equal, positive if a > b.
+     */
+    static int datetimeCmp(datetime_t a, datetime_t b);
+
+    /**
+     * @brief Initialise the registry with a fixed, compile-time source array.
+     *
+     * @param sources: pointer to an array of SourceEntry structs; must remain
+     *                 valid for the lifetime of the registry.
+     * @param count:   number of entries in the array.
+     */
+    void init(const SourceEntry *sources, size_t count);
+
+    /**
+     * @brief Clear the snapshot.  Source array pointer is released.
      */
     void terminate();
 
     /**
-     * \brief Register a new message source.
-     *
-     * @param vtable: pointer to the source's vtable; must remain valid for
-     *                the lifetime of the registration.
-     * @param ctx: opaque context pointer forwarded to vtable callbacks.
-     * @return non-negative handle on success, or -1 if no free slot exists.
-     */
-    int registerSource(const message_type_vtable_t *vtable, void *ctx);
-
-    /**
-     * \brief Unregister a previously registered source.
-     *
-     * Entries from this source are removed from the snapshot on the next
-     * `tick()`.
-     *
-     * @param handle: handle returned by registerSource().
-     */
-    void unregisterSource(int handle);
-
-    /**
-     * \brief Rebuild the sorted snapshot from all registered sources.
+     * @brief Rebuild the sorted snapshot from all registered sources.
      *
      * Uses a stable insertion sort (O(n^2), n <= MAX_MESSAGES_SNAPSHOT) to
      * order entries by `timestamp` descending (newest first).
@@ -82,21 +76,21 @@ public:
     void tick();
 
     /**
-     * \brief Return the number of entries in the current snapshot.
+     * @brief Return the number of entries in the current snapshot.
      *
      * @return entry count.
      */
     size_t count() const;
 
     /**
-     * \brief Return the number of unread entries in the current snapshot.
+     * @brief Return the number of unread entries in the current snapshot.
      *
      * @return count of entries with `unread == true`.
      */
     size_t countUnread() const;
 
     /**
-     * \brief Return a pointer to the \p idx-th snapshot entry.
+     * @brief Return a pointer to the @p idx-th snapshot entry.
      *
      * Valid until the next `tick()`.
      *
@@ -106,7 +100,7 @@ public:
     message_header_t *get(size_t idx) const;
 
     /**
-     * \brief Invoke an action on the entry at snapshot index \p idx.
+     * @brief Invoke an action on the entry at snapshot index @p idx.
      *
      * @param idx: zero-based snapshot index.
      * @param action: action to invoke.
@@ -116,44 +110,38 @@ public:
     int invokeAction(size_t idx, message_action_t action);
 
     /**
-     * \brief Return the number of sources whose vtable has `start_compose`.
+     * @brief Return true if a compose-capable source exists for @p mode.
      *
-     * @return count of compose-capable sources.
+     * Matches sources where `vtable->start_compose != nullptr` and
+     * `vtable->mode_id == mode`.  mode == 0 (OPMODE_NONE) never matches.
+     *
+     * @param mode: operating mode (one of enum opmode, stored as uint8_t).
+     * @return true if at least one matching source is registered.
      */
-    size_t composeSourceCount() const;
+    bool canCompose(uint8_t mode) const;
 
     /**
-     * \brief Return the display name of the \p i-th compose-capable source.
+     * @brief Invoke `start_compose` on the source registered for @p mode.
      *
-     * @param i: zero-based compose-source index.
-     * @return name string, or nullptr if out of range.
+     * @param mode: operating mode (one of enum opmode, stored as uint8_t).
+     * @return 0 on success, -ENOENT if no matching source found.
      */
-    const char *composeSourceName(size_t i) const;
+    int startCompose(uint8_t mode);
 
     /**
-     * \brief Invoke `start_compose` on the \p i-th compose-capable source.
+     * @brief Return the mode_id of the source that produced snapshot entry @p idx.
      *
-     * @param i: zero-based compose-source index.
-     * @return 0 on success, -ENOENT if out of range.
+     * @param idx: zero-based snapshot index.
+     * @return mode_id of the owning source, or 0 if idx is out of range.
      */
-    int startCompose(size_t i);
+    uint8_t sourceMode(size_t idx) const;
 
 private:
-    /**
-     * \brief Per-source registration slot.
-     */
-    struct SourceSlot
-    {
-        const message_type_vtable_t *vtable;
-        void *                       ctx;
-        bool                         inUse;
-        uint16_t                     typeId; /**< Assigned type id (slot index +
-                                               1). */
-    };
-
-    SourceSlot        sources[MAX_SOURCES];
+    const SourceEntry *sources;
+    size_t sourcesLen;
     message_header_t *snapshot[MAX_MESSAGES_SNAPSHOT];
-    size_t            snapshotLen;
+    uint8_t snapshotSource[MAX_MESSAGES_SNAPSHOT];
+    size_t snapshotLen;
 };
 
 #endif /* MESSAGE_REGISTRY_HPP */
