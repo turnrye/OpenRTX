@@ -1,0 +1,43 @@
+nop SMS loopback TX: navigate to Messages > New Message > Compose, compose, send via Send item
+sleep 2000
+nop Open top-level menu from main screen
+key enter
+sleep 200
+nop Navigate to Messages
+nop With CONFIG_GPS the menu is: Banks=0 Channels=1 Contacts=2 GPS=3 Settings=4 Info=5 About=6 Messages=7
+key down down down down down down down
+sleep 200
+screenshot menu_at_messages.bmp
+nop Enter Messages list
+key enter
+sleep 200
+screenshot messages_list.bmp
+nop Scroll past 3 demo messages to virtual "New Message" item (index 3)
+key down down down
+sleep 200
+screenshot messages_at_new.bmp
+nop Open compose screen (compose_focus=0, TO field; recipient resolved via m17_dest or broadcast)
+key enter
+sleep 200
+screenshot compose.bmp
+nop Move focus to body field (compose_focus=1) - skip TO, fallback recipient is used
+key down
+sleep 100
+nop Activate body editing mode (compose_body_editing=true)
+key enter
+sleep 100
+nop Type body: KEY_2 in free-text mode -> 'a' (first of "abc2ABC")
+key 2
+sleep 200
+nop Confirm pending multi-tap char and exit body editing
+key enter
+sleep 100
+nop Move focus to Send item (compose_focus=2)
+key down
+sleep 100
+screenshot compose_at_send.bmp
+nop Press Enter on Send item to call m17_sms_send()
+key enter
+sleep 3000
+screenshot sent.bmp
+quit

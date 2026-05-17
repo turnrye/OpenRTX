@@ -1177,6 +1177,14 @@ m17_sms_source_test = executable('m17_sms_source_test',
                                              'tests/unit/m17_sms_stubs.cpp',
                                              'tests/unit/m17_sms_source_test.cpp'],
                                   kwargs  : unit_test_opts)
+
+m17_sms_loopback_test = executable('m17_sms_loopback_test',
+                                    sources : ['openrtx/src/core/m17_sms.cpp',
+                                               'openrtx/src/protocols/M17/SmsPacket.cpp',
+                                               'tests/unit/m17_sms_loopback_stubs.cpp',
+                                               'tests/unit/m17_sms_loopback_test.cpp'],
+                                    kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1201,3 +1209,4 @@ test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
 test('Messages Registry Test', messages_test)
 test('M17 SMS Source Test', m17_sms_source_test)
+test('M17 SMS Loopback Test', m17_sms_loopback_test)

@@ -70,6 +70,13 @@ TEST_CASE("m17_sms: send rejects null arguments", "[m17_sms]")
     REQUIRE(m17_sms_vtable.count(NULL) == 0);
 }
 
+TEST_CASE("m17_sms: send rejects empty recipient", "[m17_sms]")
+{
+    m17_sms_init();
+    REQUIRE(m17_sms_send("hello", 5, "") == -EINVAL);
+    REQUIRE(m17_sms_vtable.count(NULL) == 0);
+}
+
 TEST_CASE("m17_sms: MSG_ACTION_MARK_READ clears unread flag", "[m17_sms]")
 {
     m17_sms_init();
