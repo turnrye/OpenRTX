@@ -54,7 +54,8 @@ enum uiScreen
     SETTINGS_RESET2DEFAULTS,
     LOW_BAT,
     MESSAGES_LIST,
-    MESSAGES_DETAIL
+    MESSAGES_DETAIL,
+    MESSAGES_COMPOSE
 };
 
 enum SetRxTx
@@ -224,7 +225,12 @@ typedef struct ui_state_t
     long long m17_meta_text_last_scroll_tick;
     char new_message[53];
     bool edit_message;
-    char compose_recipient[10]; /**< Editable TX destination for compose screen */
+    /** Editable TX destination for compose screen.
+     *  10 bytes: 9 chars + NUL, sized for M17 callsigns (max 9 chars).
+     *  If a multi-protocol source is added whose addresses exceed 9 chars
+     *  this field must be widened to match message_header_t::sender[16]. */
+#ifdef CONFIG_M17_SMS
+    char compose_recipient[10];
     char compose_body[822];     /**< SMS body text being composed */
     uint8_t compose_focus;        /**< 0=To row, 1=Message row, 2=Send row */
     bool compose_editing;         /**< To overlay (callsign input) is active */
@@ -232,6 +238,7 @@ typedef struct ui_state_t
     bool compose_is_reply;        /**< True when replying; controls title bar */
     int16_t detail_scroll;        /**< Body scroll offset in pixels */
     int16_t detail_scroll_max;    /**< Max scroll offset (set each frame) */
+#endif /* CONFIG_M17_SMS */
 #ifdef CONFIG_RTC
     // Variables used for Time & Date input
     datetime_t new_timedate;

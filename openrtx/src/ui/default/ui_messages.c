@@ -39,19 +39,12 @@ void _ui_drawMessagesList(ui_state_t *ui_state)
               currentLanguage->messages);
 
     size_t total = messages_count();
+    bool can_compose = messages_can_compose(last_state.channel.mode);
 
-    if (total == 0) {
+    if (total == 0 && !can_compose) {
         point_t center = { CONFIG_SCREEN_WIDTH / 2, CONFIG_SCREEN_HEIGHT / 2 };
         gfx_print(center, layout.menu_font, TEXT_ALIGN_CENTER, color_white,
                   currentLanguage->noMessages);
-
-        /* Show "New" hint in bottom bar if a compose source matches current mode. */
-        if (messages_can_compose(last_state.channel.mode)) {
-            point_t bot = { layout.bottom_pos.x,
-                            CONFIG_SCREEN_HEIGHT - layout.bottom_h / 2 };
-            gfx_print(bot, layout.top_font, TEXT_ALIGN_RIGHT, color_white,
-                      currentLanguage->newMessage);
-        }
         return;
     }
 
@@ -229,4 +222,141 @@ bool _ui_messagesStartCompose(ui_state_t *ui_state, kbd_msg_t msg)
     (void)ui_state;
     (void)msg;
     return messages_start_compose(last_state.channel.mode) == 0;
+}
+
+/**
+ * @brief Draw the message compose form.
+ *
+ * Layout: "To" label row at top, large scrollable body text area in the
+ * middle, "Send" row pinned at the bottom.  The focused row is
+ * highlighted (filled white, text in black).  When compose_editing is
+ * true a centred bordered overlay is drawn to accept callsign input for
+ * the To field.
+ *
+ * compose_focus: 0 = To row, 1 = body area, 2 = Send row.
+ * While focus == 1 character keys type into compose_body directly;
+ * UP/DOWN navigate focus (confirming any pending multi-tap char first),
+ * LEFT/RIGHT delete the last character.
+ *
+ * @param ui_state: pointer to current UI state.
+ */
+void _ui_drawMessagesCompose(ui_state_t *ui_state)
+{
+    gfx_clearScreen();
+
+    /* Title bar */
+    const char *title = ui_state->compose_is_reply ?
+                            currentLanguage->reply :
+                            currentLanguage->newMessage;
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER, color_white,
+              title);
+
+    /* ---- To row (row 0) ---- */
+    point_t to_rpos = layout.line1_pos;
+
+    if (!ui_state->compose_editing && ui_state->compose_focus == 0) {
+        point_t rect_pos = { 0, (int16_t)(to_rpos.y - layout.menu_h + 3) };
+        gfx_drawRect(rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h, color_white,
+                     true);
+    }
+
+    color_t to_col = (ui_state->compose_focus == 0
+                      && !ui_state->compose_editing) ?
+                         color_black :
+                         color_white;
+    {
+        const char *rcpt;
+        if (ui_state->compose_recipient[0] != '\0')
+            rcpt = ui_state->compose_recipient;
+        else if (last_state.settings.m17_dest[0] != '\0')
+            rcpt = last_state.settings.m17_dest;
+        else
+            rcpt = currentLanguage->broadcast;
+        char val[11] = { 0 };
+        sniprintf(val, sizeof(val), "%.10s", rcpt);
+        gfx_print(to_rpos, layout.menu_font, TEXT_ALIGN_LEFT, to_col, "To");
+        gfx_print(to_rpos, layout.menu_font, TEXT_ALIGN_RIGHT, to_col, val);
+    }
+
+    /* ---- Body area (row 1) ---- */
+    /* Spans from just below the To-row highlight to just above the
+     * Send-row highlight, with a 2 px inner padding on all sides.
+     * The Send row is pinned to the screen bottom (layout.bottom_pos),
+     * not to the generic bottom bar, so the full screen height is used. */
+    static const uint8_t BOX_PAD = 2;
+    int16_t to_row_top = (int16_t)(to_rpos.y - layout.menu_h + 3);
+    int16_t body_top = (int16_t)(to_row_top + layout.menu_h);
+    /* send_h_top: pixel row where the Send highlight rect begins.
+     * layout.bottom_pos.y is the text baseline at the very bottom of
+     * the screen (identical to what other screens use for their bottom
+     * bar).  Subtract (menu_h - 3) to get the rect's top edge so the
+     * baseline lands at layout.bottom_pos.y. */
+    int16_t send_h_top = (int16_t)(layout.bottom_pos.y - layout.menu_h + 3);
+    int16_t body_bot = (int16_t)(send_h_top - 1);
+    uint16_t body_w =
+        (uint16_t)(CONFIG_SCREEN_WIDTH - 2u * layout.horizontal_pad);
+    uint16_t body_h = (uint16_t)(body_bot - body_top + 1);
+    point_t body_orig = { (int16_t)layout.horizontal_pad, body_top };
+
+    /* Fill only when actively typing into the body (editing mode).
+     * When merely focused (not yet pressed ENTER), show outline only —
+     * this signals to the user that ENTER activates text entry. */
+    if (ui_state->compose_focus == 1 && ui_state->compose_body_editing)
+        gfx_drawRect(body_orig, body_w, body_h, color_white, true);
+    gfx_drawRect(body_orig, body_w, body_h, color_white, false);
+
+    color_t body_col = (ui_state->compose_focus == 1
+                        && ui_state->compose_body_editing) ?
+                           color_black :
+                           color_white;
+    uint8_t font_h = gfx_getFontHeight(layout.message_font);
+    uint16_t max_x = (uint16_t)(layout.horizontal_pad + body_w - BOX_PAD);
+    int16_t clip_top = (int16_t)(body_top + 1);
+    int16_t clip_bot = (int16_t)(body_bot - 1);
+
+    uint16_t cursor_y =
+        gfx_measureText(layout.message_font, ui_state->compose_body,
+                        (uint16_t)(layout.horizontal_pad + BOX_PAD), max_x,
+                        (size_t)ui_state->input_position + 1);
+    int16_t visible_h = clip_bot - clip_top;
+    int16_t scroll_offset = 0;
+    if ((int16_t)cursor_y > visible_h)
+        scroll_offset = (int16_t)cursor_y - visible_h;
+
+    point_t text_start = { (int16_t)(layout.horizontal_pad + BOX_PAD),
+                           (int16_t)(clip_top + font_h - scroll_offset) };
+    gfx_printBufferClipped(text_start, layout.message_font, TEXT_ALIGN_LEFT,
+                           body_col, ui_state->compose_body, max_x, clip_top,
+                           clip_bot);
+
+    /* ---- Send row (row 2) ---- */
+    /* Pinned to the very bottom of the screen, using the same baseline
+     * position (layout.bottom_pos.y) as all other screens' bottom bars. */
+    point_t send_rpos = { (int16_t)layout.horizontal_pad, layout.bottom_pos.y };
+    if (ui_state->compose_focus == 2) {
+        point_t rect_pos = { 0, (int16_t)(send_rpos.y - layout.menu_h + 3) };
+        gfx_drawRect(rect_pos, CONFIG_SCREEN_WIDTH, layout.menu_h, color_white,
+                     true);
+    }
+    color_t send_col = (ui_state->compose_focus == 2) ? color_black :
+                                                        color_white;
+    gfx_print(send_rpos, layout.menu_font, TEXT_ALIGN_CENTER, send_col, "Send");
+
+    /* ---- To-field editing overlay ---- */
+    if (ui_state->compose_editing) {
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height =
+            (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h)) / 2;
+        point_t rect_origin = {
+            (int16_t)((CONFIG_SCREEN_WIDTH - rect_width) / 2),
+            (int16_t)((CONFIG_SCREEN_HEIGHT - rect_height) / 2)
+        };
+        /* Solid black fill first to prevent row text showing through */
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_black, true);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+        gfx_printLine(1, 1, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.input_font,
+                      TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+    }
 }

@@ -63,6 +63,9 @@
 #include "core/input.h"
 #include "core/utils.h"
 #include "core/messages.h"
+#ifdef CONFIG_M17
+#include "core/m17_sms.h"
+#endif
 #include "hwconfig.h"
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
@@ -108,6 +111,7 @@ extern void _ui_reset_menu_anouncement_tracking();
 /* Messages inbox UI functions — implemented in ui_messages.c */
 extern void _ui_drawMessagesList(ui_state_t *ui_state);
 extern void _ui_drawMessagesDetail(ui_state_t *ui_state);
+extern void _ui_drawMessagesCompose(ui_state_t *ui_state);
 extern bool _ui_messagesStartCompose(ui_state_t *ui_state, kbd_msg_t msg);
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
@@ -2054,21 +2058,56 @@ void ui_updateFSM(bool *sync_rtx)
                 {
                     if(ui_state.menu_selected > 0)
                         ui_state.menu_selected -= 1;
+                    else
+                    {
+                        size_t cap = messages_count();
+                        if(messages_can_compose(state.channel.mode))
+                            cap += 1;
+                        if(cap > 0)
+                            ui_state.menu_selected = cap - 1;
+                    }
                 }
                 else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
                 {
-                    if(ui_state.menu_selected + 1 < messages_count())
+                    size_t cap = messages_count();
+                    if(messages_can_compose(state.channel.mode))
+                        cap += 1;
+                    if(ui_state.menu_selected + 1 < cap)
                         ui_state.menu_selected += 1;
+                    else
+                        ui_state.menu_selected = 0;
                 }
                 else if(msg.keys & KEY_ENTER)
                 {
-                    messages_invoke_action(ui_state.menu_selected,
-                                          MSG_ACTION_MARK_READ);
-                    state.ui_screen = MESSAGES_DETAIL;
-                }
-                else if(msg.keys & KEY_F1)
-                {
-                    if(messages_count() > 0)
+                    size_t count = messages_count();
+                    if((size_t)ui_state.menu_selected >= count)
+                    {
+                        /* Virtual "New Message" item selected */
+                        if(_ui_messagesStartCompose(&ui_state, msg))
+                        {
+                            /* Pre-fill recipient from global M17 dest. */
+                            memset(ui_state.compose_recipient, 0,
+                                   sizeof(ui_state.compose_recipient));
+#ifdef CONFIG_M17
+                            strncpy(ui_state.compose_recipient,
+                                    state.settings.m17_dest,
+                                    sizeof(ui_state.compose_recipient) - 1);
+#endif
+                            memset(ui_state.compose_body, 0,
+                                   sizeof(ui_state.compose_body));
+                            ui_state.input_position       = 0;
+                            ui_state.input_number         = 0;
+                            ui_state.input_set            = 0;
+                            ui_state.last_keypress        = 0;
+                            ui_state.compose_focus        = 0;
+                            ui_state.compose_editing      = false;
+                            ui_state.compose_body_editing = false;
+                            ui_state.compose_is_reply     = false;
+                            m17_sms_compose_clear();
+                            state.ui_screen = MESSAGES_COMPOSE;
+                        }
+                    }
+                    else
                     {
                         messages_invoke_action(ui_state.menu_selected,
                                               MSG_ACTION_MARK_READ);
@@ -2076,11 +2115,6 @@ void ui_updateFSM(bool *sync_rtx)
                         ui_state.detail_scroll_max = 0;
                         state.ui_screen = MESSAGES_DETAIL;
                     }
-                    f1Handled = true;
-                }
-                else if(msg.keys & KEY_F2)
-                {
-                    _ui_messagesStartCompose(&ui_state, msg);
                 }
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
@@ -2167,6 +2201,146 @@ void ui_updateFSM(bool *sync_rtx)
                     state.ui_screen = MESSAGES_LIST;
                 break;
             }
+            // Message compose form (3-row selector)
+            case MESSAGES_COMPOSE:
+                if(ui_state.compose_editing)
+                {
+                    /* To overlay active: route input to new_callsign */
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_callsign);
+                        strncpy(ui_state.compose_recipient,
+                                ui_state.new_callsign,
+                                sizeof(ui_state.compose_recipient) - 1);
+                        ui_state.compose_editing = false;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                    {
+                        /* Discard: restore compose_recipient unchanged */
+                        ui_state.compose_editing = false;
+                    }
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                        _ui_textInputDel(ui_state.new_callsign);
+                    else if(msg.keys & KEY_F1)
+                    {
+                        _ui_textInputDel(ui_state.new_callsign);
+                        f1Handled = true;
+                    }
+                    else if(input_isCharPressed(msg))
+                        _ui_textInputKeypad(ui_state.new_callsign,
+                                            9, msg, true);
+                }
+                else
+                {
+                    /* Form navigation / body editing */
+                    if(ui_state.compose_focus == 1
+                       && ui_state.compose_body_editing)
+                    {
+                        /* Body editing mode: any arrow key or knob deletes
+                         * the last character — same pattern as M17 dest
+                         * entry on the VFO screen (universally available). */
+                        if(msg.keys & KEY_UP    || msg.keys & KEY_DOWN  ||
+                           msg.keys & KEY_LEFT  || msg.keys & KEY_RIGHT ||
+                           msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
+                            _ui_textInputDel(ui_state.compose_body);
+                        else if(input_isCharPressed(msg))
+                            _ui_textInputKeypad(ui_state.compose_body,
+                                                821, msg, false);
+                        else if(msg.keys & KEY_ENTER || msg.keys & KEY_ESC)
+                        {
+                            /* Confirm pending multi-tap char, exit body
+                             * editing mode but stay on body row. */
+                            _ui_textInputConfirm(ui_state.compose_body);
+                            ui_state.compose_body_editing = false;
+                        }
+                    }
+                    else if(msg.keys & KEY_ESC)
+                    {
+#ifdef CONFIG_M17
+                        m17_sms_compose_clear();
+#endif
+                        state.ui_screen = MESSAGES_LIST;
+                    }
+                    else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                    {
+                        if(ui_state.compose_focus == 1)
+                            _ui_textInputConfirm(ui_state.compose_body);
+                        ui_state.compose_focus =
+                            (ui_state.compose_focus + 1) % 3;
+                    }
+                    else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                    {
+                        if(ui_state.compose_focus == 1)
+                            _ui_textInputConfirm(ui_state.compose_body);
+                        ui_state.compose_focus =
+                            (ui_state.compose_focus == 0)
+                            ? 2 : ui_state.compose_focus - 1;
+                    }
+                    else if(msg.keys & KEY_ENTER)
+                    {
+                        if(ui_state.compose_focus == 0)
+                        {
+                            /* Open To overlay: seed new_callsign from
+                             * current recipient, cursor at end */
+                            strncpy(ui_state.new_callsign,
+                                    ui_state.compose_recipient,
+                                    sizeof(ui_state.new_callsign) - 1);
+                            size_t rlen = strnlen(
+                                ui_state.new_callsign,
+                                sizeof(ui_state.new_callsign));
+                            if(rlen > 0)
+                            {
+                                ui_state.input_position = rlen - 1;
+                                ui_state.input_set      = 0;
+                                ui_state.last_keypress  = 1;
+                                ui_state.input_number   = 0;
+                            }
+                            else
+                            {
+                                _ui_textInputReset(
+                                    ui_state.new_callsign);
+                            }
+                            ui_state.compose_editing = true;
+                        }
+                        else if(ui_state.compose_focus == 1)
+                        {
+                            /* Activate body text-entry mode */
+                            ui_state.compose_body_editing = true;
+                        }
+                        else if(ui_state.compose_focus == 2)
+                        {
+                            /* Send if body is non-empty.
+                             * Resolve recipient: compose_recipient >
+                             * m17_dest > broadcast ("ALL"). */
+#ifdef CONFIG_M17
+                            size_t clen = strnlen(
+                                ui_state.compose_body,
+                                sizeof(ui_state.compose_body));
+                            if(clen > 0)
+                            {
+                                const char *rcpt;
+                                if(ui_state.compose_recipient[0] != '\0')
+                                    rcpt = ui_state.compose_recipient;
+                                else if(last_state.settings.m17_dest[0]
+                                        != '\0')
+                                    rcpt = last_state.settings.m17_dest;
+                                else
+                                    rcpt = currentLanguage->broadcast;
+                                if(m17_sms_send(ui_state.compose_body,
+                                                clen,
+                                                rcpt) == 0)
+                                {
+                                    *sync_rtx = true;
+                                    m17_sms_compose_clear();
+                                    state.ui_screen = MESSAGES_LIST;
+                                }
+                            }
+#endif
+                        }
+                    }
+                }
+                break;
 #ifdef CONFIG_RTC
             // Time&Date settings screen
             case SETTINGS_TIMEDATE:
@@ -2886,6 +3060,10 @@ bool ui_updateGUI()
         // Messages detail screen
         case MESSAGES_DETAIL:
             _ui_drawMessagesDetail(&ui_state);
+            break;
+        // Message compose form
+        case MESSAGES_COMPOSE:
+            _ui_drawMessagesCompose(&ui_state);
             break;
     }
 
