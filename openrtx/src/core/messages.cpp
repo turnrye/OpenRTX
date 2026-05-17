@@ -97,3 +97,8 @@ uint8_t messages_source_mode(size_t idx)
 {
     return registry.sourceMode(idx);
 }
+
+const message_type_vtable_t *messages_get_vtable(size_t idx)
+{
+    return registry.getVtable(idx);
+}
