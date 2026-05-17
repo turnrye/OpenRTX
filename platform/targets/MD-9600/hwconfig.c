@@ -37,9 +37,9 @@ static uint8_t spiC6000_func(const void *priv, uint8_t value)
         GPIOE->BSRR = (1 << 3);     // Set PE3 (CLK)
 
         if(value & (0x80 >> cnt))
-            GPIOE->BSRR = 1 << 4;   // Set PE4 (MOSI)
+            GPIOE->BSRR = 1 << 5;   // Set PE5 (MOSI)
         else
-            GPIOE->BSRR = 1 << 20;  // Clear PE4 (MOSI)
+            GPIOE->BSRR = 1 << 21;  // Clear PE5 (MOSI)
 
         // ~70ns delay
         asm volatile("           mov   r1, #1     \n"
@@ -50,7 +50,7 @@ static uint8_t spiC6000_func(const void *priv, uint8_t value)
 
         incoming <<= 1;
         GPIOE->BSRR = (1 << 19);                // Clear PE3 (CLK)
-        incoming |= (GPIOE->IDR >> 5) & 0x01;   // Read PE5 (MISO)
+        incoming |= (GPIOE->IDR >> 4) & 0x01;   // Read PE4 (MISO)
     }
 
     __enable_irq();
