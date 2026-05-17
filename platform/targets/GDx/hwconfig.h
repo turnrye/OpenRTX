@@ -47,4 +47,9 @@ extern const struct spiDevice c6000_spi;
 }
 #endif
 
+/* M17 SMS inbox capacity. */
+#define M17_SMS_MAX_MESSAGES 64
+#define M17_SMS_POOL_BYTES 4096
+#define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
+
 #endif /* HWCONFIG_H */
