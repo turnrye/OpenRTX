@@ -1132,7 +1132,7 @@ static void _ui_textInputReset(char *buf)
     buf[0] = '_';
 }
 
-static void _ui_textInputKeypad(char *buf, uint8_t max_len, kbd_msg_t msg,
+static void _ui_textInputKeypad(char *buf, uint16_t max_len, kbd_msg_t msg,
                          bool callsign)
 {
     long long now = getTick();

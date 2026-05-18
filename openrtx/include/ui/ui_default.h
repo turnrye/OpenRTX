@@ -214,7 +214,7 @@ typedef struct ui_state_t
     bool input_locked;
     // Variables used for VFO input
     uint8_t input_number;
-    uint8_t input_position;
+    uint16_t input_position;
     uint8_t input_set;
     long long last_keypress;
     freq_t new_rx_frequency;

@@ -39,8 +39,8 @@
 #include <cstdint>
 #include <cstring>
 
-/* Maximum body text bytes stored per entry (includes NUL terminator). */
-#define SMS_BODY_MAX (M17_SMS_POOL_BYTES / M17_SMS_MAX_MESSAGES)
+/* Maximum body bytes for a single SMS (821 chars + NUL, from the M17 spec). */
+#define SMS_BODY_MAX_LEN 822
 
 /* M17 packet data buffer size — matches PacketFramer/Deframer max payload. */
 #define SMS_PKT_BUF 825
@@ -54,12 +54,22 @@
  * a vtable get() return value can be reinterpret_cast'd back to SmsEntry.
  */
 struct SmsEntry {
-    message_header_t hdr;    /**< Registry-visible header. Must be first. */
-    char body[SMS_BODY_MAX]; /**< Body text (NUL-terminated). */
-    bool active;             /**< Slot is in use. */
+    message_header_t hdr; /**< Registry-visible header. Must be first. */
+    uint16_t pool_offset; /**< Byte offset of body text in body_pool. */
+    uint16_t pool_len;    /**< Length of body text (not counting NUL). */
+    bool active;          /**< Slot is in use. */
 };
 
 static SmsEntry entries[M17_SMS_MAX_MESSAGES];
+
+/**
+ * Variable-length body text pool.  Bodies are stored as NUL-terminated
+ * strings in a ring buffer.  pool_head points to the next byte to write.
+ * When a new body would wrap or overwrite existing data, any active entry
+ * whose pool region overlaps the write range is evicted first.
+ */
+static char body_pool[M17_SMS_POOL_BYTES];
+static uint16_t pool_head = 0;
 
 /* -------------------------------------------------------------------
  * TX / RX packet descriptors
@@ -82,6 +92,41 @@ static char compose_recipient_buf[16]; /* matches message_header_t::sender */
 /* -------------------------------------------------------------------
  * Internal helpers
  * ----------------------------------------------------------------- */
+
+/**
+ * Allocate len+1 bytes in body_pool for a new body.
+ *
+ * Advances pool_head by len+1 (wrapping at M17_SMS_POOL_BYTES).  Any active
+ * entry whose pool region overlaps the write range is evicted — those entries
+ * are always older because pool_head only moves forward.
+ *
+ * @param len: length of the body text (not counting NUL).
+ * @return byte offset in body_pool at which to write.
+ */
+static uint16_t pool_alloc(uint16_t len)
+{
+    uint16_t need = len + 1; /* +1 for NUL */
+
+    /* Wrap to start if the write would run off the end. */
+    if ((uint32_t)pool_head + need > M17_SMS_POOL_BYTES)
+        pool_head = 0;
+
+    uint16_t ws = pool_head;
+    uint16_t we = pool_head + need;
+
+    /* Evict any active entry whose body overlaps [ws, we). */
+    for (size_t i = 0; i < M17_SMS_MAX_MESSAGES; i++) {
+        if (!entries[i].active)
+            continue;
+        uint16_t es = entries[i].pool_offset;
+        uint16_t ee = entries[i].pool_offset + entries[i].pool_len + 1;
+        if (es < we && ee > ws)
+            entries[i].active = false;
+    }
+
+    pool_head = we;
+    return ws;
+}
 
 /**
  * Compare two datetime_t values.
@@ -230,6 +275,8 @@ const message_type_vtable_t m17_sms_vtable = {
 void m17_sms_init(void)
 {
     memset(entries, 0, sizeof(entries));
+    memset(body_pool, 0, sizeof(body_pool));
+    pool_head = 0;
     compose_pending_flag = false;
     compose_recipient_buf[0] = '\0';
 
@@ -267,21 +314,27 @@ void m17_sms_task(void)
     if (rx_desc.status != PKT_STATUS_DONE)
         return;
 
-    /* Parse the received application-layer payload. */
-    char text[SMS_BODY_MAX];
+    /* Parse the received application-layer payload into a static buffer to
+     * avoid 822-byte stack allocation on the embedded RTX thread. */
+    static char rx_text[SMS_BODY_MAX_LEN];
     size_t pkt_len = (rx_desc.res > 0) ? (size_t)rx_desc.res : 0;
 
     bool ok =
         M17::sms_parse_packet(static_cast<const uint8_t *>(rx_desc.buffer),
-                              pkt_len, text, sizeof(text));
+                              pkt_len, rx_text, sizeof(rx_text));
 
     if (ok) {
+        size_t text_len = strlen(rx_text);
         size_t slot = alloc_slot();
         SmsEntry &e = entries[slot];
 
-        memset(&e, 0, sizeof(e));
-        strncpy(e.body, text, SMS_BODY_MAX - 1);
-        e.body[SMS_BODY_MAX - 1] = '\0';
+        uint16_t off = pool_alloc((uint16_t)text_len);
+        memcpy(&body_pool[off], rx_text, text_len);
+        body_pool[off + text_len] = '\0';
+
+        memset(&e.hdr, 0, sizeof(e.hdr));
+        e.pool_offset = off;
+        e.pool_len = (uint16_t)text_len;
 
 #ifdef CONFIG_RTC
         e.hdr.timestamp = platform_getCurrentTime();
@@ -296,15 +349,16 @@ void m17_sms_task(void)
         strncpy(e.hdr.sender, st.M17_src, sizeof(e.hdr.sender) - 1);
         e.hdr.sender[sizeof(e.hdr.sender) - 1] = '\0';
 
-        e.hdr.body = e.body;
-        e.hdr.body_len = strlen(e.body);
+        e.hdr.body = &body_pool[off];
+        e.hdr.body_len = text_len;
         e.active = true;
 
 #ifdef PLATFORM_LINUX
         /* Signal reception on stderr so the loopback test script can detect
          * it with a simple grep.  Guarded: fprintf pulls in stdio and uses
          * significant stack — unsafe on embedded RTX thread (512 B stack). */
-        fprintf(stderr, "SMS_RECEIVED from '%s': '%s'\n", e.hdr.sender, e.body);
+        fprintf(stderr, "SMS_RECEIVED from '%s': '%s'\n", e.hdr.sender,
+                &body_pool[off]);
 #endif
     }
 
@@ -327,16 +381,20 @@ int m17_sms_send(const char *message, size_t msgLen, const char *recipient)
     if (pkt_len == 0)
         return -EMSGSIZE;
 
-    /* Allocate a storage slot (evicts oldest if pool is full). */
+    /* Allocate a storage slot (evicts oldest if header slots are full). */
     size_t slot = alloc_slot();
     SmsEntry &e = entries[slot];
 
-    memset(&e, 0, sizeof(e));
-    size_t copy_len = (msgLen < (size_t)(SMS_BODY_MAX - 1)) ?
-                          msgLen :
-                          (size_t)(SMS_BODY_MAX - 1);
-    memcpy(e.body, message, copy_len);
-    e.body[copy_len] = '\0';
+    /* Clamp to protocol max and write body into the pool ring buffer. */
+    size_t copy_len = (msgLen < SMS_BODY_MAX_LEN - 1) ? msgLen :
+                                                        (SMS_BODY_MAX_LEN - 1);
+    uint16_t off = pool_alloc((uint16_t)copy_len);
+    memcpy(&body_pool[off], message, copy_len);
+    body_pool[off + copy_len] = '\0';
+
+    memset(&e.hdr, 0, sizeof(e.hdr));
+    e.pool_offset = off;
+    e.pool_len = (uint16_t)copy_len;
 
 #ifdef CONFIG_RTC
     e.hdr.timestamp = platform_getCurrentTime();
@@ -352,7 +410,7 @@ int m17_sms_send(const char *message, size_t msgLen, const char *recipient)
     strncpy(e.hdr.recipient, recipient, sizeof(e.hdr.recipient) - 1);
     e.hdr.recipient[sizeof(e.hdr.recipient) - 1] = '\0';
 
-    e.hdr.body = e.body;
+    e.hdr.body = &body_pool[off];
     e.hdr.body_len = copy_len;
     e.active = true;
 
