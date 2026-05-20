@@ -17,7 +17,7 @@ extern "C" {
 
 int rtx_addPacketRx(struct pktDesc *pkt)
 {
-    if(pkt != nullptr)
+    if (pkt != nullptr)
         pkt->status = PKT_STATUS_IDLE;
     return 0;
 }
@@ -25,16 +25,24 @@ int rtx_addPacketRx(struct pktDesc *pkt)
 int rtx_addPacketTx(struct pktDesc *pkt)
 {
     /* Simulate instant TX completion so subsequent sends are not blocked. */
-    if(pkt != nullptr)
+    if (pkt != nullptr)
         pkt->status = PKT_STATUS_DONE;
     return 0;
 }
+
+static rtxStatus_t g_rtx_status;
 
 rtxStatus_t rtx_getCurrentStatus(void)
 {
     rtxStatus_t s;
     memset(&s, 0, sizeof(s));
     return s;
+}
+
+const rtxStatus_t *rtx_getStatus(void)
+{
+    memset(&g_rtx_status, 0, sizeof(g_rtx_status));
+    return &g_rtx_status;
 }
 
 datetime_t platform_getCurrentTime(void)

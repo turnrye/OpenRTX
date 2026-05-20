@@ -41,17 +41,6 @@ static message_header_t *fake_get(void *ctx, size_t i)
     return &src->entries[i].hdr;
 }
 
-static void fake_render_detail(const message_header_t * /*entry*/)
-{
-    /* no-op in tests */
-}
-
-static bool fake_handle_detail_input(message_header_t * /*entry*/,
-                                     kbd_msg_t /*msg*/)
-{
-    return false;
-}
-
 static uint32_t fake_supported_actions(const message_header_t * /*entry*/)
 {
     return MSG_ACTION_VIEW | MSG_ACTION_DELETE | MSG_ACTION_REPLY
@@ -90,13 +79,12 @@ static const message_type_vtable_t fake_vtable = {
     /* name              */ "FakeSrc",
     /* count             */ fake_count,
     /* get               */ fake_get,
-    /* render_list_row   */ nullptr,
-    /* render_detail     */ fake_render_detail,
-    /* handle_detail_inp */ fake_handle_detail_input,
     /* supported_actions */ fake_supported_actions,
     /* invoke_action     */ fake_invoke_action,
     /* start_compose     */ fake_start_compose,
     /* on_evict          */ fake_on_evict,
+    /* tick              */ nullptr,
+    /* send              */ nullptr,
     /* mode_id           */ 0u,
 };
 
@@ -105,13 +93,12 @@ static const message_type_vtable_t fake_vtable_nocompose = {
     /* name              */ nullptr,
     /* count             */ fake_count,
     /* get               */ fake_get,
-    /* render_list_row   */ nullptr,
-    /* render_detail     */ nullptr,
-    /* handle_detail_inp */ nullptr,
     /* supported_actions */ fake_supported_actions,
     /* invoke_action     */ fake_invoke_action,
     /* start_compose     */ nullptr,
     /* on_evict          */ nullptr,
+    /* tick              */ nullptr,
+    /* send              */ nullptr,
     /* mode_id           */ 0u,
 };
 
@@ -337,13 +324,12 @@ TEST_CASE(
         /* name              */ "Restricted",
         /* count             */ fake_count,
         /* get               */ fake_get,
-        /* render_list_row   */ nullptr,
-        /* render_detail     */ nullptr,
-        /* handle_detail_inp */ nullptr,
         /* supported_actions */ restricted_supported,
         /* invoke_action     */ fake_invoke_action,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 0u,
     };
 
@@ -404,6 +390,8 @@ TEST_CASE(
         /* invoke_action     */ fake_invoke_action,
         /* start_compose     */ fake_start_compose,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 1u,
     };
     static const message_type_vtable_t vtable_mode2_nocompose = {
@@ -417,6 +405,8 @@ TEST_CASE(
         /* invoke_action     */ fake_invoke_action,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 2u,
     };
 
@@ -452,6 +442,8 @@ TEST_CASE("MessageRegistry: startCompose dispatches to source matching mode",
         /* invoke_action     */ fake_invoke_action,
         /* start_compose     */ fake_start_compose,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 1u,
     };
     static const message_type_vtable_t vtable_mode2 = {
@@ -465,6 +457,8 @@ TEST_CASE("MessageRegistry: startCompose dispatches to source matching mode",
         /* invoke_action     */ fake_invoke_action,
         /* start_compose     */ fake_start_compose,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 2u,
     };
 
@@ -517,6 +511,8 @@ TEST_CASE("MessageRegistry: snapshot cap handled gracefully",
         /* invoke_action     */ nullptr,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 0u,
     };
 
@@ -548,6 +544,8 @@ TEST_CASE("MessageRegistry: source get() returning nullptr is skipped",
         /* invoke_action     */ nullptr,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 0u,
     };
 
@@ -600,6 +598,8 @@ TEST_CASE(
         /* invoke_action     */ nullptr,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 0u,
     };
 
@@ -631,6 +631,8 @@ TEST_CASE("MessageRegistry: sourceMode returns mode_id of the producing source",
         /* invoke_action     */ nullptr,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 1u,
     };
     static const message_type_vtable_t vtable_mode3 = {
@@ -644,6 +646,8 @@ TEST_CASE("MessageRegistry: sourceMode returns mode_id of the producing source",
         /* invoke_action     */ nullptr,
         /* start_compose     */ nullptr,
         /* on_evict          */ nullptr,
+        /* tick              */ nullptr,
+        /* send              */ nullptr,
         /* mode_id           */ 3u,
     };
 

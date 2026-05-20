@@ -11,8 +11,9 @@
  *   - Using loopback stubs (m17_sms_loopback_stubs.cpp) that expose the live
  *     pktDesc pointer via loopback_get_rx_desc().
  *   - Injecting formatted SMS payloads directly into the RX buffer and
- *     marking the descriptor PKT_STATUS_DONE, then calling m17_sms_task()
+ *     marking the descriptor PKT_STATUS_DONE, then calling m17_sms_task_rtx()
  *     to drive reception through the same code path used on real hardware.
+ *   - Draining packet_io events into entries[] by calling vtable->tick().
  *   - Verifying TX entries are advanced to MSG_STATUS_SENT after a task tick.
  */
 
@@ -21,12 +22,13 @@
 
 extern "C" {
 #include "hwconfig.h"
+#include "core/packet_io.h"
 }
 #include "core/m17_sms.h"
 #include "protocols/M17/SmsPacket.hpp"
 #include "rtx/rtx.h"
 
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
 
 /* Declared in m17_sms_loopback_stubs.cpp */
 extern "C" struct pktDesc *loopback_get_rx_desc(void);
@@ -34,8 +36,8 @@ extern "C" struct pktDesc *loopback_get_tx_desc(void);
 
 /**
  * Format @p text as an M17 SMS packet into the live RX descriptor buffer
- * and mark the descriptor PKT_STATUS_DONE so the next m17_sms_task() call
- * processes it as a received packet.
+ * and mark the descriptor PKT_STATUS_DONE so the next m17_sms_task_rtx()
+ * call processes it as a received packet.
  */
 static bool loopback_inject(const char *text, size_t len)
 {
@@ -54,13 +56,15 @@ static bool loopback_inject(const char *text, size_t len)
 TEST_CASE("m17_sms loopback: TX send is promoted to SENT after task tick",
           "[m17_sms][loopback]")
 {
+    packet_io_init();
     m17_sms_init();
-    m17_sms_task(); /* arms RX descriptor */
+    m17_sms_task_rtx(); /* arms RX descriptor */
 
-    REQUIRE(m17_sms_send("hello", 5, "N0CALL") == 0);
+    REQUIRE(m17_sms_vtable.send(NULL, "hello", 5, "N0CALL") == 0);
     REQUIRE(m17_sms_vtable.count(NULL) == 1);
 
-    m17_sms_task(); /* tx_desc.status==DONE → entry advanced to MSG_STATUS_SENT */
+    m17_sms_task_rtx(); /* dequeues TX request; stub sets DONE; enqueues completion */
+    m17_sms_vtable.tick(NULL); /* drains completion event → SENT */
 
     message_header_t *hdr = m17_sms_vtable.get(NULL, 0);
     REQUIRE(hdr != nullptr);
@@ -72,10 +76,12 @@ TEST_CASE("m17_sms loopback: TX send is promoted to SENT after task tick",
 TEST_CASE("m17_sms loopback: TX destination is stored in packet descriptor",
           "[m17_sms][loopback]")
 {
+    packet_io_init();
     m17_sms_init();
-    m17_sms_task();
+    m17_sms_task_rtx();
 
-    REQUIRE(m17_sms_send("hi", 2, "W1AW") == 0);
+    REQUIRE(m17_sms_vtable.send(NULL, "hi", 2, "W1AW") == 0);
+    m17_sms_task_rtx(); /* dequeues TX request and submits pktDesc */
 
     struct pktDesc *desc = loopback_get_tx_desc();
     REQUIRE(desc != nullptr);
@@ -85,11 +91,13 @@ TEST_CASE("m17_sms loopback: TX destination is stored in packet descriptor",
 TEST_CASE("m17_sms loopback: injected RX packet creates inbox entry",
           "[m17_sms][loopback]")
 {
+    packet_io_init();
     m17_sms_init();
-    m17_sms_task(); /* arms RX — loopback_get_rx_desc() is now valid */
+    m17_sms_task_rtx(); /* arms RX — loopback_get_rx_desc() is now valid */
 
     REQUIRE(loopback_inject("world", 5) == true);
-    m17_sms_task(); /* rx_desc.status==DONE → parse + ingest */
+    m17_sms_task_rtx(); /* rx_desc.status==DONE → parse + enqueue pkt_rx_event_t */
+    m17_sms_vtable.tick(NULL); /* drain RX event → new inbox entry */
 
     REQUIRE(m17_sms_vtable.count(NULL) == 1);
 
@@ -105,14 +113,18 @@ TEST_CASE("m17_sms loopback: injected RX packet creates inbox entry",
 TEST_CASE("m17_sms loopback: TX then RX round-trip yields two entries",
           "[m17_sms][loopback]")
 {
+    packet_io_init();
     m17_sms_init();
-    m17_sms_task(); /* arms RX */
+    m17_sms_task_rtx(); /* arms RX */
 
-    REQUIRE(m17_sms_send("ping", 4, "REMOTE") == 0);
-    m17_sms_task(); /* TX done → SENT; RX descriptor still armed */
+    REQUIRE(m17_sms_vtable.send(NULL, "ping", 4, "REMOTE") == 0);
+    m17_sms_task_rtx(); /* TX done → enqueues SENT completion */
+    m17_sms_vtable.tick(
+        NULL); /* drains SENT event → SENT; RX descriptor still armed */
 
     REQUIRE(loopback_inject("pong", 4) == true);
-    m17_sms_task(); /* RX done → new inbox entry; RX re-armed */
+    m17_sms_task_rtx(); /* RX done → enqueues pkt_rx_event_t; RX re-armed */
+    m17_sms_vtable.tick(NULL); /* drains RX event → new inbox entry */
 
     REQUIRE(m17_sms_vtable.count(NULL) == 2);
 
@@ -138,12 +150,14 @@ TEST_CASE("m17_sms loopback: TX then RX round-trip yields two entries",
 TEST_CASE("m17_sms loopback: RX descriptor is re-armed after receipt",
           "[m17_sms][loopback]")
 {
+    packet_io_init();
     m17_sms_init();
-    m17_sms_task(); /* arms RX */
+    m17_sms_task_rtx(); /* arms RX */
 
     REQUIRE(loopback_get_rx_desc() != nullptr);
     REQUIRE(loopback_inject("first", 5) == true);
-    m17_sms_task(); /* receives first message; re-arms RX */
+    m17_sms_task_rtx(); /* receives first message; re-arms RX */
+    m17_sms_vtable.tick(NULL);
 
     /* Stub updates g_rx_desc on each rtx_addPacketRx() call */
     struct pktDesc *desc = loopback_get_rx_desc();
@@ -151,9 +165,16 @@ TEST_CASE("m17_sms loopback: RX descriptor is re-armed after receipt",
     REQUIRE(desc->status == PKT_STATUS_IDLE); /* descriptor is freshly armed */
 
     REQUIRE(loopback_inject("second", 6) == true);
-    m17_sms_task(); /* receives second message */
+    m17_sms_task_rtx(); /* receives second message */
+    m17_sms_vtable.tick(NULL);
 
     REQUIRE(m17_sms_vtable.count(NULL) == 2);
 }
 
-#endif /* CONFIG_M17 */
+#else  /* CONFIG_M17_SMS not defined */
+TEST_CASE("M17 SMS Loopback (skipped: CONFIG_M17_SMS not set)",
+          "[m17][sms][loopback]")
+{
+    SUCCEED();
+}
+#endif /* CONFIG_M17_SMS */

@@ -152,6 +152,8 @@ tests/unit/M17_packet_framing.cpp
 tests/unit/M17_sms_packet.cpp
 tests/unit/M17_packet_opmode.cpp
 tests/unit/messages_test.cpp
+openrtx/include/core/packet_io.h
+openrtx/src/core/packet_io.c
 openrtx/include/core/m17_sms.h
 openrtx/src/core/m17_sms.cpp
 tests/unit/m17_sms_source_test.cpp

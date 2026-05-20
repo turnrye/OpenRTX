@@ -58,12 +58,25 @@ int rtx_addPacketTx(struct pktDesc *pkt)
     return 0;
 }
 
+static rtxStatus_t g_rtx_status;
+static bool g_rtx_status_init = false;
+
 rtxStatus_t rtx_getCurrentStatus(void)
 {
     rtxStatus_t s;
     memset(&s, 0, sizeof(s));
     strncpy(s.M17_src, "W1AW", sizeof(s.M17_src) - 1);
     return s;
+}
+
+const rtxStatus_t *rtx_getStatus(void)
+{
+    if (!g_rtx_status_init) {
+        memset(&g_rtx_status, 0, sizeof(g_rtx_status));
+        strncpy(g_rtx_status.M17_src, "W1AW", sizeof(g_rtx_status.M17_src) - 1);
+        g_rtx_status_init = true;
+    }
+    return &g_rtx_status;
 }
 
 datetime_t platform_getCurrentTime(void)

@@ -2,10 +2,14 @@
 # SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# HACK: SMS end-to-end loopback integration test.
+# TEST: SMS end-to-end loopback integration test (experimental).
 #
-# This is a developer tool, not a CI-suitable automated test.  It drives
-# the Linux emulator binary via its stdin command interface to:
+# This is a developer/e2e smoke test.  It is intentionally fragile and
+# not suitable for unattended CI: it depends on the Linux emulator binary,
+# NVM state, the 'sox' audio tool, and timing assumptions that may vary
+# across machines.  Use it manually to verify the full TX→RX path.
+#
+# It drives the Linux emulator binary via its stdin command interface to:
 #
 #   Phase 1 (TX): navigate the new UI (Messages > New Message > Compose),
 #     type a digit, press PTT to trigger m17_sms_send(), and capture the
