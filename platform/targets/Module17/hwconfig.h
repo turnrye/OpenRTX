@@ -55,11 +55,8 @@ enum Mod17Flags {
 /* Device has no battery */
 #define CONFIG_BAT_NONE
 
-/* Device supports M17 mode */
+/* Device supports M17 mode (voice only; SMS not enabled on Module17) */
 #define CONFIG_M17
-#define M17_SMS_MAX_MESSAGES 64
-#define M17_SMS_POOL_BYTES 6400
-#define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
 
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 12

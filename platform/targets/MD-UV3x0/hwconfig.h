@@ -84,7 +84,9 @@ extern const struct Adc adc1;
 #endif
 
 /* M17 SMS inbox capacity. */
-#define M17_SMS_MAX_MESSAGES 32   /* 32 entries * ~68B + 3200B pool ≈ 5.4KB BSS; sized for STM32F405 (192KB RAM) */
+#define CONFIG_M17_SMS
+#define M17_SMS_MAX_MESSAGES \
+    32 /* 32 entries * ~68B + 3200B pool ≈ 5.4KB BSS; sized for STM32F405 (192KB RAM) */
 #define M17_SMS_POOL_BYTES 3200
 #define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
 

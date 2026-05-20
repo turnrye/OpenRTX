@@ -26,6 +26,7 @@ enum Mod17Flags {
 
 /* Device supports M17 mode */
 #define CONFIG_M17
+#define CONFIG_M17_SMS
 
 #ifdef __cplusplus
 }

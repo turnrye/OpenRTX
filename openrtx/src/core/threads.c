@@ -176,15 +176,15 @@ void *rtx_threadFunc(void *arg)
 
     rtx_init(&rtx_mutex);
 
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
     m17_sms_init();
 #endif
 
     while(state.devStatus == RUNNING)
     {
         rtx_task();
-#ifdef CONFIG_M17
-        m17_sms_task();
+#ifdef CONFIG_M17_SMS
+        m17_sms_task_rtx();
 #endif
     }
 

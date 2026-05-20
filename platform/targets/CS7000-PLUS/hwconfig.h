@@ -78,6 +78,7 @@ extern const struct gpsDevice gps;
 #endif
 
 /* M17 SMS inbox capacity. */
+#define CONFIG_M17_SMS
 #define M17_SMS_MAX_MESSAGES 64
 #define M17_SMS_POOL_BYTES 6400
 #define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)

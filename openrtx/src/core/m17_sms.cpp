@@ -7,27 +7,26 @@
 /**
  * m17_sms.cpp — M17 SMS message source for the generic message inbox.
  *
- * Provides a flat pool of SMS entries (M17_SMS_MAX_MESSAGES slots, each
- * holding up to SMS_BODY_MAX bytes of body text).  Entries are created on
- * RX reception and on TX submission; the oldest entry is evicted silently
- * when the pool is full.
+ * Thread model:
+ *   RTX thread: m17_sms_task_rtx() — owns tx_buf/tx_desc/rx_buf/rx_desc.
+ *     * Drains pkt_tx_request_t from packet_io; formats and submits pktDesc.
+ *     * On TX completion posts a pkt_rx_event_t (status = SENT or FAILED).
+ *     * On RX completion parses payload; posts pkt_rx_event_t (status = RECEIVED).
  *
- * The vtable m17_sms_vtable is referenced by the static source table in
- * messages.cpp — no runtime registration is required.
+ *   UI thread: sms_tick() (called via vtable->tick from messages_tick())
+ *     and sms_send() (called via vtable->send from messages_send()).
+ *     Both run on the UI thread and are the sole owners of entries[]/body_pool.
  *
- * Thread safety: m17_sms_task() is called from the RTX thread.
- * m17_sms_send() is called from the UI thread.
- * vtable callbacks are called from the UI thread via messages_tick().
- * Access to entries[] is lock-free because the only cross-thread hazard is
- * the status field of a TX entry, which is promoted atomically from
- * MSG_STATUS_SENDING to SENT/FAILED only in m17_sms_task().
+ * packet_io provides the single mutex protecting the queue slots; it is held
+ * only during memcpy, keeping contention negligible.
  */
 
 #include "hwconfig.h"
 
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
 
 #include "core/m17_sms.h"
+#include "core/packet_io.h"
 #include "interfaces/platform.h"
 #include "protocols/M17/SmsPacket.hpp"
 #include "rtx/rtx.h"
@@ -39,15 +38,20 @@
 #include <cstdint>
 #include <cstring>
 
-/* Maximum body bytes for a single SMS (821 chars + NUL, from the M17 spec). */
-#define SMS_BODY_MAX_LEN 822
-
 /* M17 packet data buffer size — matches PacketFramer/Deframer max payload. */
 #define SMS_PKT_BUF 825
 
-/* -------------------------------------------------------------------
- * Per-entry storage
- * ----------------------------------------------------------------- */
+static_assert(M17_SMS_MAX_MESSAGES > 0, "M17_SMS_MAX_MESSAGES must be > 0");
+static_assert(M17_SMS_POOL_BYTES >= PKT_BODY_MAX_LEN,
+              "M17_SMS_POOL_BYTES must be >= PKT_BODY_MAX_LEN (822)");
+static_assert(M17_SMS_POOL_BYTES <= 65535,
+              "M17_SMS_POOL_BYTES exceeds uint16_t range; "
+              "reduce the value or widen pool_head / pool offsets");
+
+/* ===================================================================
+ * UI-thread storage (entries[], body_pool)
+ * Owned exclusively by the UI thread; no lock needed.
+ * =================================================================== */
 
 /**
  * One stored SMS.  The message_header_t MUST be the first member so that
@@ -58,6 +62,8 @@ struct SmsEntry {
     uint16_t pool_offset; /**< Byte offset of body text in body_pool. */
     uint16_t pool_len;    /**< Length of body text (not counting NUL). */
     bool active;          /**< Slot is in use. */
+    uint32_t tag;         /**< Echoed from pkt_tx_request_t for completion
+                               matching; 0 for RX entries. */
 };
 
 static SmsEntry entries[M17_SMS_MAX_MESSAGES];
@@ -71,27 +77,32 @@ static SmsEntry entries[M17_SMS_MAX_MESSAGES];
 static char body_pool[M17_SMS_POOL_BYTES];
 static uint16_t pool_head = 0;
 
-/* -------------------------------------------------------------------
- * TX / RX packet descriptors
- * ----------------------------------------------------------------- */
+/* ===================================================================
+ * RTX-thread storage (tx_buf, tx_desc, rx_buf, rx_desc)
+ * Owned exclusively by the RTX thread; no lock needed.
+ * =================================================================== */
 
 static uint8_t tx_buf[SMS_PKT_BUF];
 static struct pktDesc tx_desc;
-static size_t tx_slot; /* entries[] index of the in-flight TX entry */
+static uint32_t tx_inflight_tag = 0; /* tag of the in-flight TX request */
 
 static uint8_t rx_buf[SMS_PKT_BUF];
 static struct pktDesc rx_desc;
 
-/* -------------------------------------------------------------------
- * Compose state
- * ----------------------------------------------------------------- */
+/* Working buffers for m17_sms_task_rtx().
+ * Declared at file scope because the RTX thread has a 512-byte stack on
+ * embedded targets.  pkt_tx_request_t (~843 B) and pkt_rx_event_t (~847 B)
+ * cannot be allocated as local variables in that context. */
+static pkt_tx_request_t rtx_req;
+static pkt_rx_event_t rtx_evt;    /* TX completion event retry buffer */
+static pkt_rx_event_t rtx_rx_evt; /* RX received event retry buffer */
+static bool rtx_tx_evt_ready = false;
+static bool rtx_rx_evt_ready = false;
+static char rtx_rx_text[PKT_BODY_MAX_LEN];
 
-static bool compose_pending_flag;
-static char compose_recipient_buf[16]; /* matches message_header_t::sender */
-
-/* -------------------------------------------------------------------
- * Internal helpers
- * ----------------------------------------------------------------- */
+/* ===================================================================
+ * UI-thread internal helpers
+ * =================================================================== */
 
 /**
  * Allocate len+1 bytes in body_pool for a new body.
@@ -129,25 +140,6 @@ static uint16_t pool_alloc(uint16_t len)
 }
 
 /**
- * Compare two datetime_t values.
- * @return negative if a < b, 0 if equal, positive if a > b.
- */
-static int datetime_cmp(const datetime_t &a, const datetime_t &b)
-{
-    if (a.year != b.year)
-        return (int)(uint8_t)a.year - (int)(uint8_t)b.year;
-    if (a.month != b.month)
-        return (int)a.month - (int)b.month;
-    if (a.date != b.date)
-        return (int)a.date - (int)b.date;
-    if (a.hour != b.hour)
-        return (int)a.hour - (int)b.hour;
-    if (a.minute != b.minute)
-        return (int)a.minute - (int)b.minute;
-    return (int)a.second - (int)b.second;
-}
-
-/**
  * Find a free (inactive) slot.
  * If the pool is full, evict the entry with the oldest timestamp.
  * @return index into entries[].
@@ -163,8 +155,8 @@ static size_t alloc_slot(void)
     /* Pool full — evict the chronologically oldest entry. */
     size_t oldest = 0;
     for (size_t i = 1; i < M17_SMS_MAX_MESSAGES; i++) {
-        if (datetime_cmp(entries[i].hdr.timestamp,
-                         entries[oldest].hdr.timestamp)
+        if (datetime_cmp(&entries[i].hdr.timestamp,
+                         &entries[oldest].hdr.timestamp)
             < 0) {
             oldest = i;
         }
@@ -174,9 +166,9 @@ static size_t alloc_slot(void)
     return oldest;
 }
 
-/* -------------------------------------------------------------------
- * Vtable callbacks
- * ----------------------------------------------------------------- */
+/* ===================================================================
+ * Vtable callbacks — all called from the UI thread
+ * =================================================================== */
 
 static size_t sms_count(void *ctx)
 {
@@ -229,10 +221,7 @@ static int sms_invoke_action(message_header_t *hdr, message_action_t action)
             return 0;
 
         case MSG_ACTION_REPLY:
-            compose_pending_flag = true;
-            strncpy(compose_recipient_buf, hdr->sender,
-                    sizeof(compose_recipient_buf) - 1);
-            compose_recipient_buf[sizeof(compose_recipient_buf) - 1] = '\0';
+            /* The UI sets compose_recipient from hdr->sender directly. */
             return 0;
 
         case MSG_ACTION_VIEW:
@@ -243,42 +232,167 @@ static int sms_invoke_action(message_header_t *hdr, message_action_t action)
     }
 }
 
-static void sms_start_compose(void *ctx)
+/**
+ * UI-thread tick: drain pkt_rx_event_t events from packet_io.
+ *
+ * For RX events (status == MSG_STATUS_RECEIVED): allocate a slot and body
+ * pool entry, populate the header, set active.
+ *
+ * For TX completion events (status == SENT or FAILED): find the matching
+ * in-flight TX entry by tag and update its status.
+ */
+static void sms_tick(void *ctx)
 {
     (void)ctx;
-    compose_pending_flag = true;
-    compose_recipient_buf[0] = '\0';
+
+    /* Static: avoid 847-byte stack allocation on the 2048-byte UI thread. */
+    static pkt_rx_event_t evt;
+    if (packet_io_dequeue_rx(&evt)) {
+        if (evt.mode_id != (uint8_t)OPMODE_M17)
+            return;
+
+        if (evt.status == MSG_STATUS_RECEIVED) {
+            size_t text_len = evt.body_len;
+            if (text_len >= PKT_BODY_MAX_LEN)
+                text_len = PKT_BODY_MAX_LEN - 1;
+
+            size_t slot = alloc_slot();
+            SmsEntry &e = entries[slot];
+
+            uint16_t off = pool_alloc((uint16_t)text_len);
+            memcpy(&body_pool[off], evt.body, text_len);
+            body_pool[off + text_len] = '\0';
+
+            memset(&e.hdr, 0, sizeof(e.hdr));
+            e.pool_offset = off;
+            e.pool_len = (uint16_t)text_len;
+            e.tag = 0;
+
+#ifdef CONFIG_RTC
+            e.hdr.timestamp = platform_getCurrentTime();
+#endif
+            e.hdr.direction = MSG_DIR_RX;
+            e.hdr.status = MSG_STATUS_RECEIVED;
+            e.hdr.unread = true;
+
+            strncpy(e.hdr.sender, evt.src, sizeof(e.hdr.sender) - 1);
+            e.hdr.sender[sizeof(e.hdr.sender) - 1] = '\0';
+
+            e.hdr.body = &body_pool[off];
+            e.hdr.body_len = text_len;
+            e.active = true;
+
+        } else {
+            /* TX completion — find by tag. */
+            for (size_t i = 0; i < M17_SMS_MAX_MESSAGES; i++) {
+                if (entries[i].active && entries[i].tag == evt.tag
+                    && entries[i].hdr.direction == MSG_DIR_TX
+                    && entries[i].hdr.status == MSG_STATUS_SENDING) {
+                    entries[i].hdr.status =
+                        static_cast<message_status_t>(evt.status);
+                    break;
+                }
+            }
+        }
+    }
 }
 
-/* -------------------------------------------------------------------
+/**
+ * UI-thread send: create an inbox entry and enqueue a TX request.
+ */
+static int sms_send(void *ctx, const char *body, size_t body_len,
+                    const char *recipient)
+{
+    (void)ctx;
+
+    if (body == nullptr || recipient == nullptr || recipient[0] == '\0')
+        return -EINVAL;
+
+    /* Use non-zero tag from current timestamp; fall back to 1 on zero. */
+    static uint32_t tag_counter = 0;
+    tag_counter++;
+    if (tag_counter == 0)
+        tag_counter = 1;
+    uint32_t tag = tag_counter;
+
+    /* Static: avoid ~841-byte stack allocation on the 2048-byte UI thread —
+     * same constraint as req/evt in m17_sms_task_rtx(). sms_send() is only
+     * called from the UI thread and is never re-entered. */
+    static pkt_tx_request_t req;
+    req.mode_id = (uint8_t)OPMODE_M17;
+    strncpy(req.dst, recipient, sizeof(req.dst) - 1);
+    req.dst[sizeof(req.dst) - 1] = '\0';
+
+    if (body_len > PKT_BODY_MAX_LEN - 1)
+        return -EMSGSIZE;
+
+    memcpy(req.body, body, body_len);
+    req.body[body_len] = '\0';
+    req.body_len = body_len;
+    req.tag = tag;
+
+    if (!packet_io_enqueue_tx(&req))
+        return -EBUSY;
+
+    /* Create the outbox entry on the UI side. */
+    size_t slot = alloc_slot();
+    SmsEntry &e = entries[slot];
+
+    uint16_t off = pool_alloc((uint16_t)body_len);
+    memcpy(&body_pool[off], body, body_len);
+    body_pool[off + body_len] = '\0';
+
+    memset(&e.hdr, 0, sizeof(e.hdr));
+    e.pool_offset = off;
+    e.pool_len = (uint16_t)body_len;
+    e.tag = tag;
+
+#ifdef CONFIG_RTC
+    e.hdr.timestamp = platform_getCurrentTime();
+#endif
+    e.hdr.direction = MSG_DIR_TX;
+    e.hdr.status = MSG_STATUS_SENDING;
+    e.hdr.unread = false;
+
+    rtxStatus_t st = rtx_getCurrentStatus();
+    strncpy(e.hdr.sender, st.source_address, sizeof(e.hdr.sender) - 1);
+    e.hdr.sender[sizeof(e.hdr.sender) - 1] = '\0';
+    strncpy(e.hdr.recipient, recipient, sizeof(e.hdr.recipient) - 1);
+    e.hdr.recipient[sizeof(e.hdr.recipient) - 1] = '\0';
+
+    e.hdr.body = &body_pool[off];
+    e.hdr.body_len = body_len;
+    e.active = true;
+
+    return 0;
+}
+
+/* ===================================================================
  * Exported vtable
- * ----------------------------------------------------------------- */
+ * =================================================================== */
 
 const message_type_vtable_t m17_sms_vtable = {
-    /* name              */ "M17 SMS",
-    /* count             */ sms_count,
-    /* get               */ sms_get,
-    /* render_list_row   */ NULL,
-    /* render_detail     */ NULL,
-    /* handle_detail_input */ NULL,
-    /* supported_actions */ sms_supported_actions,
-    /* invoke_action     */ sms_invoke_action,
-    /* start_compose     */ sms_start_compose,
-    /* on_evict          */ NULL,
-    /* mode_id           */ 3, /* OPMODE_M17 */
+    /* name                */ "M17 SMS",
+    /* count               */ sms_count,
+    /* get                 */ sms_get,
+    /* supported_actions   */ sms_supported_actions,
+    /* invoke_action       */ sms_invoke_action,
+    /* start_compose       */ NULL,
+    /* on_evict            */ NULL,
+    /* tick                */ sms_tick,
+    /* send                */ sms_send,
+    /* mode_id             */ (uint8_t)OPMODE_M17,
 };
 
-/* -------------------------------------------------------------------
+/* ===================================================================
  * Public API
- * ----------------------------------------------------------------- */
+ * =================================================================== */
 
 void m17_sms_init(void)
 {
     memset(entries, 0, sizeof(entries));
     memset(body_pool, 0, sizeof(body_pool));
     pool_head = 0;
-    compose_pending_flag = false;
-    compose_recipient_buf[0] = '\0';
 
     tx_desc.status = PKT_STATUS_IDLE;
 
@@ -287,7 +401,7 @@ void m17_sms_init(void)
     rx_desc.status = PKT_STATUS_IDLE;
 }
 
-void m17_sms_task(void)
+void m17_sms_task_rtx(void)
 {
     /*
      * Arm the RX descriptor whenever it is idle.  Using a retry-on-IDLE loop
@@ -301,64 +415,133 @@ void m17_sms_task(void)
     if (rx_desc.status == PKT_STATUS_IDLE)
         rtx_addPacketRx(&rx_desc);
 
+    /* rtx_req, rtx_evt, rtx_rx_evt, rtx_tx_evt_ready, rtx_rx_evt_ready,
+     * rtx_rx_text are file-scope statics;
+     * see the RTX-thread storage section above.
+     *
+     * rtx_tx_evt_ready: a FAILED or SENT completion event is filled in
+     * rtx_evt and waiting to be posted.  We retry posting on each tick
+     * until the UI thread drains the RX queue (packet_io_dequeue_rx).
+     * rtx_rx_evt_ready: a RECEIVED event is filled in rtx_rx_evt and
+     * waiting to be posted similarly. */
+
+    /* Retry posting a pending TX completion event. */
+    if (rtx_tx_evt_ready) {
+        if (packet_io_enqueue_rx(&rtx_evt)) {
+            rtx_tx_evt_ready = false;
+            tx_inflight_tag = 0;
+        }
+        return;
+    }
+
+    /* Retry posting a pending RX received event. */
+    if (rtx_rx_evt_ready) {
+        if (packet_io_enqueue_rx(&rtx_rx_evt))
+            rtx_rx_evt_ready = false;
+        return;
+    }
+
+    /* --- TX: pick up a new request if idle --- */
+    if (tx_desc.status == PKT_STATUS_IDLE) {
+        if (packet_io_dequeue_tx(&rtx_req)) {
+            /* Format the M17 application-layer SMS packet. */
+            size_t pkt_len = M17::sms_format_packet(
+                rtx_req.body, rtx_req.body_len, tx_buf, sizeof(tx_buf));
+            if (pkt_len == 0) {
+                /* Format error — post a FAILED completion event. */
+                memset(&rtx_evt, 0, sizeof(rtx_evt));
+                rtx_evt.mode_id = (uint8_t)OPMODE_M17;
+                rtx_evt.tag = rtx_req.tag;
+                rtx_evt.status = MSG_STATUS_FAILED;
+                if (!packet_io_enqueue_rx(&rtx_evt))
+                    rtx_tx_evt_ready = true; /* retry next tick */
+            } else {
+                tx_inflight_tag = rtx_req.tag;
+                tx_desc.buffer = tx_buf;
+                tx_desc.size = pkt_len;
+                strncpy(tx_desc.destination, rtx_req.dst,
+                        sizeof(tx_desc.destination) - 1);
+                tx_desc.destination[sizeof(tx_desc.destination) - 1] = '\0';
+                rtx_addPacketTx(&tx_desc);
+            }
+        }
+    }
+
     /* --- TX completion check --- */
-    if (tx_desc.status == PKT_STATUS_DONE) {
-        entries[tx_slot].hdr.status = MSG_STATUS_SENT;
-        tx_desc.status = PKT_STATUS_IDLE;
-    } else if (tx_desc.status == PKT_STATUS_ERROR) {
-        entries[tx_slot].hdr.status = MSG_STATUS_FAILED;
-        tx_desc.status = PKT_STATUS_IDLE;
+    if (tx_desc.status == PKT_STATUS_DONE
+        || tx_desc.status == PKT_STATUS_ERROR) {
+        uint8_t final_status = (tx_desc.status == PKT_STATUS_DONE) ?
+                                   (uint8_t)MSG_STATUS_SENT :
+                                   (uint8_t)MSG_STATUS_FAILED;
+
+        memset(&rtx_evt, 0, sizeof(rtx_evt));
+        rtx_evt.mode_id = (uint8_t)OPMODE_M17;
+        rtx_evt.tag = tx_inflight_tag;
+        rtx_evt.status = final_status;
+        if (packet_io_enqueue_rx(&rtx_evt)) {
+            tx_desc.status = PKT_STATUS_IDLE;
+            tx_inflight_tag = 0;
+        } else {
+            /* RX queue full — retry next tick; leave tx_desc.status as-is. */
+            rtx_tx_evt_ready = true;
+        }
     }
 
     /* --- RX completion check --- */
+    if (rx_desc.status == PKT_STATUS_ERROR)
+    {
+        /* Deframer error (bad CRC, sequence, overflow); discard and re-arm. */
+        rx_desc.status = PKT_STATUS_IDLE;
+        return;
+    }
     if (rx_desc.status != PKT_STATUS_DONE)
         return;
 
-    /* Parse the received application-layer payload into a static buffer to
-     * avoid 822-byte stack allocation on the embedded RTX thread. */
-    static char rx_text[SMS_BODY_MAX_LEN];
+    /* Parse the received application-layer payload.  rtx_rx_text is a
+     * file-scope static to avoid an 822-byte stack allocation on the
+     * embedded RTX thread. */
     size_t pkt_len = (rx_desc.res > 0) ? (size_t)rx_desc.res : 0;
 
     bool ok =
         M17::sms_parse_packet(static_cast<const uint8_t *>(rx_desc.buffer),
-                              pkt_len, rx_text, sizeof(rx_text));
+                              pkt_len, rtx_rx_text, sizeof(rtx_rx_text));
 
     if (ok) {
-        size_t text_len = strlen(rx_text);
-        size_t slot = alloc_slot();
-        SmsEntry &e = entries[slot];
+        size_t text_len = strlen(rtx_rx_text);
 
-        uint16_t off = pool_alloc((uint16_t)text_len);
-        memcpy(&body_pool[off], rx_text, text_len);
-        body_pool[off + text_len] = '\0';
+        memset(&rtx_rx_evt, 0, sizeof(rtx_rx_evt));
+        rtx_rx_evt.mode_id = (uint8_t)OPMODE_M17;
+        rtx_rx_evt.tag = 0;
+        rtx_rx_evt.status = (uint8_t)MSG_STATUS_RECEIVED;
 
-        memset(&e.hdr, 0, sizeof(e.hdr));
-        e.pool_offset = off;
-        e.pool_len = (uint16_t)text_len;
-
-#ifdef CONFIG_RTC
-        e.hdr.timestamp = platform_getCurrentTime();
-#endif
-        e.hdr.direction = MSG_DIR_RX;
-        e.hdr.status = MSG_STATUS_RECEIVED;
-        e.hdr.unread = true;
+        size_t copy_len = (text_len < PKT_BODY_MAX_LEN) ?
+                              text_len :
+                              (PKT_BODY_MAX_LEN - 1);
+        memcpy(rtx_rx_evt.body, rtx_rx_text, copy_len);
+        rtx_rx_evt.body[copy_len] = '\0';
+        rtx_rx_evt.body_len = copy_len;
 
         /* The source callsign is decoded from the LSF by the M17 layer and
-         * stored in rtxStatus_t::M17_src. */
-        rtxStatus_t st = rtx_getCurrentStatus();
-        strncpy(e.hdr.sender, st.M17_src, sizeof(e.hdr.sender) - 1);
-        e.hdr.sender[sizeof(e.hdr.sender) - 1] = '\0';
+         * stored in rtxStatus_t::M17_src.  Use rtx_getStatus() to read it
+         * via pointer rather than copying the full 140-byte struct onto the
+         * 512-byte RTX stack. */
+        const rtxStatus_t *st = rtx_getStatus();
+        strncpy(rtx_rx_evt.src, st->M17_src, sizeof(rtx_rx_evt.src) - 1);
+        rtx_rx_evt.src[sizeof(rtx_rx_evt.src) - 1] = '\0';
 
-        e.hdr.body = &body_pool[off];
-        e.hdr.body_len = text_len;
-        e.active = true;
+        if (!packet_io_enqueue_rx(&rtx_rx_evt)) {
+            /* Queue full; retry next tick.  rx_desc will not be re-armed
+             * until the event is successfully delivered. */
+            rtx_rx_evt_ready = true;
+            return;
+        }
 
 #ifdef PLATFORM_LINUX
         /* Signal reception on stderr so the loopback test script can detect
          * it with a simple grep.  Guarded: fprintf pulls in stdio and uses
          * significant stack — unsafe on embedded RTX thread (512 B stack). */
-        fprintf(stderr, "SMS_RECEIVED from '%s': '%s'\n", e.hdr.sender,
-                &body_pool[off]);
+        fprintf(stderr, "SMS_RECEIVED from '%s': '%s'\n", rtx_rx_evt.src,
+                rtx_rx_text);
 #endif
     }
 
@@ -366,83 +549,4 @@ void m17_sms_task(void)
     rx_desc.status = PKT_STATUS_IDLE;
 }
 
-int m17_sms_send(const char *message, size_t msgLen, const char *recipient)
-{
-    if (message == nullptr || recipient == nullptr || recipient[0] == '\0')
-        return -EINVAL;
-
-    /* Reject if a TX packet is already in flight. */
-    if (tx_desc.status == PKT_STATUS_SUBMITTED)
-        return -EBUSY;
-
-    /* Format the M17 application-layer SMS packet. */
-    size_t pkt_len = M17::sms_format_packet(message, msgLen, tx_buf,
-                                            sizeof(tx_buf));
-    if (pkt_len == 0)
-        return -EMSGSIZE;
-
-    /* Allocate a storage slot (evicts oldest if header slots are full). */
-    size_t slot = alloc_slot();
-    SmsEntry &e = entries[slot];
-
-    /* Clamp to protocol max and write body into the pool ring buffer. */
-    size_t copy_len = (msgLen < SMS_BODY_MAX_LEN - 1) ? msgLen :
-                                                        (SMS_BODY_MAX_LEN - 1);
-    uint16_t off = pool_alloc((uint16_t)copy_len);
-    memcpy(&body_pool[off], message, copy_len);
-    body_pool[off + copy_len] = '\0';
-
-    memset(&e.hdr, 0, sizeof(e.hdr));
-    e.pool_offset = off;
-    e.pool_len = (uint16_t)copy_len;
-
-#ifdef CONFIG_RTC
-    e.hdr.timestamp = platform_getCurrentTime();
-#endif
-    e.hdr.direction = MSG_DIR_TX;
-    e.hdr.status = MSG_STATUS_SENDING;
-    e.hdr.unread = false;
-
-    /* Local callsign sourced from the current RTX configuration. */
-    rtxStatus_t st = rtx_getCurrentStatus();
-    strncpy(e.hdr.sender, st.source_address, sizeof(e.hdr.sender) - 1);
-    e.hdr.sender[sizeof(e.hdr.sender) - 1] = '\0';
-    strncpy(e.hdr.recipient, recipient, sizeof(e.hdr.recipient) - 1);
-    e.hdr.recipient[sizeof(e.hdr.recipient) - 1] = '\0';
-
-    e.hdr.body = &body_pool[off];
-    e.hdr.body_len = copy_len;
-    e.active = true;
-
-    /* Submit the TX packet descriptor. */
-    tx_desc.buffer = tx_buf;
-    tx_desc.size = pkt_len;
-    tx_desc.status = PKT_STATUS_IDLE;
-    strncpy(tx_desc.destination, recipient, sizeof(tx_desc.destination) - 1);
-    tx_desc.destination[sizeof(tx_desc.destination) - 1] = '\0';
-    tx_slot = slot;
-
-    int ret = rtx_addPacketTx(&tx_desc);
-    if (ret != 0)
-        e.hdr.status = MSG_STATUS_FAILED;
-
-    return ret;
-}
-
-bool m17_sms_compose_pending(void)
-{
-    return compose_pending_flag;
-}
-
-const char *m17_sms_compose_recipient(void)
-{
-    return compose_recipient_buf;
-}
-
-void m17_sms_compose_clear(void)
-{
-    compose_pending_flag = false;
-    compose_recipient_buf[0] = '\0';
-}
-
-#endif /* CONFIG_M17 */
+#endif /* CONFIG_M17_SMS */

@@ -100,8 +100,10 @@ bool packet_io_dequeue_rx(pkt_rx_event_t *evt)
     return ok;
 }
 
-#else /* CONFIG_M17_SMS not defined — empty stub */
+#else  /* CONFIG_M17_SMS not defined — empty stub */
 
-void packet_io_init(void) {}
+void packet_io_init(void)
+{
+}
 
 #endif /* CONFIG_M17_SMS */

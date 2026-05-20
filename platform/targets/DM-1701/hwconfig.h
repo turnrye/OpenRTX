@@ -46,9 +46,7 @@ extern const struct Adc adc1;
 
 /* Device supports M17 mode */
 #define CONFIG_M17
-#define M17_SMS_MAX_MESSAGES 64
-#define M17_SMS_POOL_BYTES 6400
-#define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
+#define CONFIG_M17_SMS
 
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
@@ -81,7 +79,8 @@ extern const struct Adc adc1;
 #endif
 
 /* M17 SMS inbox capacity. */
-#define M17_SMS_MAX_MESSAGES 32   /* 32 entries * ~68B + 3200B pool ≈ 5.4KB BSS; sized for STM32F405 (192KB RAM) */
+#define M17_SMS_MAX_MESSAGES \
+    32 /* 32 entries * ~68B + 3200B pool ≈ 5.4KB BSS; sized for STM32F405 (192KB RAM) */
 #define M17_SMS_POOL_BYTES 3200
 #define CONFIG_MSG_SNAPSHOT_SIZE (M17_SMS_MAX_MESSAGES)
 
