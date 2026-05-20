@@ -74,12 +74,7 @@ void _ui_drawMessagesList(ui_state_t *ui_state)
                          color_white, true);
         }
 
-        /* Dispatch to source vtable or generic text renderer */
-        const message_type_vtable_t *vt =
-            (const message_type_vtable_t *)messages_get_vtable(idx);
-        if (vt != NULL && vt->render_list_row != NULL) {
-            vt->render_list_row(hdr, pos, idx == selected, text_color);
-        } else {
+        {
             char line[MAX_ENTRY_LEN] = { 0 };
             /* Unread indicator + other party + truncated body.
              * For TX show recipient; for RX show sender.
@@ -126,14 +121,14 @@ void _ui_drawMessagesList(ui_state_t *ui_state)
  */
 void _ui_drawMessagesDetail(ui_state_t *ui_state)
 {
+#ifdef CONFIG_M17_SMS
     gfx_clearScreen();
 
     size_t idx = ui_state->menu_selected;
     message_header_t *hdr = messages_get(idx);
     if (hdr == NULL) {
-        /* Entry disappeared (evicted between ticks). */
-        gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
-                  color_white, currentLanguage->messages);
+        /* Entry disappeared (evicted between ticks): return to list. */
+        state.ui_screen = MESSAGES_LIST;
         return;
     }
 
@@ -204,6 +199,7 @@ void _ui_drawMessagesDetail(ui_state_t *ui_state)
               (unsigned)messages_count());
     gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_CENTER, color_black,
               counter);
+#endif /* CONFIG_M17_SMS */
 }
 
 /**
@@ -242,6 +238,7 @@ bool _ui_messagesStartCompose(ui_state_t *ui_state, kbd_msg_t msg)
  */
 void _ui_drawMessagesCompose(ui_state_t *ui_state)
 {
+#ifdef CONFIG_M17_SMS
     gfx_clearScreen();
 
     /* Title bar */
@@ -340,7 +337,8 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
     }
     color_t send_col = (ui_state->compose_focus == 2) ? color_black :
                                                         color_white;
-    gfx_print(send_rpos, layout.menu_font, TEXT_ALIGN_CENTER, send_col, "Send");
+    gfx_print(send_rpos, layout.menu_font, TEXT_ALIGN_CENTER, send_col,
+              currentLanguage->send);
 
     /* ---- To-field editing overlay ---- */
     if (ui_state->compose_editing) {
@@ -359,4 +357,5 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
                       layout.horizontal_pad, layout.input_font,
                       TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
     }
+#endif /* CONFIG_M17_SMS */
 }

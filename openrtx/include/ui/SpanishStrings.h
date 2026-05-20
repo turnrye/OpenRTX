@@ -100,5 +100,6 @@ const stringsTable_t spanishStrings =
     .newMessage        = "Nuevo Mensaje",
     .reply             = "Responder",
     .deleteMessage     = "Eliminar",
+    .send              = "Enviar",
 };
 #endif  // SPANISHSTRINGS_H

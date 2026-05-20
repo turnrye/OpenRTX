@@ -100,5 +100,6 @@ const stringsTable_t englishStrings =
     .newMessage        = "New Message",
     .reply             = "Reply",
     .deleteMessage     = "Delete",
+    .send              = "Send",
 };
 #endif  // ENGLISHSTRINGS_H

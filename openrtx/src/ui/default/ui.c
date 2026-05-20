@@ -63,9 +63,6 @@
 #include "core/input.h"
 #include "core/utils.h"
 #include "core/messages.h"
-#ifdef CONFIG_M17
-#include "core/m17_sms.h"
-#endif
 #include "hwconfig.h"
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
@@ -2058,14 +2055,6 @@ void ui_updateFSM(bool *sync_rtx)
                 {
                     if(ui_state.menu_selected > 0)
                         ui_state.menu_selected -= 1;
-                    else
-                    {
-                        size_t cap = messages_count();
-                        if(messages_can_compose(state.channel.mode))
-                            cap += 1;
-                        if(cap > 0)
-                            ui_state.menu_selected = cap - 1;
-                    }
                 }
                 else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
                 {
@@ -2074,8 +2063,6 @@ void ui_updateFSM(bool *sync_rtx)
                         cap += 1;
                     if(ui_state.menu_selected + 1 < cap)
                         ui_state.menu_selected += 1;
-                    else
-                        ui_state.menu_selected = 0;
                 }
                 else if(msg.keys & KEY_ENTER)
                 {
@@ -2085,14 +2072,13 @@ void ui_updateFSM(bool *sync_rtx)
                         /* Virtual "New Message" item selected */
                         if(_ui_messagesStartCompose(&ui_state, msg))
                         {
+#ifdef CONFIG_M17_SMS
                             /* Pre-fill recipient from global M17 dest. */
                             memset(ui_state.compose_recipient, 0,
                                    sizeof(ui_state.compose_recipient));
-#ifdef CONFIG_M17
                             strncpy(ui_state.compose_recipient,
-                                    state.settings.m17_dest,
+                                    last_state.settings.m17_dest,
                                     sizeof(ui_state.compose_recipient) - 1);
-#endif
                             memset(ui_state.compose_body, 0,
                                    sizeof(ui_state.compose_body));
                             ui_state.input_position       = 0;
@@ -2103,22 +2089,25 @@ void ui_updateFSM(bool *sync_rtx)
                             ui_state.compose_editing      = false;
                             ui_state.compose_body_editing = false;
                             ui_state.compose_is_reply     = false;
-                            m17_sms_compose_clear();
                             state.ui_screen = MESSAGES_COMPOSE;
+#endif /* CONFIG_M17_SMS */
                         }
                     }
                     else
                     {
                         messages_invoke_action(ui_state.menu_selected,
                                               MSG_ACTION_MARK_READ);
+#ifdef CONFIG_M17_SMS
                         ui_state.detail_scroll     = 0;
                         ui_state.detail_scroll_max = 0;
+#endif
                         state.ui_screen = MESSAGES_DETAIL;
                     }
                 }
                 else if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
+#ifdef CONFIG_M17_SMS
             // Messages detail screen
             case MESSAGES_DETAIL:
             {
@@ -2141,10 +2130,7 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else
                     {
-                        /* Wrap around to last message */
-                        ui_state.menu_selected =
-                            (uint8_t)(messages_count() - 1);
-                        ui_state.detail_scroll = INT16_MAX;
+                        /* Already at first message — clamp. */
                     }
                 }
                 else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
@@ -2164,9 +2150,7 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else
                     {
-                        /* Wrap around to first message */
-                        ui_state.menu_selected = 0;
-                        ui_state.detail_scroll = 0;
+                        /* Already at last message — clamp. */
                     }
                 }
                 else if(msg.keys & KEY_ENTER)
@@ -2179,11 +2163,15 @@ void ui_updateFSM(bool *sync_rtx)
                         /* Pre-fill compose recipient from reply sender. */
                         memset(ui_state.compose_recipient, 0,
                                sizeof(ui_state.compose_recipient));
-#ifdef CONFIG_M17
-                        strncpy(ui_state.compose_recipient,
-                                m17_sms_compose_recipient(),
-                                sizeof(ui_state.compose_recipient) - 1);
-#endif
+                        {
+                            message_header_t *hdr =
+                                messages_get(ui_state.menu_selected);
+                            if(hdr != NULL)
+                                strncpy(ui_state.compose_recipient,
+                                        hdr->sender,
+                                        sizeof(ui_state.compose_recipient)
+                                            - 1);
+                        }
                         memset(ui_state.compose_body, 0,
                                sizeof(ui_state.compose_body));
                         ui_state.input_position       = 0;
@@ -2252,9 +2240,6 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else if(msg.keys & KEY_ESC)
                     {
-#ifdef CONFIG_M17
-                        m17_sms_compose_clear();
-#endif
                         state.ui_screen = MESSAGES_LIST;
                     }
                     else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
@@ -2263,6 +2248,12 @@ void ui_updateFSM(bool *sync_rtx)
                             _ui_textInputConfirm(ui_state.compose_body);
                         ui_state.compose_focus =
                             (ui_state.compose_focus + 1) % 3;
+                        if(ui_state.compose_focus == 0)
+                            vp_queueStringTableEntry(
+                                &currentLanguage->newMessage);
+                        else if(ui_state.compose_focus == 2)
+                            vp_queueStringTableEntry(&currentLanguage->send);
+                        vp_play();
                     }
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
                     {
@@ -2271,6 +2262,12 @@ void ui_updateFSM(bool *sync_rtx)
                         ui_state.compose_focus =
                             (ui_state.compose_focus == 0)
                             ? 2 : ui_state.compose_focus - 1;
+                        if(ui_state.compose_focus == 0)
+                            vp_queueStringTableEntry(
+                                &currentLanguage->newMessage);
+                        else if(ui_state.compose_focus == 2)
+                            vp_queueStringTableEntry(&currentLanguage->send);
+                        vp_play();
                     }
                     else if(msg.keys & KEY_ENTER)
                     {
@@ -2308,7 +2305,7 @@ void ui_updateFSM(bool *sync_rtx)
                             /* Send if body is non-empty.
                              * Resolve recipient: compose_recipient >
                              * m17_dest > broadcast ("ALL"). */
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
                             size_t clen = strnlen(
                                 ui_state.compose_body,
                                 sizeof(ui_state.compose_body));
@@ -2322,12 +2319,13 @@ void ui_updateFSM(bool *sync_rtx)
                                     rcpt = last_state.settings.m17_dest;
                                 else
                                     rcpt = currentLanguage->broadcast;
-                                if(m17_sms_send(ui_state.compose_body,
-                                                clen,
-                                                rcpt) == 0)
+                                if(messages_send(
+                                       (uint8_t)state.channel.mode,
+                                       ui_state.compose_body,
+                                       clen,
+                                       rcpt) == 0)
                                 {
                                     *sync_rtx = true;
-                                    m17_sms_compose_clear();
                                     state.ui_screen = MESSAGES_LIST;
                                 }
                             }
@@ -2336,6 +2334,7 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
                 break;
+#endif /* CONFIG_M17_SMS */
 #ifdef CONFIG_RTC
             // Time&Date settings screen
             case SETTINGS_TIMEDATE:
@@ -3052,6 +3051,7 @@ bool ui_updateGUI()
         case MESSAGES_LIST:
             _ui_drawMessagesList(&ui_state);
             break;
+#ifdef CONFIG_M17_SMS
         // Messages detail screen
         case MESSAGES_DETAIL:
             _ui_drawMessagesDetail(&ui_state);
@@ -3060,6 +3060,7 @@ bool ui_updateGUI()
         case MESSAGES_COMPOSE:
             _ui_drawMessagesCompose(&ui_state);
             break;
+#endif /* CONFIG_M17_SMS */
     }
 
     // If MACRO menu is active draw it

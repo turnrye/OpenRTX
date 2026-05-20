@@ -105,6 +105,7 @@ typedef struct
     const char* newMessage;
     const char* reply;
     const char* deleteMessage;
+    const char* send;
 }
 stringsTable_t;
 
