@@ -29,8 +29,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "core/datetime.h"
-#include "core/graphics.h"
-#include "core/input.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -126,40 +124,6 @@ typedef struct {
     message_header_t *(*get)(void *src_ctx, size_t i);
 
     /**
-     * @brief Render a single list row for this entry type.
-     *
-     * When NULL the generic screen renders sender + body[0..N-1] as text.
-     * Implement for non-text sources (binary payloads, maps, etc.).
-     *
-     * @param entry:      borrowed pointer to the entry header.
-     * @param pos:        top-left pixel position of the row.
-     * @param selected:   true when this row is highlighted.
-     * @param text_color: color to use for text rendering.
-     */
-    void (*render_list_row)(const message_header_t *entry, point_t pos,
-                            bool selected, color_t text_color);
-
-    /**
-     * @brief Render the detail view for this entry type.
-     *
-     * When non-NULL fully owns the body area of the detail screen.
-     * When NULL the generic screen renders body as scrollable text.
-     *
-     * @param entry: borrowed pointer to the entry header (valid until next
-     *               tick).
-     */
-    void (*render_detail)(const message_header_t *entry);
-
-    /**
-     * @brief Handle a key event while the detail view is open.
-     *
-     * @param entry: borrowed pointer to the entry header.
-     * @param msg: keyboard event.
-     * @return true if the event was consumed; false to allow generic handling.
-     */
-    bool (*handle_detail_input)(message_header_t *entry, kbd_msg_t msg);
-
-    /**
      * @brief Return a bitmap of actions supported for this entry.
      *
      * @param entry: borrowed pointer to the entry header.
@@ -196,6 +160,35 @@ typedef struct {
      * @param entry: pointer to the entry being evicted.
      */
     void (*on_evict)(message_header_t *entry);
+
+    /**
+     * @brief Per-tick update called by messages_tick() on the UI thread.
+     *
+     * Sources should drain any pending pkt_rx_event_t entries from
+     * packet_io_dequeue_rx() here and update TX completion status.
+     * Called before the snapshot is rebuilt, so new entries are visible
+     * in the same tick that they arrive.
+     *
+     * @param src_ctx: opaque context pointer supplied at registration.
+     */
+    void (*tick)(void *src_ctx);
+
+    /**
+     * @brief Enqueue an outgoing message for this source.
+     *
+     * Creates an inbox entry with MSG_STATUS_SENDING and posts a
+     * pkt_tx_request_t via packet_io_enqueue_tx().  The UI calls this
+     * through messages_send() rather than directly into the source.
+     *
+     * @param src_ctx:   opaque context pointer supplied at registration.
+     * @param body:      NUL-terminated message text.
+     * @param body_len:  Length of body not counting NUL.
+     * @param recipient: Destination callsign (up to 9 chars + NUL).
+     * @return 0 on success, -EBUSY if a TX is already in flight,
+     *         -EINVAL for bad arguments, -EMSGSIZE if text is too large.
+     */
+    int (*send)(void *src_ctx, const char *body, size_t body_len,
+                const char *recipient);
 
     /**
      * @brief Radio operating mode this source serves.
@@ -302,15 +295,20 @@ int messages_start_compose(uint8_t mode);
 uint8_t messages_source_mode(size_t idx);
 
 /**
- * @brief Return the vtable of the source that produced snapshot entry @p idx.
+ * @brief Enqueue an outgoing message via the source registered for @p mode.
  *
- * The returned pointer is valid for the lifetime of the registry.
- * Used by UI code to dispatch render_list_row and render_detail.
+ * Dispatches through the source vtable's send() callback.  The UI must
+ * call this instead of calling a protocol send function directly.
  *
- * @param idx: zero-based snapshot index.
- * @return borrowed pointer to the source vtable, or NULL if out of range.
+ * @param mode:      opmode value identifying the target protocol source.
+ * @param body:      NUL-terminated message text.
+ * @param body_len:  Length of body not counting NUL.
+ * @param recipient: Destination callsign.
+ * @return 0 on success, -ENOENT if no matching source, or the source's
+ *         send() return value on failure.
  */
-const message_type_vtable_t *messages_get_vtable(size_t idx);
+int messages_send(uint8_t mode, const char *body, size_t body_len,
+                  const char *recipient);
 
 #ifdef __cplusplus
 } /* extern "C" */

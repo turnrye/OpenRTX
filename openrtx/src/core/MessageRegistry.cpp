@@ -5,23 +5,9 @@
  */
 
 #include "core/MessageRegistry.hpp"
+#include "core/datetime.h"
 #include <cerrno>
 #include <cstring>
-
-int MessageRegistry::datetimeCmp(datetime_t a, datetime_t b)
-{
-    if (a.year != b.year)
-        return (int)a.year - (int)b.year;
-    if (a.month != b.month)
-        return (int)a.month - (int)b.month;
-    if (a.date != b.date)
-        return (int)a.date - (int)b.date;
-    if (a.hour != b.hour)
-        return (int)a.hour - (int)b.hour;
-    if (a.minute != b.minute)
-        return (int)a.minute - (int)b.minute;
-    return (int)a.second - (int)b.second;
-}
 
 void MessageRegistry::init(const SourceEntry *srcs, size_t count)
 {
@@ -39,6 +25,13 @@ void MessageRegistry::terminate()
 
 void MessageRegistry::tick()
 {
+    /* Give each source a chance to drain the packet_io RX queue and
+     * advance TX completion status before we rebuild the snapshot. */
+    for (size_t s = 0; s < sourcesLen; s++) {
+        if (sources[s].vtable->tick != nullptr)
+            sources[s].vtable->tick(sources[s].ctx);
+    }
+
     snapshotLen = 0;
 
     /* Collect all entries from all sources into the snapshot. */
@@ -69,7 +62,7 @@ snapshot_full:
         uint8_t keySrc = snapshotSource[i];
         size_t j = i;
         while (j > 0
-               && datetimeCmp(snapshot[j - 1]->timestamp, key->timestamp) < 0) {
+               && datetime_cmp(&snapshot[j - 1]->timestamp, &key->timestamp) < 0) {
             snapshot[j] = snapshot[j - 1];
             snapshotSource[j] = snapshotSource[j - 1];
             j--;
@@ -157,9 +150,17 @@ uint8_t MessageRegistry::sourceMode(size_t idx) const
     return sources[snapshotSource[idx]].vtable->mode_id;
 }
 
-const message_type_vtable_t *MessageRegistry::getVtable(size_t idx) const
+int MessageRegistry::send(uint8_t mode, const char *body, size_t body_len,
+                          const char *recipient)
 {
-    if (idx >= snapshotLen)
-        return nullptr;
-    return sources[snapshotSource[idx]].vtable;
+    if (mode == 0)
+        return -ENOENT;
+    for (size_t i = 0; i < sourcesLen; i++) {
+        if (sources[i].vtable->send != nullptr
+            && sources[i].vtable->mode_id == mode) {
+            return sources[i].vtable->send(sources[i].ctx, body, body_len,
+                                           recipient);
+        }
+    }
+    return -ENOENT;
 }

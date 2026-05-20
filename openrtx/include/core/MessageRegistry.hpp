@@ -43,15 +43,14 @@ class MessageRegistry
 {
 public:
     /** Maximum snapshot entries across all sources.
-     *  Configured per target in hwconfig.h via CONFIG_MSG_SNAPSHOT_SIZE. */
-    static constexpr size_t MAX_MESSAGES_SNAPSHOT = CONFIG_MSG_SNAPSHOT_SIZE;
-
-    /**
-     * @brief Compare two datetime_t values chronologically.
-     *
-     * @return negative if a < b, zero if equal, positive if a > b.
-     */
-    static int datetimeCmp(datetime_t a, datetime_t b);
+     *  Configured per target in hwconfig.h via CONFIG_MSG_SNAPSHOT_SIZE.
+     *  Falls back to 1 on targets with no message sources (e.g. Module17). */
+    static constexpr size_t MAX_MESSAGES_SNAPSHOT =
+#ifdef CONFIG_MSG_SNAPSHOT_SIZE
+        CONFIG_MSG_SNAPSHOT_SIZE;
+#else
+        1;
+#endif
 
     /**
      * @brief Initialise the registry with a fixed, compile-time source array.
@@ -137,12 +136,17 @@ public:
     uint8_t sourceMode(size_t idx) const;
 
     /**
-     * @brief Return the vtable of the source that produced snapshot entry @p idx.
+     * @brief Enqueue an outgoing message via the source registered for @p mode.
      *
-     * @param idx: zero-based snapshot index.
-     * @return borrowed pointer to the source vtable, or nullptr if out of range.
+     * @param mode:      operating mode identifying the target source.
+     * @param body:      NUL-terminated message text.
+     * @param body_len:  Length of body not counting NUL.
+     * @param recipient: Destination callsign.
+     * @return 0 on success, -ENOENT if no matching source, or the source
+     *         send() return value.
      */
-    const message_type_vtable_t *getVtable(size_t idx) const;
+    int send(uint8_t mode, const char *body, size_t body_len,
+             const char *recipient);
 
 private:
     const SourceEntry *sources;

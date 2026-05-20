@@ -157,6 +157,12 @@ openrtx/src/core/m17_sms.cpp
 tests/unit/m17_sms_source_test.cpp
 tests/unit/m17_sms_loopback_test.cpp
 tests/unit/m17_sms_loopback_stubs.cpp
+tests/unit/m17_sms_stubs.cpp
+openrtx/include/core/messages.h
+openrtx/src/core/messages.cpp
+openrtx/include/core/MessageRegistry.hpp
+openrtx/src/core/MessageRegistry.cpp
+openrtx/src/ui/default/ui_messages.c
 EOF
 )
 

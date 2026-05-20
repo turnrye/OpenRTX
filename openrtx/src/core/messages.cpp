@@ -11,7 +11,7 @@
 #include "core/messages_demo.h"
 #endif
 
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
 #include "core/m17_sms.h"
 #endif
 
@@ -45,8 +45,8 @@ static const SourceEntry sources[] = {
 static constexpr size_t NUM_SOURCES = sizeof(sources) / sizeof(sources[0]) - 1u;
 
 #ifdef CONFIG_MSG_SNAPSHOT_SIZE
-static_assert(CONFIG_MSG_SNAPSHOT_SIZE >= 0,
-              "Set CONFIG_MSG_SNAPSHOT_SIZE in hwconfig.h");
+static_assert(CONFIG_MSG_SNAPSHOT_SIZE >= 1,
+              "CONFIG_MSG_SNAPSHOT_SIZE must be >= 1");
 #endif
 
 /* Singleton registry instance. */
@@ -102,7 +102,8 @@ uint8_t messages_source_mode(size_t idx)
     return registry.sourceMode(idx);
 }
 
-const message_type_vtable_t *messages_get_vtable(size_t idx)
+int messages_send(uint8_t mode, const char *body, size_t body_len,
+                  const char *recipient)
 {
-    return registry.getVtable(idx);
+    return registry.send(mode, body, body_len, recipient);
 }

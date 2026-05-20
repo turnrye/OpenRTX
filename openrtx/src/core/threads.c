@@ -23,7 +23,8 @@
 #include "core/voicePrompts.h"
 #include "core/messages.h"
 
-#ifdef CONFIG_M17
+#ifdef CONFIG_M17_SMS
+#include "core/packet_io.h"
 #include "core/m17_sms.h"
 #endif
 
@@ -199,6 +200,11 @@ void create_threads()
 {
     // Create RTX state mutex
     pthread_mutex_init(&rtx_mutex, NULL);
+
+#ifdef CONFIG_M17_SMS
+    // Initialise packet I/O queues before either thread starts
+    packet_io_init();
+#endif
 
     // Create rtx radio thread
     pthread_attr_t rtx_attr;
