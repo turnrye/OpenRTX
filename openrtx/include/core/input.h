@@ -11,6 +11,10 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Time interval in milliseconds after which a keypress is considered a long-press
  */
@@ -22,19 +26,15 @@ static const uint16_t input_longPressTimeout = 700;
  * For a keyboard event we use 1 bit to signal a short or long press
  * And the remaining 29 bits to communicate currently pressed keys.
  */
-typedef union
-{
-    struct
-    {
-        uint32_t long_press : 1,
-                 keys       : 29,
-                 _padding   : 2;
+typedef union {
+    struct {
+        uint32_t long_press : 1;
+        uint32_t keys       : 29;
+        uint32_t _padding   : 2;
     };
 
     uint32_t value;
-}
-kbd_msg_t;
-
+} kbd_msg_t;
 
 /**
  * Scan all the keyboard buttons to detect possible keypresses filling a
@@ -81,5 +81,9 @@ uint8_t input_getPressedNumber(kbd_msg_t msg);
  * @return the smallest number associated to a char.
  */
 uint8_t input_getPressedChar(kbd_msg_t msg);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif /* INPUT_H */

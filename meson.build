@@ -2,7 +2,7 @@
 ## OpenRTX - Modular Open Source Radio Firmware
 ##
 project('OpenRTX', ['c', 'cpp'],
-  version : '0.4.3',
+  version : '0.4.4',
   default_options : ['warning_level=3', 'b_staticpic=false'])
 
 ##
@@ -298,6 +298,30 @@ stm32h743_def = {'STM32H743xx': '', 'HSE_VALUE':'25000000'}
 stm32h743_src += miosix_cm7_src
 stm32h743_inc += miosix_cm7_inc
 stm32h743_def += miosix_cm7_def
+
+##
+## AT32F423
+##
+
+at32f423_src = ['platform/mcu/AT32F423/boot/startup.cpp',
+                'platform/mcu/AT32F423/boot/bsp.cpp',
+                'platform/mcu/AT32F423/boot/libc_integration.cpp',
+                'platform/mcu/AT32F423/drivers/delays.cpp',
+                'platform/mcu/AT32F423/drivers/USART6.cpp',
+                'platform/drivers/ADC/adc_at32.c',
+                'platform/drivers/GPIO/gpio_at32f423.c',
+                'platform/mcu/CMSIS/Device/Artery/AT32F423/Source/system_at32f423.c']
+
+at32f423_inc = ['platform/mcu/AT32F423',
+                'platform/mcu/AT32F423/drivers',
+                'platform/mcu/CMSIS/Include',
+                'platform/mcu/CMSIS/Device/Artery/AT32F423/Include']
+
+at32f423_def = {'AT32F423CCT7':'', 'AT32F423xx':''}
+
+at32f423_src += miosix_cm4f_src
+at32f423_inc += miosix_cm4f_inc
+at32f423_def += miosix_cm4f_def
 
 ##
 ## ----------------------- Platform specializations ----------------------------
@@ -1135,6 +1159,10 @@ m17_packet_test = executable('m17_packet_test',
                               sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
                               kwargs  : unit_test_opts)
 
+dsp_oversampling_test = executable('dsp_oversampling_test',
+                                    sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
+                                    kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1146,3 +1174,4 @@ test('Codeplug Test',         cps_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
 test('M17 Packet Frame Test', m17_packet_test)
+test('DSP Oversampling Test', dsp_oversampling_test)

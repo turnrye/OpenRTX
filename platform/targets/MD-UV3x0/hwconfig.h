@@ -20,11 +20,10 @@ extern HR_C6000 C6000;
 extern "C" {
 #endif
 
-enum AdcChannel
-{
-    ADC_VOL_CH   = 0,
-    ADC_VBAT_CH  = 1,
-    ADC_MIC_CH   = 3,
+enum AdcChannel {
+    ADC_VOL_CH = 0,
+    ADC_VBAT_CH = 1,
+    ADC_MIC_CH = 3,
 };
 
 extern const struct gpsDevice gps;
@@ -53,6 +52,10 @@ extern const struct Adc adc1;
 
 /* Device supports M17 mode */
 #define CONFIG_M17
+
+/* Microphone audio input */
+#define CONFIG_MIC_GAIN 32
+#define CONFIG_MIC_OVERSAMPLE 8
 
 /*
  * To enable pwm for display backlight dimming uncomment this directive.
