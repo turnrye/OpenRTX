@@ -25,4 +25,9 @@
 
 #define CONFIG_M17
 
+/* Message inbox infrastructure, small snapshot tier. The M17 SMS source
+ * uses the default pool tier from m17_sms.cpp (32 entries / 3200 bytes). */
+#define CONFIG_MESSAGES
+#define CONFIG_MSG_SNAPSHOT_SIZE 32
+
 #endif /* HWCONFIG_H */

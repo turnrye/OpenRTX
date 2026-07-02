@@ -77,4 +77,10 @@ extern const struct gpsDevice gps;
 }
 #endif
 
+/* Message inbox infrastructure, large snapshot tier. The M17 SMS source
+ * pool tier below overrides the m17_sms.cpp default (32 entries / 3200
+ * bytes). */
+#define CONFIG_MESSAGES
+#define CONFIG_MSG_SNAPSHOT_SIZE 64
+
 #endif /* HWCONFIG_H */
