@@ -95,5 +95,7 @@ const stringsTable_t englishStrings =
     .CAN               = "CAN",
     .canRxCheck        = "CAN RX Check",
     .metaText          = "Meta Txt",
+    .messages          = "Messages",
+    .noMessages        = "No messages",
 };
 #endif  // ENGLISHSTRINGS_H
