@@ -44,6 +44,15 @@
 #include <errno.h>
 #include "hwconfig.h"
 
+#ifdef CONFIG_MESSAGES
+/* Default snapshot tier, used by most targets. Targets with more RAM (e.g.
+ * CS7000/CS7000-PLUS/linux) define a larger CONFIG_MSG_SNAPSHOT_SIZE in
+ * their own hwconfig.h, which takes precedence over this fallback. */
+#ifndef CONFIG_MSG_SNAPSHOT_SIZE
+#define CONFIG_MSG_SNAPSHOT_SIZE 32
+#endif
+#endif /* CONFIG_MESSAGES */
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -21,12 +21,22 @@
  * Add one SourceEntry per protocol, guarded by its CONFIG_* flag.
  * The vtable and context pointers must remain valid for the entire
  * lifetime of the registry (i.e. until messages_terminate() returns).
+ *
+ * The trailing { nullptr, nullptr } sentinel exists solely so this array
+ * is never zero-length when no optional source is compiled in (e.g. every
+ * target before CONFIG_MESSAGES_DEMO or a protocol source is enabled): a
+ * zero-size array is a GNU extension tolerated by clang (used for the
+ * linux/host build) but rejected as a hard error by arm-miosix-eabi-g++
+ * (used for cm4/cm7 targets).  MessageRegistry already skips any entry
+ * whose vtable is NULL, so the sentinel is completely inert — it costs one
+ * harmless iteration in tick()'s source loop, nothing more.
  * ------------------------------------------------------------------ */
 
 static const SourceEntry sources[] = {
 #ifdef CONFIG_MESSAGES_DEMO
     { &messages_demo_vtable, &messages_demo_ctx },
 #endif
+    { nullptr, nullptr }, /* sentinel — keep last, see comment above */
 };
 
 static constexpr size_t NUM_SOURCES = sizeof(sources) / sizeof(sources[0]);
