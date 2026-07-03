@@ -52,4 +52,7 @@ extern const struct spiDevice c6000_spi;
 #define CONFIG_MESSAGES
 #define CONFIG_MSG_SNAPSHOT_SIZE 32
 
+/* M17 SMS message source. */
+#define CONFIG_M17_SMS
+
 #endif /* HWCONFIG_H */

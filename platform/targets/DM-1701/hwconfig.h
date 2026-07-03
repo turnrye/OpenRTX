@@ -82,4 +82,7 @@ extern const struct Adc adc1;
 #define CONFIG_MESSAGES
 #define CONFIG_MSG_SNAPSHOT_SIZE 32
 
+/* M17 SMS message source. */
+#define CONFIG_M17_SMS
+
 #endif
