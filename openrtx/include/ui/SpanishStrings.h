@@ -97,5 +97,8 @@ const stringsTable_t spanishStrings =
     .canRxCheck        = "CAN RX Check",
     .messages          = "Mensajes",
     .noMessages        = "Sin mensajes",
+    .newMessage        = "Nuevo Mensaje",
+    .reply             = "Responder",
+    .send              = "Enviar",
 };
 #endif  // SPANISHSTRINGS_H

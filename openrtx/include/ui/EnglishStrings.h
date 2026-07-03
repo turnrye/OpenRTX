@@ -97,5 +97,8 @@ const stringsTable_t englishStrings =
     .metaText          = "Meta Txt",
     .messages          = "Messages",
     .noMessages        = "No messages",
+    .newMessage        = "New Message",
+    .reply             = "Reply",
+    .send              = "Send",
 };
 #endif  // ENGLISHSTRINGS_H

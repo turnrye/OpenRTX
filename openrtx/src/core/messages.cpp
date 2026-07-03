@@ -15,6 +15,10 @@
 #include "core/messages_demo.h"
 #endif
 
+#ifdef CONFIG_M17_SMS
+#include "core/m17_sms.h"
+#endif
+
 /* ------------------------------------------------------------------
  * Compile-time source table.
  *
@@ -35,6 +39,9 @@
 static const SourceEntry sources[] = {
 #ifdef CONFIG_MESSAGES_DEMO
     { &messages_demo_vtable, &messages_demo_ctx },
+#endif
+#ifdef CONFIG_M17_SMS
+    { &m17_sms_vtable, NULL },
 #endif
     { nullptr, nullptr }, /* sentinel — keep last, see comment above */
 };
