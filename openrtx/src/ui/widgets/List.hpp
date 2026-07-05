@@ -37,6 +37,15 @@ public:
     {
         rowH_ = h;
     }
+    /**
+     * Whether a row is highlighted as the selection. Off makes the list a
+     * read-only scroll region (e.g. a credits list): stepping still scrolls,
+     * but no row is drawn as focused.
+     */
+    void setSelectable(bool s)
+    {
+        selectable_ = s;
+    }
 
     uint16_t selected() const
     {
@@ -57,6 +66,7 @@ private:
     uint16_t selected_ = 0;
     uint16_t top_ = 0; //< index of the first visible row (scroll offset)
     int16_t rowH_ = 14;
+    bool selectable_ = true;
 };
 
 } // namespace ortxui

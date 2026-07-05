@@ -104,8 +104,11 @@ ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
                'openrtx/src/ui/layout/Flex.cpp',
                'openrtx/src/ui/widgets/Widgets.cpp',
                'openrtx/src/ui/widgets/List.cpp',
+               'openrtx/src/ui/widgets/TitleBar.cpp',
                'openrtx/src/ui/views/VfoView.cpp',
                'openrtx/src/ui/views/MenuView.cpp',
+               'openrtx/src/ui/views/InfoView.cpp',
+               'openrtx/src/ui/views/AboutView.cpp',
                'openrtx/src/ui/default/ui_strings.c']
 
 if get_option('ui') == 'ortx'

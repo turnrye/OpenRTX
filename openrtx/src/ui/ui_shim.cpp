@@ -32,6 +32,8 @@
 #include "style/SemanticColor.hpp"
 #include "views/VfoView.hpp"
 #include "views/MenuView.hpp"
+#include "views/InfoView.hpp"
+#include "views/AboutView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -87,7 +89,20 @@ constexpr uint16_t kSettingsMenuCount = sizeof(kSettingsMenu)
 VfoView vfoView;
 MenuView mainMenu;
 MenuView settingsMenu;
+InfoView infoView;
+AboutView aboutView;
 Navigator nav;
+
+/* Wire the main-menu row whose label is `label` to open `target`. */
+void wireMenuRow(const char *label, View *target)
+{
+    for (uint16_t i = 0; i < kMainMenuCount; i++) {
+        if (strcmp(kMainMenu[i], label) == 0) {
+            mainMenu.setRowTarget(i, target);
+            return;
+        }
+    }
+}
 
 } // namespace
 
@@ -100,15 +115,14 @@ extern "C" void ui_init()
     vfoView.build();
     mainMenu.build("Menu", kMainMenu, kMainMenuCount);
     settingsMenu.build("Settings", kSettingsMenu, kSettingsMenuCount);
+    infoView.build();
+    aboutView.build();
 
-    /* Wire the "Settings" row of the main menu to the settings submenu. The
-     * row index depends on the config guards above, so resolve it by label. */
-    for (uint16_t i = 0; i < kMainMenuCount; i++) {
-        if (strcmp(kMainMenu[i], "Settings") == 0) {
-            mainMenu.setRowTarget(i, &settingsMenu);
-            break;
-        }
-    }
+    /* Wire main-menu rows to their views. Rows resolve by label because the
+     * row indices shift with the config guards on the menu table. */
+    wireMenuRow("Settings", &settingsMenu);
+    wireMenuRow("Info", &infoView);
+    wireMenuRow("About", &aboutView);
 
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);

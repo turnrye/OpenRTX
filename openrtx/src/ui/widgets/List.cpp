@@ -107,7 +107,7 @@ void List::draw(DrawCtx &d)
                            static_cast<uint16_t>(rowH_) };
 
         Sem textColor = Sem::OnSurface;
-        if (i == selected_) {
+        if (selectable_ && (i == selected_)) {
             d.fillRect(row, Sem::SurfaceHigh);
             const Rect accent = { area_.x, rowY, 2,
                                   static_cast<uint16_t>(rowH_) };
