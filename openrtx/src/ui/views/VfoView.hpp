@@ -9,6 +9,7 @@
 
 #include "core/View.hpp"
 #include "widgets/Widgets.hpp"
+#include "layout/Flex.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -17,15 +18,16 @@ namespace ortxui
 /**
  * The VFO home screen, expressed as a composed widget tree.
  *
- * Widgets are direct members (static storage, no heap). build() wires the
- * tree and fixed geometry once; syncFromState() pulls the handful of radio
- * fields it shows from the state snapshot each tick and invalidates only the
- * widgets whose value actually changed, so redraws are change-driven.
+ * Widgets are direct members (static storage, no heap). build() wires the tree
+ * and hands geometry to the Flex layout engine once (a column of status bar /
+ * hero / meter / action bar, with the two bars as rows); no coordinates are
+ * hand-placed. Fonts and fixed extents are chosen by SizeClass so the same
+ * layout serves the mono and colour panels. syncFromState() pulls the handful
+ * of radio fields it shows from the state snapshot each tick and invalidates
+ * only the widgets whose value actually changed, so redraws are change-driven.
  *
  * As the navigation root, ENTER drills into the main menu (wired via setMenu())
- * and ESC has nowhere to go. Positions are hand-placed for now (160x128); the
- * Flex/Grid layout engine and responsive size classes replace the manual
- * geometry in a later slice.
+ * and ESC has nowhere to go.
  */
 class VfoView : public View
 {
@@ -51,11 +53,16 @@ public:
 private:
     Screen screen_;
 
-    Panel topBar_;
-    Panel botBar_;
+    /* Layout tree: a column of [status bar | hero | meter | action bar]; the
+     * two bars are Flex rows that also paint their own surface background. */
+    Flex root_;
+    Flex topBar_;
+    Flex hero_;
+    Flex botBar_;
+
     Label time_;
-    Label battery_;
     Chip mode_;
+    Label battery_;
     Label freq_;
     Label callsign_;
     Bar smeter_;

@@ -47,4 +47,23 @@ point_t DrawCtx::text(Point at, fontSize_t size, textAlign_t align, Sem color,
     return gfx_print(start, size, align, themeColor(color), "%s", str);
 }
 
+void DrawCtx::textInBox(const Rect &box, fontSize_t size, textAlign_t align,
+                        Sem color, const char *str)
+{
+    const int tw = static_cast<int>(gfx_getTextWidth(size, str));
+    const int fh = static_cast<int>(gfx_getFontHeight(size));
+
+    int16_t x = box.x;
+    if (align == TEXT_ALIGN_CENTER)
+        x = static_cast<int16_t>(box.x + (static_cast<int>(box.w) - tw) / 2);
+    else if (align == TEXT_ALIGN_RIGHT)
+        x = static_cast<int16_t>(box.x + static_cast<int>(box.w) - tw);
+
+    /* The backend anchors a line by its baseline; centre it in the box. */
+    const int16_t baseline =
+        static_cast<int16_t>(box.y + (static_cast<int>(box.h) + fh) / 2 - 1);
+    const point_t start = { x, baseline };
+    gfx_print(start, size, TEXT_ALIGN_LEFT, themeColor(color), "%s", str);
+}
+
 } // namespace ortxui

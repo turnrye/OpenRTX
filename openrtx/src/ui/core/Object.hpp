@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include "core/Geometry.hpp"
+#include "core/Layout.hpp"
 
 namespace ortxui
 {
@@ -82,6 +83,53 @@ public:
         return (flags_ & f) != 0u;
     }
 
+    /* ---- Layout ---- */
+
+    /** Layout hints read by a Flex/Grid parent when placing this child. */
+    LayoutHints &layout()
+    {
+        return layout_;
+    }
+    const LayoutHints &layout() const
+    {
+        return layout_;
+    }
+    void setGrow(uint8_t g)
+    {
+        layout_.grow = g;
+    }
+    void setBasis(int16_t b)
+    {
+        layout_.basis = b;
+    }
+    void setMargin(uint8_t m)
+    {
+        layout_.margin = m;
+    }
+    void setAlignSelf(Align a)
+    {
+        layout_.self = a;
+    }
+
+    /**
+     * Intrinsic preferred size. The default is the current area size; widgets
+     * whose size depends on content (e.g. measured text) override this so a
+     * layout container can size them without an explicit basis.
+     */
+    virtual Size natural() const
+    {
+        return { area_.w, area_.h };
+    }
+
+    /**
+     * Arrange descendants after this object's own area has been set. Leaf
+     * objects do nothing; layout containers override this to position their
+     * children (in absolute coordinates) and recurse.
+     */
+    virtual void onLayout()
+    {
+    }
+
     /** Mark this object as needing repaint, propagating to the tree root. */
     void invalidate();
 
@@ -101,6 +149,7 @@ protected:
     Object *nextSibling_ = nullptr;
     Rect area_ = { 0, 0, 0, 0 };
     uint8_t flags_ = 0;
+    LayoutHints layout_ = {};
 };
 
 /**

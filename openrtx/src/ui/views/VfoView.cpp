@@ -39,68 +39,100 @@ void VfoView::build()
 {
     const int16_t W = CONFIG_SCREEN_WIDTH;
     const int16_t H = CONFIG_SCREEN_HEIGHT;
-    const int16_t topH = 16;
-    const int16_t botH = 16;
 
-    /* Status + action bars */
-    topBar_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
-    topBar_.setColor(Sem::Surface);
-    botBar_.setArea({ 0, (int16_t)(H - botH), (uint16_t)W, (uint16_t)botH });
-    botBar_.setColor(Sem::Surface);
+    const bool regular = (sizeClass() == SizeClass::Regular);
+    const int16_t barH = regular ? 16 : 12;
+    const int16_t smeterH = regular ? 8 : 6;
+    const fontSize_t freqFont = regular ? FONT_SIZE_16PT : FONT_SIZE_12PT;
+    const fontSize_t callFont = regular ? FONT_SIZE_8PT : FONT_SIZE_6PT;
+    const fontSize_t barFont = FONT_SIZE_6PT;
 
-    /* Status bar contents (baseline ~11px so 6pt glyphs clear the top). */
-    time_.setAnchor({ 4, 11 });
-    time_.setFont(FONT_SIZE_6PT);
+    /* Root: a full-screen column of status bar / hero / meter / action bar. */
+    root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
+    root_.setAxis(Axis::Column);
+
+    /* Status bar: [time | mode badge | battery], pinned to the top. */
+    topBar_.setAxis(Axis::Row);
+    topBar_.setJustify(Justify::SpaceBetween);
+    topBar_.setAlign(Align::Stretch);
+    topBar_.setBackground(Sem::Surface);
+    topBar_.setPadding(4, 0);
+    topBar_.setBasis(barH);
+
+    time_.setFont(barFont);
     time_.setAlign(TEXT_ALIGN_LEFT);
     time_.setColor(Sem::OnSurface);
+    time_.setBasis(34);
 
-    battery_.setAnchor({ 4, 11 }); /* RIGHT align: x is the right margin */
-    battery_.setFont(FONT_SIZE_6PT);
+    mode_.setBasis(34);
+    mode_.setAlignSelf(Align::Center);
+    mode_.setArea({ 0, 0, 32, 12 }); /* natural size for cross-centring */
+
+    battery_.setFont(barFont);
     battery_.setAlign(TEXT_ALIGN_RIGHT);
     battery_.setColor(Sem::OnSurface);
+    battery_.setBasis(34);
 
-    mode_.setArea({ (int16_t)((W / 2) - 16), 2, 32, 12 });
+    topBar_.addChild(&time_);
+    topBar_.addChild(&mode_);
+    topBar_.addChild(&battery_);
 
-    /* Frequency hero + callsign sub-line */
-    freq_.setAnchor({ (int16_t)(W / 2), (int16_t)(topH + 22) });
-    freq_.setFont(FONT_SIZE_16PT);
+    /* Hero: frequency over callsign, centred in the growing middle region. */
+    hero_.setAxis(Axis::Column);
+    hero_.setJustify(Justify::Center);
+    hero_.setAlign(Align::Stretch);
+    hero_.setGap(2);
+    hero_.setGrow(1);
+
+    freq_.setFont(freqFont);
     freq_.setAlign(TEXT_ALIGN_CENTER);
     freq_.setColor(Sem::OnSurface);
+    freq_.setBasis(gfx_getFontHeight(freqFont));
 
-    callsign_.setAnchor({ (int16_t)(W / 2), (int16_t)(topH + 40) });
-    callsign_.setFont(FONT_SIZE_8PT);
+    callsign_.setFont(callFont);
     callsign_.setAlign(TEXT_ALIGN_CENTER);
     callsign_.setColor(Sem::OnSurfaceMuted);
+    callsign_.setBasis(gfx_getFontHeight(callFont));
 
-    /* S-meter bar */
-    smeter_.setArea({ 4, (int16_t)(H - botH - 14), (uint16_t)(W - 8), 8 });
+    hero_.addChild(&freq_);
+    hero_.addChild(&callsign_);
+
+    /* S-meter: full-width bar with side margins, above the action bar. */
     smeter_.setColors(Sem::SurfaceHigh, Sem::RxSuccess);
     smeter_.setValue(0.5f);
+    smeter_.setBasis(smeterH);
+    smeter_.setMargin(4);
 
-    /* Action labels */
-    leftAction_.setAnchor({ 4, (int16_t)(H - botH + 3) });
-    leftAction_.setFont(FONT_SIZE_6PT);
+    /* Action bar: [VFO | TONE], pinned to the bottom. */
+    botBar_.setAxis(Axis::Row);
+    botBar_.setJustify(Justify::SpaceBetween);
+    botBar_.setAlign(Align::Stretch);
+    botBar_.setBackground(Sem::Surface);
+    botBar_.setPadding(4, 0);
+    botBar_.setBasis(barH);
+
+    leftAction_.setFont(barFont);
     leftAction_.setAlign(TEXT_ALIGN_LEFT);
     leftAction_.setColor(Sem::Primary);
     leftAction_.setText("VFO");
+    leftAction_.setBasis(48);
 
-    rightAction_.setAnchor({ 4, (int16_t)(H - botH + 3) });
-    rightAction_.setFont(FONT_SIZE_6PT);
+    rightAction_.setFont(barFont);
     rightAction_.setAlign(TEXT_ALIGN_RIGHT);
     rightAction_.setColor(Sem::Primary);
     rightAction_.setText("TONE");
+    rightAction_.setBasis(48);
 
-    /* Assemble tree in paint order: bars first, then overlaid content. */
-    screen_.addChild(&topBar_);
-    screen_.addChild(&botBar_);
-    screen_.addChild(&smeter_);
-    screen_.addChild(&time_);
-    screen_.addChild(&battery_);
-    screen_.addChild(&mode_);
-    screen_.addChild(&freq_);
-    screen_.addChild(&callsign_);
-    screen_.addChild(&leftAction_);
-    screen_.addChild(&rightAction_);
+    botBar_.addChild(&leftAction_);
+    botBar_.addChild(&rightAction_);
+
+    /* Assemble the column and lay the whole tree out once. */
+    root_.addChild(&topBar_);
+    root_.addChild(&hero_);
+    root_.addChild(&smeter_);
+    root_.addChild(&botBar_);
+    screen_.addChild(&root_);
+    root_.onLayout();
 
     screen_.markAllDirty();
 }

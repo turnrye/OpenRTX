@@ -54,6 +54,15 @@ public:
     point_t text(Point at, fontSize_t size, textAlign_t align, Sem color,
                  const char *str);
 
+    /**
+     * Draw a single line of text aligned within a box. Unlike the raw backend,
+     * whose CENTER/RIGHT resolve against the whole screen, this measures the
+     * text and places it relative to `box`: horizontally per `align`, and
+     * vertically centred. This is what lets layout-assigned areas drive text.
+     */
+    void textInBox(const Rect &box, fontSize_t size, textAlign_t align,
+                   Sem color, const char *str);
+
 private:
     Rect clip_;
 };

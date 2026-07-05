@@ -10,9 +10,14 @@
 namespace ortxui
 {
 
+Size Label::natural() const
+{
+    return { gfx_getTextWidth(font_, text_), gfx_getFontHeight(font_) };
+}
+
 void Label::draw(DrawCtx &d)
 {
-    d.text(anchor_, font_, align_, color_, text_);
+    d.textInBox(area_, font_, align_, color_, text_);
 }
 
 void Panel::draw(DrawCtx &d)

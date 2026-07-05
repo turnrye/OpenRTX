@@ -15,9 +15,9 @@ namespace ortxui
 {
 
 /**
- * A single- or multi-line text label. Positioning follows the gfx_* text
- * model: the anchor is the draw origin and alignment is applied by the
- * backend (CENTER/RIGHT are resolved against the screen width).
+ * A single-line text label drawn within its layout-assigned area. The text is
+ * measured and placed relative to the box (horizontally per `align`, vertically
+ * centred), so a layout container positions the label just by sizing its area.
  */
 class Label : public Object
 {
@@ -38,16 +38,12 @@ public:
     {
         align_ = a;
     }
-    void setAnchor(Point p)
-    {
-        anchor_ = p;
-    }
 
+    Size natural() const override; //< measured text width x font height
     void draw(DrawCtx &d) override;
 
 private:
     const char *text_ = "";
-    Point anchor_ = { 0, 0 };
     Sem color_ = Sem::OnSurface;
     fontSize_t font_ = FONT_SIZE_8PT;
     textAlign_t align_ = TEXT_ALIGN_LEFT;

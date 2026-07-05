@@ -19,11 +19,11 @@ void MenuView::build(const char *title, const char *const *items,
     const int16_t H = CONFIG_SCREEN_HEIGHT;
     const int16_t topH = 16;
 
-    /* Title bar */
+    /* Title bar: the title label fills the bar and centres within it. */
     topBar_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
     topBar_.setColor(Sem::Surface);
 
-    title_.setAnchor({ (int16_t)(W / 2), 11 });
+    title_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
     title_.setFont(FONT_SIZE_8PT);
     title_.setAlign(TEXT_ALIGN_CENTER);
     title_.setColor(Sem::Primary);
