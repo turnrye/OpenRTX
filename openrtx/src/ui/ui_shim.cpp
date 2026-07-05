@@ -12,11 +12,12 @@
  * the C++ retained-widget toolkit. threads.c, graphics.c, the state module,
  * the event queue and the sync_rtx/mutex discipline are all unchanged.
  *
- * The active screen is a retained widget tree (a View driving a Screen). Input
- * events are decoded and dispatched into the tree; drawing pulls from the
- * state snapshot and repaints only when something actually changed. Only the
- * VFO home view exists so far; the remaining views and a navigation graph land
- * next.
+ * The active screen is the top of a Navigator's View stack (each View driving a
+ * Screen). Input events are decoded and dispatched into the active view, which
+ * returns a navigation intent (push a child screen / pop back); drawing pulls
+ * from the state snapshot and repaints only when something actually changed.
+ * The VFO home, a main menu and a settings submenu exist so far; remaining
+ * views land in later slices.
  */
 
 #include "core/ui.h"
@@ -26,11 +27,14 @@
 #include "hwconfig.h"
 
 #include "core/Event.hpp"
+#include "core/Navigator.hpp"
 #include "render/DrawCtx.hpp"
 #include "style/SemanticColor.hpp"
 #include "views/VfoView.hpp"
+#include "views/MenuView.hpp"
 
 #include <cstdint>
+#include <cstring>
 
 using namespace ortxui;
 
@@ -49,8 +53,41 @@ uint8_t evQueue_wrPos = 0;
  * global `state` here under state_mutex; drawing reads only this snapshot. */
 state_t last_state;
 
-/* The active screen. A View owns its widget tree in static storage. */
+/* Menu item tables (borrowed by the MenuViews; must outlive them, so static).
+ * Content mirrors the classic UI's menus; the config guards keep parity with
+ * targets that omit GPS/RTC/M17. */
+const char *const kMainMenu[] = {
+    "Banks",    "Channels", "Contacts",
+#ifdef CONFIG_GPS
+    "GPS",
+#endif
+    "Settings", "Info",     "About",
+};
+constexpr uint16_t kMainMenuCount = sizeof(kMainMenu) / sizeof(kMainMenu[0]);
+
+const char *const kSettingsMenu[] = {
+    "Display",
+#ifdef CONFIG_RTC
+    "Time & Date",
+#endif
+#ifdef CONFIG_GPS
+    "GPS",
+#endif
+    "Radio",
+#ifdef CONFIG_M17
+    "M17",
+#endif
+    "FM",          "Accessibility", "Default Settings",
+};
+constexpr uint16_t kSettingsMenuCount = sizeof(kSettingsMenu)
+                                      / sizeof(kSettingsMenu[0]);
+
+/* The view singletons and the Navigator whose stack top is the active screen.
+ * Each View owns its widget tree in static storage. */
 VfoView vfoView;
+MenuView mainMenu;
+MenuView settingsMenu;
+Navigator nav;
 
 } // namespace
 
@@ -61,6 +98,21 @@ extern "C" void ui_init()
     last_state = state;
 
     vfoView.build();
+    mainMenu.build("Menu", kMainMenu, kMainMenuCount);
+    settingsMenu.build("Settings", kSettingsMenu, kSettingsMenuCount);
+
+    /* Wire the "Settings" row of the main menu to the settings submenu. The
+     * row index depends on the config guards above, so resolve it by label. */
+    for (uint16_t i = 0; i < kMainMenuCount; i++) {
+        if (strcmp(kMainMenu[i], "Settings") == 0) {
+            mainMenu.setRowTarget(i, &settingsMenu);
+            break;
+        }
+    }
+
+    vfoView.setMenu(&mainMenu);
+    nav.setRoot(&vfoView);
+
     state.ui_screen = 0; /* MAIN_VFO */
 }
 
@@ -93,14 +145,18 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
     evQueue_rdPos = (uint8_t)((evQueue_rdPos + 1) % MAX_NUM_EVENTS);
 
     const Event ev = Event::decode((uint8_t)raw.type, raw.payload);
-    vfoView.screen().dispatch(ev);
+    nav.dispatch(ev);
 }
 
 extern "C" bool ui_updateGUI()
 {
-    vfoView.syncFromState(last_state);
+    View *view = nav.active();
+    if (view == nullptr)
+        return false;
 
-    Screen &screen = vfoView.screen();
+    view->syncFromState(last_state);
+
+    Screen &screen = view->screen();
     if (!screen.dirty())
         return false;
 

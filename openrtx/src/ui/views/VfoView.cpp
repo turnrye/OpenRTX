@@ -5,8 +5,10 @@
  */
 
 #include "views/VfoView.hpp"
+#include "core/Event.hpp"
 #include "rtx/rtx.h"
 #include "hwconfig.h"
+#include "interfaces/keyboard.h"
 
 #include <cstdio>
 #include <cstring>
@@ -101,6 +103,18 @@ void VfoView::build()
     screen_.addChild(&rightAction_);
 
     screen_.markAllDirty();
+}
+
+NavIntent VfoView::onEvent(const Event &e)
+{
+    /* ENTER drills into the main menu; the home view is the navigation root, so
+     * ESC (handled by the Navigator popping) has nowhere to go. */
+    if ((e.kind == EvKind::Key) && ((e.keys & KEY_ENTER) != 0u)
+        && (menu_ != nullptr))
+        return NavIntent::push(menu_);
+
+    screen_.dispatch(e);
+    return NavIntent::none();
 }
 
 void VfoView::syncFromState(const state_t &s)

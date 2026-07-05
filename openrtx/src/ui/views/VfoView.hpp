@@ -7,7 +7,7 @@
 #ifndef ORTX_UI_VFOVIEW_HPP
 #define ORTX_UI_VFOVIEW_HPP
 
-#include "core/Object.hpp"
+#include "core/View.hpp"
 #include "widgets/Widgets.hpp"
 #include "core/state.h"
 
@@ -22,18 +22,28 @@ namespace ortxui
  * fields it shows from the state snapshot each tick and invalidates only the
  * widgets whose value actually changed, so redraws are change-driven.
  *
- * Positions are hand-placed for now (160x128); the Flex/Grid layout engine and
- * responsive size classes replace the manual geometry in a later slice.
+ * As the navigation root, ENTER drills into the main menu (wired via setMenu())
+ * and ESC has nowhere to go. Positions are hand-placed for now (160x128); the
+ * Flex/Grid layout engine and responsive size classes replace the manual
+ * geometry in a later slice.
  */
-class VfoView
+class VfoView : public View
 {
 public:
     void build();
 
-    /** Pull displayed fields from the state snapshot (change-gated). */
-    void syncFromState(const state_t &s);
+    /** Wire the menu opened when ENTER is pressed on the home screen. */
+    void setMenu(View *menu)
+    {
+        menu_ = menu;
+    }
 
-    Screen &screen()
+    /** Pull displayed fields from the state snapshot (change-gated). */
+    void syncFromState(const state_t &s) override;
+
+    NavIntent onEvent(const Event &e) override;
+
+    Screen &screen() override
     {
         return screen_;
     }
@@ -61,6 +71,8 @@ private:
     uint8_t lastCharge_ = 0xFFu;
     uint8_t lastMode_ = 0xFFu;
     int16_t lastMinute_ = -1;
+
+    View *menu_ = nullptr;
 };
 
 } // namespace ortxui

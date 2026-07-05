@@ -97,10 +97,14 @@ ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
 
 ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
                'openrtx/src/ui/core/Object.cpp',
+               'openrtx/src/ui/core/View.cpp',
+               'openrtx/src/ui/core/Navigator.cpp',
                'openrtx/src/ui/style/Theme.cpp',
                'openrtx/src/ui/render/DrawCtx.cpp',
                'openrtx/src/ui/widgets/Widgets.cpp',
+               'openrtx/src/ui/widgets/List.cpp',
                'openrtx/src/ui/views/VfoView.cpp',
+               'openrtx/src/ui/views/MenuView.cpp',
                'openrtx/src/ui/default/ui_strings.c']
 
 if get_option('ui') == 'ortx'
