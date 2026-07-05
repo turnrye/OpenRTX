@@ -11,7 +11,7 @@
 #include "core/View.hpp"
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
-#include "widgets/TitleBar.hpp"
+#include "widgets/TopBar.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -51,7 +51,7 @@ private:
 
     Screen screen_;
     Flex root_;
-    TitleBar title_;
+    TopBar topBar_;
     Flex rows_[RowCount];
     Label keys_[RowCount];
     Label vals_[RowCount];

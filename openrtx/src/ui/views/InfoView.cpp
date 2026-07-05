@@ -23,14 +23,14 @@ void InfoView::build()
     const int16_t W = CONFIG_SCREEN_WIDTH;
     const int16_t H = CONFIG_SCREEN_HEIGHT;
     const bool regular = (sizeClass() == SizeClass::Regular);
-    const int16_t barH = regular ? 16 : 12;
     const fontSize_t bodyFont = regular ? FONT_SIZE_8PT : FONT_SIZE_6PT;
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
     root_.setAxis(Axis::Column);
 
-    title_.init("Info", barH);
-    root_.addChild(&title_);
+    topBar_.init("Info");
+    setTopBar(&topBar_);
+    root_.addChild(&topBar_);
 
     for (uint8_t i = 0; i < RowCount; i++) {
         rows_[i].setAxis(Axis::Row);
@@ -72,6 +72,8 @@ void InfoView::build()
 
 void InfoView::syncFromState(const state_t &s)
 {
+    View::syncFromState(s); /* refresh the shared top bar */
+
     if (s.v_bat != lastVbat_) {
         /* Integer volts + one decimal, rounding the mantissa to nearest. */
         const uint16_t volt = (s.v_bat + 50) / 1000;

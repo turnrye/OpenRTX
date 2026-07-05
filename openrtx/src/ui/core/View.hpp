@@ -15,6 +15,7 @@ namespace ortxui
 {
 
 class View;
+class TopBar;
 struct Event;
 
 /**
@@ -67,11 +68,12 @@ public:
     {
     }
 
-    /** Pull displayed fields from the state snapshot (change-gated). */
-    virtual void syncFromState(const state_t &s)
-    {
-        (void)s;
-    }
+    /**
+     * Pull displayed fields from the state snapshot (change-gated). The base
+     * refreshes the shared top bar (clock/battery) if one was registered;
+     * overrides should call it first, then sync their own content.
+     */
+    virtual void syncFromState(const state_t &s);
 
     /**
      * Handle a decoded input event and return a navigation intent. The default
@@ -82,6 +84,15 @@ public:
 
     /** The view's widget-tree root. */
     virtual Screen &screen() = 0;
+
+protected:
+    /** Register the shared top bar so the base syncFromState() refreshes it. */
+    void setTopBar(TopBar *t)
+    {
+        topBar_ = t;
+    }
+
+    TopBar *topBar_ = nullptr;
 };
 
 } // namespace ortxui

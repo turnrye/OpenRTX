@@ -25,21 +25,25 @@ namespace ortxui
  * /home/turnrye/.claude/plans/precious-yawning-lighthouse.md
  */
 enum class Sem : uint8_t {
-    Background = 0, //< Base app background (near-black charcoal)
-    Surface,        //< Card / bar surface, one step above background
-    SurfaceHigh,    //< Selected row / raised surface
-    OnSurface,      //< Primary foreground text (warm off-white)
-    OnSurfaceMuted, //< Secondary / disabled text (grey)
-    Primary,        //< OpenRTX brand accent (gold): focus ring, headers
-    OnPrimary,      //< Text/icon drawn on top of a Primary fill
-    TxDanger,       //< Transmit / danger (red): chrome flips to this on TX
-    RxSuccess,      //< Receive / squelch-open (green)
+    Background = 0, //< Base app background (true black)
+    Surface,        //< Top bar / card surface, one step above background
+    SurfaceHigh,    //< Raised surface / meter track
+    Separator,      //< Thin divider line between rows
+    OnSurface,      //< Primary foreground text (white)
+    OnSurfaceMuted, //< Secondary / unit / value text (grey)
+    Primary,        //< Interactive accent (blue): selection fill, channel name
+    OnPrimary,      //< Text/icon drawn on top of a Primary (blue) fill (black)
+    Accent,         //< Secondary brand accent (gold): splash, headers, focus
+    OnAccent,       //< Text/icon drawn on top of an Accent (gold) fill (black)
+    TxDanger,       //< Transmit (orange): TX meter dots + label + power
+    RxSuccess,      //< Receive / squelch-open (green): RX meter dots + label
     Warning,        //< Battery-low / caution (orange)
-    ModeM17,        //< M17 protocol brand red
-    ModeM17Accent,  //< M17 logo secondary grey
-    ModeFM,         //< FM mode badge (muted cyan-grey)
-    ModeDMR,        //< DMR mode badge (reuses RxSuccess green)
-    FocusRing,      //< Focus highlight (reuses Primary gold)
+    Mark,           //< Checklist tick / alert (red-orange)
+    ModeM17,        //< (transitional) M17 mode badge colour
+    ModeM17Accent,  //< (transitional) M17 logo secondary grey
+    ModeFM,         //< (transitional) FM mode badge
+    ModeDMR,        //< (transitional) DMR mode badge (reuses RxSuccess green)
+    FocusRing,      //< Focus highlight (reuses Accent gold)
 
     Count
 };

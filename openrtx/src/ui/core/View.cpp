@@ -6,10 +6,17 @@
 
 #include "core/View.hpp"
 #include "core/Event.hpp"
+#include "widgets/TopBar.hpp"
 #include "interfaces/keyboard.h"
 
 namespace ortxui
 {
+
+void View::syncFromState(const state_t &s)
+{
+    if (topBar_ != nullptr)
+        topBar_->update(s);
+}
 
 NavIntent View::onEvent(const Event &e)
 {

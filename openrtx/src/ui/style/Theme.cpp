@@ -21,10 +21,16 @@ namespace ortxui
 color_t themeColor(Sem role)
 {
     switch (role) {
+        /* Paper (cleared) roles and text-on-fill collapse to black. */
         case Sem::Background:
         case Sem::Surface:
         case Sem::SurfaceHigh:
+        case Sem::Separator:
+        case Sem::OnPrimary:
+        case Sem::OnAccent:
             return palette::black;
+        /* Everything foreground becomes ink; selection reads as an inverted
+         * (white) fill with black text. */
         default:
             return palette::white;
     }
@@ -44,22 +50,29 @@ color_t themeColor(Sem role)
             return palette::surface;
         case Sem::SurfaceHigh:
             return palette::surfaceHigh;
+        case Sem::Separator:
+            return palette::separator;
         case Sem::OnSurface:
             return palette::onSurface;
         case Sem::OnSurfaceMuted:
             return palette::onSurfaceMut;
         case Sem::Primary:
+            return palette::selectionBlue;
+        case Sem::OnPrimary:
+        case Sem::OnAccent:
+            return palette::black;
+        case Sem::Accent:
         case Sem::FocusRing:
             return palette::brandGold;
-        case Sem::OnPrimary:
-            return palette::background;
         case Sem::TxDanger:
-            return palette::txRed;
+            return palette::txOrange;
         case Sem::RxSuccess:
         case Sem::ModeDMR:
             return palette::rxGreen;
         case Sem::Warning:
             return palette::warnOrange;
+        case Sem::Mark:
+            return palette::markRed;
         case Sem::ModeM17:
             return palette::m17Red;
         case Sem::ModeM17Accent:
