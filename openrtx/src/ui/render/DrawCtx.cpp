@@ -1,0 +1,50 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#include "render/DrawCtx.hpp"
+#include "style/Theme.hpp"
+#include "hwconfig.h"
+
+namespace ortxui
+{
+
+DrawCtx::DrawCtx() : clip_{ 0, 0, CONFIG_SCREEN_WIDTH, CONFIG_SCREEN_HEIGHT }
+{
+}
+
+void DrawCtx::clearScreen(Sem bg)
+{
+    gfx_fillScreen(themeColor(bg));
+}
+
+void DrawCtx::fillRect(const Rect &r, Sem color)
+{
+    if (r.empty())
+        return;
+
+    const point_t start = { r.x, r.y };
+    gfx_drawRect(start, r.w, r.h, themeColor(color), true);
+}
+
+void DrawCtx::drawRect(const Rect &r, Sem color)
+{
+    if (r.empty())
+        return;
+
+    const point_t start = { r.x, r.y };
+    gfx_drawRect(start, r.w, r.h, themeColor(color), false);
+}
+
+point_t DrawCtx::text(Point at, fontSize_t size, textAlign_t align, Sem color,
+                      const char *str)
+{
+    const point_t start = { at.x, at.y };
+    /* "%s" keeps arbitrary content (including '%') safe through the backend's
+     * printf-style formatter. */
+    return gfx_print(start, size, align, themeColor(color), "%s", str);
+}
+
+} // namespace ortxui

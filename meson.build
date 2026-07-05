@@ -72,7 +72,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/PacketFramer.cpp',
                'openrtx/src/protocols/M17/SmsPacket.cpp']
 
-openrtx_inc = ['openrtx/include', 'platform']
+openrtx_inc = ['openrtx/include', 'platform', 'openrtx/src/ui']
 
 ##
 ## OpenRTX UI sources
@@ -86,6 +86,24 @@ ui_src_default = ['openrtx/src/ui/default/ui.c',
 ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
                    'openrtx/src/ui/module17/ui_main.c',
                    'openrtx/src/ui/module17/ui_menu.c']
+
+##
+## New LVGL-inspired retained-widget UI toolkit ("ortx").
+## Selected with -Dui=ortx; a single unified codebase replaces both the default
+## and module17 variants. Reuses ui_strings.c for the currentLanguage table that
+## the voice-prompt subsystem depends on. See
+## /home/turnrye/.claude/plans/precious-yawning-lighthouse.md
+##
+
+ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
+               'openrtx/src/ui/style/Theme.cpp',
+               'openrtx/src/ui/render/DrawCtx.cpp',
+               'openrtx/src/ui/default/ui_strings.c']
+
+if get_option('ui') == 'ortx'
+  ui_src_default  = ui_src_ortx
+  ui_src_module17 = ui_src_ortx
+endif
 
 ##
 ## Selection of main entrypoint
