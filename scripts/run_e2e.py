@@ -171,6 +171,7 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
         rewritten_lines = []
         requires = set()
         script_tolerance = 0
+        codeplug = None
         with open(script_path) as f:
             for lineno, line in enumerate(f, 1):
                 line = line.rstrip("\n")
@@ -181,6 +182,10 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
                 t = re.match(r"^\s*#\s*tolerance\s+(\d+)", line)
                 if t:
                     script_tolerance = int(t.group(1))
+                    continue
+                c = re.match(r"^\s*#\s*codeplug\s+(\S+)", line)
+                if c:
+                    codeplug = c.group(1)
                     continue
                 if line.lstrip().startswith("#"):
                     continue  # harness comment
@@ -206,6 +211,16 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
                 f" -Dtest_version=e2e-test build"
             )
             return None
+
+        # The emulator reads its codeplug as default.rtxc from the cwd (tmpdir).
+        # A "#codeplug <file>" directive supplies one from tests/e2e so a test
+        # can browse real channels/contacts deterministically.
+        if codeplug is not None:
+            src = E2E_DIR / codeplug
+            if not src.is_file():
+                log(f"  FAIL: codeplug not found: {src}")
+                return False
+            shutil.copy2(src, tmpdir / "default.rtxc")
 
         log(f"Running E2E test: {base_name} ({variant})")
 

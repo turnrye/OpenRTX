@@ -1,0 +1,21 @@
+#codeplug channels.rtxc
+nop Main-menu Channels browser: list the codeplug channels and move selection.
+sleep 1000
+key ENTER
+sleep 400
+nop Channels is main-menu row idx 1 (Banks, Channels, Contacts, ...)
+key DOWN ENTER
+sleep 500
+screenshot channels_list.bmp
+sleep 300
+nop Move the highlight down to "M17 CQ" (idx 2)
+key DOWN DOWN
+sleep 400
+screenshot channels_selected.bmp
+sleep 300
+nop ENTER loads the channel and pops to the VFO home. Not asserted with a
+nop screenshot: the VFO S-meter reading is RSSI-timing-dependent after the
+nop channel's rtx reconfigure. Manually verified to load 433.475 (M17 CQ).
+key ENTER
+sleep 500
+quit

@@ -22,9 +22,10 @@ struct Event;
  * What a View asks the Navigator to do after handling an event.
  */
 enum class NavAction : uint8_t {
-    None, //< Stay on this view
-    Push, //< Open `target` as a child screen (ENTER-style drill-in)
-    Pop,  //< Return to the parent screen (ESC-style back)
+    None,      //< Stay on this view
+    Push,      //< Open `target` as a child screen (ENTER-style drill-in)
+    Pop,       //< Return to the parent screen (ESC-style back)
+    PopToRoot, //< Unwind all the way to the home screen (e.g. channel picked)
 };
 
 /**
@@ -47,6 +48,10 @@ struct NavIntent {
     static NavIntent pop()
     {
         return { NavAction::Pop, nullptr };
+    }
+    static NavIntent popToRoot()
+    {
+        return { NavAction::PopToRoot, nullptr };
     }
 };
 

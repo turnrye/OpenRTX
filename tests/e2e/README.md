@@ -84,6 +84,10 @@ never sent to the emulator:
   tightens; the CLI `--tolerance` can loosen further). Prefer pinning the input
   over tolerating it; use this only for genuinely emulator-nondeterministic
   regions.
+- `#codeplug <file>` — copy `tests/e2e/<file>` into the run's tmpdir as
+  `default.rtxc` before launching, so a test can browse real channels /
+  contacts (the emulator reads its codeplug from the cwd). `channels.rtxc` is a
+  4-channel fixture generated with `cps_create`/`cps_insertChannel`.
 
 > The emulator can abort during shutdown on this branch (a race fixed upstream
 > in PR #445), *after* the screenshots are written. The runner treats a nonzero
@@ -126,6 +130,7 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `fm` | Settings > FM: CTCSS tone + enable value rows, tone edit |
 | `radio` | Settings > Radio: offset keypad entry, direction flip, step |
 | `m17` | Settings > M17: callsign cursor-cycle edit, CAN cycle |
+| `channels` | Channels browser: codeplug channel list + selection |
 | `gps` | GPS Position "no fix" status state |
 | `about` | About: brand, firmware version, credits (`#require test_version`) |
 

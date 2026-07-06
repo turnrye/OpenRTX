@@ -48,6 +48,7 @@ private:
 
     void push(View *v);
     void pop();
+    void popToRoot();
     void activate();
 
     View *stack_[kMaxDepth] = {};

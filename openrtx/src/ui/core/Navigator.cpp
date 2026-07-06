@@ -61,9 +61,21 @@ void Navigator::dispatch(const Event &e)
         case NavAction::Pop:
             pop();
             break;
+        case NavAction::PopToRoot:
+            popToRoot();
+            break;
         case NavAction::None:
             break;
     }
+}
+
+void Navigator::popToRoot()
+{
+    if (depth_ <= 1)
+        return;
+
+    depth_ = 1;
+    activate();
 }
 
 void Navigator::syncActive(const state_t &s)
