@@ -41,6 +41,7 @@
 #include "views/FmView.hpp"
 #include "views/RadioView.hpp"
 #include "views/M17View.hpp"
+#include "views/DefaultsView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -102,6 +103,7 @@ DisplayView displayView;
 ChecklistView checklistView;
 FmView fmView;
 RadioView radioView;
+DefaultsView defaultsView;
 #ifdef CONFIG_M17
 M17View m17View;
 #endif
@@ -140,6 +142,7 @@ extern "C" void ui_init()
     checklistView.build();
     fmView.build();
     radioView.build();
+    defaultsView.build();
 #ifdef CONFIG_M17
     m17View.build();
 #endif
@@ -159,6 +162,8 @@ extern "C" void ui_init()
             &checklistView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "FM", &fmView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Radio", &radioView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Default Settings",
+            &defaultsView);
 #ifdef CONFIG_M17
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "M17", &m17View);
 #endif

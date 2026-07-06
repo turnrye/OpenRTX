@@ -1,0 +1,20 @@
+nop Settings > Default Settings: two-step reset confirmation.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Default Settings is the last Settings row (idx 7)
+key DOWN DOWN DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot defaults.bmp
+sleep 300
+nop ENTER arms the confirmation ("Are you sure?")
+key ENTER
+sleep 400
+screenshot defaults_armed.bmp
+sleep 300
+nop ESC cancels without resetting
+key ESC
+sleep 300
+quit
