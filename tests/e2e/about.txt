@@ -1,0 +1,12 @@
+#require test_version
+nop About screen: brand + firmware version + author credits. The version is
+nop git-describe by default (non-deterministic), so this test only runs
+nop against a -Dtest_version=e2e-test build and is skipped otherwise.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot about.bmp
+sleep 300
+quit

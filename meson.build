@@ -189,11 +189,15 @@ subdir('lib/miosix-kernel')
 ##
 ## Current git commit or tag
 ##
-r = run_command('git', 'describe', '--tags', '--dirty', '--always')
-if r.returncode() != 0
-  # it failed
+test_version_opt = get_option('test_version')
+if test_version_opt != ''
+  # Reproducible builds (golden-image tests / CI) pin the version so the
+  # About screen renders identically regardless of the working tree.
+  git_version = '"'+test_version_opt+'"'
+else
+  r = run_command('git', 'describe', '--tags', '--dirty', '--always', check: false)
+  git_version = '"'+r.stdout().strip()+'"'
 endif
-git_version  = '"'+r.stdout().strip()+'"'
 openrtx_def += {'GIT_VERSION': git_version}
 
 ##

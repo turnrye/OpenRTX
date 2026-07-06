@@ -70,6 +70,23 @@ VARIANTS = {
     "ortx": "openrtx_linux",
 }
 
+# A test may declare "#require <feature>" directive lines (stripped before the
+# script reaches the emulator). Today the only feature is test_version: the
+# binary must have been built with -Dtest_version=e2e-test so version-bearing
+# screens (About) render a fixed string. When the requirement is unmet the test
+# is SKIPPED, not failed, so a normal `python run_e2e.py` stays green.
+TEST_VERSION_MARKER = b"e2e-test"
+
+
+def binary_has_test_version(binary):
+    """True if the binary was built with -Dtest_version=e2e-test (the marker
+    is baked into GIT_VERSION, so it appears verbatim in rodata)."""
+    try:
+        with open(binary, "rb") as f:
+            return TEST_VERSION_MARKER in f.read()
+    except OSError:
+        return False
+
 
 def load_normalized(path):
     """Load an image as RGB so byte comparisons are consistent regardless of
@@ -147,12 +164,26 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
         tmpdir = Path(tmpdir_str)
         (tmpdir / "state").mkdir()
 
-        # Parse the script, rewriting screenshot paths into the tmpdir.
+        # Parse the script: collect "#require" directives, and rewrite
+        # screenshot paths into the tmpdir. Lines starting with "#" are harness
+        # directives/comments and are never forwarded to the emulator.
         screenshots = []
         rewritten_lines = []
+        requires = set()
+        script_tolerance = 0
         with open(script_path) as f:
             for lineno, line in enumerate(f, 1):
                 line = line.rstrip("\n")
+                d = re.match(r"^\s*#\s*require\s+(\S+)", line)
+                if d:
+                    requires.add(d.group(1))
+                    continue
+                t = re.match(r"^\s*#\s*tolerance\s+(\d+)", line)
+                if t:
+                    script_tolerance = int(t.group(1))
+                    continue
+                if line.lstrip().startswith("#"):
+                    continue  # harness comment
                 m = re.match(r"^\s*screenshot\s+(.+)$", line)
                 if m:
                     name = m.group(1).strip()
@@ -168,6 +199,13 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
                 else:
                     rewritten_lines.append(line)
         rewritten_script = "\n".join(rewritten_lines) + "\n"
+
+        if "test_version" in requires and not binary_has_test_version(binary):
+            log(
+                f"SKIP: {base_name} ({variant}) -- needs a"
+                f" -Dtest_version=e2e-test build"
+            )
+            return None
 
         log(f"Running E2E test: {base_name} ({variant})")
 
@@ -245,12 +283,17 @@ def run_test(script_path, binary, variant, tolerance, update_golden,
                 failures += 1
                 continue
 
-            if diff_pixels <= tolerance:
+            # A "#tolerance N" directive in the script can loosen the bound for
+            # a test with an inherently jittery region (e.g. Info's RSSI, which
+            # the emulator leaves at 0 or -100 depending on timing); the CLI
+            # --tolerance can loosen it further, never tighten.
+            eff_tolerance = max(tolerance, script_tolerance)
+            if diff_pixels <= eff_tolerance:
                 log(f"  PASS: {name} ({diff_pixels} pixels differ)")
             else:
                 log(
                     f"  FAIL: {name} -- {diff_pixels} pixels differ"
-                    f" (tolerance: {tolerance})"
+                    f" (tolerance: {eff_tolerance})"
                 )
                 fail_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(actual, fail_dir / f"actual_{name}")
@@ -363,7 +406,8 @@ def main():
         script_path, binary, args.variant, args.tolerance, args.update_golden,
         build_dir, wrapper=wrapper,
     )
-    sys.exit(0 if ok else 1)
+    # None == skipped (unmet requirement); treat as success for exit status.
+    sys.exit(1 if ok is False else 0)
 
 
 def run_all(args, tolerance, update_golden, wrapper=None):
@@ -391,7 +435,7 @@ def run_all(args, tolerance, update_golden, wrapper=None):
         sys.exit(1)
 
     jobs = max(1, min(args.jobs, len(runnable)))
-    passed = failed = 0
+    passed = failed = req_skipped = 0
     failed_names = []
 
     def _worker(item):
@@ -418,10 +462,16 @@ def run_all(args, tolerance, update_golden, wrapper=None):
 
         for fut in as_completed(futures):
             base, variant, ok, output = fut.result()
-            _write(f"[{'PASS' if ok else 'FAIL'}] {base} ({variant})")
-            if ok:
+            if ok is None:
+                _write(f"[SKIP] {base} ({variant})")
+                if output.strip():
+                    _write(output.rstrip())
+                req_skipped += 1
+            elif ok:
+                _write(f"[PASS] {base} ({variant})")
                 passed += 1
             else:
+                _write(f"[FAIL] {base} ({variant})")
                 if output.strip():
                     _write(output.rstrip())
                 failed += 1
@@ -433,8 +483,8 @@ def run_all(args, tolerance, update_golden, wrapper=None):
 
     print()
     print(
-        f"{passed} passed, {failed} failed, {len(skipped)} skipped,"
-        f" {len(tests)} total"
+        f"{passed} passed, {failed} failed,"
+        f" {len(skipped) + req_skipped} skipped, {len(tests)} total"
     )
     if failed_names:
         print("\nFailed tests:")

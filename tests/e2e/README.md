@@ -58,10 +58,32 @@ The runner makes each run reproducible without any per-test setup:
   never leak into another (or into your real `~/.local/state`).
 - **offscreen SDL + dummy audio**.
 
-Some values still vary and must be pinned in the test script with the
-emulator's state-setter commands — e.g. the simulated RSSI jitters, so
-`vfo.txt` and `info.txt` issue `rssi -100` before capturing (the Info screen
-prints the exact dBm; the VFO S-meter would jitter across a level boundary).
+Some values still vary. Where the emulator exposes a setter, pin it: `vfo.txt`
+issues `rssi -100` so the S-meter can't drift across a level boundary. Where it
+does not, tolerate the jittery region with a `#tolerance` directive (below):
+the Info screen's RSSI row is left at 0 or -100 dBm depending on emulator
+timing (~40px of digits), so `info.txt` allows `#tolerance 80` while still
+catching layout or other-row regressions (those differ by hundreds of pixels).
+
+### Directives
+
+Lines beginning with `#` are harness directives, parsed by the runner and
+never sent to the emulator:
+
+- `#require <feature>` — skip the test (rather than fail) unless the feature is
+  present. The only feature today is `test_version`: the binary must be built
+  with `-Dtest_version=e2e-test` so version-bearing screens render a fixed
+  string. `about.txt` uses it, so About is skipped on a normal build and runs
+  in CI / a `-Dtest_version=e2e-test` build:
+  ```
+  meson configure build_ortx -Dtest_version=e2e-test
+  meson compile -C build_ortx openrtx_linux
+  python scripts/run_e2e.py            # now About runs too
+  ```
+- `#tolerance <N>` — allow up to N differing pixels for this test (never
+  tightens; the CLI `--tolerance` can loosen further). Prefer pinning the input
+  over tolerating it; use this only for genuinely emulator-nondeterministic
+  regions.
 
 > The emulator can abort during shutdown on this branch (a race fixed upstream
 > in PR #445), *after* the screenshots are written. The runner treats a nonzero
@@ -98,10 +120,11 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `settings_menu` | Settings submenu, scrolled |
 | `settings_display` | Display value rows + Brightness edit mode + commit |
 | `settings_accessibility` | Accessibility checklist + checkbox toggle |
-| `info` | Info key/value table |
+| `info` | Info key/value table (RSSI row tolerated, see above) |
 | `gps` | GPS Position "no fix" status state |
+| `about` | About: brand, firmware version, credits (`#require test_version`) |
 
 Not yet covered (need a deterministic hook first): the GPS live-fix layout
-(needs a GPS-injection command or settings seed), the About screen (shows the
-non-deterministic `git describe` version — wants a fixed-version build option),
-and 1bpp mono rendering (needs a mono linux variant).
+(needs a GPS-injection command or settings seed — the sim feeds a Hamburg fix
+but `gps_enabled` defaults off under state isolation), and 1bpp mono rendering
+(needs a mono linux variant).
