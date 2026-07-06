@@ -185,19 +185,21 @@ extern "C" bool _ui_checkStandby(long long time_since_last_event)
         case TIMER_20S:
         case TIMER_25S:
         case TIMER_30S:
-            return time_since_last_event >= (5000 * state.settings.display_timer);
+            return time_since_last_event
+                >= (5000 * state.settings.display_timer);
         case TIMER_1M:
         case TIMER_2M:
         case TIMER_3M:
         case TIMER_4M:
         case TIMER_5M:
-            return time_since_last_event >=
-                (60000 * (state.settings.display_timer - (TIMER_1M - 1)));
+            return time_since_last_event
+                >= (60000 * (state.settings.display_timer - (TIMER_1M - 1)));
         case TIMER_15M:
         case TIMER_30M:
         case TIMER_45M:
-            return time_since_last_event >=
-                (60000 * 15 * (state.settings.display_timer - (TIMER_15M - 1)));
+            return time_since_last_event
+                >= (60000 * 15
+                    * (state.settings.display_timer - (TIMER_15M - 1)));
         case TIMER_1H:
             return time_since_last_event >= 60 * 60 * 1000;
     }
@@ -245,7 +247,8 @@ extern "C" void ui_init()
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Accessibility",
             &checklistView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "FM", &fmView);
-    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Radio", &radioView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Radio",
+            &radioView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Default Settings",
             &defaultsView);
 #ifdef CONFIG_M17
@@ -327,7 +330,8 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
     /* No event this tick: ongoing RF or a volume change keeps the screen awake,
      * otherwise blank the backlight once the idle timer elapses. */
     const bool txOngoing = (rtx_getStatus()->opStatus == TX);
-    if (txOngoing || rtx_rxSquelchOpen() || (state.volume != last_state.volume)) {
+    if (txOngoing || rtx_rxSquelchOpen()
+        || (state.volume != last_state.volume)) {
         exitStandby(now);
         return;
     }

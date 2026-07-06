@@ -219,9 +219,8 @@ void VfoView::announceVfoState()
     const enum vpQueueFlags flags = vp_getVoiceLevelQueueFlags();
     vp_flush();
     if (state.tuner_mode != VFO) {
-        vp_announceChannelSummary(&state.channel,
-                                  (uint16_t)(state.channel_index + 1), 0,
-                                  vpAllInfo);
+        vp_announceChannelSummary(
+            &state.channel, (uint16_t)(state.channel_index + 1), 0, vpAllInfo);
     } else {
         vp_announceFrequencies(state.channel.rx_frequency,
                                state.channel.tx_frequency, flags);

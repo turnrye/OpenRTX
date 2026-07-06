@@ -19,7 +19,9 @@ void ChecklistView::build()
     const bool regular = (sizeClass() == SizeClass::Regular);
 
     static const char *const kLabels[RowCount] = {
-        "Phonetic", "Macro Latch", "Battery icon",
+        "Phonetic",
+        "Macro Latch",
+        "Battery icon",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });

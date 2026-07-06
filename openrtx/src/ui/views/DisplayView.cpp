@@ -22,11 +22,7 @@ void DisplayView::build()
     const bool regular = (sizeClass() == SizeClass::Regular);
 
     static const char *const kLabels[RowCount] = {
-        "Brightness",
-        "Contrast",
-        "Squelch",
-        "Vox",
-        "Timer",
+        "Brightness", "Contrast", "Squelch", "Vox", "Timer",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -110,8 +106,8 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
 {
     /* Standby-timer labels, mirroring the classic display_timer_values table. */
     static const char *const kTimerLabels[] = {
-        "Off",   "5 s",   "10 s",  "15 s",  "20 s",   "25 s",
-        "30 s",  "1 min", "2 min", "3 min", "4 min",  "5 min",
+        "Off",    "5 s",    "10 s",   "15 s",   "20 s",  "25 s",
+        "30 s",   "1 min",  "2 min",  "3 min",  "4 min", "5 min",
         "15 min", "30 min", "45 min", "1 hour",
     };
 
@@ -121,8 +117,7 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
     else if (row == RowSquelch)
         snprintf(inner, sizeof(inner), "S%u", v);
     else if (row == RowTimer)
-        snprintf(inner, sizeof(inner), "%s",
-                 kTimerLabels[(v < 16u) ? v : 0u]);
+        snprintf(inner, sizeof(inner), "%s", kTimerLabels[(v < 16u) ? v : 0u]);
     else
         snprintf(inner, sizeof(inner), "%u", v);
 
