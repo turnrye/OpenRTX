@@ -255,6 +255,7 @@ NavIntent VfoView::onEvent(const Event &e)
 
     /* The knob tunes in VFO mode and steps channels in memory mode. */
     if (e.kind == EvKind::Encoder) {
+        clearFmTone(); /* any input other than # drops the momentary tone */
         if (state.tuner_mode == VFO)
             stepFreq(e.encoder);
         else
@@ -265,11 +266,22 @@ NavIntent VfoView::onEvent(const Event &e)
     if (e.kind == EvKind::Key) {
         const uint32_t k = e.keys;
 
+        /* The momentary FM tone latches on # and is cleared by the next other
+         * key (classic parity). */
+        if ((k & KEY_HASH) == 0u)
+            clearFmTone();
+
         if ((k & KEY_ENTER) != 0u) {
             if (menu_ != nullptr)
                 return NavIntent::push(menu_);
         } else if ((k & KEY_ESC) != 0u) {
             toggleVfoMem();
+        } else if ((k & KEY_HASH) != 0u) {
+            /* # keys the FM tone burst; other modes ignore it for now. */
+            if ((state.channel.mode == OPMODE_FM) && !state.tone_enabled) {
+                state.tone_enabled = true;
+                requestSyncRtx();
+            }
         } else if ((k & KEY_UP) != 0u) {
             if (state.tuner_mode == VFO)
                 stepFreq(+1);
@@ -493,6 +505,14 @@ void VfoView::refreshInput()
     chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
     chanIdx_.invalidate();
     chanName_.invalidate();
+}
+
+void VfoView::clearFmTone()
+{
+    if (state.tone_enabled) {
+        state.tone_enabled = false;
+        requestSyncRtx();
+    }
 }
 
 void VfoView::announceFreq()

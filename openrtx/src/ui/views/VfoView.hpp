@@ -72,6 +72,7 @@ private:
     void exitInput();               //< leave keypad entry, restore the readout
     void refreshInput();            //< redraw the hero/label from the entry
     void announceFreq();            //< speak the current channel frequencies
+    void clearFmTone();             //< drop the momentary FM tone if latched
 
     Screen screen_;
 
