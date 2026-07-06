@@ -16,32 +16,39 @@ namespace ortxui
 {
 
 /**
- * A vertical, single-selection list of text rows.
+ * A single row of a List. The row style follows the fields set:
+ *  - label only            -> a plain row (submenu / credits),
+ *  - label + value         -> a settings row (label top-left, value low-right),
+ *  - label + checkbox      -> a checklist row (box + tick when checked).
+ * All strings are borrowed; the owner keeps them (and the item array) alive.
+ */
+struct ListItem {
+    const char *label = "";
+    const char *value = nullptr;
+    bool checkbox = false;
+    bool checked = false;
+};
+
+/**
+ * A vertical, single-selection list of rows (mockups 2-4).
  *
- * The whole list is one focusable Object: it owns the selected index and the
- * scroll offset itself rather than making each row a focusable child. That
- * keeps a menu of any length within the Screen's small focus ring and mirrors
- * how the radio's rotary knob / arrow keys actually move a selection. Encoder
- * steps and UP/DOWN move the selection (wrapping at the ends) and scroll to
- * keep it visible; ENTER/ESC are left unconsumed for the owning view to read
- * via selected() and turn into navigation.
+ * The whole list is one focusable Object owning the selected index and scroll
+ * offset, so a menu of any length stays within the Screen focus ring and maps
+ * to the rotary knob / arrow keys. Encoder steps and UP/DOWN move the selection
+ * (wrapping) and scroll to keep it visible; ENTER/ESC are left for the owning
+ * view (which reads selected()/item() to navigate or toggle). The selected row
+ * is a solid blue fill with black text; rows are separated by thin dividers.
  *
- * The item table is borrowed, not copied: the caller keeps the strings alive
- * (menu tables are static const), matching the toolkit's no-heap discipline.
+ * The item table is borrowed, not copied, matching the no-heap discipline.
  */
 class List : public Object
 {
 public:
-    void setItems(const char *const *items, uint16_t count);
+    void setItems(const ListItem *items, uint16_t count);
     void setRowHeight(int16_t h)
     {
         rowH_ = h;
     }
-    /**
-     * Whether a row is highlighted as the selection. Off makes the list a
-     * read-only scroll region (e.g. a credits list): stepping still scrolls,
-     * but no row is drawn as focused.
-     */
     void setSelectable(bool s)
     {
         selectable_ = s;
@@ -53,6 +60,9 @@ public:
     }
     void setSelected(uint16_t i);
 
+    /** Mutable access to the selected item (e.g. to toggle a checkbox). */
+    ListItem *selectedItem();
+
     bool onEvent(const Event &e) override;
     void draw(DrawCtx &d) override;
 
@@ -60,8 +70,10 @@ private:
     uint16_t visibleRows() const;
     void scrollToSelected();
     void moveSelection(int dir);
+    void drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
+                 bool selected);
 
-    const char *const *items_ = nullptr;
+    const ListItem *items_ = nullptr;
     uint16_t count_ = 0;
     uint16_t selected_ = 0;
     uint16_t top_ = 0; //< index of the first visible row (scroll offset)

@@ -12,13 +12,21 @@
 namespace ortxui
 {
 
-void List::setItems(const char *const *items, uint16_t count)
+void List::setItems(const ListItem *items, uint16_t count)
 {
     items_ = items;
     count_ = count;
     selected_ = 0;
     top_ = 0;
     invalidate();
+}
+
+ListItem *List::selectedItem()
+{
+    if ((items_ == nullptr) || (selected_ >= count_))
+        return nullptr;
+    /* The item table is borrowed and owned mutably by the view. */
+    return const_cast<ListItem *>(&items_[selected_]);
 }
 
 uint16_t List::visibleRows() const
@@ -89,6 +97,58 @@ bool List::onEvent(const Event &e)
     return false;
 }
 
+void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
+                   bool selected)
+{
+    const Sem labelColor = selected ? Sem::OnPrimary : Sem::OnSurface;
+    const Sem valueColor = selected ? Sem::OnPrimary : Sem::OnSurfaceMuted;
+
+    /* A checkbox reserves room on the right; keep text clear of it. */
+    const int16_t rightPad = it.checkbox ? 20 : 4;
+    const int16_t textW = static_cast<int16_t>(row.w - 6 - rightPad);
+
+    if (it.value != nullptr) {
+        /* Value row: label on the upper line, value low and right-aligned. */
+        const int16_t half = static_cast<int16_t>(row.h / 2);
+        const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
+                            static_cast<uint16_t>(textW),
+                            static_cast<uint16_t>(half + 2) };
+        d.textInBox(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor, it.label);
+
+        const Rect vbox = { static_cast<int16_t>(row.x + 6),
+                            static_cast<int16_t>(row.y + half - 2),
+                            static_cast<uint16_t>(textW),
+                            static_cast<uint16_t>(row.h - half) };
+        d.textInBox(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
+                    it.value);
+    } else {
+        const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
+                            static_cast<uint16_t>(textW), row.h };
+        d.textInBox(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor, it.label);
+    }
+
+    if (it.checkbox) {
+        const int16_t bs = 12; /* box side */
+        const int16_t bx = static_cast<int16_t>(row.right() - bs - 4);
+        const int16_t by = static_cast<int16_t>(row.y + (row.h - bs) / 2);
+        const Rect box = { bx, by, static_cast<uint16_t>(bs),
+                           static_cast<uint16_t>(bs) };
+        d.drawRect(box, selected ? Sem::OnPrimary : Sem::OnSurfaceMuted);
+
+        if (it.checked) {
+            /* A two-stroke tick in the mark colour. */
+            const Point p0 = { static_cast<int16_t>(bx + 2),
+                               static_cast<int16_t>(by + bs / 2) };
+            const Point p1 = { static_cast<int16_t>(bx + bs / 2 - 1),
+                               static_cast<int16_t>(by + bs - 3) };
+            const Point p2 = { static_cast<int16_t>(bx + bs - 2),
+                               static_cast<int16_t>(by + 2) };
+            d.line(p0, p1, Sem::Mark);
+            d.line(p1, p2, Sem::Mark);
+        }
+    }
+}
+
 void List::draw(DrawCtx &d)
 {
     if ((count_ == 0) || (items_ == nullptr))
@@ -99,26 +159,21 @@ void List::draw(DrawCtx &d)
     if (end > count_)
         end = count_;
 
-    const int16_t fh = static_cast<int16_t>(gfx_getFontHeight(FONT_SIZE_8PT));
-
     for (uint16_t i = top_; i < end; i++) {
         const int16_t rowY = static_cast<int16_t>(area_.y + (i - top_) * rowH_);
         const Rect row = { area_.x, rowY, area_.w,
                            static_cast<uint16_t>(rowH_) };
 
-        Sem textColor = Sem::OnSurface;
-        if (selectable_ && (i == selected_)) {
-            d.fillRect(row, Sem::SurfaceHigh);
-            const Rect accent = { area_.x, rowY, 2,
-                                  static_cast<uint16_t>(rowH_) };
-            d.fillRect(accent, Sem::Primary);
-            textColor = Sem::Primary;
-        }
+        /* Divider at the row's baseline; a selected row's fill covers its own. */
+        const Rect sep = { area_.x, static_cast<int16_t>(row.bottom()), area_.w,
+                           1 };
+        d.fillRect(sep, Sem::Separator);
 
-        /* Vertically centre the glyphs within the row (baseline anchor). */
-        const int16_t ty = static_cast<int16_t>(rowY + (rowH_ + fh) / 2 - 1);
-        const Point at = { static_cast<int16_t>(area_.x + 6), ty };
-        d.text(at, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, textColor, items_[i]);
+        const bool selected = selectable_ && (i == selected_);
+        if (selected)
+            d.fillRect(row, Sem::Primary);
+
+        drawRow(d, items_[i], row, selected);
     }
 
     /* Scroll indicator: a thin track with a thumb sized to the visible span. */

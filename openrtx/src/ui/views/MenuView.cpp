@@ -17,25 +17,26 @@ void MenuView::build(const char *title, const char *const *items,
 {
     const int16_t W = CONFIG_SCREEN_WIDTH;
     const int16_t H = CONFIG_SCREEN_HEIGHT;
-    const int16_t topH = 16;
+    const int16_t topH = (sizeClass() == SizeClass::Regular) ? 16 : 12;
 
-    /* Title bar: the title label fills the bar and centres within it. */
+    /* Shared top bar (title + clock + battery). */
+    topBar_.init(title);
     topBar_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
-    topBar_.setColor(Sem::Surface);
+    topBar_.onLayout();
+    setTopBar(&topBar_);
 
-    title_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
-    title_.setFont(FONT_SIZE_8PT);
-    title_.setAlign(TEXT_ALIGN_CENTER);
-    title_.setColor(Sem::Primary);
-    title_.setText(title);
+    /* Scrollable list fills the space below the top bar (plain label rows). */
+    if (count > kMaxRows)
+        count = kMaxRows;
+    for (uint16_t i = 0; i < count; i++)
+        items_[i].label = items[i];
 
-    /* Scrollable list fills the space below the title bar. */
     list_.setArea({ 0, topH, (uint16_t)W, (uint16_t)(H - topH) });
-    list_.setItems(items, count);
+    list_.setRowHeight((sizeClass() == SizeClass::Regular) ? 16 : 13);
+    list_.setItems(items_, count);
     list_.setFlag(FLAG_FOCUSABLE, true);
 
     screen_.addChild(&topBar_);
-    screen_.addChild(&title_);
     screen_.addChild(&list_);
     screen_.focusFirst();
     screen_.markAllDirty();

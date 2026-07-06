@@ -1,0 +1,89 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#include "views/ChecklistView.hpp"
+#include "core/Event.hpp"
+#include "interfaces/keyboard.h"
+#include "hwconfig.h"
+
+namespace ortxui
+{
+
+void ChecklistView::build()
+{
+    const int16_t W = CONFIG_SCREEN_WIDTH;
+    const int16_t H = CONFIG_SCREEN_HEIGHT;
+    const bool regular = (sizeClass() == SizeClass::Regular);
+
+    static const char *const kLabels[RowCount] = {
+        "GPS", "Phonetic", "Macro Latch", "GPS sets clock", "Battery icon",
+    };
+
+    root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
+    root_.setAxis(Axis::Column);
+
+    topBar_.init("Accessibility");
+    setTopBar(&topBar_);
+
+    for (uint8_t i = 0; i < RowCount; i++) {
+        items_[i].label = kLabels[i];
+        items_[i].checkbox = true;
+    }
+
+    list_.setItems(items_, RowCount);
+    list_.setRowHeight(regular ? 18 : 14);
+    list_.setFlag(FLAG_FOCUSABLE, true);
+    list_.setGrow(1);
+
+    root_.addChild(&topBar_);
+    root_.addChild(&list_);
+    screen_.addChild(&root_);
+    root_.onLayout();
+    screen_.focusFirst();
+
+    screen_.markAllDirty();
+}
+
+void ChecklistView::syncFromState(const state_t &s)
+{
+    View::syncFromState(s); /* top bar */
+
+    if (seeded_)
+        return;
+
+    /* Seed the ticks from the matching settings flags (once). */
+    const settings_t &st = s.settings;
+    items_[RowGps].checked = st.gps_enabled;
+    items_[RowPhonetic].checked = (st.vpPhoneticSpell != 0u);
+    items_[RowLatch].checked = (st.macroMenuLatch != 0u);
+    items_[RowGpsTime].checked = st.gpsSetTime;
+    items_[RowBatteryIcon].checked = st.showBatteryIcon;
+
+    seeded_ = true;
+    list_.invalidate();
+}
+
+NavIntent ChecklistView::onEvent(const Event &e)
+{
+    if (e.kind == EvKind::Key) {
+        if ((e.keys & KEY_ESC) != 0u)
+            return NavIntent::pop();
+
+        if ((e.keys & KEY_ENTER) != 0u) {
+            ListItem *it = list_.selectedItem();
+            if ((it != nullptr) && it->checkbox) {
+                it->checked = !it->checked;
+                list_.invalidate();
+            }
+            return NavIntent::none();
+        }
+    }
+
+    screen_.dispatch(e);
+    return NavIntent::none();
+}
+
+} // namespace ortxui

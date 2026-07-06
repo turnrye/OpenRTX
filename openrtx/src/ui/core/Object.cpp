@@ -173,26 +173,44 @@ void Screen::setFocus(Object *obj)
     }
 }
 
+namespace
+{
+
+/*
+ * Collect the focusable, non-hidden objects of a subtree in paint (pre-order)
+ * order. Traversal is recursive so focusables nested inside layout containers
+ * (Flex/Grid) are reached, not just the Screen's direct children.
+ */
+void collectFocusables(Object *node, Object **out, int &n, int max)
+{
+    for (Object *c = node->firstChild(); (c != nullptr) && (n < max);
+         c = c->nextSibling()) {
+        if (c->hasFlag(FLAG_HIDDEN))
+            continue;
+        if (c->hasFlag(FLAG_FOCUSABLE))
+            out[n++] = c;
+        collectFocusables(c, out, n, max);
+    }
+}
+
+constexpr int kMaxFocusables = 32;
+
+} // namespace
+
 void Screen::focusFirst()
 {
-    for (Object *c = firstChild(); c != nullptr; c = c->nextSibling()) {
-        if (c->hasFlag(FLAG_FOCUSABLE) && !c->hasFlag(FLAG_HIDDEN)) {
-            setFocus(c);
-            return;
-        }
-    }
+    Object *items[kMaxFocusables];
+    int n = 0;
+    collectFocusables(this, items, n, kMaxFocusables);
+    if (n > 0)
+        setFocus(items[0]);
 }
 
 void Screen::moveFocus(int dir)
 {
-    /* Cycle focus over the focusable direct children (flat lists / menus). */
-    Object *items[24];
+    Object *items[kMaxFocusables];
     int n = 0;
-    for (Object *c = firstChild(); (c != nullptr) && (n < 24);
-         c = c->nextSibling()) {
-        if (c->hasFlag(FLAG_FOCUSABLE) && !c->hasFlag(FLAG_HIDDEN))
-            items[n++] = c;
-    }
+    collectFocusables(this, items, n, kMaxFocusables);
     if (n == 0)
         return;
 

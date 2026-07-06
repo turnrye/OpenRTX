@@ -10,7 +10,7 @@
 #include "core/View.hpp"
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
-#include "widgets/TitleBar.hpp"
+#include "widgets/TopBar.hpp"
 #include "widgets/List.hpp"
 
 namespace ortxui
@@ -18,15 +18,18 @@ namespace ortxui
 
 /**
  * The About screen: a title bar, the OpenRTX brand + firmware version, and a
- * scrolling (non-selectable) list of contributor credits. A leaf view — ESC
- * pops back, the knob / up-down scroll the credits.
+ * scrolling (non-selectable) list of contributor credits. A leaf view — the
+ * base View handles ESC (pop) and forwards the knob / up-down to the focused
+ * credits list (reachable now that the Screen focus ring recurses into the
+ * layout tree).
  */
 class AboutView : public View
 {
 public:
+    static constexpr uint16_t kMaxAuthors = 16;
+
     void build();
 
-    NavIntent onEvent(const Event &e) override;
     Screen &screen() override
     {
         return screen_;
@@ -35,11 +38,12 @@ public:
 private:
     Screen screen_;
     Flex root_;
-    TitleBar title_;
+    TopBar topBar_;
     Flex header_;
     Label brand_;
     Label version_;
     List authors_;
+    ListItem authorItems_[kMaxAuthors] = {};
 };
 
 } // namespace ortxui

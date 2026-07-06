@@ -34,6 +34,8 @@
 #include "views/MenuView.hpp"
 #include "views/InfoView.hpp"
 #include "views/AboutView.hpp"
+#include "views/DisplayView.hpp"
+#include "views/ChecklistView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -91,14 +93,17 @@ MenuView mainMenu;
 MenuView settingsMenu;
 InfoView infoView;
 AboutView aboutView;
+DisplayView displayView;
+ChecklistView checklistView;
 Navigator nav;
 
-/* Wire the main-menu row whose label is `label` to open `target`. */
-void wireMenuRow(const char *label, View *target)
+/* Wire the row of `menu` whose label matches `label` (from `table`) to `target`. */
+void wireRow(MenuView &menu, const char *const *table, uint16_t count,
+             const char *label, View *target)
 {
-    for (uint16_t i = 0; i < kMainMenuCount; i++) {
-        if (strcmp(kMainMenu[i], label) == 0) {
-            mainMenu.setRowTarget(i, target);
+    for (uint16_t i = 0; i < count; i++) {
+        if (strcmp(table[i], label) == 0) {
+            menu.setRowTarget(i, target);
             return;
         }
     }
@@ -117,12 +122,18 @@ extern "C" void ui_init()
     settingsMenu.build("Settings", kSettingsMenu, kSettingsMenuCount);
     infoView.build();
     aboutView.build();
+    displayView.build();
+    checklistView.build();
 
-    /* Wire main-menu rows to their views. Rows resolve by label because the
-     * row indices shift with the config guards on the menu table. */
-    wireMenuRow("Settings", &settingsMenu);
-    wireMenuRow("Info", &infoView);
-    wireMenuRow("About", &aboutView);
+    /* Wire menu rows to their views. Rows resolve by label because the indices
+     * shift with the config guards on the menu tables. */
+    wireRow(mainMenu, kMainMenu, kMainMenuCount, "Settings", &settingsMenu);
+    wireRow(mainMenu, kMainMenu, kMainMenuCount, "Info", &infoView);
+    wireRow(mainMenu, kMainMenu, kMainMenuCount, "About", &aboutView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Display",
+            &displayView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Accessibility",
+            &checklistView);
 
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);

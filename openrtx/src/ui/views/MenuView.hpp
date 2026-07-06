@@ -10,6 +10,7 @@
 #include <cstdint>
 #include "core/View.hpp"
 #include "widgets/Widgets.hpp"
+#include "widgets/TopBar.hpp"
 #include "widgets/List.hpp"
 
 namespace ortxui
@@ -42,10 +43,10 @@ public:
 
 private:
     Screen screen_;
-    Panel topBar_;
-    Label title_;
+    TopBar topBar_;
     List list_;
 
+    ListItem items_[kMaxRows] = {};
     View *rowTargets_[kMaxRows] = {};
 };
 

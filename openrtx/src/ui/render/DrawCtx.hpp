@@ -53,6 +53,9 @@ public:
     /** Filled disc centred at `c` (scanline fill; no backend primitive). */
     void fillCircle(Point c, uint16_t r, Sem color);
 
+    /** 1px line between two points. */
+    void line(Point a, Point b, Sem color);
+
     /**
      * Draw a NUL-terminated string. Returns the drawn text extent as reported
      * by the backend. Multi-line strings (with '\n') are supported.

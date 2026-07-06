@@ -59,6 +59,13 @@ void DrawCtx::fillCircle(Point c, uint16_t r, Sem color)
     }
 }
 
+void DrawCtx::line(Point a, Point b, Sem color)
+{
+    const point_t start = { a.x, a.y };
+    const point_t end = { b.x, b.y };
+    gfx_drawLine(start, end, themeColor(color));
+}
+
 point_t DrawCtx::text(Point at, fontSize_t size, textAlign_t align, Sem color,
                       const char *str)
 {
