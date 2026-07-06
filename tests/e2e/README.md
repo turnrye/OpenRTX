@@ -123,6 +123,7 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `info` | Info key/value table (RSSI row tolerated, see above) |
 | `fm` | Settings > FM: CTCSS tone + enable value rows, tone edit |
 | `radio` | Settings > Radio: offset keypad entry, direction flip, step |
+| `m17` | Settings > M17: callsign cursor-cycle edit, CAN cycle |
 | `gps` | GPS Position "no fix" status state |
 | `about` | About: brand, firmware version, credits (`#require test_version`) |
 

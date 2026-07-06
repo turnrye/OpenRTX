@@ -1,0 +1,33 @@
+nop Settings > M17: callsign cursor-cycle text edit + CAN value cycle.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop M17 is Settings row idx 4 (Display, Time&Date, GPS, Radio, M17, ...)
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot m17_settings.bmp
+sleep 300
+nop Edit Callsign: ENTER opens cursor edit; the cursor char is in [brackets],
+nop UP/DOWN cycles it, RIGHT moves the cursor. Deterministic (no multi-tap).
+key ENTER
+sleep 400
+key UP UP UP
+sleep 300
+key RIGHT
+sleep 300
+key UP UP
+sleep 400
+screenshot m17_callsign_edit.bmp
+sleep 300
+nop Confirm callsign, then cycle CAN up by 3
+key ENTER
+sleep 400
+key DOWN DOWN ENTER
+sleep 400
+key UP UP UP
+sleep 400
+screenshot m17_can_edit.bmp
+sleep 300
+quit

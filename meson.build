@@ -119,6 +119,7 @@ ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
                'openrtx/src/ui/views/GpsView.cpp',
                'openrtx/src/ui/views/FmView.cpp',
                'openrtx/src/ui/views/RadioView.cpp',
+               'openrtx/src/ui/views/M17View.cpp',
                'openrtx/src/ui/default/ui_strings.c']
 
 if get_option('ui') == 'ortx'

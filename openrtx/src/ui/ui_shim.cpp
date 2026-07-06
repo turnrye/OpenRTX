@@ -39,6 +39,7 @@
 #include "views/GpsView.hpp"
 #include "views/FmView.hpp"
 #include "views/RadioView.hpp"
+#include "views/M17View.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -100,6 +101,9 @@ DisplayView displayView;
 ChecklistView checklistView;
 FmView fmView;
 RadioView radioView;
+#ifdef CONFIG_M17
+M17View m17View;
+#endif
 #ifdef CONFIG_GPS
 GpsView gpsView;
 #endif
@@ -134,6 +138,9 @@ extern "C" void ui_init()
     checklistView.build();
     fmView.build();
     radioView.build();
+#ifdef CONFIG_M17
+    m17View.build();
+#endif
 #ifdef CONFIG_GPS
     gpsView.build();
 #endif
@@ -149,6 +156,9 @@ extern "C" void ui_init()
             &checklistView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "FM", &fmView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Radio", &radioView);
+#ifdef CONFIG_M17
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "M17", &m17View);
+#endif
 #ifdef CONFIG_GPS
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "GPS", &gpsView);
 #endif
