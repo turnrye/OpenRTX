@@ -8,6 +8,9 @@
 #include "core/Event.hpp"
 #include "render/DrawCtx.hpp"
 #include "interfaces/keyboard.h"
+#include "core/state.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 
 namespace ortxui
 {
@@ -73,6 +76,7 @@ void List::setSelected(uint16_t i)
     selected_ = i;
     scrollToSelected();
     invalidate();
+    announceSelection();
 }
 
 void List::moveSelection(int dir)
@@ -89,6 +93,40 @@ void List::moveSelection(int dir)
     selected_ = static_cast<uint16_t>(idx);
     scrollToSelected();
     invalidate();
+    announceSelection();
+}
+
+void List::announceSelection() const
+{
+    /* Speak the freshly-selected row (label, then value or checkbox state) when
+     * voice prompts are enabled — the one place that covers navigation in every
+     * list-backed view. Dormant at the default vpNone level. */
+    if (!selectable_ || (state.settings.vpLevel < vpLow))
+        return;
+
+    const uint16_t n = rows();
+    if (selected_ >= n)
+        return;
+
+    ListItem it;
+    if (model_ != nullptr)
+        model_->rowAt(selected_, it);
+    else if (items_ != nullptr)
+        it = items_[selected_];
+    else
+        return;
+
+    if ((it.label == nullptr) || (it.label[0] == '\0'))
+        return;
+
+    const enum vpQueueFlags flags = vp_getVoiceLevelQueueFlags();
+    vp_flush();
+    vp_announceText(it.label, flags);
+    if (it.checkbox)
+        vp_announceText(it.checked ? "On" : "Off", vpqDefault);
+    else if ((it.value != nullptr) && (it.value[0] != '\0'))
+        vp_announceText(it.value, vpqDefault);
+    vp_play();
 }
 
 bool List::onEvent(const Event &e)

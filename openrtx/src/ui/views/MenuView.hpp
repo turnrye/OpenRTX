@@ -36,6 +36,7 @@ public:
     void setRowTarget(uint16_t row, View *target);
 
     NavIntent onEvent(const Event &e) override;
+    void announce() override;
     Screen &screen() override
     {
         return screen_;
@@ -46,6 +47,7 @@ private:
     TopBar topBar_;
     List list_;
 
+    const char *title_ = "";
     ListItem items_[kMaxRows] = {};
     View *rowTargets_[kMaxRows] = {};
 };

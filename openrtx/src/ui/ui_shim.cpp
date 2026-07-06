@@ -28,6 +28,8 @@
 #include "interfaces/delays.h"
 #include "interfaces/display.h"
 #include "interfaces/keyboard.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 #include "rtx/rtx.h"
 #include "hwconfig.h"
 
@@ -274,6 +276,8 @@ extern "C" void ui_drawSplashScreen()
     d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Primary, "OPN\nRTX");
     d.text(call, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, Sem::OnSurface,
            state.settings.callsign);
+
+    vp_announceSplashScreen();
 }
 
 extern "C" void ui_saveState()
@@ -299,6 +303,13 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
             const bool woke = exitStandby(now);
             if (woke && ((msg.keys & KEY_MONI) == 0u))
                 return;
+
+            /* F1 replays the last voice prompt (global, matches classic). */
+            if (((msg.keys & KEY_F1) != 0u)
+                && (state.settings.vpLevel > vpBeep)) {
+                vp_replayLastPrompt();
+                return;
+            }
         }
 
         /* The view that handles the event is the active one at dispatch time; if

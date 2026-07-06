@@ -74,6 +74,16 @@ public:
     }
 
     /**
+     * Announce this screen via voice prompts on entry (called by the Navigator
+     * after onShow(), gated by state.settings.vpLevel inside the override).
+     * The default is silent; views that carry a title or live content override
+     * it. List navigation is announced by the List itself, not here.
+     */
+    virtual void announce()
+    {
+    }
+
+    /**
      * Pull displayed fields from the state snapshot (change-gated). The base
      * refreshes the shared top bar (clock/battery) if one was registered;
      * overrides should call it first, then sync their own content.

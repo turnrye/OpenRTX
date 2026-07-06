@@ -7,6 +7,9 @@
 #include "views/MenuView.hpp"
 #include "core/Event.hpp"
 #include "interfaces/keyboard.h"
+#include "core/state.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 #include "hwconfig.h"
 
 namespace ortxui
@@ -20,6 +23,7 @@ void MenuView::build(const char *title, const char *const *items,
     const int16_t topH = (sizeClass() == SizeClass::Regular) ? 16 : 12;
 
     /* Shared top bar (title + clock + battery). */
+    title_ = title;
     topBar_.init(title);
     topBar_.setArea({ 0, 0, (uint16_t)W, (uint16_t)topH });
     topBar_.onLayout();
@@ -40,6 +44,23 @@ void MenuView::build(const char *title, const char *const *items,
     screen_.addChild(&list_);
     screen_.focusFirst();
     screen_.markAllDirty();
+}
+
+void MenuView::announce()
+{
+    /* On entry speak the menu title then the current row (one utterance, so no
+     * intermediate flush — List::announceSelection flushes and is for nav). */
+    if (state.settings.vpLevel < vpLow)
+        return;
+
+    const enum vpQueueFlags flags = vp_getVoiceLevelQueueFlags();
+    vp_flush();
+    vp_announceText(title_, flags);
+
+    const ListItem *it = list_.selectedItem();
+    if ((it != nullptr) && (it->label != nullptr) && (it->label[0] != '\0'))
+        vp_announceText(it->label, vpqDefault);
+    vp_play();
 }
 
 void MenuView::setRowTarget(uint16_t row, View *target)

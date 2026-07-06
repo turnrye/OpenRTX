@@ -44,6 +44,7 @@ void Navigator::activate()
         return;
 
     v->onShow();
+    v->announce();
     v->screen().markAllDirty();
 }
 

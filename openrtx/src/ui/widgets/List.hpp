@@ -82,6 +82,10 @@ public:
     /** Mutable access to the selected item (e.g. to toggle a checkbox). */
     ListItem *selectedItem();
 
+    /** Speak the current row via voice prompts (no-op unless vpLevel >= vpLow).
+     * Called automatically on selection change; views call it on entry too. */
+    void announceSelection() const;
+
     bool onEvent(const Event &e) override;
     void draw(DrawCtx &d) override;
 
