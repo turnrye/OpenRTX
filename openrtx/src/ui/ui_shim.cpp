@@ -44,6 +44,7 @@
 #include "views/DefaultsView.hpp"
 #include "views/ChannelsView.hpp"
 #include "views/ContactsView.hpp"
+#include "views/BanksView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -108,6 +109,7 @@ RadioView radioView;
 DefaultsView defaultsView;
 ChannelsView channelsView;
 ContactsView contactsView;
+BanksView banksView;
 #ifdef CONFIG_M17
 M17View m17View;
 #endif
@@ -149,6 +151,7 @@ extern "C" void ui_init()
     defaultsView.build();
     channelsView.build();
     contactsView.build();
+    banksView.build();
 #ifdef CONFIG_M17
     m17View.build();
 #endif
@@ -159,6 +162,7 @@ extern "C" void ui_init()
 
     /* Wire menu rows to their views. Rows resolve by label because the indices
      * shift with the config guards on the menu tables. */
+    wireRow(mainMenu, kMainMenu, kMainMenuCount, "Banks", &banksView);
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "Channels", &channelsView);
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "Contacts", &contactsView);
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "Settings", &settingsMenu);

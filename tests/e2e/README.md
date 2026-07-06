@@ -130,6 +130,7 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `fm` | Settings > FM: CTCSS tone + enable value rows, tone edit |
 | `radio` | Settings > Radio: offset keypad entry, direction flip, step |
 | `m17` | Settings > M17: callsign cursor-cycle edit, CAN cycle |
+| `banks` | Banks browser: "All channels" + codeplug bank list |
 | `channels` | Channels browser: codeplug channel list + selection |
 | `contacts` | Contacts browser: read-only codeplug contact list |
 | `gps` | GPS Position "no fix" status state |
