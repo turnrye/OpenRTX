@@ -76,6 +76,7 @@ NavIntent ChecklistView::onEvent(const Event &e)
             ListItem *it = list_.selectedItem();
             if ((it != nullptr) && it->checkbox) {
                 it->checked = !it->checked;
+                applyToggle(list_.selected(), it->checked);
                 list_.invalidate();
             }
             return NavIntent::none();
@@ -84,6 +85,33 @@ NavIntent ChecklistView::onEvent(const Event &e)
 
     screen_.dispatch(e);
     return NavIntent::none();
+}
+
+void ChecklistView::applyToggle(uint16_t row, bool on)
+{
+    /* Write straight into the live settings, matching how the classic UI
+     * mutates state.settings in the FSM (same UI thread; persisted to flash at
+     * shutdown by state_terminate()). syncFromState only seeds once, so it
+     * won't fight these edits. */
+    switch (row) {
+        case RowGps:
+            state.settings.gps_enabled = on;
+            break;
+        case RowPhonetic:
+            state.settings.vpPhoneticSpell = on ? 1u : 0u;
+            break;
+        case RowLatch:
+            state.settings.macroMenuLatch = on ? 1u : 0u;
+            break;
+        case RowGpsTime:
+            state.settings.gpsSetTime = on;
+            break;
+        case RowBatteryIcon:
+            state.settings.showBatteryIcon = on;
+            break;
+        default:
+            break;
+    }
 }
 
 } // namespace ortxui

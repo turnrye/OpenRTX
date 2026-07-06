@@ -5,6 +5,9 @@
  */
 
 #include "views/DisplayView.hpp"
+#include "core/Event.hpp"
+#include "interfaces/keyboard.h"
+#include "interfaces/display.h"
 #include "hwconfig.h"
 
 #include <cstdio>
@@ -34,6 +37,11 @@ void DisplayView::build()
     for (uint8_t i = 0; i < RowCount; i++) {
         items_[i].label = kLabels[i];
         items_[i].value = bufs_[i];
+        /* Seed from the live settings so no row starts blank (last_'s 0xFF
+         * sentinel would otherwise alias a real value like contrast = 255). */
+        const uint8_t v = curValue(i);
+        writeValueText(i, v);
+        last_[i] = v;
     }
 
     list_.setItems(items_, RowCount);
@@ -50,6 +58,100 @@ void DisplayView::build()
     screen_.markAllDirty();
 }
 
+uint8_t DisplayView::curValue(uint8_t row) const
+{
+    switch (row) {
+        case RowBrightness:
+            return state.settings.brightness;
+        case RowContrast:
+            return state.settings.contrast;
+        case RowSquelch:
+            return state.settings.sqlLevel;
+        case RowVox:
+            return state.settings.voxLevel;
+        default:
+            return 0u;
+    }
+}
+
+void DisplayView::applyValue(uint8_t row, uint8_t v)
+{
+    /* Write straight into the live settings and apply the display change now,
+     * as the classic UI does; flash persistence happens at shutdown. */
+    switch (row) {
+        case RowBrightness:
+            state.settings.brightness = v;
+            display_setBacklightLevel(v);
+            break;
+        case RowContrast:
+            state.settings.contrast = v;
+            display_setContrast(v);
+            break;
+        case RowSquelch:
+            state.settings.sqlLevel = v;
+            break;
+        case RowVox:
+            state.settings.voxLevel = v;
+            break;
+        default:
+            break;
+    }
+}
+
+void DisplayView::writeValueText(uint8_t row, uint8_t v)
+{
+    char inner[8];
+    if ((row == RowVox) && (v == 0u))
+        snprintf(inner, sizeof(inner), "Off");
+    else if (row == RowSquelch)
+        snprintf(inner, sizeof(inner), "S%u", v);
+    else
+        snprintf(inner, sizeof(inner), "%u", v);
+
+    /* In edit mode the active row's value is bracketed to signal it is live. */
+    if (editing_ && (row == editRow_))
+        snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
+    else
+        snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
+}
+
+void DisplayView::beginEdit()
+{
+    editRow_ = (uint8_t)list_.selected();
+    editing_ = true;
+    writeValueText(editRow_, curValue(editRow_));
+    list_.invalidate();
+}
+
+void DisplayView::endEdit()
+{
+    editing_ = false;
+    writeValueText(editRow_, curValue(editRow_));
+    list_.invalidate();
+}
+
+void DisplayView::adjust(int dir)
+{
+    static const Range kRanges[RowCount] = {
+        { 5u, 100u, 5u }, //< Brightness
+        { 0u, 255u, 4u }, //< Contrast
+        { 0u, 15u, 1u },  //< Squelch
+        { 0u, 10u, 1u },  //< Vox
+    };
+    const Range &r = kRanges[editRow_];
+
+    int v = (int)curValue(editRow_) + dir * (int)r.step;
+    if (v < (int)r.min)
+        v = r.min;
+    if (v > (int)r.max)
+        v = r.max;
+
+    applyValue(editRow_, (uint8_t)v);
+    last_[editRow_] = (uint8_t)v; /* keep syncFromState from reformatting */
+    writeValueText(editRow_, (uint8_t)v);
+    list_.invalidate();
+}
+
 void DisplayView::syncFromState(const state_t &s)
 {
     View::syncFromState(s); /* top bar */
@@ -60,22 +162,53 @@ void DisplayView::syncFromState(const state_t &s)
     bool changed = false;
 
     for (uint8_t i = 0; i < RowCount; i++) {
+        /* Don't clobber the row the user is actively editing. */
+        if (editing_ && (i == editRow_))
+            continue;
         if (vals[i] == last_[i])
             continue;
 
-        if ((i == RowVox) && (vals[i] == 0u))
-            snprintf(bufs_[i], sizeof(bufs_[i]), "Off");
-        else if (i == RowSquelch)
-            snprintf(bufs_[i], sizeof(bufs_[i]), "S%u", vals[i]);
-        else
-            snprintf(bufs_[i], sizeof(bufs_[i]), "%u", vals[i]);
-
+        writeValueText(i, vals[i]);
         last_[i] = vals[i];
         changed = true;
     }
 
     if (changed)
         list_.invalidate();
+}
+
+NavIntent DisplayView::onEvent(const Event &e)
+{
+    if (editing_) {
+        int dir = 0;
+        if (e.kind == EvKind::Encoder) {
+            dir = e.encoder;
+        } else if (e.kind == EvKind::Key) {
+            if ((e.keys & (KEY_ENTER | KEY_ESC)) != 0u) {
+                endEdit();
+                return NavIntent::none();
+            }
+            if ((e.keys & (KEY_UP | KEY_RIGHT)) != 0u)
+                dir = +1;
+            else if ((e.keys & (KEY_DOWN | KEY_LEFT)) != 0u)
+                dir = -1;
+        }
+        if (dir != 0)
+            adjust(dir);
+        return NavIntent::none(); /* swallow all input while editing */
+    }
+
+    if (e.kind == EvKind::Key) {
+        if ((e.keys & KEY_ESC) != 0u)
+            return NavIntent::pop();
+        if ((e.keys & KEY_ENTER) != 0u) {
+            beginEdit();
+            return NavIntent::none();
+        }
+    }
+
+    screen_.dispatch(e);
+    return NavIntent::none();
 }
 
 } // namespace ortxui

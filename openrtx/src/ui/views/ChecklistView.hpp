@@ -20,9 +20,9 @@ namespace ortxui
 /**
  * A multi-toggle settings screen in the "checklist" style (mockup 4): a
  * selectable list of labelled checkboxes. ENTER toggles the selected row's
- * tick. The boxes are seeded from the matching state.settings flags on first
- * sync; toggling is local for now (persisting back to settings is a later
- * slice). The base View handles ESC/scroll.
+ * tick and writes the matching state.settings flag (persisted to flash at
+ * shutdown, as in the classic UI). The boxes are seeded from settings on first
+ * sync. The base View handles ESC/scroll.
  */
 class ChecklistView : public View
 {
@@ -37,6 +37,9 @@ public:
     }
 
 private:
+    /** Persist the toggled row into the matching state.settings flag. */
+    void applyToggle(uint16_t row, bool on);
+
     enum Row : uint8_t {
         RowGps,
         RowPhonetic,
