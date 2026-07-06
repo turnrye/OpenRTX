@@ -110,6 +110,9 @@ void RadioView::writeValueText(uint8_t row)
         if (editing_ && (editRow_ == RowOffset)) {
             snprintf(bufs_[row], sizeof(bufs_[row]), "<%u kHz>",
                      (unsigned)offsetEntry_);
+            char clean[16];
+            snprintf(clean, sizeof(clean), "%u kHz", (unsigned)offsetEntry_);
+            vpSay(clean);
             return;
         }
         const uint32_t off = (ch.tx_frequency >= ch.rx_frequency) ?
@@ -123,10 +126,12 @@ void RadioView::writeValueText(uint8_t row)
         formatFreq(freq_steps[state.step_index], inner, sizeof(inner));
     }
 
-    if (editing_ && (row == editRow_))
+    if (editing_ && (row == editRow_)) {
         snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-    else
+        vpSay(inner);
+    } else {
         snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
+    }
 }
 
 void RadioView::beginEdit()

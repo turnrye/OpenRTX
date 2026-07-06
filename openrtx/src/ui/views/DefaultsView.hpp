@@ -28,6 +28,7 @@ class DefaultsView : public View
 public:
     void build();
     void onShow() override;
+    void announce() override;
 
     NavIntent onEvent(const Event &e) override;
 

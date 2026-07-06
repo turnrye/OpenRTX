@@ -76,6 +76,7 @@ NavIntent ChecklistView::onEvent(const Event &e)
                 it->checked = !it->checked;
                 applyToggle(list_.selected(), it->checked);
                 list_.invalidate();
+                vpSay(it->checked ? "On" : "Off"); /* toggle: no nav change */
             }
             return NavIntent::none();
         }

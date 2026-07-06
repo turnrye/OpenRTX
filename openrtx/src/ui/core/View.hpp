@@ -127,6 +127,13 @@ protected:
         syncRtx_ = true;
     }
 
+    /**
+     * Speak a value/label via voice prompts (flush + announce + play), gated by
+     * settings.vpLevel. Views call this from their edit paths so a value that
+     * changes in place (no list-selection change) is still announced.
+     */
+    void vpSay(const char *text);
+
     TopBar *topBar_ = nullptr;
 
 private:

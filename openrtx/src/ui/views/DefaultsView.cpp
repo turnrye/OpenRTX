@@ -76,6 +76,11 @@ void DefaultsView::onShow()
     }
 }
 
+void DefaultsView::announce()
+{
+    vpSay(armed_ ? "Are you sure?" : "Reset settings?");
+}
+
 NavIntent DefaultsView::onEvent(const Event &e)
 {
     if (e.kind == EvKind::Key) {
@@ -87,6 +92,7 @@ NavIntent DefaultsView::onEvent(const Event &e)
             if (!armed_) {
                 armed_ = true;
                 updateText();
+                vpSay("Are you sure?");
                 return NavIntent::none();
             }
             state_resetSettingsAndVfo();

@@ -113,12 +113,19 @@ void M17View::writeValueText(uint8_t row)
             const bool ed = editing_ && (editRow_ == RowCan);
             snprintf(bufs_[row], sizeof(bufs_[row]), ed ? "<%u>" : "%u",
                      (unsigned)st.m17_can);
+            if (ed) {
+                char c[6];
+                snprintf(c, sizeof(c), "%u", (unsigned)st.m17_can);
+                vpSay(c);
+            }
             return;
         }
         default: { /* RowCanRx */
             const bool ed = editing_ && (editRow_ == RowCanRx);
             const char *v = st.m17_can_rx ? "On" : "Off";
             snprintf(bufs_[row], sizeof(bufs_[row]), ed ? "<%s>" : "%s", v);
+            if (ed)
+                vpSay(v);
             return;
         }
     }

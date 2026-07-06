@@ -80,10 +80,12 @@ void GpsSettingsView::writeValueText(uint8_t row)
         snprintf(inner, sizeof(inner), "%s", on ? "On" : "Off");
     }
 
-    if (editing_ && (row == editRow_))
+    if (editing_ && (row == editRow_)) {
         snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-    else
+        vpSay(inner);
+    } else {
         snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
+    }
 }
 
 void GpsSettingsView::beginEdit()

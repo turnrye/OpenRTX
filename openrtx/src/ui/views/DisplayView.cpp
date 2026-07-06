@@ -126,11 +126,14 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
     else
         snprintf(inner, sizeof(inner), "%u", v);
 
-    /* In edit mode the active row's value is bracketed to signal it is live. */
-    if (editing_ && (row == editRow_))
+    /* In edit mode the active row's value is bracketed to signal it is live, and
+     * spoken so the change is heard per step (label was announced on nav). */
+    if (editing_ && (row == editRow_)) {
         snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-    else
+        vpSay(inner);
+    } else {
         snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
+    }
 }
 
 void DisplayView::beginEdit()

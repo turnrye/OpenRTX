@@ -77,10 +77,12 @@ void FmView::writeValueText(uint8_t row)
         snprintf(inner, sizeof(inner), "%s", kEnableLabels[idx]);
     }
 
-    if (editing_ && (row == editRow_))
+    if (editing_ && (row == editRow_)) {
         snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-    else
+        vpSay(inner);
+    } else {
         snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
+    }
 }
 
 void FmView::beginEdit()
