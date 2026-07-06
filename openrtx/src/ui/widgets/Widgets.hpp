@@ -90,31 +90,6 @@ private:
     Sem fill_ = Sem::RxSuccess;
 };
 
-/**
- * A filled chip with a centred label, e.g. a protocol mode badge. Intended for
- * screen-centred placement (alignment resolves against the screen width).
- */
-class Chip : public Object
-{
-public:
-    void setText(const char *t)
-    {
-        text_ = (t != nullptr) ? t : "";
-    }
-    void setColors(Sem fill, Sem textColor)
-    {
-        fill_ = fill;
-        textColor_ = textColor;
-    }
-
-    void draw(DrawCtx &d) override;
-
-private:
-    const char *text_ = "";
-    Sem fill_ = Sem::Surface;
-    Sem textColor_ = Sem::OnPrimary;
-};
-
 } // namespace ortxui
 
 #endif /* ORTX_UI_WIDGETS_HPP */

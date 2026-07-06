@@ -42,14 +42,4 @@ void Bar::draw(DrawCtx &d)
     }
 }
 
-void Chip::draw(DrawCtx &d)
-{
-    d.fillRect(area_, fill_);
-
-    const int16_t fh = static_cast<int16_t>(gfx_getFontHeight(FONT_SIZE_6PT));
-    const int16_t y = static_cast<int16_t>(area_.y + (area_.h + fh) / 2 - 1);
-    const Point at = { static_cast<int16_t>(area_.x + area_.w / 2), y };
-    d.text(at, FONT_SIZE_6PT, TEXT_ALIGN_CENTER, textColor_, text_);
-}
-
 } // namespace ortxui
