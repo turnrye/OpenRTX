@@ -77,22 +77,16 @@ openrtx_inc = ['openrtx/include', 'platform', 'openrtx/src/ui']
 ##
 ## OpenRTX UI sources
 ##
-
-ui_src_default = ['openrtx/src/ui/default/ui.c',
-                  'openrtx/src/ui/default/ui_main.c',
-                  'openrtx/src/ui/default/ui_menu.c',
-                  'openrtx/src/ui/default/ui_strings.c']
-
-ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
-                   'openrtx/src/ui/module17/ui_main.c',
-                   'openrtx/src/ui/module17/ui_menu.c']
-
-##
-## New LVGL-inspired retained-widget UI toolkit ("ortx").
-## Selected with -Dui=ortx; a single unified codebase replaces both the default
-## and module17 variants. Reuses ui_strings.c for the currentLanguage table that
-## the voice-prompt subsystem depends on. See
+## The "ortx" retained-widget toolkit is the default UI for every target: a
+## single unified codebase replaces both the classic default and module17
+## variants. It reuses ui_strings.c for the currentLanguage table the
+## voice-prompt subsystem depends on. See
 ## /home/turnrye/.claude/plans/precious-yawning-lighthouse.md
+##
+## The legacy classic immediate-mode UI is kept behind -Dui=classic only as a
+## transitional escape hatch and will be deleted once the ortx UI is locked in
+## (drop the branch below plus the classic sources under openrtx/src/ui/
+## {default,module17}/, keeping ui_strings.c).
 ##
 
 ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
@@ -127,9 +121,20 @@ ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
                'openrtx/src/ui/views/BanksView.cpp',
                'openrtx/src/ui/default/ui_strings.c']
 
-if get_option('ui') == 'ortx'
-  ui_src_default  = ui_src_ortx
-  ui_src_module17 = ui_src_ortx
+## Default: every target builds the ortx toolkit.
+ui_src_default  = ui_src_ortx
+ui_src_module17 = ui_src_ortx
+
+## Transitional opt-out: -Dui=classic restores the legacy immediate-mode UI.
+if get_option('ui') == 'classic'
+  ui_src_default = ['openrtx/src/ui/default/ui.c',
+                    'openrtx/src/ui/default/ui_main.c',
+                    'openrtx/src/ui/default/ui_menu.c',
+                    'openrtx/src/ui/default/ui_strings.c']
+
+  ui_src_module17 = ['openrtx/src/ui/module17/ui.c',
+                     'openrtx/src/ui/module17/ui_main.c',
+                     'openrtx/src/ui/module17/ui_menu.c']
 endif
 
 ##
