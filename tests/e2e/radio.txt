@@ -1,0 +1,30 @@
+nop Settings > Radio: offset keypad entry, apply, and direction flip.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Radio is Settings row idx 3 (Display, Time&Date, GPS, Radio, ...)
+key DOWN DOWN DOWN ENTER
+sleep 500
+screenshot radio_settings.bmp
+sleep 300
+nop Edit Offset via keypad: ENTER opens entry, type 600 -> <600 kHz>
+key ENTER
+sleep 400
+key 6 0 0
+sleep 400
+screenshot radio_offset_entry.bmp
+sleep 300
+nop Apply (tx = rx + 600 kHz), then move to Direction and flip it to '-'
+key ENTER
+sleep 400
+key DOWN ENTER
+sleep 400
+key UP
+sleep 400
+key ENTER
+sleep 400
+screenshot radio_offset_dir.bmp
+sleep 300
+quit
