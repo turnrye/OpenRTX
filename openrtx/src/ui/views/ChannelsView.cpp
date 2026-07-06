@@ -103,6 +103,7 @@ NavIntent ChannelsView::onEvent(const Event &e)
             if (cps_readChannel(&ch, sel) == 0) {
                 state.channel = ch;
                 state.channel_index = sel;
+                state.tuner_mode = CH; /* memory mode: VFO shows name + index */
                 requestSyncRtx();
                 return NavIntent::popToRoot();
             }

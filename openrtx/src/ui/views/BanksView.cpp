@@ -100,6 +100,7 @@ NavIntent BanksView::onEvent(const Event &e)
                 if (cps_readChannel(&ch, 0) == 0) {
                     state.channel = ch;
                     state.channel_index = 0;
+                    state.tuner_mode = CH;
                     loaded = true;
                 }
             } else {
@@ -113,6 +114,7 @@ NavIntent BanksView::onEvent(const Event &e)
                     if ((g >= 0) && (cps_readChannel(&ch, (uint16_t)g) == 0)) {
                         state.channel = ch;
                         state.channel_index = 0;
+                        state.tuner_mode = CH;
                         loaded = true;
                     }
                 }
