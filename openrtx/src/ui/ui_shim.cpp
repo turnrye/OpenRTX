@@ -37,6 +37,7 @@
 #include "views/DisplayView.hpp"
 #include "views/ChecklistView.hpp"
 #include "views/GpsView.hpp"
+#include "views/GpsSettingsView.hpp"
 #include "views/FmView.hpp"
 #include "views/RadioView.hpp"
 #include "views/M17View.hpp"
@@ -106,6 +107,7 @@ M17View m17View;
 #endif
 #ifdef CONFIG_GPS
 GpsView gpsView;
+GpsSettingsView gpsSettingsView;
 #endif
 Navigator nav;
 
@@ -143,6 +145,7 @@ extern "C" void ui_init()
 #endif
 #ifdef CONFIG_GPS
     gpsView.build();
+    gpsSettingsView.build();
 #endif
 
     /* Wire menu rows to their views. Rows resolve by label because the indices
@@ -161,6 +164,8 @@ extern "C" void ui_init()
 #endif
 #ifdef CONFIG_GPS
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "GPS", &gpsView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "GPS",
+            &gpsSettingsView);
 #endif
 
     vfoView.setMenu(&mainMenu);

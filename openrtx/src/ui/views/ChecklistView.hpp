@@ -41,10 +41,8 @@ private:
     void applyToggle(uint16_t row, bool on);
 
     enum Row : uint8_t {
-        RowGps,
         RowPhonetic,
         RowLatch,
-        RowGpsTime,
         RowBatteryIcon,
         RowCount,
     };

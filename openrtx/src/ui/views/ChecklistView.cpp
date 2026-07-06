@@ -19,7 +19,7 @@ void ChecklistView::build()
     const bool regular = (sizeClass() == SizeClass::Regular);
 
     static const char *const kLabels[RowCount] = {
-        "GPS", "Phonetic", "Macro Latch", "GPS sets clock", "Battery icon",
+        "Phonetic", "Macro Latch", "Battery icon",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -56,10 +56,8 @@ void ChecklistView::syncFromState(const state_t &s)
 
     /* Seed the ticks from the matching settings flags (once). */
     const settings_t &st = s.settings;
-    items_[RowGps].checked = st.gps_enabled;
     items_[RowPhonetic].checked = (st.vpPhoneticSpell != 0u);
     items_[RowLatch].checked = (st.macroMenuLatch != 0u);
-    items_[RowGpsTime].checked = st.gpsSetTime;
     items_[RowBatteryIcon].checked = st.showBatteryIcon;
 
     seeded_ = true;
@@ -94,17 +92,11 @@ void ChecklistView::applyToggle(uint16_t row, bool on)
      * shutdown by state_terminate()). syncFromState only seeds once, so it
      * won't fight these edits. */
     switch (row) {
-        case RowGps:
-            state.settings.gps_enabled = on;
-            break;
         case RowPhonetic:
             state.settings.vpPhoneticSpell = on ? 1u : 0u;
             break;
         case RowLatch:
             state.settings.macroMenuLatch = on ? 1u : 0u;
-            break;
-        case RowGpsTime:
-            state.settings.gpsSetTime = on;
             break;
         case RowBatteryIcon:
             state.settings.showBatteryIcon = on;
