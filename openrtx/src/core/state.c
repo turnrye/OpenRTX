@@ -47,6 +47,10 @@ void state_init()
         state.channel = cps_getDefaultChannel();
     }
 
+    // Seed the saved VFO channel so a memory-mode -> VFO switch restores a
+    // valid channel even before the user has tuned the VFO once.
+    state.vfo_channel = state.channel;
+
 /*
      * Initialise remaining fields
      */
@@ -133,4 +137,5 @@ void state_resetSettingsAndVfo()
 {
     state.settings = default_settings;
     state.channel = cps_getDefaultChannel();
+    state.vfo_channel = state.channel;
 }

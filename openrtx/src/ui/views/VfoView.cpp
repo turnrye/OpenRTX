@@ -9,6 +9,8 @@
 #include "core/utils.h"
 #include "rtx/rtx.h"
 #include "interfaces/keyboard.h"
+#include "interfaces/platform.h"
+#include "interfaces/cps_io.h"
 #include "core/voicePrompts.h"
 #include "core/voicePromptUtils.h"
 #include "hwconfig.h"
@@ -18,6 +20,48 @@
 
 namespace ortxui
 {
+
+namespace
+{
+
+/* Digits per RX/TX frequency in keypad entry (classic FREQ_DIGITS). */
+constexpr uint8_t kFreqDigits = 7;
+
+/* Return the 0-based digit for a bare number key (KEY_0..KEY_9 are bits 0..9),
+ * or -1 if the mask holds no digit key. */
+int digitFromKeys(uint32_t keys)
+{
+    const uint32_t digits = keys & 0x3FFu;
+    if (digits == 0u)
+        return -1;
+    return __builtin_ctz(digits);
+}
+
+/* Add one decimal digit at 1-based position `pos` to a frequency being entered,
+ * most-significant digit first (ported from the classic _ui_freq_add_digit). */
+freq_t freqAddDigit(freq_t freq, uint8_t pos, uint8_t number)
+{
+    freq_t coefficient = 100;
+    for (uint8_t i = 0; i < kFreqDigits - pos; i++)
+        coefficient *= 10;
+    return freq + (freq_t)number * coefficient;
+}
+
+/* True if a frequency falls inside one of the radio's supported bands
+ * (ported from the classic _ui_freq_check_limits). */
+bool freqInBand(freq_t freq)
+{
+    const hwInfo_t *hw = platform_getHwInfo();
+    if (hw->vhf_band && (freq >= (freq_t)hw->vhf_minFreq * 1000000u)
+        && (freq <= (freq_t)hw->vhf_maxFreq * 1000000u))
+        return true;
+    if (hw->uhf_band && (freq >= (freq_t)hw->uhf_minFreq * 1000000u)
+        && (freq <= (freq_t)hw->uhf_maxFreq * 1000000u))
+        return true;
+    return false;
+}
+
+} // namespace
 
 void VfoView::build()
 {
@@ -163,37 +207,42 @@ void VfoView::syncFromState(const state_t &s)
 {
     View::syncFromState(s); /* shared top bar */
 
-    const channel_t &ch = s.channel;
+    /* While entering a frequency, the hero and channel line show the keypad
+     * buffer (driven by refreshInput()); don't let live state overwrite them. */
+    if (!inputActive_) {
+        const channel_t &ch = s.channel;
 
-    if (ch.rx_frequency != lastFreq_) {
-        hero_.setFreq((uint32_t)ch.rx_frequency);
-        hero_.invalidate();
-        lastFreq_ = (uint32_t)ch.rx_frequency;
-    }
-
-    syncMode(ch);
-
-    /* Channel line: in VFO (tuning) mode there is no channel, so show a "VFO"
-     * label and no index; in memory mode show the 1-based index + name. */
-    const bool chChanged =
-        (s.tuner_mode != lastTuner_) || (s.channel_index != lastIdx_)
-        || (strncmp(nameCache_, ch.name, sizeof(nameCache_)) != 0);
-    if (chChanged) {
-        strncpy(nameCache_, ch.name, sizeof(nameCache_) - 1);
-        nameCache_[sizeof(nameCache_) - 1] = '\0';
-
-        if (s.tuner_mode == VFO) {
-            chanIdx_.setText("");
-            chanName_.setText("VFO");
-        } else {
-            snprintf(idxBuf_, sizeof(idxBuf_), "%03u", s.channel_index + 1);
-            chanIdx_.setText(idxBuf_);
-            chanName_.setText((nameCache_[0] != '\0') ? nameCache_ : "---");
+        if (ch.rx_frequency != lastFreq_) {
+            hero_.setFreq((uint32_t)ch.rx_frequency);
+            hero_.invalidate();
+            lastFreq_ = (uint32_t)ch.rx_frequency;
         }
-        chanIdx_.invalidate();
-        chanName_.invalidate();
-        lastTuner_ = s.tuner_mode;
-        lastIdx_ = s.channel_index;
+
+        syncMode(ch);
+
+        /* Channel line: in VFO (tuning) mode there is no channel, so show a
+         * "VFO" label and no index; in memory mode show the 1-based index +
+         * name. */
+        const bool chChanged =
+            (s.tuner_mode != lastTuner_) || (s.channel_index != lastIdx_)
+            || (strncmp(nameCache_, ch.name, sizeof(nameCache_)) != 0);
+        if (chChanged) {
+            strncpy(nameCache_, ch.name, sizeof(nameCache_) - 1);
+            nameCache_[sizeof(nameCache_) - 1] = '\0';
+
+            if (s.tuner_mode == VFO) {
+                chanIdx_.setText("");
+                chanName_.setText("VFO");
+            } else {
+                snprintf(idxBuf_, sizeof(idxBuf_), "%03u", s.channel_index + 1);
+                chanIdx_.setText(idxBuf_);
+                chanName_.setText((nameCache_[0] != '\0') ? nameCache_ : "---");
+            }
+            chanIdx_.invalidate();
+            chanName_.invalidate();
+            lastTuner_ = s.tuner_mode;
+            lastIdx_ = s.channel_index;
+        }
     }
 
     syncMeter(s);
@@ -201,12 +250,260 @@ void VfoView::syncFromState(const state_t &s)
 
 NavIntent VfoView::onEvent(const Event &e)
 {
-    if ((e.kind == EvKind::Key) && ((e.keys & KEY_ENTER) != 0u)
-        && (menu_ != nullptr))
-        return NavIntent::push(menu_);
+    if (inputActive_)
+        return onInputEvent(e);
+
+    /* The knob tunes in VFO mode and steps channels in memory mode. */
+    if (e.kind == EvKind::Encoder) {
+        if (state.tuner_mode == VFO)
+            stepFreq(e.encoder);
+        else
+            stepChannel(e.encoder);
+        return NavIntent::none();
+    }
+
+    if (e.kind == EvKind::Key) {
+        const uint32_t k = e.keys;
+
+        if ((k & KEY_ENTER) != 0u) {
+            if (menu_ != nullptr)
+                return NavIntent::push(menu_);
+        } else if ((k & KEY_ESC) != 0u) {
+            toggleVfoMem();
+        } else if ((k & KEY_UP) != 0u) {
+            if (state.tuner_mode == VFO)
+                stepFreq(+1);
+            else
+                stepChannel(+1);
+        } else if ((k & KEY_DOWN) != 0u) {
+            if (state.tuner_mode == VFO)
+                stepFreq(-1);
+            else
+                stepChannel(-1);
+        } else if (state.tuner_mode == VFO) {
+            /* A digit opens the frequency keypad (VFO mode only). */
+            const int d = digitFromKeys(k);
+            if (d >= 0)
+                beginInput((uint8_t)d);
+        }
+        return NavIntent::none();
+    }
 
     screen_.dispatch(e);
     return NavIntent::none();
+}
+
+NavIntent VfoView::onInputEvent(const Event &e)
+{
+    if (e.kind != EvKind::Key)
+        return NavIntent::none();
+
+    const uint32_t k = e.keys;
+    if ((k & KEY_ENTER) != 0u) {
+        confirmInput();
+    } else if ((k & KEY_ESC) != 0u) {
+        exitInput(); /* discard the entry */
+    } else if ((k & (KEY_UP | KEY_DOWN)) != 0u) {
+        /* Toggle which frequency (RX/TX) is being entered. */
+        inputTxSet_ = !inputTxSet_;
+        inputPos_ = 0;
+        refreshInput();
+        if (state.settings.vpLevel >= vpLow)
+            vp_announceInputReceiveOrTransmit(inputTxSet_, vpqDefault);
+    } else {
+        const int d = digitFromKeys(k);
+        if (d >= 0)
+            inputDigit((uint8_t)d);
+    }
+    return NavIntent::none();
+}
+
+void VfoView::stepFreq(int dir)
+{
+    const freq_t step = freq_steps[state.step_index];
+    freq_t rx = state.channel.rx_frequency;
+    freq_t tx = state.channel.tx_frequency;
+    const freq_t nrx = (dir > 0) ? (rx + step) : (rx - step);
+    const freq_t ntx = (dir > 0) ? (tx + step) : (tx - step);
+
+    /* Reject a step that would push either edge out of band (underflow wraps
+     * to a huge value and is rejected the same way). */
+    if (!freqInBand(nrx) || !freqInBand(ntx))
+        return;
+
+    state.channel.rx_frequency = nrx;
+    state.channel.tx_frequency = ntx;
+    requestSyncRtx();
+    announceFreq();
+}
+
+void VfoView::stepChannel(int dir)
+{
+    if (loadChannel((int16_t)((int)state.channel_index + dir))) {
+        requestSyncRtx();
+        if (state.settings.vpLevel >= vpLow)
+            vp_announceChannelName(&state.channel,
+                                   (uint16_t)(state.channel_index + 1),
+                                   vp_getVoiceLevelQueueFlags());
+    }
+}
+
+void VfoView::toggleVfoMem()
+{
+    if (state.tuner_mode == VFO) {
+        /* VFO -> memory: remember the VFO, then load the current channel. */
+        state.vfo_channel = state.channel;
+        if (loadChannel((int16_t)state.channel_index)) {
+            state.tuner_mode = CH;
+            requestSyncRtx();
+            if (state.settings.vpLevel >= vpLow)
+                vp_announceChannelName(&state.channel,
+                                       (uint16_t)(state.channel_index + 1),
+                                       vp_getVoiceLevelQueueFlags());
+        }
+        /* An empty/invalid codeplug leaves us in VFO mode (no channel). */
+    } else {
+        /* Memory -> VFO: restore the saved VFO channel. */
+        state.channel = state.vfo_channel;
+        state.tuner_mode = VFO;
+        requestSyncRtx();
+        announceFreq();
+    }
+}
+
+bool VfoView::loadChannel(int16_t index)
+{
+    const int16_t selected = index;
+    int16_t readIndex = index;
+
+    if (state.bank_enabled) {
+        bankHdr_t bank = {};
+        cps_readBankHeader(&bank, state.bank);
+        if ((index < 0) || (index >= (int16_t)bank.ch_count))
+            return false;
+        readIndex = (int16_t)cps_readBankData(state.bank, (uint16_t)index);
+    } else if (index < 0) {
+        return false;
+    }
+
+    channel_t ch;
+    if (cps_readChannel(&ch, (uint16_t)readIndex) != 0)
+        return false;
+
+    state.channel = ch;
+    state.channel_index = (uint16_t)selected;
+    return true;
+}
+
+void VfoView::beginInput(uint8_t firstDigit)
+{
+    inputActive_ = true;
+    inputTxSet_ = false;
+    inputPos_ = 0;
+    newRx_ = 0;
+    newTx_ = 0;
+    inputDigit(firstDigit); /* also draws the initial entry chrome */
+}
+
+void VfoView::inputDigit(uint8_t digit)
+{
+    inputPos_++;
+
+    if (!inputTxSet_) {
+        if (inputPos_ == 1)
+            newRx_ = 0;
+        newRx_ = freqAddDigit(newRx_, inputPos_, digit);
+        if (inputPos_ >= kFreqDigits) {
+            /* RX complete: move on to the TX frequency. */
+            inputTxSet_ = true;
+            inputPos_ = 0;
+            newTx_ = 0;
+        }
+    } else {
+        if (inputPos_ == 1)
+            newTx_ = 0;
+        newTx_ = freqAddDigit(newTx_, inputPos_, digit);
+        if (inputPos_ >= kFreqDigits) {
+            applyInput();
+            return;
+        }
+    }
+
+    if (state.settings.vpLevel >= vpLow) {
+        vp_flush();
+        vp_queueInteger(digit);
+        vp_play();
+    }
+    refreshInput();
+}
+
+void VfoView::confirmInput()
+{
+    if (!inputTxSet_) {
+        /* Confirm RX, advance to TX entry. */
+        inputTxSet_ = true;
+        inputPos_ = 0;
+        refreshInput();
+        if (state.settings.vpLevel >= vpLow)
+            vp_announceInputReceiveOrTransmit(true, vpqDefault);
+    } else {
+        /* If TX was left untouched, mirror RX onto it. */
+        if (newTx_ == 0)
+            newTx_ = newRx_;
+        applyInput();
+    }
+}
+
+void VfoView::applyInput()
+{
+    if (freqInBand(newRx_) && freqInBand(newTx_)) {
+        state.channel.rx_frequency = newRx_;
+        state.channel.tx_frequency = newTx_;
+        requestSyncRtx();
+        if (state.settings.vpLevel >= vpLow) {
+            vp_flush();
+            vp_announceFrequencies(newRx_, newTx_, vpqDefault);
+            vp_play();
+        }
+    }
+    exitInput();
+}
+
+void VfoView::exitInput()
+{
+    inputActive_ = false;
+
+    /* Force the change-gated readout to repaint from live state next sync. */
+    lastFreq_ = 0xFFFFFFFFu;
+    lastMode_ = 0xFFu;
+    lastTuner_ = 0xFFu;
+    lastIdx_ = 0xFFFFu;
+    nameCache_[0] = '\1';
+    screen_.markAllDirty();
+}
+
+void VfoView::refreshInput()
+{
+    const uint32_t val = inputTxSet_ ? newTx_ : newRx_;
+    hero_.setFreq(val);
+    hero_.setMode(inputTxSet_ ? "TX" : "RX", "", "");
+    hero_.invalidate();
+
+    chanIdx_.setText("");
+    chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
+    chanIdx_.invalidate();
+    chanName_.invalidate();
+}
+
+void VfoView::announceFreq()
+{
+    if (state.settings.vpLevel < vpLow)
+        return;
+    vp_flush();
+    vp_announceFrequencies(state.channel.rx_frequency,
+                           state.channel.tx_frequency,
+                           vp_getVoiceLevelQueueFlags());
+    vp_play();
 }
 
 void VfoView::announceVfoState()

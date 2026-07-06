@@ -101,6 +101,10 @@ NavIntent ChannelsView::onEvent(const Event &e)
             const uint16_t sel = list_.selected();
             channel_t ch;
             if (cps_readChannel(&ch, sel) == 0) {
+                /* Preserve the current VFO so an ESC back from memory mode
+                 * restores it (see VfoView's VFO/MEM toggle). */
+                if (state.tuner_mode == VFO)
+                    state.vfo_channel = state.channel;
                 state.channel = ch;
                 state.channel_index = sel;
                 state.tuner_mode = CH; /* memory mode: VFO shows name + index */

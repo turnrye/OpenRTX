@@ -90,6 +90,11 @@ NavIntent BanksView::onEvent(const Event &e)
             return NavIntent::pop();
 
         if ((e.keys & KEY_ENTER) != 0u) {
+            /* Preserve the current VFO so an ESC back from memory mode
+             * restores it (see VfoView's VFO/MEM toggle). */
+            if (state.tuner_mode == VFO)
+                state.vfo_channel = state.channel;
+
             const uint16_t sel = list_.selected();
             channel_t ch;
             bool loaded = false;
