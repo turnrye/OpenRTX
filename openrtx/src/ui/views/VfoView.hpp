@@ -43,6 +43,7 @@ public:
 
     void syncFromState(const state_t &s) override;
     NavIntent onEvent(const Event &e) override;
+    void announce() override;
 
     Screen &screen() override
     {
@@ -52,6 +53,7 @@ public:
 private:
     void syncMode(const channel_t &ch);
     void syncMeter(const state_t &s);
+    void announceVfoState(); //< speak channel summary (MEM) or freq+mode (VFO)
 
     Screen screen_;
 

@@ -9,6 +9,8 @@
 #include "core/utils.h"
 #include "rtx/rtx.h"
 #include "interfaces/keyboard.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 #include "hwconfig.h"
 
 #include <cstdio>
@@ -205,6 +207,32 @@ NavIntent VfoView::onEvent(const Event &e)
 
     screen_.dispatch(e);
     return NavIntent::none();
+}
+
+void VfoView::announceVfoState()
+{
+    /* In memory mode speak the full channel summary; when tuning speak the
+     * frequency pair and mode. Mirrors the classic VFO/MEM announcements. */
+    if (state.settings.vpLevel < vpLow)
+        return;
+
+    const enum vpQueueFlags flags = vp_getVoiceLevelQueueFlags();
+    vp_flush();
+    if (state.tuner_mode != VFO) {
+        vp_announceChannelSummary(&state.channel,
+                                  (uint16_t)(state.channel_index + 1), 0,
+                                  vpAllInfo);
+    } else {
+        vp_announceFrequencies(state.channel.rx_frequency,
+                               state.channel.tx_frequency, flags);
+        vp_announceRadioMode(state.channel.mode, flags);
+    }
+    vp_play();
+}
+
+void VfoView::announce()
+{
+    announceVfoState();
 }
 
 } // namespace ortxui
