@@ -30,6 +30,22 @@ struct ListItem {
 };
 
 /**
+ * An on-demand source of list rows. Only the currently visible window is
+ * queried (during draw), so a large list — e.g. a codeplug's hundreds of
+ * channels — needs no per-row storage: the model reads each row lazily.
+ *
+ * rowAt() may point out.label at a scratch buffer that is only valid until the
+ * next rowAt() call; the List draws each row immediately after fetching it.
+ */
+class ListModel
+{
+public:
+    virtual ~ListModel() = default;
+    virtual uint16_t rowCount() const = 0;
+    virtual void rowAt(uint16_t index, ListItem &out) const = 0;
+};
+
+/**
  * A vertical, single-selection list of rows (mockups 2-4).
  *
  * The whole list is one focusable Object owning the selected index and scroll
@@ -44,7 +60,10 @@ struct ListItem {
 class List : public Object
 {
 public:
+    /** Back the list with a borrowed static item array (small, fixed menus). */
     void setItems(const ListItem *items, uint16_t count);
+    /** Back the list with an on-demand model (large / lazily-read lists). */
+    void setModel(const ListModel *model);
     void setRowHeight(int16_t h)
     {
         rowH_ = h;
@@ -73,7 +92,14 @@ private:
     void drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
                  bool selected);
 
+    /** Effective row count from whichever backing (model or static array). */
+    uint16_t rows() const
+    {
+        return (model_ != nullptr) ? model_->rowCount() : count_;
+    }
+
     const ListItem *items_ = nullptr;
+    const ListModel *model_ = nullptr;
     uint16_t count_ = 0;
     uint16_t selected_ = 0;
     uint16_t top_ = 0; //< index of the first visible row (scroll offset)

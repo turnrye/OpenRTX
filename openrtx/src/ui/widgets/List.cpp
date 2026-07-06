@@ -15,7 +15,18 @@ namespace ortxui
 void List::setItems(const ListItem *items, uint16_t count)
 {
     items_ = items;
+    model_ = nullptr;
     count_ = count;
+    selected_ = 0;
+    top_ = 0;
+    invalidate();
+}
+
+void List::setModel(const ListModel *model)
+{
+    model_ = model;
+    items_ = nullptr;
+    count_ = 0;
     selected_ = 0;
     top_ = 0;
     invalidate();
@@ -23,6 +34,8 @@ void List::setItems(const ListItem *items, uint16_t count)
 
 ListItem *List::selectedItem()
 {
+    /* Model-backed rows are read-only (fetched into a scratch on draw), so
+     * there is no persistent item to mutate; callers read selected() instead. */
     if ((items_ == nullptr) || (selected_ >= count_))
         return nullptr;
     /* The item table is borrowed and owned mutably by the view. */
@@ -49,10 +62,11 @@ void List::scrollToSelected()
 
 void List::setSelected(uint16_t i)
 {
-    if (count_ == 0)
+    const uint16_t n = rows();
+    if (n == 0)
         return;
-    if (i >= count_)
-        i = static_cast<uint16_t>(count_ - 1);
+    if (i >= n)
+        i = static_cast<uint16_t>(n - 1);
     if (i == selected_)
         return;
 
@@ -63,10 +77,9 @@ void List::setSelected(uint16_t i)
 
 void List::moveSelection(int dir)
 {
-    if (count_ == 0)
+    const int n = static_cast<int>(rows());
+    if (n == 0)
         return;
-
-    const int n = static_cast<int>(count_);
     int idx = static_cast<int>(selected_) + ((dir >= 0) ? 1 : -1);
     if (idx < 0)
         idx = n - 1; /* wrap to the bottom */
@@ -151,13 +164,14 @@ void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
 
 void List::draw(DrawCtx &d)
 {
-    if ((count_ == 0) || (items_ == nullptr))
+    const uint16_t n = rows();
+    if ((n == 0) || ((items_ == nullptr) && (model_ == nullptr)))
         return;
 
     const uint16_t vis = visibleRows();
     uint16_t end = static_cast<uint16_t>(top_ + vis);
-    if (end > count_)
-        end = count_;
+    if (end > n)
+        end = n;
 
     for (uint16_t i = top_; i < end; i++) {
         const int16_t rowY = static_cast<int16_t>(area_.y + (i - top_) * rowH_);
@@ -173,18 +187,25 @@ void List::draw(DrawCtx &d)
         if (selected)
             d.fillRect(row, Sem::Primary);
 
-        drawRow(d, items_[i], row, selected);
+        /* Model rows are fetched into a scratch and drawn immediately. */
+        if (model_ != nullptr) {
+            ListItem tmp;
+            model_->rowAt(i, tmp);
+            drawRow(d, tmp, row, selected);
+        } else {
+            drawRow(d, items_[i], row, selected);
+        }
     }
 
     /* Scroll indicator: a thin track with a thumb sized to the visible span. */
-    if (count_ > vis) {
+    if (n > vis) {
         const int16_t barX = static_cast<int16_t>(area_.right() - 1);
         const int trackH = static_cast<int>(area_.h);
-        int thumbH = trackH * vis / count_;
+        int thumbH = trackH * vis / n;
         if (thumbH < 2)
             thumbH = 2;
         const int16_t thumbY =
-            static_cast<int16_t>(area_.y + trackH * top_ / count_);
+            static_cast<int16_t>(area_.y + trackH * top_ / n);
 
         const Rect track = { barX, area_.y, 2, area_.h };
         d.fillRect(track, Sem::Surface);

@@ -42,29 +42,35 @@ void BanksView::build()
     reload();
 }
 
+void BanksView::rowAt(uint16_t index, ListItem &out) const
+{
+    if (index == 0) {
+        out.label = "All channels";
+    } else {
+        bankHdr_t bank;
+        if (cps_readBankHeader(&bank, (uint16_t)(index - 1)) == 0) {
+            strncpy(scratch_, bank.name, CPS_STR_SIZE - 1);
+            scratch_[CPS_STR_SIZE - 1] = '\0';
+        } else {
+            scratch_[0] = '\0';
+        }
+        out.label = scratch_;
+    }
+    out.value = nullptr;
+    out.checkbox = false;
+}
+
 void BanksView::reload()
 {
-    /* Row 0 is always "All channels" (clears the active bank). */
-    strncpy(names_[0], "All channels", CPS_STR_SIZE - 1);
-    names_[0][CPS_STR_SIZE - 1] = '\0';
-    items_[0].label = names_[0];
-    items_[0].value = nullptr;
-    items_[0].checkbox = false;
-    count_ = 1;
+    /* Count banks by probing; row 0 ("All channels") is always present, so the
+     * list is never empty. */
+    bankHdr_t bank;
+    bankCount_ = 0;
+    while ((bankCount_ < 0xFFFEu)
+           && (cps_readBankHeader(&bank, bankCount_) == 0))
+        bankCount_++;
 
-    for (uint16_t i = 0; (count_ < kMaxRows); i++) {
-        bankHdr_t bank;
-        if (cps_readBankHeader(&bank, i) != 0)
-            break;
-        strncpy(names_[count_], bank.name, CPS_STR_SIZE - 1);
-        names_[count_][CPS_STR_SIZE - 1] = '\0';
-        items_[count_].label = names_[count_];
-        items_[count_].value = nullptr;
-        items_[count_].checkbox = false;
-        count_++;
-    }
-
-    list_.setItems(items_, count_);
+    list_.setModel(this);
     list_.setSelected(0);
     root_.onLayout();
     screen_.focusFirst();

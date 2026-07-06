@@ -49,23 +49,31 @@ void ChannelsView::build()
     reload();
 }
 
+void ChannelsView::rowAt(uint16_t index, ListItem &out) const
+{
+    channel_t ch;
+    if (cps_readChannel(&ch, index) == 0) {
+        strncpy(scratch_, ch.name, CPS_STR_SIZE - 1);
+        scratch_[CPS_STR_SIZE - 1] = '\0';
+    } else {
+        scratch_[0] = '\0';
+    }
+    out.label = scratch_;
+    out.value = nullptr;
+    out.checkbox = false;
+}
+
 void ChannelsView::reload()
 {
+    /* Count channels by probing (the codeplug exposes no count getter); the
+     * List then reads only the visible rows via the model. */
+    channel_t ch;
     count_ = 0;
-    for (uint16_t i = 0; i < kMaxRows; i++) {
-        channel_t ch;
-        if (cps_readChannel(&ch, i) != 0)
-            break;
-        strncpy(names_[i], ch.name, CPS_STR_SIZE - 1);
-        names_[i][CPS_STR_SIZE - 1] = '\0';
-        items_[i].label = names_[i];
-        items_[i].value = nullptr;
-        items_[i].checkbox = false;
+    while ((count_ < 0xFFFEu) && (cps_readChannel(&ch, count_) == 0))
         count_++;
-    }
 
     const bool empty = (count_ == 0);
-    list_.setItems(items_, count_);
+    list_.setModel(this);
     list_.setSelected(0);
     list_.setFlag(FLAG_HIDDEN, empty);
     empty_.setFlag(FLAG_HIDDEN, !empty);

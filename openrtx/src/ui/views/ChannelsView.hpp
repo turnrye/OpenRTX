@@ -25,11 +25,11 @@ namespace ortxui
  * ESC goes back. When the codeplug has no channels a centred "No channels"
  * line is shown instead of the list.
  *
- * NOTE: names are copied into a fixed buffer (kMaxRows) rather than rendered
- * on demand, so very large codeplugs are capped. A callback-backed List (like
- * the classic UI's per-row read) is the proper fix for big codeplugs.
+ * Rows are read on demand through a ListModel (only the visible window hits
+ * the codeplug), so there is no per-channel storage regardless of codeplug
+ * size — just one scratch name buffer.
  */
-class ChannelsView : public View
+class ChannelsView : public View, public ListModel
 {
 public:
     void build();
@@ -41,9 +41,14 @@ public:
         return screen_;
     }
 
-private:
-    static constexpr uint16_t kMaxRows = 64;
+    /* ListModel: the channel names, read lazily from the codeplug. */
+    uint16_t rowCount() const override
+    {
+        return count_;
+    }
+    void rowAt(uint16_t index, ListItem &out) const override;
 
+private:
     void reload();
 
     Screen screen_;
@@ -52,9 +57,8 @@ private:
     List list_;
     Label empty_;
 
-    ListItem items_[kMaxRows] = {};
-    char names_[kMaxRows][CPS_STR_SIZE] = {};
     uint16_t count_ = 0;
+    mutable char scratch_[CPS_STR_SIZE] = {};
 };
 
 } // namespace ortxui

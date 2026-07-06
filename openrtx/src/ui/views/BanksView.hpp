@@ -25,9 +25,10 @@ namespace ortxui
  * home. ESC goes back. The list always has at least the "All channels" row, so
  * there is no empty state.
  *
- * Same fixed-buffer caveat as ChannelsView (see there).
+ * Rows are read on demand through a ListModel (see ChannelsView): row 0 is a
+ * fixed "All channels" entry, the rest are bank names read lazily.
  */
-class BanksView : public View
+class BanksView : public View, public ListModel
 {
 public:
     void build();
@@ -39,9 +40,14 @@ public:
         return screen_;
     }
 
-private:
-    static constexpr uint16_t kMaxRows = 64;
+    /* ListModel: "All channels" (row 0) + the bank names. */
+    uint16_t rowCount() const override
+    {
+        return (uint16_t)(bankCount_ + 1);
+    }
+    void rowAt(uint16_t index, ListItem &out) const override;
 
+private:
     void reload();
 
     Screen screen_;
@@ -49,9 +55,8 @@ private:
     TopBar topBar_;
     List list_;
 
-    ListItem items_[kMaxRows] = {};
-    char names_[kMaxRows][CPS_STR_SIZE] = {};
-    uint16_t count_ = 0;
+    uint16_t bankCount_ = 0;
+    mutable char scratch_[CPS_STR_SIZE] = {};
 };
 
 } // namespace ortxui

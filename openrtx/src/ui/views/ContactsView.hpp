@@ -24,10 +24,10 @@ namespace ortxui
  * classic Contacts menu — ENTER has no action, ESC goes back. When the codeplug
  * has no contacts a centred "No contacts" line is shown instead.
  *
- * Same fixed-buffer caveat as ChannelsView (see there): a callback-backed List
- * is the proper fix for very large codeplugs.
+ * Rows are read on demand through a ListModel (see ChannelsView), so contact
+ * names are never all held in RAM.
  */
-class ContactsView : public View
+class ContactsView : public View, public ListModel
 {
 public:
     void build();
@@ -39,9 +39,14 @@ public:
         return screen_;
     }
 
-private:
-    static constexpr uint16_t kMaxRows = 64;
+    /* ListModel: the contact names, read lazily from the codeplug. */
+    uint16_t rowCount() const override
+    {
+        return count_;
+    }
+    void rowAt(uint16_t index, ListItem &out) const override;
 
+private:
     void reload();
 
     Screen screen_;
@@ -50,9 +55,8 @@ private:
     List list_;
     Label empty_;
 
-    ListItem items_[kMaxRows] = {};
-    char names_[kMaxRows][CPS_STR_SIZE] = {};
     uint16_t count_ = 0;
+    mutable char scratch_[CPS_STR_SIZE] = {};
 };
 
 } // namespace ortxui

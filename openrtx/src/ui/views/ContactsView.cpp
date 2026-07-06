@@ -48,23 +48,29 @@ void ContactsView::build()
     reload();
 }
 
+void ContactsView::rowAt(uint16_t index, ListItem &out) const
+{
+    contact_t ct;
+    if (cps_readContact(&ct, index) == 0) {
+        strncpy(scratch_, ct.name, CPS_STR_SIZE - 1);
+        scratch_[CPS_STR_SIZE - 1] = '\0';
+    } else {
+        scratch_[0] = '\0';
+    }
+    out.label = scratch_;
+    out.value = nullptr;
+    out.checkbox = false;
+}
+
 void ContactsView::reload()
 {
+    contact_t ct;
     count_ = 0;
-    for (uint16_t i = 0; i < kMaxRows; i++) {
-        contact_t ct;
-        if (cps_readContact(&ct, i) != 0)
-            break;
-        strncpy(names_[i], ct.name, CPS_STR_SIZE - 1);
-        names_[i][CPS_STR_SIZE - 1] = '\0';
-        items_[i].label = names_[i];
-        items_[i].value = nullptr;
-        items_[i].checkbox = false;
+    while ((count_ < 0xFFFEu) && (cps_readContact(&ct, count_) == 0))
         count_++;
-    }
 
     const bool empty = (count_ == 0);
-    list_.setItems(items_, count_);
+    list_.setModel(this);
     list_.setSelected(0);
     list_.setFlag(FLAG_HIDDEN, empty);
     empty_.setFlag(FLAG_HIDDEN, !empty);
