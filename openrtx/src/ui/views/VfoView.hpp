@@ -74,6 +74,20 @@ private:
     void announceFreq();            //< speak the current channel frequencies
     void clearFmTone();             //< drop the momentary FM tone if latched
 
+    /* --- M17 destination (shown in the channel line, edited via #) --- */
+    void composeChanLine(const state_t &s, char *idxOut, char *nameOut,
+                         uint16_t nameSz); //< build the index + name slot text
+    void m17DstLabel(char *out, uint16_t sz); //< "#<dest>" (or "#BROADCAST")
+    NavIntent
+    onDstEditEvent(const Event &e); //< key handling while editing dest
+    void beginDstEdit();            //< open the destination editor
+    void endDstEdit(bool commit);   //< commit/cancel the destination
+    void dstCycle(int dir);         //< cycle the char under the cursor
+    void dstMove(int dir);          //< move the cursor (extends w/ space)
+    void
+    renderDstEdit(); //< write the bracket-cursor dest into the channel line
+    void announceDstChar(); //< speak the char under the cursor
+
     Screen screen_;
 
     Flex root_;
@@ -85,13 +99,14 @@ private:
     DotMeter meter_;
     Flex spacer_;
 
-    char idxBuf_[8] = { 0 };
-    char nameCache_[16] = { 0 };
+    /* Channel-line slot: composed index + name text, change-gated by string
+     * compare (the name slot depends on tuner mode, channel name, radio mode
+     * and, in M17, the destination — a plain string diff covers them all). */
+    char idxCache_[8] = { 1, 0 };   //< sentinel forces the first paint
+    char nameCache_[40] = { 1, 0 }; //< composed name, or bracket-cursor dest
     char readoutBuf_[12] = { 0 };
 
     uint32_t lastFreq_ = 0xFFFFFFFFu;
-    uint16_t lastIdx_ = 0xFFFFu;
-    uint8_t lastTuner_ = 0xFFu;
     uint8_t lastMode_ = 0xFFu;
     uint8_t lastBandwidth_ = 0xFFu;
     uint8_t lastToneEn_ = 0xFFu;
@@ -105,6 +120,12 @@ private:
     uint8_t inputPos_ = 0;     //< digits entered in the active set
     uint32_t newRx_ = 0;       //< frequency accumulated so far, RX
     uint32_t newTx_ = 0;       //< frequency accumulated so far, TX
+
+    /* M17 destination editor (classic MAIN_VFO # -> dst input). */
+    bool dstEditing_ = false; //< destination editor active
+    char dstBuf_[10] = { 0 }; //< settings.m17_dest is char[10]
+    uint8_t dstLen_ = 0;      //< characters in dstBuf_
+    uint8_t dstCursor_ = 0;   //< cursor position in dstBuf_
 
     View *menu_ = nullptr;
 };

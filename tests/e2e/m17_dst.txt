@@ -1,0 +1,26 @@
+#codeplug channels.rtxc
+nop M17 destination editor on the VFO. Load the M17 CQ channel (idx 2), then #
+nop opens the destination editor: the channel-line slot shows "#" and a bracket
+nop cursor, UP cycles the character and RIGHT extends onto a new one. Pin a
+nop strong signal so the saturated S-meter is deterministic (see vfo_tune).
+rssi 0
+sleep 1000
+key ENTER
+sleep 400
+key DOWN ENTER
+sleep 500
+key DOWN DOWN
+sleep 400
+key ENTER
+sleep 600
+screenshot m17_loaded.bmp
+sleep 300
+key HASH
+sleep 400
+screenshot m17_dst_open.bmp
+sleep 300
+key UP RIGHT UP
+sleep 400
+screenshot m17_dst_edit.bmp
+sleep 300
+quit

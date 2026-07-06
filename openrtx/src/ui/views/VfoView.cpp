@@ -27,6 +27,20 @@ namespace
 /* Digits per RX/TX frequency in keypad entry (classic FREQ_DIGITS). */
 constexpr uint8_t kFreqDigits = 7;
 
+/* Callsign/destination charset for the in-place cursor editor (same set the
+ * Settings > M17 callsign editor uses). */
+const char kDstCharset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.";
+constexpr int kDstCharsetLen = (int)(sizeof(kDstCharset) - 1);
+constexpr uint8_t kDstMax = 9; //< settings.m17_dest is char[10]
+
+int dstCharsetIndex(char c)
+{
+    for (int i = 0; i < kDstCharsetLen; i++)
+        if (kDstCharset[i] == c)
+            return i;
+    return 0;
+}
+
 /* Return the 0-based digit for a bare number key (KEY_0..KEY_9 are bits 0..9),
  * or -1 if the mask holds no digit key. */
 int digitFromKeys(uint32_t keys)
@@ -220,28 +234,27 @@ void VfoView::syncFromState(const state_t &s)
 
         syncMode(ch);
 
-        /* Channel line: in VFO (tuning) mode there is no channel, so show a
-         * "VFO" label and no index; in memory mode show the 1-based index +
-         * name. */
-        const bool chChanged =
-            (s.tuner_mode != lastTuner_) || (s.channel_index != lastIdx_)
-            || (strncmp(nameCache_, ch.name, sizeof(nameCache_)) != 0);
-        if (chChanged) {
-            strncpy(nameCache_, ch.name, sizeof(nameCache_) - 1);
-            nameCache_[sizeof(nameCache_) - 1] = '\0';
+        /* Channel line (skipped while editing the destination, which drives it
+         * directly): VFO mode shows "VFO" (or the M17 destination) with no
+         * index; memory mode shows the 1-based index + channel name. Compose
+         * the slot text and repaint only on a string change. */
+        if (!dstEditing_) {
+            char idxText[8];
+            char nameText[40];
+            composeChanLine(s, idxText, nameText, sizeof(nameText));
 
-            if (s.tuner_mode == VFO) {
-                chanIdx_.setText("");
-                chanName_.setText("VFO");
-            } else {
-                snprintf(idxBuf_, sizeof(idxBuf_), "%03u", s.channel_index + 1);
-                chanIdx_.setText(idxBuf_);
-                chanName_.setText((nameCache_[0] != '\0') ? nameCache_ : "---");
+            if (strncmp(idxText, idxCache_, sizeof(idxCache_)) != 0) {
+                strncpy(idxCache_, idxText, sizeof(idxCache_) - 1);
+                idxCache_[sizeof(idxCache_) - 1] = '\0';
+                chanIdx_.setText(idxCache_);
+                chanIdx_.invalidate();
             }
-            chanIdx_.invalidate();
-            chanName_.invalidate();
-            lastTuner_ = s.tuner_mode;
-            lastIdx_ = s.channel_index;
+            if (strncmp(nameText, nameCache_, sizeof(nameCache_)) != 0) {
+                strncpy(nameCache_, nameText, sizeof(nameCache_) - 1);
+                nameCache_[sizeof(nameCache_) - 1] = '\0';
+                chanName_.setText(nameCache_);
+                chanName_.invalidate();
+            }
         }
     }
 
@@ -250,6 +263,9 @@ void VfoView::syncFromState(const state_t &s)
 
 NavIntent VfoView::onEvent(const Event &e)
 {
+    if (dstEditing_)
+        return onDstEditEvent(e);
+
     if (inputActive_)
         return onInputEvent(e);
 
@@ -277,8 +293,11 @@ NavIntent VfoView::onEvent(const Event &e)
         } else if ((k & KEY_ESC) != 0u) {
             toggleVfoMem();
         } else if ((k & KEY_HASH) != 0u) {
-            /* # keys the FM tone burst; other modes ignore it for now. */
-            if ((state.channel.mode == OPMODE_FM) && !state.tone_enabled) {
+            /* # opens the M17 destination editor, or keys the FM tone burst. */
+            if (state.channel.mode == OPMODE_M17) {
+                beginDstEdit();
+            } else if ((state.channel.mode == OPMODE_FM)
+                       && !state.tone_enabled) {
                 state.tone_enabled = true;
                 requestSyncRtx();
             }
@@ -488,8 +507,7 @@ void VfoView::exitInput()
     /* Force the change-gated readout to repaint from live state next sync. */
     lastFreq_ = 0xFFFFFFFFu;
     lastMode_ = 0xFFu;
-    lastTuner_ = 0xFFu;
-    lastIdx_ = 0xFFFFu;
+    idxCache_[0] = '\1';
     nameCache_[0] = '\1';
     screen_.markAllDirty();
 }
@@ -513,6 +531,157 @@ void VfoView::clearFmTone()
         state.tone_enabled = false;
         requestSyncRtx();
     }
+}
+
+void VfoView::m17DstLabel(char *out, uint16_t sz)
+{
+    const char *dst = state.settings.m17_dest;
+    if (dst[0] == '\0')
+        snprintf(out, sz, "#BROADCAST");
+    else
+        snprintf(out, sz, "#%s", dst);
+}
+
+void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
+                              uint16_t nameSz)
+{
+    const channel_t &ch = s.channel;
+
+    if (s.tuner_mode == VFO) {
+        idxOut[0] = '\0';
+        if (ch.mode == OPMODE_M17)
+            m17DstLabel(nameOut, nameSz); /* show the M17 destination */
+        else
+            snprintf(nameOut, nameSz, "VFO");
+    } else {
+        snprintf(idxOut, 8, "%03u", s.channel_index + 1);
+        snprintf(nameOut, nameSz, "%s", (ch.name[0] != '\0') ? ch.name : "---");
+    }
+}
+
+void VfoView::renderDstEdit()
+{
+    /* Compose "#W1A[B]W" with the cursor character in brackets, straight into
+     * the channel-line name slot (no custom cursor rendering needed). */
+    char buf[40];
+    uint16_t p = 0;
+    buf[p++] = '#';
+    for (uint8_t i = 0; (i < dstLen_) && (p + 3u < sizeof(buf)); i++) {
+        if (i == dstCursor_) {
+            buf[p++] = '[';
+            buf[p++] = dstBuf_[i];
+            buf[p++] = ']';
+        } else {
+            buf[p++] = dstBuf_[i];
+        }
+    }
+    buf[p] = '\0';
+
+    strncpy(nameCache_, buf, sizeof(nameCache_) - 1);
+    nameCache_[sizeof(nameCache_) - 1] = '\0';
+    idxCache_[0] = '\0';
+    chanIdx_.setText(idxCache_);
+    chanName_.setText(nameCache_);
+    chanIdx_.invalidate();
+    chanName_.invalidate();
+}
+
+void VfoView::announceDstChar()
+{
+    if (state.settings.vpLevel >= vpLow)
+        vp_announceInputChar(dstBuf_[dstCursor_]);
+}
+
+void VfoView::beginDstEdit()
+{
+    strncpy(dstBuf_, state.settings.m17_dest, sizeof(dstBuf_) - 1);
+    dstBuf_[sizeof(dstBuf_) - 1] = '\0';
+    dstLen_ = (uint8_t)strlen(dstBuf_);
+    if (dstLen_ == 0) { /* start from a single editable blank */
+        dstBuf_[0] = ' ';
+        dstBuf_[1] = '\0';
+        dstLen_ = 1;
+    }
+    dstCursor_ = 0;
+    dstEditing_ = true;
+    renderDstEdit();
+    screen_.markAllDirty();
+    announceDstChar();
+}
+
+void VfoView::dstCycle(int dir)
+{
+    int idx = dstCharsetIndex(dstBuf_[dstCursor_]);
+    idx = ((idx + dir) % kDstCharsetLen + kDstCharsetLen) % kDstCharsetLen;
+    dstBuf_[dstCursor_] = kDstCharset[idx];
+    renderDstEdit();
+    announceDstChar();
+}
+
+void VfoView::dstMove(int dir)
+{
+    if (dir < 0) {
+        if (dstCursor_ > 0)
+            dstCursor_--;
+    } else {
+        if (dstCursor_ + 1 < dstLen_) {
+            dstCursor_++;
+        } else if (dstLen_ < kDstMax) {
+            /* Extend with a blank and step onto it. */
+            dstBuf_[dstLen_] = ' ';
+            dstBuf_[dstLen_ + 1] = '\0';
+            dstLen_++;
+            dstCursor_ = (uint8_t)(dstLen_ - 1);
+        }
+    }
+    renderDstEdit();
+    announceDstChar();
+}
+
+void VfoView::endDstEdit(bool commit)
+{
+    if (commit) {
+        /* Strip trailing spaces, then store the destination. */
+        while ((dstLen_ > 0) && (dstBuf_[dstLen_ - 1] == ' '))
+            dstBuf_[--dstLen_] = '\0';
+        strncpy(state.settings.m17_dest, dstBuf_,
+                sizeof(state.settings.m17_dest) - 1);
+        state.settings.m17_dest[sizeof(state.settings.m17_dest) - 1] = '\0';
+        requestSyncRtx(); /* the destination feeds the M17 LSF */
+    }
+
+    dstEditing_ = false;
+    /* Force the channel line to recompose from live state next sync. */
+    idxCache_[0] = '\1';
+    nameCache_[0] = '\1';
+    screen_.markAllDirty();
+}
+
+NavIntent VfoView::onDstEditEvent(const Event &e)
+{
+    if (e.kind == EvKind::Encoder) {
+        dstCycle(e.encoder);
+    } else if (e.kind == EvKind::Key) {
+        const uint32_t k = e.keys;
+        if ((k & KEY_ENTER) != 0u)
+            endDstEdit(true);
+        else if ((k & KEY_ESC) != 0u)
+            endDstEdit(false);
+        else if ((k & KEY_HASH) != 0u) {
+            /* # clears the destination and exits (classic parity). */
+            dstBuf_[0] = '\0';
+            dstLen_ = 0;
+            endDstEdit(true);
+        } else if ((k & KEY_UP) != 0u)
+            dstCycle(+1);
+        else if ((k & KEY_DOWN) != 0u)
+            dstCycle(-1);
+        else if ((k & KEY_LEFT) != 0u)
+            dstMove(-1);
+        else if ((k & KEY_RIGHT) != 0u)
+            dstMove(+1);
+    }
+    return NavIntent::none();
 }
 
 void VfoView::announceFreq()
