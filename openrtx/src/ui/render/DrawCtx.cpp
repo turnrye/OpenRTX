@@ -8,6 +8,8 @@
 #include "style/Theme.hpp"
 #include "hwconfig.h"
 
+#include <cmath>
+
 namespace ortxui
 {
 
@@ -36,6 +38,25 @@ void DrawCtx::drawRect(const Rect &r, Sem color)
 
     const point_t start = { r.x, r.y };
     gfx_drawRect(start, r.w, r.h, themeColor(color), false);
+}
+
+void DrawCtx::drawCircle(Point c, uint16_t r, Sem color)
+{
+    const point_t centre = { c.x, c.y };
+    gfx_drawCircle(centre, r, themeColor(color));
+}
+
+void DrawCtx::fillCircle(Point c, uint16_t r, Sem color)
+{
+    const color_t col = themeColor(color);
+    const int rr = static_cast<int>(r);
+    for (int dy = -rr; dy <= rr; dy++) {
+        const int dx =
+            static_cast<int>(std::lround(std::sqrt(double(rr * rr - dy * dy))));
+        const point_t start = { static_cast<int16_t>(c.x - dx),
+                                static_cast<int16_t>(c.y + dy) };
+        gfx_drawRect(start, static_cast<uint16_t>(2 * dx + 1), 1, col, true);
+    }
 }
 
 point_t DrawCtx::text(Point at, fontSize_t size, textAlign_t align, Sem color,

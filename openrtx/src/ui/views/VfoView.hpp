@@ -8,41 +8,40 @@
 #define ORTX_UI_VFOVIEW_HPP
 
 #include "core/View.hpp"
-#include "widgets/Widgets.hpp"
 #include "layout/Flex.hpp"
+#include "widgets/Widgets.hpp"
+#include "widgets/TopBar.hpp"
+#include "widgets/FreqHero.hpp"
+#include "widgets/DotMeter.hpp"
 #include "core/state.h"
 
 namespace ortxui
 {
 
 /**
- * The VFO home screen, expressed as a composed widget tree.
+ * The VFO home screen (mockups 5-6): a left-weighted instrument readout.
  *
- * Widgets are direct members (static storage, no heap). build() wires the tree
- * and hands geometry to the Flex layout engine once (a column of status bar /
- * hero / meter / action bar, with the two bars as rows); no coordinates are
- * hand-placed. Fonts and fixed extents are chosen by SizeClass so the same
- * layout serves the mono and colour panels. syncFromState() pulls the handful
- * of radio fields it shows from the state snapshot each tick and invalidates
- * only the widgets whose value actually changed, so redraws are change-driven.
+ * A Flex column of shared top bar / frequency hero (big freq + sub-digits +
+ * mode-tone-power stack) / channel line (index + name in blue) / signal meter /
+ * open space. Widgets are direct members in static storage. build() wires the
+ * tree and lays it out once; syncFromState() pulls the shown radio fields from
+ * the state snapshot change-gated, and drives the meter from the RX/TX status
+ * (green RX with an S-scale, orange TX as a solid power bar).
  *
- * As the navigation root, ENTER drills into the main menu (wired via setMenu())
- * and ESC has nowhere to go.
+ * As the navigation root, ENTER drills into the main menu (wired via setMenu());
+ * ESC has nowhere to go.
  */
 class VfoView : public View
 {
 public:
     void build();
 
-    /** Wire the menu opened when ENTER is pressed on the home screen. */
     void setMenu(View *menu)
     {
         menu_ = menu;
     }
 
-    /** Pull displayed fields from the state snapshot (change-gated). */
     void syncFromState(const state_t &s) override;
-
     NavIntent onEvent(const Event &e) override;
 
     Screen &screen() override
@@ -51,33 +50,33 @@ public:
     }
 
 private:
+    void syncMode(const channel_t &ch);
+    void syncMeter(const state_t &s);
+
     Screen screen_;
 
-    /* Layout tree: a column of [status bar | hero | meter | action bar]; the
-     * two bars are Flex rows that also paint their own surface background. */
     Flex root_;
-    Flex topBar_;
-    Flex hero_;
-    Flex botBar_;
+    TopBar topBar_;
+    FreqHero hero_;
+    Flex chanRow_;
+    Label chanIdx_;
+    Label chanName_;
+    DotMeter meter_;
+    Flex spacer_;
 
-    Label time_;
-    Chip mode_;
-    Label battery_;
-    Label freq_;
-    Label callsign_;
-    Bar smeter_;
-    Label leftAction_;
-    Label rightAction_;
-
-    char timeBuf_[8] = { 0 };
-    char battBuf_[8] = { 0 };
-    char freqBuf_[16] = { 0 };
-    char callsignCache_[16] = { 0 };
+    char idxBuf_[8] = { 0 };
+    char nameCache_[16] = { 0 };
+    char readoutBuf_[12] = { 0 };
 
     uint32_t lastFreq_ = 0xFFFFFFFFu;
-    uint8_t lastCharge_ = 0xFFu;
+    uint16_t lastIdx_ = 0xFFFFu;
+    uint8_t lastTuner_ = 0xFFu;
     uint8_t lastMode_ = 0xFFu;
-    int16_t lastMinute_ = -1;
+    uint8_t lastBandwidth_ = 0xFFu;
+    uint8_t lastToneEn_ = 0xFFu;
+    uint32_t lastPower_ = 0xFFFFFFFFu;
+    uint8_t lastStatus_ = 0xFFu;
+    int32_t lastRssi_ = INT32_MIN;
 
     View *menu_ = nullptr;
 };

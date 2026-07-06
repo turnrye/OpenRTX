@@ -47,6 +47,12 @@ public:
     /** 1px rectangle outline. */
     void drawRect(const Rect &r, Sem color);
 
+    /** 1px circle outline centred at `c`. */
+    void drawCircle(Point c, uint16_t r, Sem color);
+
+    /** Filled disc centred at `c` (scanline fill; no backend primitive). */
+    void fillCircle(Point c, uint16_t r, Sem color);
+
     /**
      * Draw a NUL-terminated string. Returns the drawn text extent as reported
      * by the backend. Multi-line strings (with '\n') are supported.
