@@ -131,6 +131,7 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `radio` | Settings > Radio: offset keypad entry, direction flip, step |
 | `m17` | Settings > M17: callsign cursor-cycle edit, CAN cycle |
 | `channels` | Channels browser: codeplug channel list + selection |
+| `contacts` | Contacts browser: read-only codeplug contact list |
 | `gps` | GPS Position "no fix" status state |
 | `about` | About: brand, firmware version, credits (`#require test_version`) |
 
