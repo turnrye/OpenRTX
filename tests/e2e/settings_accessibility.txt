@@ -1,0 +1,19 @@
+nop Accessibility checklist: enter Settings > Accessibility, toggle a row
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Accessibility is Settings row idx 6
+key DOWN DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot accessibility.bmp
+sleep 300
+nop ENTER toggles the selected (GPS) checkbox, then move off it to show the tick
+key ENTER
+sleep 400
+key DOWN
+sleep 400
+screenshot accessibility_toggled.bmp
+sleep 300
+quit

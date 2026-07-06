@@ -1,0 +1,11 @@
+nop GPS Position screen with no fix: enter GPS (idx 3). With isolated
+nop settings (XDG_STATE_HOME) gps_enabled defaults off, so this is the
+nop deterministic "GPS Off" status state, not the live-fix layout.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN ENTER
+sleep 500
+screenshot gps_off.bmp
+sleep 300
+quit

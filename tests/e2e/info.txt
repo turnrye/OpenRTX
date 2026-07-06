@@ -1,0 +1,11 @@
+nop Info screen: ENTER, down to Info (idx 5), ENTER; scroll for lower rows
+nop Pin RSSI first: the emulator jitters it, and Info shows the exact dBm.
+rssi -100
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot info_top.bmp
+sleep 300
+quit

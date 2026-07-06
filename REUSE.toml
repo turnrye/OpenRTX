@@ -27,6 +27,8 @@ path = [
     "voiceprompts.vpc",
     "osx.txt",
     "tests/unit/assets/**/*",
+    "tests/e2e/**/*.txt",
+    "tests/e2e/golden/**/*.bmp",
     "README.md",
     "CONTRIBUTING.md",
     "99-openrtx.rules",
