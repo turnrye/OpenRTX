@@ -9,8 +9,8 @@
 Golden-image (snapshot) test runner for the ortx UI toolkit.
 
 Takes a test script (tests/e2e/*.txt) of emulator shell commands (key,
-sleep, screenshot, nop, quit) and runs it against the linux emulator built
-with -Dui=ortx. Every "screenshot <name>.bmp" line becomes an assertion:
+sleep, screenshot, nop, quit) and runs it against the linux emulator.
+Every "screenshot <name>.bmp" line becomes an assertion:
 the captured frame is compared pixel-for-pixel against a golden reference at
 tests/e2e/golden/<base_test>/<variant>/<name>.bmp.
 
@@ -63,9 +63,9 @@ except ImportError:  # tqdm is only needed for the parallel progress bar
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 E2E_DIR = PROJECT_ROOT / "tests" / "e2e"
 
-# Variant name -> binary filename (relative to build dir). The ortx UI is a
-# build-time flag (-Dui=ortx), so there is one linux binary today; the map is
-# kept so a second variant (e.g. a 1bpp mono target) can be added later.
+# Variant name -> binary filename (relative to build dir). There is one linux
+# binary today; the map is kept so a second variant (e.g. a 1bpp mono target)
+# can be added later.
 VARIANTS = {
     "ortx": "openrtx_linux",
 }
@@ -358,8 +358,8 @@ def check_binary(binary):
     if not os.access(binary, os.X_OK):
         print(
             f"FAIL: binary not found or not executable: {binary}\n"
-            f"  Build it with: meson setup build_ortx -Dui=ortx &&"
-            f" meson compile -C build_ortx openrtx_linux",
+            f"  Build it with: meson setup build &&"
+            f" meson compile -C build openrtx_linux",
             file=sys.stderr,
         )
         sys.exit(1)

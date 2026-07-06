@@ -2,4 +2,3 @@ option('asan', type : 'boolean', value : false, description : 'Compile the softw
 option('ubsan', type : 'boolean', value : false, description : 'Compile the software with Undefined Behaviour Sanitizer')
 option('test', type: 'string', description: 'Replace the main OpenRTX source file with a specialized test')
 option('test_version', type: 'string', value: '', description: 'Override GIT_VERSION for reproducible test/CI builds (e.g. e2e-test)')
-option('ui', type: 'combo', choices: ['ortx', 'classic'], value: 'ortx', description: 'UI implementation: ortx (new LVGL-inspired retained-widget toolkit, default) or classic (legacy immediate-mode FSM, retained transitionally until removal)')
