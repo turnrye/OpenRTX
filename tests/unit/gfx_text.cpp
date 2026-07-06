@@ -13,10 +13,14 @@ extern "C" {
 }
 
 /*
- * TomThumb (FONT_SIZE_5PT) has yAdvance = 6.  Tests that need a concrete
- * line-height value use this constant rather than embedding magic numbers.
+ * Line-height of the test font (FONT_SIZE_5PT). Queried at runtime so the tests
+ * stay valid across font changes (the layout logic is what's under test, not a
+ * particular font's metrics).
  */
-static constexpr uint16_t TT_Y_ADVANCE = 6;
+static uint16_t lineH()
+{
+    return gfx_getFontLineHeight(FONT_SIZE_5PT);
+}
 
 /* A max_x wide enough that no ASCII string of a few characters will wrap. */
 static constexpr uint16_t WIDE = 4096;
@@ -52,7 +56,7 @@ TEST_CASE("gfx_printBuffer text_size.y grows with newlines", "[gfx][text]")
                                   "Hello\nHello");
 
     REQUIRE(sz2.y > sz1.y);
-    REQUIRE((sz2.y - sz1.y) == TT_Y_ADVANCE);
+    REQUIRE((sz2.y - sz1.y) == lineH());
 }
 
 TEST_CASE("gfx_printBuffer does not access glyph for newline", "[gfx][text]")
@@ -73,19 +77,19 @@ TEST_CASE("gfx_measureText single-line strings", "[gfx][text]")
     SECTION("empty string occupies one line")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "", 0, WIDE, SIZE_MAX);
-        REQUIRE(h == TT_Y_ADVANCE);
+        REQUIRE(h == lineH());
     }
 
     SECTION("short string with no wrap occupies one line")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "Hello", 0, WIDE, SIZE_MAX);
-        REQUIRE(h == TT_Y_ADVANCE);
+        REQUIRE(h == lineH());
     }
 
     SECTION("char_count zero treats string as empty")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "Hello", 0, WIDE, 0);
-        REQUIRE(h == TT_Y_ADVANCE);
+        REQUIRE(h == lineH());
     }
 }
 
@@ -95,20 +99,20 @@ TEST_CASE("gfx_measureText multi-line via explicit newlines", "[gfx][text]")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "abc\ndef", 0, WIDE,
                                      SIZE_MAX);
-        REQUIRE(h == 2 * TT_Y_ADVANCE);
+        REQUIRE(h == 2 * lineH());
     }
 
     SECTION("two newlines produce three lines")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "a\nb\nc", 0, WIDE,
                                      SIZE_MAX);
-        REQUIRE(h == 3 * TT_Y_ADVANCE);
+        REQUIRE(h == 3 * lineH());
     }
 
     SECTION("trailing newline adds an extra line")
     {
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "abc\n", 0, WIDE, SIZE_MAX);
-        REQUIRE(h == 2 * TT_Y_ADVANCE);
+        REQUIRE(h == 2 * lineH());
     }
 }
 
@@ -118,14 +122,14 @@ TEST_CASE("gfx_measureText char_count truncation", "[gfx][text]")
     {
         /* "abc\ndef" with char_count 3 — newline never reached */
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "abc\ndef", 0, WIDE, 3);
-        REQUIRE(h == TT_Y_ADVANCE);
+        REQUIRE(h == lineH());
     }
 
     SECTION("truncate including newline advances to second line")
     {
         /* char_count 4 includes the '\\n' */
         uint16_t h = gfx_measureText(FONT_SIZE_5PT, "abc\ndef", 0, WIDE, 4);
-        REQUIRE(h == 2 * TT_Y_ADVANCE);
+        REQUIRE(h == 2 * lineH());
     }
 
     SECTION("char_count larger than string length measures whole string")
@@ -148,8 +152,8 @@ TEST_CASE("gfx_measureText word-wrap at max_x", "[gfx][text]")
          */
         uint16_t h1 = gfx_measureText(FONT_SIZE_5PT, "A", 0, NARROW, SIZE_MAX);
         uint16_t h2 = gfx_measureText(FONT_SIZE_5PT, "AB", 0, NARROW, SIZE_MAX);
-        REQUIRE(h1 == 2 * TT_Y_ADVANCE);
-        REQUIRE(h2 == h1 + TT_Y_ADVANCE);
+        REQUIRE(h1 == 2 * lineH());
+        REQUIRE(h2 == h1 + lineH());
     }
 
     SECTION("wide max_x prevents wrap for short string")
@@ -178,13 +182,13 @@ TEST_CASE("gfx_printBufferClipped text_size.y for single-line text",
     /*
      * Single-line: start.y does not advance, so text_size.y should equal
      * the raw glyph height of the last character rendered (line_h).  It
-     * must be > 0 and <= TT_Y_ADVANCE.
+     * must be > 0 and <= lineH().
      */
     point_t start = { 0, 20 };
     point_t sz = gfx_printBufferClipped(start, FONT_SIZE_5PT, TEXT_ALIGN_LEFT,
                                         white, "Hi", (uint16_t)WIDE, 0, 127);
     REQUIRE(sz.y > 0);
-    REQUIRE(sz.y <= TT_Y_ADVANCE);
+    REQUIRE(sz.y <= lineH());
 }
 
 TEST_CASE("gfx_printBufferClipped text_size.y grows for two lines",
@@ -202,7 +206,7 @@ TEST_CASE("gfx_printBufferClipped text_size.y grows for two lines",
     /* Two lines must be taller than one. */
     REQUIRE(sz2.y > sz1.y);
     /* The difference should equal exactly one yAdvance. */
-    REQUIRE((sz2.y - sz1.y) == TT_Y_ADVANCE);
+    REQUIRE((sz2.y - sz1.y) == lineH());
 }
 
 TEST_CASE("gfx_printBufferClipped negative start.y does not corrupt result",
@@ -236,7 +240,7 @@ TEST_CASE("gfx_printBufferClipped negative clip_top_y does not corrupt result",
     point_t sz = gfx_printBufferClipped(start, FONT_SIZE_5PT, TEXT_ALIGN_LEFT,
                                         white, "Hi", (uint16_t)WIDE, -10, 127);
     REQUIRE(sz.y > 0);
-    REQUIRE(sz.y <= TT_Y_ADVANCE);
+    REQUIRE(sz.y <= lineH());
 }
 
 TEST_CASE("get_line_size exact-fit glyph is included in line width",
@@ -245,10 +249,11 @@ TEST_CASE("get_line_size exact-fit glyph is included in line width",
     color_t white = { 255, 255, 255, 255 };
     point_t start = { 0, 10 };
 
-    /* TomThumb 'A' xAdvance=4: with max_x=4 the glyph exactly fills the line. */
+    /* With max_x equal to 'A's advance, the glyph exactly fills the line. */
+    uint16_t adv = gfx_getTextWidth(FONT_SIZE_5PT, "A");
     point_t sz = gfx_printBufferClipped(start, FONT_SIZE_5PT, TEXT_ALIGN_LEFT,
-                                        white, "A", 4, 0, 127);
-    REQUIRE(sz.x == 4);
+                                        white, "A", adv, 0, 127);
+    REQUIRE(sz.x == adv);
 }
 
 TEST_CASE("gfx_printBufferClipped text_size.x is max line width, not last line",

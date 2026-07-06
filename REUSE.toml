@@ -13,9 +13,9 @@ SPDX-FileCopyrightText = "Terraneo Federico"
 precedence = "override"
 
 [[annotations]]
-path = "openrtx/include/fonts/adafruit/**/*"
+path = "openrtx/fonts/*.bin"
 SPDX-License-Identifier = "Ubuntu-font-1.0"
-SPDX-FileCopyrightText = "2012 Adafruit Industries"
+SPDX-FileCopyrightText = "2010-2011 Canonical Ltd."
 precedence = "override"
 
 # This section is for OpenRTX sources that cannot have comments in them, like `json` files

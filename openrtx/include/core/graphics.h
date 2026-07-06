@@ -8,7 +8,6 @@
 #define GRAPHICS_H
 
 #include "core/datatypes.h"
-#include "fonts/symbols/symbols.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -74,12 +73,6 @@ typedef enum {
 
     FONT_SIZE_NUM
 } fontSize_t;
-
-typedef enum {
-    SYMBOLS_SIZE_5PT,
-    SYMBOLS_SIZE_6PT,
-    SYMBOLS_SIZE_8PT
-} symbolSize_t;
 
 typedef enum {
     TEXT_ALIGN_LEFT = 0,
@@ -195,6 +188,16 @@ void gfx_drawCircle(point_t start, uint16_t r, color_t color);
 uint8_t gfx_getFontHeight(fontSize_t size);
 
 /**
+ * Font vertical metrics, in pixels, from the font's own header.
+ * @param size: text font size, defined as enum.
+ * @return ascent (above baseline), descent (below baseline, <= 0) or the full
+ *         line height (ascent - descent).
+ */
+uint8_t gfx_getFontAscent(fontSize_t size);
+int8_t gfx_getFontDescent(fontSize_t size);
+uint8_t gfx_getFontLineHeight(fontSize_t size);
+
+/**
  * Prints text on the screen at the specified coordinates.
  * Reads text from a given char buffer
  * @param start: text line start point, in pixel coordinates.
@@ -308,20 +311,6 @@ point_t gfx_printLine(uint8_t cur, uint8_t tot, int16_t startY, int16_t endY,
  * @param size: text font size, defined as enum.
  */
 void gfx_printError(const char *text, fontSize_t size);
-
-/**
- * Prints text on the screen at the specified coordinates.
- * @param start: text line start point, in pixel coordinates.
- * @param size: icon font size, defined as enum.
- * @param alignment: text alignment type, defined as enum. DEPRECATED: in the
- *                   future this will be always LEFT.
- * @param color: text color, in color_t format.
- * @param symbol: symbol to be printed.
- * @return position immediately to the right of the drawn symbol, suitable
- *         for chaining consecutive symbol draws.
- */
-point_t gfx_drawSymbol(point_t start, symbolSize_t size, textAlign_t alignment,
-                       color_t color, symbol_t symbol);
 
 /**
  * Function to draw battery of arbitrary size.

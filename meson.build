@@ -12,13 +12,6 @@ project('OpenRTX', ['c', 'cpp'],
 openrtx_def = {}
 
 ##
-## UI font configuration, only one uncommented at a time
-##
-
-openrtx_def += {'FONT_UBUNTU_REGULAR': ''}
-# openrtx_def += {'FONT_FREE_SANS': ''}
-
-##
 ## Firmware configuration parameters
 ##
 
@@ -37,6 +30,8 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/threads.c',
                'openrtx/src/core/battery.c',
                'openrtx/src/core/graphics.c',
+               'openrtx/src/core/fonts/lv_font_bin.c',
+               'openrtx/src/core/fontData.S',
                'openrtx/src/core/input.c',
                'openrtx/src/core/utils.c',
                'openrtx/src/core/queue.c',
