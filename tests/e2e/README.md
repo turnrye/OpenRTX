@@ -121,6 +121,7 @@ Golden dir: `golden/<base>/<variant>/`. The variant is `ortx`; a script named
 | `settings_display` | Display value rows + Brightness edit mode + commit |
 | `settings_accessibility` | Accessibility checklist + checkbox toggle |
 | `info` | Info key/value table (RSSI row tolerated, see above) |
+| `fm` | Settings > FM: CTCSS tone + enable value rows, tone edit |
 | `gps` | GPS Position "no fix" status state |
 | `about` | About: brand, firmware version, credits (`#require test_version`) |
 

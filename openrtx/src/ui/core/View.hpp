@@ -85,6 +85,20 @@ public:
     /** The view's widget-tree root. */
     virtual Screen &screen() = 0;
 
+    /**
+     * Consume a pending "reconfigure the radio" request. A view that edits an
+     * rtx-affecting field of state.channel (e.g. FM CTCSS tones) calls
+     * requestSyncRtx(); ui_shim reads this after dispatching an event and
+     * raises the sync_rtx out-parameter so threads.c re-applies state.channel
+     * to the radio. Returns true once, then clears the flag.
+     */
+    bool takeSyncRtx()
+    {
+        const bool v = syncRtx_;
+        syncRtx_ = false;
+        return v;
+    }
+
 protected:
     /** Register the shared top bar so the base syncFromState() refreshes it. */
     void setTopBar(TopBar *t)
@@ -92,7 +106,16 @@ protected:
         topBar_ = t;
     }
 
+    /** Ask ui_shim to reconfigure the radio from state.channel (see above). */
+    void requestSyncRtx()
+    {
+        syncRtx_ = true;
+    }
+
     TopBar *topBar_ = nullptr;
+
+private:
+    bool syncRtx_ = false;
 };
 
 } // namespace ortxui

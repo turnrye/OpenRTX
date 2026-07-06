@@ -37,6 +37,7 @@
 #include "views/DisplayView.hpp"
 #include "views/ChecklistView.hpp"
 #include "views/GpsView.hpp"
+#include "views/FmView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -96,6 +97,7 @@ InfoView infoView;
 AboutView aboutView;
 DisplayView displayView;
 ChecklistView checklistView;
+FmView fmView;
 #ifdef CONFIG_GPS
 GpsView gpsView;
 #endif
@@ -128,6 +130,7 @@ extern "C" void ui_init()
     aboutView.build();
     displayView.build();
     checklistView.build();
+    fmView.build();
 #ifdef CONFIG_GPS
     gpsView.build();
 #endif
@@ -141,6 +144,7 @@ extern "C" void ui_init()
             &displayView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Accessibility",
             &checklistView);
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "FM", &fmView);
 #ifdef CONFIG_GPS
     wireRow(mainMenu, kMainMenu, kMainMenuCount, "GPS", &gpsView);
 #endif
@@ -170,8 +174,6 @@ extern "C" void ui_saveState()
 
 extern "C" void ui_updateFSM(bool *sync_rtx)
 {
-    (void)sync_rtx;
-
     if (evQueue_rdPos == evQueue_wrPos)
         return;
 
@@ -179,8 +181,15 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
     const event_t raw = evQueue[evQueue_rdPos];
     evQueue_rdPos = (uint8_t)((evQueue_rdPos + 1) % MAX_NUM_EVENTS);
 
+    /* The view that handles the event is the active one at dispatch time; if it
+     * edited an rtx-affecting field it flags a resync, which we forward so
+     * threads.c re-applies state.channel to the radio. */
+    View *handler = nav.active();
     const Event ev = Event::decode((uint8_t)raw.type, raw.payload);
     nav.dispatch(ev);
+
+    if ((handler != nullptr) && handler->takeSyncRtx())
+        *sync_rtx = true;
 }
 
 extern "C" bool ui_updateGUI()
