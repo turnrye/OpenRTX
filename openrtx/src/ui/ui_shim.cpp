@@ -36,6 +36,7 @@
 #include "views/AboutView.hpp"
 #include "views/DisplayView.hpp"
 #include "views/ChecklistView.hpp"
+#include "views/GpsView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -95,6 +96,9 @@ InfoView infoView;
 AboutView aboutView;
 DisplayView displayView;
 ChecklistView checklistView;
+#ifdef CONFIG_GPS
+GpsView gpsView;
+#endif
 Navigator nav;
 
 /* Wire the row of `menu` whose label matches `label` (from `table`) to `target`. */
@@ -124,6 +128,9 @@ extern "C" void ui_init()
     aboutView.build();
     displayView.build();
     checklistView.build();
+#ifdef CONFIG_GPS
+    gpsView.build();
+#endif
 
     /* Wire menu rows to their views. Rows resolve by label because the indices
      * shift with the config guards on the menu tables. */
@@ -134,6 +141,9 @@ extern "C" void ui_init()
             &displayView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Accessibility",
             &checklistView);
+#ifdef CONFIG_GPS
+    wireRow(mainMenu, kMainMenu, kMainMenuCount, "GPS", &gpsView);
+#endif
 
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);

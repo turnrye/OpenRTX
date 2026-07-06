@@ -108,12 +108,15 @@ ui_src_ortx = ['openrtx/src/ui/ui_shim.cpp',
                'openrtx/src/ui/widgets/TopBar.cpp',
                'openrtx/src/ui/widgets/DotMeter.cpp',
                'openrtx/src/ui/widgets/FreqHero.cpp',
+               'openrtx/src/ui/widgets/StatValue.cpp',
+               'openrtx/src/ui/widgets/Compass.cpp',
                'openrtx/src/ui/views/VfoView.cpp',
                'openrtx/src/ui/views/MenuView.cpp',
                'openrtx/src/ui/views/InfoView.cpp',
                'openrtx/src/ui/views/AboutView.cpp',
                'openrtx/src/ui/views/DisplayView.cpp',
                'openrtx/src/ui/views/ChecklistView.cpp',
+               'openrtx/src/ui/views/GpsView.cpp',
                'openrtx/src/ui/default/ui_strings.c']
 
 if get_option('ui') == 'ortx'
