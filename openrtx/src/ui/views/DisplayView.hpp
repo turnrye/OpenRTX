@@ -45,6 +45,7 @@ private:
         RowContrast,
         RowSquelch,
         RowVox,
+        RowTimer, //< display standby timeout (settings.display_timer)
         RowCount,
     };
 
@@ -69,7 +70,7 @@ private:
 
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][12] = {};
-    uint8_t last_[RowCount] = { 0xFFu, 0xFFu, 0xFFu, 0xFFu };
+    uint8_t last_[RowCount] = { 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu };
     bool editing_ = false;
     uint8_t editRow_ = 0;
 };

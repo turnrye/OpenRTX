@@ -26,6 +26,7 @@ void DisplayView::build()
         "Contrast",
         "Squelch",
         "Vox",
+        "Timer",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -69,6 +70,8 @@ uint8_t DisplayView::curValue(uint8_t row) const
             return state.settings.sqlLevel;
         case RowVox:
             return state.settings.voxLevel;
+        case RowTimer:
+            return state.settings.display_timer;
         default:
             return 0u;
     }
@@ -93,6 +96,11 @@ void DisplayView::applyValue(uint8_t row, uint8_t v)
         case RowVox:
             state.settings.voxLevel = v;
             break;
+        case RowTimer:
+            /* No immediate side-effect: the standby loop reads display_timer
+             * live each tick. */
+            state.settings.display_timer = v;
+            break;
         default:
             break;
     }
@@ -100,11 +108,21 @@ void DisplayView::applyValue(uint8_t row, uint8_t v)
 
 void DisplayView::writeValueText(uint8_t row, uint8_t v)
 {
+    /* Standby-timer labels, mirroring the classic display_timer_values table. */
+    static const char *const kTimerLabels[] = {
+        "Off",   "5 s",   "10 s",  "15 s",  "20 s",   "25 s",
+        "30 s",  "1 min", "2 min", "3 min", "4 min",  "5 min",
+        "15 min", "30 min", "45 min", "1 hour",
+    };
+
     char inner[8];
     if ((row == RowVox) && (v == 0u))
         snprintf(inner, sizeof(inner), "Off");
     else if (row == RowSquelch)
         snprintf(inner, sizeof(inner), "S%u", v);
+    else if (row == RowTimer)
+        snprintf(inner, sizeof(inner), "%s",
+                 kTimerLabels[(v < 16u) ? v : 0u]);
     else
         snprintf(inner, sizeof(inner), "%u", v);
 
@@ -137,6 +155,7 @@ void DisplayView::adjust(int dir)
         { 0u, 255u, 4u }, //< Contrast
         { 0u, 15u, 1u },  //< Squelch
         { 0u, 10u, 1u },  //< Vox
+        { 0u, 15u, 1u },  //< Timer (TIMER_OFF..TIMER_1H)
     };
     const Range &r = kRanges[editRow_];
 
@@ -158,7 +177,7 @@ void DisplayView::syncFromState(const state_t &s)
 
     const settings_t &st = s.settings;
     const uint8_t vals[RowCount] = { st.brightness, st.contrast, st.sqlLevel,
-                                     st.voxLevel };
+                                     st.voxLevel, (uint8_t)st.display_timer };
     bool changed = false;
 
     for (uint8_t i = 0; i < RowCount; i++) {

@@ -23,7 +23,12 @@
 #include "core/ui.h"
 #include "core/state.h"
 #include "core/event.h"
+#include "core/input.h"
 #include "core/graphics.h"
+#include "interfaces/delays.h"
+#include "interfaces/display.h"
+#include "interfaces/keyboard.h"
+#include "rtx/rtx.h"
 #include "hwconfig.h"
 
 #include "core/Event.hpp"
@@ -131,7 +136,72 @@ void wireRow(MenuView &menu, const char *const *table, uint16_t count,
     }
 }
 
+/* Display standby (backlight timeout) — parity with the classic default UI.
+ * On `settings.display_timer` of idle the backlight is blanked and drawing is
+ * suspended; any keypress (or RF/volume activity) wakes it again. */
+bool standby = false;
+long long last_event_tick = 0;
+
+void enterStandby()
+{
+    if (standby)
+        return;
+    standby = true;
+    display_setBacklightLevel(0);
+}
+
+/* Returns true if this call actually left standby (used to swallow the wake
+ * keypress, matching the classic behaviour). */
+bool exitStandby(long long now)
+{
+    last_event_tick = now;
+    if (!standby)
+        return false;
+    standby = false;
+    display_setBacklightLevel(state.settings.brightness);
+    if (View *v = nav.active())
+        v->screen().markAllDirty(); /* repaint fully on wake */
+    return true;
+}
+
 } // namespace
+
+/* Pure idle-timeout predicate — C linkage so the unit test (ui_check_standby)
+ * links against it exactly as it did the classic implementation. Mirrors the
+ * classic thresholds verbatim. */
+extern "C" bool _ui_checkStandby(long long time_since_last_event)
+{
+    if (standby)
+        return false;
+
+    switch (state.settings.display_timer) {
+        case TIMER_OFF:
+            return false;
+        case TIMER_5S:
+        case TIMER_10S:
+        case TIMER_15S:
+        case TIMER_20S:
+        case TIMER_25S:
+        case TIMER_30S:
+            return time_since_last_event >= (5000 * state.settings.display_timer);
+        case TIMER_1M:
+        case TIMER_2M:
+        case TIMER_3M:
+        case TIMER_4M:
+        case TIMER_5M:
+            return time_since_last_event >=
+                (60000 * (state.settings.display_timer - (TIMER_1M - 1)));
+        case TIMER_15M:
+        case TIMER_30M:
+        case TIMER_45M:
+            return time_since_last_event >=
+                (60000 * 15 * (state.settings.display_timer - (TIMER_15M - 1)));
+        case TIMER_1H:
+            return time_since_last_event >= 60 * 60 * 1000;
+    }
+
+    return false;
+}
 
 extern "C" void ui_init()
 {
@@ -188,6 +258,9 @@ extern "C" void ui_init()
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);
 
+    standby = false;
+    last_event_tick = getTick();
+
     state.ui_screen = 0; /* MAIN_VFO */
 }
 
@@ -210,26 +283,52 @@ extern "C" void ui_saveState()
 
 extern "C" void ui_updateFSM(bool *sync_rtx)
 {
-    if (evQueue_rdPos == evQueue_wrPos)
+    const long long now = getTick();
+
+    if (evQueue_rdPos != evQueue_wrPos) {
+        /* Pop one event per tick, matching the classic loop cadence. */
+        const event_t raw = evQueue[evQueue_rdPos];
+        evQueue_rdPos = (uint8_t)((evQueue_rdPos + 1) % MAX_NUM_EVENTS);
+
+        /* A keypress always refreshes the idle timer; if it also woke the
+         * display we consume it (except MONI, kept for the macro menu) so the
+         * wake press isn't acted on — parity with the classic UI. */
+        if (raw.type == EVENT_KBD) {
+            kbd_msg_t msg;
+            msg.value = raw.payload;
+            const bool woke = exitStandby(now);
+            if (woke && ((msg.keys & KEY_MONI) == 0u))
+                return;
+        }
+
+        /* The view that handles the event is the active one at dispatch time; if
+         * it edited an rtx-affecting field it flags a resync, which we forward so
+         * threads.c re-applies state.channel to the radio. */
+        View *handler = nav.active();
+        const Event ev = Event::decode((uint8_t)raw.type, raw.payload);
+        nav.dispatch(ev);
+
+        if ((handler != nullptr) && handler->takeSyncRtx())
+            *sync_rtx = true;
         return;
+    }
 
-    /* Pop one event per tick, matching the classic loop cadence. */
-    const event_t raw = evQueue[evQueue_rdPos];
-    evQueue_rdPos = (uint8_t)((evQueue_rdPos + 1) % MAX_NUM_EVENTS);
-
-    /* The view that handles the event is the active one at dispatch time; if it
-     * edited an rtx-affecting field it flags a resync, which we forward so
-     * threads.c re-applies state.channel to the radio. */
-    View *handler = nav.active();
-    const Event ev = Event::decode((uint8_t)raw.type, raw.payload);
-    nav.dispatch(ev);
-
-    if ((handler != nullptr) && handler->takeSyncRtx())
-        *sync_rtx = true;
+    /* No event this tick: ongoing RF or a volume change keeps the screen awake,
+     * otherwise blank the backlight once the idle timer elapses. */
+    const bool txOngoing = (rtx_getStatus()->opStatus == TX);
+    if (txOngoing || rtx_rxSquelchOpen() || (state.volume != last_state.volume)) {
+        exitStandby(now);
+        return;
+    }
+    if (_ui_checkStandby(now - last_event_tick))
+        enterStandby();
 }
 
 extern "C" bool ui_updateGUI()
 {
+    if (standby)
+        return false; /* backlight off — nothing to draw */
+
     View *view = nav.active();
     if (view == nullptr)
         return false;
