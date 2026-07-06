@@ -5,6 +5,9 @@
  */
 
 #include "views/GpsView.hpp"
+#include "core/state.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 #include "hwconfig.h"
 
 #include <cmath>
@@ -229,6 +232,17 @@ void GpsView::syncFromState(const state_t &s)
         compass_.invalidate();
         lastHeading_ = g.tmg_true;
     }
+}
+
+void GpsView::announce()
+{
+    /* Speak the full GPS fix on entry (fix quality, position, speed, altitude,
+     * direction) rather than just the screen title. vp_announceGPSInfo is only
+     * declared under CONFIG_GPS; this view is only reachable there too. */
+#ifdef CONFIG_GPS
+    if (state.settings.vpLevel >= vpLow)
+        vp_announceGPSInfo(vpGPSAll);
+#endif
 }
 
 } // namespace ortxui

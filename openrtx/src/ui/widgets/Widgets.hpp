@@ -26,6 +26,10 @@ public:
     {
         text_ = (t != nullptr) ? t : "";
     }
+    const char *text() const
+    {
+        return text_;
+    }
     void setColor(Sem c)
     {
         color_ = c;

@@ -20,6 +20,14 @@ void View::syncFromState(const state_t &s)
         topBar_->update(s);
 }
 
+void View::announce()
+{
+    /* Default: speak the screen's top-bar title on entry (titled screens get
+     * this for free; List navigation is announced by the List). */
+    if (topBar_ != nullptr)
+        vpSay(topBar_->title());
+}
+
 void View::vpSay(const char *text)
 {
     if ((state.settings.vpLevel < vpLow) || (text == nullptr)

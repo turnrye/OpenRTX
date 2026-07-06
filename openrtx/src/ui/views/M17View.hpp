@@ -60,6 +60,7 @@ private:
     void callsignCycle(int dir); //< cycle the char under the cursor
     void callsignMove(int dir);  //< move the cursor (extend at the end)
     void callsignConfirm();      //< strip + write to settings.callsign
+    void announceCursorChar();   //< speak the char under the cursor (voice)
 
     Screen screen_;
     Flex root_;

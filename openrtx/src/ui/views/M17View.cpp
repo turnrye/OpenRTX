@@ -7,6 +7,9 @@
 #include "views/M17View.hpp"
 #include "core/Event.hpp"
 #include "interfaces/keyboard.h"
+#include "core/state.h"
+#include "core/voicePrompts.h"
+#include "core/voicePromptUtils.h"
 #include "hwconfig.h"
 
 #include <cstdio>
@@ -175,6 +178,14 @@ void M17View::adjust(int dir)
     list_.invalidate();
 }
 
+void M17View::announceCursorChar()
+{
+    /* Speak the character under the cursor (phonetically at higher verbosity)
+     * so a callsign can be edited by ear. */
+    if (state.settings.vpLevel >= vpLow)
+        vp_announceInputChar(callBuf_[cursor_]);
+}
+
 void M17View::callsignCycle(int dir)
 {
     int idx = charsetIndex(callBuf_[cursor_]);
@@ -182,6 +193,7 @@ void M17View::callsignCycle(int dir)
     callBuf_[cursor_] = kCharset[idx];
     writeValueText(RowCallsign);
     list_.invalidate();
+    announceCursorChar();
 }
 
 void M17View::callsignMove(int dir)
@@ -202,6 +214,7 @@ void M17View::callsignMove(int dir)
     }
     writeValueText(RowCallsign);
     list_.invalidate();
+    announceCursorChar();
 }
 
 void M17View::callsignConfirm()

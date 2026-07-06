@@ -32,6 +32,10 @@ public:
     {
         title_.setText(t);
     }
+    const char *title() const
+    {
+        return title_.text();
+    }
 
     /** Refresh clock + battery from the state snapshot (change-gated). */
     void update(const state_t &s);

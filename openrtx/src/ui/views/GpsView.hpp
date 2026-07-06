@@ -32,6 +32,7 @@ class GpsView : public View
 public:
     void build();
     void syncFromState(const state_t &s) override;
+    void announce() override;
 
     Screen &screen() override
     {
