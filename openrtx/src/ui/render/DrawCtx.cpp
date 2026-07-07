@@ -130,7 +130,12 @@ void DrawCtx::textInBox(const Rect &box, fontSize_t size, textAlign_t align,
                         Sem color, const char *str)
 {
     const int tw = static_cast<int>(gfx_getTextWidth(size, str));
-    const int ascent = static_cast<int>(gfx_getFontHeight(size));
+    /* True metric ascent (baseline -> top of the tallest glyph), NOT
+     * gfx_getFontHeight, which is the '|'-glyph box height (a cap-height proxy
+     * that runs a couple of pixels past the baseline) -- using that here would
+     * push the baseline down and clip the tallest glyphs (e.g. the '[' ']' of
+     * the M17 destination cursor). */
+    const int ascent = static_cast<int>(gfx_getFontAscent(size));
     const int lineH = static_cast<int>(gfx_getFontLineHeight(size));
 
     int16_t x = box.x;
