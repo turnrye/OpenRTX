@@ -43,6 +43,7 @@
 #include "views/InfoView.hpp"
 #include "views/AboutView.hpp"
 #include "views/DisplayView.hpp"
+#include "views/TimeDateView.hpp"
 #include "views/ChecklistView.hpp"
 #include "views/GpsView.hpp"
 #include "views/GpsSettingsView.hpp"
@@ -114,6 +115,9 @@ MenuView settingsMenu;
 InfoView infoView;
 AboutView aboutView;
 DisplayView displayView;
+#ifdef CONFIG_RTC
+TimeDateView timeDateView;
+#endif
 ChecklistView checklistView;
 FmView fmView;
 RadioView radioView;
@@ -232,6 +236,9 @@ extern "C" void ui_init()
     infoView.build();
     aboutView.build();
     displayView.build();
+#ifdef CONFIG_RTC
+    timeDateView.build();
+#endif
     checklistView.build();
     fmView.build();
     radioView.build();
@@ -268,6 +275,10 @@ extern "C" void ui_init()
             &radioView);
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Default Settings",
             &defaultsView);
+#ifdef CONFIG_RTC
+    wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "Time & Date",
+            &timeDateView);
+#endif
 #ifdef CONFIG_M17
     wireRow(settingsMenu, kSettingsMenu, kSettingsMenuCount, "M17", &m17View);
 #endif

@@ -1,0 +1,49 @@
+nop Settings > Time & Date: display the clock, then the keypad digit editor.
+nop Under faketime the clock is frozen (2000-01-01 00:00:00) and state_task's
+nop 100ms throttle never elapses, so a committed time sticks -- deterministic.
+rssi 0
+sleep 1000
+key ENTER
+sleep 400
+nop Main menu: Banks/Channels/Contacts/GPS/Settings -> DOWN x4 to Settings.
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Settings: Display/Time & Date -> DOWN x1 to Time & Date.
+key DOWN ENTER
+sleep 500
+screenshot td_display.bmp
+sleep 300
+nop ENTER opens the digit editor (empty placeholders).
+key ENTER
+sleep 400
+screenshot td_edit_empty.bmp
+sleep 300
+nop Type dd/mm/yy hh:mm = 25/12/80 13:45.
+key 2
+sleep 120
+key 5
+sleep 120
+key 1
+sleep 120
+key 2
+sleep 120
+key 8
+sleep 120
+key 0
+sleep 120
+key 1
+sleep 120
+key 3
+sleep 120
+key 4
+sleep 120
+key 5
+sleep 300
+screenshot td_edit_full.bmp
+sleep 300
+nop ENTER commits; back in display mode showing the applied time.
+key ENTER
+sleep 400
+screenshot td_committed.bmp
+sleep 300
+quit
