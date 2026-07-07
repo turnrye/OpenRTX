@@ -102,12 +102,24 @@ public:
      *  `out` (SingleLine inline rendering). */
     void formatBracketed(char *out, size_t sz) const;
 
+    /** Compose a cursor-visible window of the bracketed buffer that fits `maxW`
+     *  pixels at `font`, with a leading/trailing ellipsis (…) where content is
+     *  truncated. For inline SingleLine editors whose field is narrower than
+     *  the full content; the window scrolls to keep the cursor visible. Falls
+     *  back to the full bracketed string when it already fits. */
+    void formatWindow(char *out, size_t sz, uint16_t maxW,
+                      fontSize_t font) const;
+
     /* ---- Object ---- */
     void draw(DrawCtx &d) override;
 
 private:
     void ensureCursorVisibleV(uint16_t cursorRow, uint16_t rows,
                               uint16_t visRows);
+    /* Compose the bracketed buffer restricted to cells [lo, hi) into `out`,
+     * with a leading ellipsis when text precedes `lo` and a trailing one when
+     * text follows `hi`. */
+    void composeWindow(char *out, size_t sz, uint16_t lo, uint16_t hi) const;
     void deleteAt(uint16_t pos); //< remove the character at `pos`
     void resolvePendingDelete(); //< apply a cycled-to ⌫ delete at the cursor
 

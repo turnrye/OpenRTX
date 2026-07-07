@@ -284,6 +284,89 @@ void TextInput::formatBracketed(char *out, size_t sz) const
     *o = '\0';
 }
 
+void TextInput::composeWindow(char *out, size_t sz, uint16_t lo,
+                              uint16_t hi) const
+{
+    if ((out == nullptr) || (sz == 0))
+        return;
+    char *o = out;
+    size_t rem = sz;
+    int n;
+
+    if ((lo > 0) && (rem > sizeof(SYMBOL_ELLIPSIS))) {
+        n = snprintf(o, rem, "%s", SYMBOL_ELLIPSIS);
+        if (n > 0) {
+            o += n;
+            rem -= static_cast<size_t>(n);
+        }
+    }
+    if (buf_ != nullptr) {
+        for (uint16_t i = lo; (i < hi) && (rem > 6); i++) {
+            if (i == cursor_)
+                n = (buf_[i] == kDelete) ?
+                        snprintf(o, rem, "[%s]", kDeleteGlyph) :
+                        snprintf(o, rem, "[%c]", buf_[i]);
+            else
+                n = snprintf(o, rem, "%c", buf_[i]);
+            if (n < 0)
+                break;
+            o += n;
+            rem -= static_cast<size_t>(n);
+        }
+    }
+    if ((hi < len_) && (rem > sizeof(SYMBOL_ELLIPSIS))) {
+        n = snprintf(o, rem, "%s", SYMBOL_ELLIPSIS);
+        if (n > 0) {
+            o += n;
+            rem -= static_cast<size_t>(n);
+        }
+    }
+    *o = '\0';
+}
+
+void TextInput::formatWindow(char *out, size_t sz, uint16_t maxW,
+                             fontSize_t font) const
+{
+    if ((out == nullptr) || (sz == 0))
+        return;
+
+    /* Fast path: the whole bracketed string already fits. */
+    formatBracketed(out, sz);
+    if ((buf_ == nullptr) || (len_ == 0)
+        || (gfx_getTextWidth(font, out) <= maxW))
+        return;
+
+    /* Grow a [lo, hi) cell window outward from the cursor, alternately left and
+     * right, committing an expansion only while the composed window (including
+     * its ellipses) still fits -- so the cursor cell stays visible and the
+     * field scrolls with it. */
+    uint16_t lo = (cursor_ < len_) ? cursor_ : static_cast<uint16_t>(len_ - 1);
+    uint16_t hi = static_cast<uint16_t>(lo + 1);
+
+    char cand[kLineBuf];
+    bool grew = true;
+    while (grew) {
+        grew = false;
+        if (lo > 0) {
+            composeWindow(cand, sizeof(cand), static_cast<uint16_t>(lo - 1),
+                          hi);
+            if (gfx_getTextWidth(font, cand) <= maxW) {
+                lo--;
+                grew = true;
+            }
+        }
+        if (hi < len_) {
+            composeWindow(cand, sizeof(cand), lo,
+                          static_cast<uint16_t>(hi + 1));
+            if (gfx_getTextWidth(font, cand) <= maxW) {
+                hi++;
+                grew = true;
+            }
+        }
+    }
+    composeWindow(out, sz, lo, hi);
+}
+
 /* Exclusive end index of the wrapped line starting at `start` that fits `maxW`
  * pixels: break at the last space (word wrap), or mid-word when a single word
  * is too wide; always advances at least one character. */

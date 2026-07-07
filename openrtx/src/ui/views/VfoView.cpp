@@ -592,11 +592,19 @@ void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
 
 void VfoView::renderDstEdit()
 {
-    /* Compose "@W1A[B]W" with the cursor character in brackets, straight into
+    /* Compose "@W1[A]W" with the cursor character in brackets, straight into
      * the channel-line name slot (no custom cursor rendering needed). The '@'
-     * marks it as an M17 destination address. */
+     * marks it as an M17 destination address and stays pinned while the
+     * callsign body scrolls within the remaining width -- a leading/trailing
+     * ellipsis marks where it is truncated, so the cursor is always visible. */
+    const bool regular = (sizeClass() == SizeClass::Regular);
+    const fontSize_t font = regular ? FONT_SIZE_10PT : FONT_SIZE_8PT;
+    const uint16_t atW = gfx_getTextWidth(font, "@");
+    const uint16_t boxW = chanName_.area().w;
+    const uint16_t bodyW = (boxW > atW) ? static_cast<uint16_t>(boxW - atW) : 0;
+
     char body[36];
-    dst_.formatBracketed(body, sizeof(body));
+    dst_.formatWindow(body, sizeof(body), bodyW, font);
     snprintf(nameCache_, sizeof(nameCache_), "@%s", body);
     idxCache_[0] = '\0';
     chanIdx_.setText(idxCache_);
@@ -621,11 +629,9 @@ void VfoView::beginDstEdit()
     dst_.setMultiTap(MTAP_CALLSIGN);
     dst_.begin();
     dstEditing_ = true;
-    /* A full 9-char destination plus the '@' prefix and the '[]' cursor is
-     * wider than the normal channel-name font can show on one line (it would
-     * wrap into the meter row), so drop one size for the edit. */
-    const bool regular = (sizeClass() == SizeClass::Regular);
-    chanName_.setFont(regular ? FONT_SIZE_8PT : FONT_SIZE_6PT);
+    /* The channel-name font stays at its display size: renderDstEdit() scrolls
+     * a cursor-visible window of the "@W1[A]W" string within the box instead of
+     * shrinking the whole field to make a full-length destination fit. */
     renderDstEdit();
     screen_.markAllDirty();
     announceDstChar();
@@ -657,10 +663,7 @@ void VfoView::endDstEdit(bool commit)
     }
 
     dstEditing_ = false;
-    /* Restore the normal channel-name font and force the channel line to
-     * recompose from live state next sync. */
-    const bool regular = (sizeClass() == SizeClass::Regular);
-    chanName_.setFont(regular ? FONT_SIZE_10PT : FONT_SIZE_8PT);
+    /* Force the channel line to recompose from live state next sync. */
     idxCache_[0] = '\1';
     nameCache_[0] = '\1';
     screen_.markAllDirty();
