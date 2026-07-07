@@ -57,10 +57,10 @@ private:
 
     bool editing_ = false;
     uint8_t pos_ = 0;            //< digits entered so far (0..kDigits)
-    datetime_t edit_ = { 0 };    //< accumulated local time under edit
-    char dateBuf_[12] = { 0 };   //< "dd/mm/yy" with '_' placeholders
-    char timeBuf_[12] = { 0 };   //< "hh:mm:00" with '_' placeholders
-    char dispCache_[24] = { 1 }; //< change-gate for the display-mode strings
+    datetime_t edit_ = {};       //< accumulated local time under edit
+    char dateBuf_[16] = { 0 };   //< "dd/mm/yy" with '_' placeholders
+    char timeBuf_[16] = { 0 };   //< "hh:mm:00" with '_' placeholders
+    char dispCache_[32] = { 1 }; //< change-gate for the display-mode strings
 };
 
 } // namespace ortxui

@@ -78,7 +78,7 @@ void TimeDateView::showDisplay(const state_t &s, bool force)
 {
     const datetime_t t = utcToLocalTime(s.time, s.settings.utc_timezone);
 
-    char combined[24];
+    char combined[32];
     snprintf(combined, sizeof(combined), "%02d/%02d/%02d %02d:%02d:%02d",
              t.date, t.month, t.year, t.hour, t.minute, t.second);
     if (!force && (strncmp(combined, dispCache_, sizeof(dispCache_)) == 0))
