@@ -5,6 +5,7 @@
  */
 
 #include "widgets/TopBar.hpp"
+#include "core/graphics.h"
 
 #include <cstdio>
 
@@ -31,6 +32,16 @@ void TopBar::init(const char *title)
     title_.setText(title);
     title_.setGrow(1);
 
+    /* Keypad-lock indicator: sits between the title and the clock cluster,
+     * hidden until the keypad is locked. Shown on every screen (all views
+     * share this bar), so the lock state is always visible. */
+    lock_.setFont(font);
+    lock_.setAlign(TEXT_ALIGN_RIGHT);
+    lock_.setColor(Sem::Accent);
+    lock_.setText(SYMBOL_LOCK);
+    lock_.setBasis(regular ? 12 : 10);
+    lock_.setFlag(FLAG_HIDDEN, true);
+
     clock_.setFont(font);
     clock_.setAlign(TEXT_ALIGN_RIGHT);
     clock_.setColor(Sem::OnSurface);
@@ -46,6 +57,7 @@ void TopBar::init(const char *title)
     battery_.setArea({ 0, 0, 22, 11 }); /* natural size for cross-centring */
 
     addChild(&title_);
+    addChild(&lock_);
     addChild(&clock_);
     addChild(&pct_);
     addChild(&battery_);
@@ -68,6 +80,13 @@ void TopBar::update(const state_t &s)
         battery_.setCharge(s.charge);
         battery_.invalidate();
         lastCharge_ = s.charge;
+    }
+
+    if (s.keypad_locked != lastLocked_) {
+        lock_.setFlag(FLAG_HIDDEN, !s.keypad_locked);
+        onLayout(); /* re-flow the row now the lock glyph appeared/vanished */
+        invalidate();
+        lastLocked_ = s.keypad_locked;
     }
 }
 

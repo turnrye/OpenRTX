@@ -1,6 +1,8 @@
 nop Macro menu: holding MONI shows the icon-tile grid of quick actions; a number
 nop key acts on the current channel while held; releasing MONI closes it. The
-nop overlay is opaque and shows no S-meter, so it is deterministic on its own.
+nop overlay uses the shared top bar and is otherwise opaque (no S-meter), so it
+nop is deterministic on its own. Locking the keypad (key 9) shows a lock glyph in
+nop the top bar of every screen, including the VFO after the menu closes.
 rssi 0
 sleep 1000
 keyhold MONI
@@ -12,6 +14,11 @@ key 6
 sleep 400
 screenshot macro_power.bmp
 sleep 300
+nop Key 9 locks the keypad; on release the VFO shows the lock glyph in its top bar.
+key 9
+sleep 400
 keyrelease
 sleep 400
+screenshot macro_vfo_locked.bmp
+sleep 300
 quit

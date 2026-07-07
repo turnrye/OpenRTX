@@ -60,12 +60,10 @@ void MacroView::build()
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
     root_.setAxis(Axis::Column);
 
-    header_.setFont(regular ? FONT_SIZE_8PT : FONT_SIZE_6PT);
-    header_.setAlign(TEXT_ALIGN_CENTER);
-    header_.setColor(Sem::Accent);
-    header_.setText(hdrBuf_);
-    header_.setBasis(regular ? 14 : 10);
-    root_.addChild(&header_);
+    /* Shared top bar (clock/battery/lock), same as every other screen. */
+    topBar_.init("Macro");
+    setTopBar(&topBar_);
+    root_.addChild(&topBar_);
 
     for (uint8_t r = 0; r < 3; r++) {
         rows_[r].setAxis(Axis::Row);
@@ -195,13 +193,6 @@ void MacroView::syncFromState(const state_t &s)
         strncpy(sqlBuf_, sq, sizeof(sqlBuf_) - 1);
         sqlBuf_[sizeof(sqlBuf_) - 1] = '\0';
         sqlLbl_.invalidate();
-    }
-
-    const char *hdr = s.keypad_locked ? "MACRO " SYMBOL_LOCK : "MACRO";
-    if (strncmp(hdr, hdrBuf_, sizeof(hdrBuf_)) != 0) {
-        strncpy(hdrBuf_, hdr, sizeof(hdrBuf_) - 1);
-        hdrBuf_[sizeof(hdrBuf_) - 1] = '\0';
-        header_.invalidate();
     }
 }
 

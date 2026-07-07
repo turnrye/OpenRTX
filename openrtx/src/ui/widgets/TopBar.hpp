@@ -42,6 +42,7 @@ public:
 
 private:
     Label title_;
+    Label lock_; //< keypad-lock glyph, shown on every screen while locked
     Label clock_;
     Label pct_;
     BatteryIcon battery_;
@@ -50,6 +51,7 @@ private:
     char pctBuf_[8] = { 0 };
     int16_t lastMinute_ = -1;
     uint8_t lastCharge_ = 0xFFu;
+    bool lastLocked_ = false;
 };
 
 } // namespace ortxui

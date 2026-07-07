@@ -10,6 +10,7 @@
 #include "core/View.hpp"
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
+#include "widgets/TopBar.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -48,7 +49,7 @@ private:
 
     Screen screen_;
     Flex root_;
-    Label header_;
+    TopBar topBar_;
     Flex rows_[3];
     Flex tiles_[kTiles];
     Label keyLbl_[kTiles]; //< "N" + icon (static)
@@ -58,7 +59,6 @@ private:
 
     char valBuf_[kTiles][14] = { { 0 } };
     char sqlBuf_[24] = { 0 };
-    char hdrBuf_[16] = { 0 };
 };
 
 } // namespace ortxui
