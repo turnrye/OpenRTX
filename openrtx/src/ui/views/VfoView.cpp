@@ -265,10 +265,18 @@ void VfoView::syncFromState(const state_t &s)
     if (!inputActive_) {
         const channel_t &ch = s.channel;
 
-        if (ch.rx_frequency != lastFreq_) {
-            hero_.setFreq((uint32_t)ch.rx_frequency);
+        /* While actually transmitting a channel with an RX/TX split (repeater
+         * offset), show the TX frequency the radio is keyed up on; otherwise
+         * (idle, or simplex) show the RX frequency. Gating on the *shown* value
+         * repaints on both frequency changes and TX start/stop. */
+        const bool txing = (rtx_getStatus()->opStatus == TX);
+        const freq_t shown = (txing && (ch.tx_frequency != ch.rx_frequency)) ?
+                                 ch.tx_frequency :
+                                 ch.rx_frequency;
+        if ((uint32_t)shown != lastFreq_) {
+            hero_.setFreq((uint32_t)shown);
             hero_.invalidate();
-            lastFreq_ = (uint32_t)ch.rx_frequency;
+            lastFreq_ = (uint32_t)shown;
         }
 
         syncMode(ch);
