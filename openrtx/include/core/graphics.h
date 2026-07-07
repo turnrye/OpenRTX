@@ -162,6 +162,20 @@ void gfx_fillScreen(color_t color);
 void gfx_setPixel(point_t pos, color_t color);
 
 /**
+ * Restrict all subsequent drawing to a rectangle (screen space). Pixels outside
+ * it are suppressed by gfx_setPixel, so text, fills, lines and circles are all
+ * clipped. Used by the UI toolkit to clip each widget to its box.
+ * @param x,y: top-left corner.
+ * @param width,height: rectangle size (a zero dimension clips out everything).
+ */
+void gfx_setClipRect(int16_t x, int16_t y, uint16_t width, uint16_t height);
+
+/**
+ * Remove the clip rectangle (drawing is bounded only by the screen again).
+ */
+void gfx_resetClipRect(void);
+
+/**
  * Draw a line from start to end coordinates, ends included.
  * @param start: line start point, in pixel coordinates.
  * @param end: line end point, in pixel coordinates.

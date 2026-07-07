@@ -16,6 +16,27 @@ namespace ortxui
 
 DrawCtx::DrawCtx() : clip_{ 0, 0, CONFIG_SCREEN_WIDTH, CONFIG_SCREEN_HEIGHT }
 {
+    gfx_resetClipRect();
+}
+
+void DrawCtx::pushClip(const Rect &r)
+{
+    if (clipDepth_ < kClipStackMax)
+        clipStack_[clipDepth_] = clip_;
+    if (clipDepth_ < 0xFFu)
+        clipDepth_++;
+    clip_ = intersect(clip_, r);
+    gfx_setClipRect(clip_.x, clip_.y, clip_.w, clip_.h);
+}
+
+void DrawCtx::popClip()
+{
+    if (clipDepth_ > 0)
+        clipDepth_--;
+    clip_ = (clipDepth_ < kClipStackMax) ?
+                clipStack_[clipDepth_] :
+                Rect{ 0, 0, CONFIG_SCREEN_WIDTH, CONFIG_SCREEN_HEIGHT };
+    gfx_setClipRect(clip_.x, clip_.y, clip_.w, clip_.h);
 }
 
 void DrawCtx::clearScreen(Sem bg)

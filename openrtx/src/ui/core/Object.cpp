@@ -120,9 +120,19 @@ void Object::paintTree(DrawCtx &d)
     if (hasFlag(FLAG_HIDDEN))
         return;
 
+    /* Clip this object (and its subtree) to its box, so content never bleeds
+     * past its bounds. The root Screen has no area set, so it inherits the
+     * full-screen clip. */
+    const bool clip = !area_.empty();
+    if (clip)
+        d.pushClip(area_);
+
     draw(d);
     for (Object *c = firstChild_; c != nullptr; c = c->nextSibling_)
         c->paintTree(d);
+
+    if (clip)
+        d.popClip();
 }
 
 /* ---- Screen ---- */

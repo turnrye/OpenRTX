@@ -38,6 +38,14 @@ public:
         return clip_;
     }
 
+    /** Narrow the clip to the intersection of the current clip and `r`, and
+     *  push the previous clip so popClip() restores it. Drawing outside the
+     *  active clip is suppressed by the backend. */
+    void pushClip(const Rect &r);
+
+    /** Restore the clip saved by the matching pushClip(). */
+    void popClip();
+
     /** Fill the whole screen with a role colour. */
     void clearScreen(Sem bg);
 
@@ -81,7 +89,10 @@ public:
                              textAlign_t align, Sem color, const char *str);
 
 private:
+    static constexpr uint8_t kClipStackMax = 16;
     Rect clip_;
+    Rect clipStack_[kClipStackMax];
+    uint8_t clipDepth_ = 0;
 };
 
 } // namespace ortxui

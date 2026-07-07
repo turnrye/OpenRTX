@@ -217,11 +217,39 @@ void gfx_fillScreen(color_t color)
     }
 }
 
+/* Active clip rectangle (screen space, inclusive corners). Drawing outside it is
+ * suppressed in gfx_setPixel, which every primitive routes through. Defaults to
+ * the whole screen. */
+static int16_t clip_x0 = 0;
+static int16_t clip_y0 = 0;
+static int16_t clip_x1 = CONFIG_SCREEN_WIDTH - 1;
+static int16_t clip_y1 = CONFIG_SCREEN_HEIGHT - 1;
+
+void gfx_setClipRect(int16_t x, int16_t y, uint16_t width, uint16_t height)
+{
+    clip_x0 = x;
+    clip_y0 = y;
+    clip_x1 = (int16_t)(x + (int16_t)width - 1);
+    clip_y1 = (int16_t)(y + (int16_t)height - 1);
+}
+
+void gfx_resetClipRect(void)
+{
+    clip_x0 = 0;
+    clip_y0 = 0;
+    clip_x1 = CONFIG_SCREEN_WIDTH - 1;
+    clip_y1 = CONFIG_SCREEN_HEIGHT - 1;
+}
+
 inline void gfx_setPixel(point_t pos, color_t color)
 {
     if (pos.x >= CONFIG_SCREEN_WIDTH || pos.y >= CONFIG_SCREEN_HEIGHT
         || pos.x < 0 || pos.y < 0)
         return; // off the screen
+
+    if (pos.x < clip_x0 || pos.x > clip_x1 || pos.y < clip_y0
+        || pos.y > clip_y1)
+        return; // outside the active clip rectangle
 
 #ifdef CONFIG_PIX_FMT_RGB565
     // Blend old pixel value and new one
