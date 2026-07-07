@@ -28,4 +28,7 @@
 /** FontAwesome backspace (U+F55A), shown as the character-wheel delete slot. */
 #define SYMBOL_BACKSPACE "\xEF\x95\x9A"
 
+/** Ellipsis (U+2026), appended to text truncated to fit its box. */
+#define SYMBOL_ELLIPSIS "\xE2\x80\xA6"
+
 #endif /* ORTX_UI_SYMBOLS_HPP */

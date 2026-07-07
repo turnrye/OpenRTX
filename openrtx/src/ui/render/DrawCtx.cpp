@@ -6,6 +6,7 @@
 
 #include "render/DrawCtx.hpp"
 #include "style/Theme.hpp"
+#include "style/Symbols.hpp"
 #include "hwconfig.h"
 
 #include <cmath>
@@ -154,10 +155,9 @@ void DrawCtx::textInBoxEllipsized(const Rect &box, fontSize_t size,
         return;
     }
 
-    /* Too wide: drop trailing characters until the prefix plus an ellipsis
-     * fits. The ellipsis is ASCII "..." because U+2026 is not in the baked
-     * font. */
-    static const char kEllipsis[] = "...";
+    /* Too wide: drop trailing characters until the prefix plus the ellipsis
+     * glyph (U+2026, from the fallback font) fits. */
+    static const char kEllipsis[] = SYMBOL_ELLIPSIS;
     const uint16_t ellW = gfx_getTextWidth(size, kEllipsis);
 
     char buf[64];
