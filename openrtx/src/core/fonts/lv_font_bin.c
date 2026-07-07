@@ -177,15 +177,21 @@ bool lvFont_getGlyph(const lvFont_t *f, uint32_t code, lvGlyph_t *g)
         return false;
     }
 
-    /* loca[gid] and loca[gid+1] give this glyph's byte span within glyf. */
+    /* loca[gid] and loca[gid+1] give this glyph's byte span within glyf. The
+     * loca table stores exactly glyph_cnt start-offsets with NO trailing end
+     * sentinel, so the last glyph's end is the glyf table length, not
+     * loca[glyph_cnt] (which is out of bounds — either glyf-header bytes or
+     * 4-byte-alignment padding, the latter reading 0 and dropping the glyph). */
     const uint8_t *loca = f->data + f->loca_off + 12;
+    const uint32_t glyf_len = rd_u32(f->data + f->glyf_off);
+    const bool last = (gid + 1u >= f->glyph_cnt);
     uint32_t start, next;
     if (f->loc_fmt) {
         start = rd_u32(loca + gid * 4);
-        next = rd_u32(loca + (gid + 1) * 4);
+        next = last ? glyf_len : rd_u32(loca + (gid + 1) * 4);
     } else {
         start = rd_u16(loca + gid * 2);
-        next = rd_u16(loca + (gid + 1) * 2);
+        next = last ? glyf_len : rd_u16(loca + (gid + 1) * 2);
     }
     if (next <= start)
         return false; /* empty glyph (e.g. space handled via advance below) */

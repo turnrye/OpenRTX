@@ -327,3 +327,22 @@ TEST_CASE("gfx_printBufferClipped TEXT_ALIGN_RIGHT resets per line",
     /* Max line width is alignment-independent. */
     REQUIRE(sz_right.x == sz_left.x);
 }
+
+/*
+ * Regression: the decoder must render the LAST glyph of a font. lv_font_conv's
+ * loca table stores exactly glyph_cnt start-offsets with no trailing end
+ * sentinel, so the last glyph's end is the glyf table length -- reading
+ * loca[glyph_cnt] instead hits table padding (often 0) and silently drops the
+ * glyph. The icon font's last glyph is the backspace (U+F55A) and the text
+ * font's is the FontAwesome battery (U+F244); a dropped glyph measures 0 wide.
+ */
+TEST_CASE("last glyph of each font decodes (non-zero width)",
+          "[gfx][text][font]")
+{
+    /* U+F55A backspace: last glyph of the custom icon/fallback font. */
+    REQUIRE(gfx_getTextWidth(FONT_SIZE_8PT, "\xEF\x95\x9A") > 0);
+    REQUIRE(gfx_getTextWidth(FONT_SIZE_16PT, "\xEF\x95\x9A") > 0);
+    /* U+F244 battery: last glyph of the Ubuntu text font's FontAwesome subset. */
+    REQUIRE(gfx_getTextWidth(FONT_SIZE_8PT, "\xEF\x89\x84") > 0);
+    REQUIRE(gfx_getTextWidth(FONT_SIZE_16PT, "\xEF\x89\x84") > 0);
+}
