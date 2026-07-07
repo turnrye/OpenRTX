@@ -588,11 +588,12 @@ void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
 
 void VfoView::renderDstEdit()
 {
-    /* Compose "#W1A[B]W" with the cursor character in brackets, straight into
-     * the channel-line name slot (no custom cursor rendering needed). */
+    /* Compose "@W1A[B]W" with the cursor character in brackets, straight into
+     * the channel-line name slot (no custom cursor rendering needed). The '@'
+     * marks it as an M17 destination address. */
     char body[36];
     dst_.formatBracketed(body, sizeof(body));
-    snprintf(nameCache_, sizeof(nameCache_), "#%s", body);
+    snprintf(nameCache_, sizeof(nameCache_), "@%s", body);
     idxCache_[0] = '\0';
     chanIdx_.setText(idxCache_);
     chanName_.setText(nameCache_);
@@ -616,6 +617,11 @@ void VfoView::beginDstEdit()
     dst_.setMultiTap(MTAP_CALLSIGN);
     dst_.begin();
     dstEditing_ = true;
+    /* A full 9-char destination plus the '@' prefix and the '[]' cursor is
+     * wider than the normal channel-name font can show on one line (it would
+     * wrap into the meter row), so drop one size for the edit. */
+    const bool regular = (sizeClass() == SizeClass::Regular);
+    chanName_.setFont(regular ? FONT_SIZE_8PT : FONT_SIZE_6PT);
     renderDstEdit();
     screen_.markAllDirty();
     announceDstChar();
@@ -647,7 +653,10 @@ void VfoView::endDstEdit(bool commit)
     }
 
     dstEditing_ = false;
-    /* Force the channel line to recompose from live state next sync. */
+    /* Restore the normal channel-name font and force the channel line to
+     * recompose from live state next sync. */
+    const bool regular = (sizeClass() == SizeClass::Regular);
+    chanName_.setFont(regular ? FONT_SIZE_10PT : FONT_SIZE_8PT);
     idxCache_[0] = '\1';
     nameCache_[0] = '\1';
     screen_.markAllDirty();
