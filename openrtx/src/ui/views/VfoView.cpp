@@ -118,8 +118,9 @@ void VfoView::build()
     topBar_.init("");
     setTopBar(&topBar_);
 
-    /* Frequency hero. */
-    hero_.setBasis(regular ? 32 : 26);
+    /* Frequency hero (a little taller than the text needs so the mode stack
+     * has vertical breathing room). */
+    hero_.setBasis(regular ? 40 : 32);
 
     /* Channel line: index (muted) + name (blue). */
     chanRow_.setAxis(Axis::Row);
@@ -196,20 +197,7 @@ void VfoView::syncMode(const channel_t &ch)
         m2 = toneBuf_;
     }
 
-    /* Bottom line: the actual TX power (e.g. "5W" / "2.5W"), clearer than a
-     * bare high/low letter. */
-    const uint32_t mw = ch.power;
-    if ((mw >= 1000u) && ((mw % 1000u) == 0u))
-        snprintf(pwrBuf_, sizeof(pwrBuf_), "%luW", (unsigned long)(mw / 1000u));
-    else if (mw >= 1000u)
-        snprintf(pwrBuf_, sizeof(pwrBuf_), "%lu.%luW",
-                 (unsigned long)(mw / 1000u),
-                 (unsigned long)((mw % 1000u) / 100u));
-    else
-        snprintf(pwrBuf_, sizeof(pwrBuf_), "%lumW", (unsigned long)mw);
-    const char *m3 = pwrBuf_;
-
-    hero_.setMode(m1, m2, m3);
+    hero_.setMode(m1, m2);
     hero_.invalidate();
 
     lastMode_ = ch.mode;
@@ -565,7 +553,7 @@ void VfoView::refreshInput()
 {
     const uint32_t val = inputTxSet_ ? newTx_ : newRx_;
     hero_.setFreq(val);
-    hero_.setMode(inputTxSet_ ? "TX" : "RX", "", "");
+    hero_.setMode(inputTxSet_ ? "TX" : "RX", "");
     hero_.invalidate();
 
     chanIdx_.setText("");

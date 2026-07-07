@@ -53,18 +53,27 @@ void FreqHero::draw(DrawCtx &d)
         d.text(subAt, subFont, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
     }
 
-    /* Right-aligned mode stack: mode/bw (top), tone (mid), power (bottom). */
+    /* Right-aligned mode stack: mode/bandwidth over the PL tone, vertically
+     * centred with padding so it doesn't crowd the top edge. Power is omitted
+     * (it is shown on the meter while transmitting). */
     const int16_t mx = modeLeft;
-    const int16_t lh = static_cast<int16_t>(area_.h / 3);
-    const Rect r1 = { mx, area_.y, static_cast<uint16_t>(modeW),
-                      static_cast<uint16_t>(lh) };
-    const Rect r2 = { mx, static_cast<int16_t>(area_.y + lh),
-                      static_cast<uint16_t>(modeW), static_cast<uint16_t>(lh) };
-    const Rect r3 = { mx, static_cast<int16_t>(area_.y + 2 * lh),
-                      static_cast<uint16_t>(modeW), static_cast<uint16_t>(lh) };
-    d.textInBox(r1, FONT_SIZE_8PT, TEXT_ALIGN_RIGHT, Sem::OnSurface, m1_);
-    d.textInBox(r2, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, Sem::OnSurfaceMuted, m2_);
-    d.textInBox(r3, FONT_SIZE_8PT, TEXT_ALIGN_RIGHT, Sem::OnSurface, m3_);
+    const uint16_t mw = static_cast<uint16_t>(modeW);
+    const fontSize_t modeFont = compact ? FONT_SIZE_6PT : FONT_SIZE_8PT;
+    const int16_t h1 = compact ? 12 : 16; //< mode line height
+    const int16_t h2 = compact ? 11 : 13; //< tone line height
+    const int16_t gap = 2;
+    const bool hasTone = (m2_[0] != '\0');
+    const int16_t blockH = static_cast<int16_t>(hasTone ? h1 + gap + h2 : h1);
+    const int16_t top = static_cast<int16_t>(area_.y + (area_.h - blockH) / 2);
+
+    const Rect r1 = { mx, top, mw, static_cast<uint16_t>(h1) };
+    d.textInBox(r1, modeFont, TEXT_ALIGN_RIGHT, Sem::OnSurface, m1_);
+    if (hasTone) {
+        const Rect r2 = { mx, static_cast<int16_t>(top + h1 + gap), mw,
+                          static_cast<uint16_t>(h2) };
+        d.textInBox(r2, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, Sem::OnSurfaceMuted,
+                    m2_);
+    }
 }
 
 } // namespace ortxui
