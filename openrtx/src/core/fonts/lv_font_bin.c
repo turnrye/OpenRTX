@@ -169,8 +169,13 @@ bool lvFont_getGlyph(const lvFont_t *f, uint32_t code, lvGlyph_t *g)
         return false;
 
     uint32_t gid = cmap_lookup(f, code);
-    if (gid == 0u || gid >= f->glyph_cnt)
+    if (gid == 0u || gid >= f->glyph_cnt) {
+        /* Not in this font: walk the fallback chain (LVGL-style), so an app or
+         * icon font layered on the base text font answers transparently. */
+        if (f->fallback != NULL)
+            return lvFont_getGlyph(f->fallback, code, g);
         return false;
+    }
 
     /* loca[gid] and loca[gid+1] give this glyph's byte span within glyf. */
     const uint8_t *loca = f->data + f->loca_off + 12;
@@ -206,6 +211,7 @@ bool lvFont_getGlyph(const lvFont_t *f, uint32_t code, lvGlyph_t *g)
     g->box_h = (uint16_t)rd_bits(gd, bit, f->wh_bits);
     bit += f->wh_bits;
 
+    g->src = f; //< decode with this font's params, even via a fallback
     g->bmp = gd;
     g->bmp_bit = bit;
     g->data_len = next - start;
@@ -227,6 +233,9 @@ static uint8_t opa_scale(uint8_t v, uint8_t bpp)
 uint8_t lvGlyph_pixelRaw(const lvFont_t *f, const lvGlyph_t *g, uint16_t x,
                          uint16_t y)
 {
+    /* Decode with the font the glyph came from (a fallback may differ from f). */
+    if (g->src != NULL)
+        f = g->src;
     if (x >= g->box_w || y >= g->box_h)
         return 0;
     uint32_t idx = (uint32_t)y * g->box_w + x;
@@ -304,6 +313,9 @@ static uint8_t rle_next(rle_t *r)
 
 bool lvFont_decodeGlyph(const lvFont_t *f, const lvGlyph_t *g, uint8_t *out)
 {
+    /* Decode with the font the glyph came from (a fallback may differ from f). */
+    if (g->src != NULL)
+        f = g->src;
     uint16_t w = g->box_w, h = g->box_h;
     if (w == 0 || h == 0)
         return false;

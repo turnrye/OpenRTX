@@ -25,6 +25,18 @@ _font_\name\()_start:
 .set _font_\name\()_end, .
 .endm
 
+/* Custom icon font: per-size blobs holding app-specific glyphs (today just the
+ * M17 logo, U+E900), layered onto the base text font as a fallback so they draw
+ * without touching the ubuntu blobs. Kept separate from the FontAwesome subset
+ * that is merged into the text font. Same 1bpp/4bpp split as above. */
+.macro ICON_BLOB name, path
+.global _icons_\name\()_start
+.global _icons_\name\()_end
+_icons_\name\()_start:
+    .incbin "\path"
+.set _icons_\name\()_end, .
+.endm
+
 #ifdef CONFIG_FONT_AA
 FONT_BLOB 5,  "../openrtx/fonts/ubuntu_5_4.bin"
 FONT_BLOB 6,  "../openrtx/fonts/ubuntu_6_4.bin"
@@ -33,6 +45,14 @@ FONT_BLOB 9,  "../openrtx/fonts/ubuntu_9_4.bin"
 FONT_BLOB 10, "../openrtx/fonts/ubuntu_10_4.bin"
 FONT_BLOB 12, "../openrtx/fonts/ubuntu_12_4.bin"
 FONT_BLOB 16, "../openrtx/fonts/ubuntu_16_4.bin"
+
+ICON_BLOB 5,  "../openrtx/fonts/icons_5_4.bin"
+ICON_BLOB 6,  "../openrtx/fonts/icons_6_4.bin"
+ICON_BLOB 8,  "../openrtx/fonts/icons_8_4.bin"
+ICON_BLOB 9,  "../openrtx/fonts/icons_9_4.bin"
+ICON_BLOB 10, "../openrtx/fonts/icons_10_4.bin"
+ICON_BLOB 12, "../openrtx/fonts/icons_12_4.bin"
+ICON_BLOB 16, "../openrtx/fonts/icons_16_4.bin"
 #else
 FONT_BLOB 5,  "../openrtx/fonts/ubuntu_5_1.bin"
 FONT_BLOB 6,  "../openrtx/fonts/ubuntu_6_1.bin"
@@ -41,4 +61,12 @@ FONT_BLOB 9,  "../openrtx/fonts/ubuntu_9_1.bin"
 FONT_BLOB 10, "../openrtx/fonts/ubuntu_10_1.bin"
 FONT_BLOB 12, "../openrtx/fonts/ubuntu_12_1.bin"
 FONT_BLOB 16, "../openrtx/fonts/ubuntu_16_1.bin"
+
+ICON_BLOB 5,  "../openrtx/fonts/icons_5_1.bin"
+ICON_BLOB 6,  "../openrtx/fonts/icons_6_1.bin"
+ICON_BLOB 8,  "../openrtx/fonts/icons_8_1.bin"
+ICON_BLOB 9,  "../openrtx/fonts/icons_9_1.bin"
+ICON_BLOB 10, "../openrtx/fonts/icons_10_1.bin"
+ICON_BLOB 12, "../openrtx/fonts/icons_12_1.bin"
+ICON_BLOB 16, "../openrtx/fonts/icons_16_1.bin"
 #endif

@@ -12,11 +12,22 @@ SPDX-License-Identifier = "GPL-2.0-or-later"
 SPDX-FileCopyrightText = "Terraneo Federico"
 precedence = "override"
 
-# The UI font blobs embed Ubuntu glyphs (text) and FontAwesome glyphs (icons).
+# The text font blobs embed Ubuntu glyphs (text) and FontAwesome glyphs (icons).
 [[annotations]]
-path = "openrtx/fonts/*.bin"
+path = "openrtx/fonts/ubuntu_*.bin"
 SPDX-License-Identifier = "Ubuntu-font-1.0 AND OFL-1.1"
 SPDX-FileCopyrightText = "2010-2011 Canonical Ltd. AND Fonticons, Inc."
+precedence = "override"
+
+# The custom icon font blobs and their source SVG are the M17 project logo,
+# used under CC BY 4.0.
+[[annotations]]
+path = [
+    "openrtx/fonts/icons_*.bin",
+    "openrtx/fonts/m17_logo.svg",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-FileCopyrightText = "M17 Project"
 precedence = "override"
 
 # This section is for OpenRTX sources that cannot have comments in them, like `json` files

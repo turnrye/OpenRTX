@@ -28,6 +28,31 @@ command -v npx >/dev/null || { echo "npx (Node.js) is required"; exit 1; }
 [ -f "$TTF" ] || { echo "Ubuntu TTF not found: $TTF"; exit 1; }
 [ -f "$FA" ]  || { echo "FontAwesome woff not found: $FA"; exit 1; }
 
+# The "custom icon font" holds app-specific glyphs (kept separate from the
+# FontAwesome subset merged into the text font) as a fallback layer. Today its
+# only glyph is the M17 wordmark logo (U+E900), drawn in place of the "M17" mode
+# label. Its source is a 3-colour *stroked* SVG, so flatten the strokes to fills
+# (Inkscape), drop the drop-shadow layer, and wrap the result in a one-glyph TTF
+# that lv_font_conv can bake. Needs inkscape + python3-fonttools on top of npx;
+# if the SVG is absent the text fonts are still baked, just without the icons.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+M17_SVG="$OUT/m17_logo.svg"
+M17_CP=0xE900
+if [ -f "$M17_SVG" ]; then
+    command -v inkscape >/dev/null || { echo "inkscape is required for the custom icon font"; exit 1; }
+    python3 -c "import fontTools" 2>/dev/null || { echo "python3 fonttools is required for the custom icon font"; exit 1; }
+    ICON_OUTLINE="$(mktemp --suffix=.svg)"
+    ICON_TTF="$(mktemp --suffix=.ttf)"
+    trap 'rm -f "$ICON_OUTLINE" "$ICON_TTF"' EXIT
+    inkscape "$M17_SVG" \
+        --actions="select-all;object-stroke-to-path;export-plain-svg;export-filename:$ICON_OUTLINE;export-do" \
+        >/dev/null 2>&1
+    python3 "$SCRIPT_DIR/svg_to_glyph_font.py" "$ICON_OUTLINE" "$ICON_TTF" \
+        --codepoint "$M17_CP" --exclude '#999999'
+else
+    echo "WARNING: $M17_SVG not found — skipping the custom icon font"
+fi
+
 # fontSize_t slot -> lv_font_conv pixel size (ppem). Calibrated so each font's
 # digit advance and cap height match the historic Adafruit GFXfont metrics, so
 # existing layouts do not reflow. NOTE: ppem != the nominal "pt" name.
@@ -51,5 +76,17 @@ for pt in 5 6 8 9 10 12 16; do
         --size "$p" --bpp 4 --format bin --no-kerning \
         -o "$OUT/ubuntu_${pt}_4.bin"
     echo "ubuntu_${pt}  (ppem $p): $(stat -c%s "$OUT/ubuntu_${pt}_1.bin")B 1bpp, $(stat -c%s "$OUT/ubuntu_${pt}_4.bin")B 4bpp"
+
+    # The custom icon font lives in its OWN per-size blobs, embedded as a
+    # fallback so the base ubuntu blobs stay byte-for-byte unchanged (see
+    # docs/fonts.md). Same 1bpp/4bpp split as the text fonts.
+    if [ -n "${ICON_TTF:-}" ]; then
+        npx --yes lv_font_conv@latest --font "$ICON_TTF" -r "$M17_CP" \
+            --size "$p" --bpp 1 --format bin --no-compress --no-kerning \
+            -o "$OUT/icons_${pt}_1.bin"
+        npx --yes lv_font_conv@latest --font "$ICON_TTF" -r "$M17_CP" \
+            --size "$p" --bpp 4 --format bin --no-kerning \
+            -o "$OUT/icons_${pt}_4.bin"
+    fi
 done
-echo "Regenerated $OUT/ubuntu_*.bin — commit the changes."
+echo "Regenerated $OUT/ubuntu_*.bin (+ icons_*.bin) — commit the changes."

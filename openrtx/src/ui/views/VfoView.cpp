@@ -5,6 +5,7 @@
  */
 
 #include "views/VfoView.hpp"
+#include "style/Symbols.hpp"
 #include "core/Event.hpp"
 #include "core/utils.h"
 #include "core/cps.h"
@@ -180,7 +181,7 @@ void VfoView::syncMode(const channel_t &ch)
             m1 = "DMR";
             break;
         case OPMODE_M17:
-            m1 = "M17";
+            m1 = SYMBOL_M17; /* the M17 wordmark logo glyph */
             break;
         default:
             break;

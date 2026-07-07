@@ -35,9 +35,11 @@
  * via .incbin (see openrtx/src/core/fontData.S), one per fontSize_t. They are
  * decoded lazily on first use by the in-tree reader in fonts/lv_font_bin.c.
  */
-#define DECL_FONT_BLOB(pt)                     \
-    extern const uint8_t _font_##pt##_start[]; \
-    extern const uint8_t _font_##pt##_end[]
+#define DECL_FONT_BLOB(pt)                      \
+    extern const uint8_t _font_##pt##_start[];  \
+    extern const uint8_t _font_##pt##_end[];    \
+    extern const uint8_t _icons_##pt##_start[]; \
+    extern const uint8_t _icons_##pt##_end[]
 DECL_FONT_BLOB(5);
 DECL_FONT_BLOB(6);
 DECL_FONT_BLOB(8);
@@ -62,7 +64,22 @@ static const fontBlob_t fontBlobs[FONT_SIZE_NUM] = {
     { _font_16_start, _font_16_end }, // FONT_SIZE_16PT
 };
 
+/* Custom icon font: per-size fallback blobs (parallel to fontBlobs) holding
+ * app-specific glyphs like the M17 logo (U+E900) — kept separate from the
+ * FontAwesome subset merged into the text font. Layered onto each text font so
+ * those code points resolve through the fallback chain (see lv_font_bin). */
+static const fontBlob_t iconBlobs[FONT_SIZE_NUM] = {
+    { _icons_5_start, _icons_5_end },   // FONT_SIZE_5PT
+    { _icons_6_start, _icons_6_end },   // FONT_SIZE_6PT
+    { _icons_8_start, _icons_8_end },   // FONT_SIZE_8PT
+    { _icons_9_start, _icons_9_end },   // FONT_SIZE_9PT
+    { _icons_10_start, _icons_10_end }, // FONT_SIZE_10PT
+    { _icons_12_start, _icons_12_end }, // FONT_SIZE_12PT
+    { _icons_16_start, _icons_16_end }, // FONT_SIZE_16PT
+};
+
 static lvFont_t g_fonts[FONT_SIZE_NUM];
+static lvFont_t g_icon_fonts[FONT_SIZE_NUM];
 static bool g_font_ready[FONT_SIZE_NUM];
 
 /** Return the decoded font for a size, initialising it from the embedded blob
@@ -74,6 +91,13 @@ static const lvFont_t *get_font(fontSize_t size)
     if (!g_font_ready[size]) {
         const fontBlob_t *b = &fontBlobs[size];
         lvFont_init(&g_fonts[size], b->start, (uint32_t)(b->end - b->start));
+        /* Layer the same-size custom icon font on as a fallback so app glyphs
+         * (e.g. the M17 logo) resolve without touching the text blobs. */
+        const fontBlob_t *ib = &iconBlobs[size];
+        lvFont_init(&g_icon_fonts[size], ib->start,
+                    (uint32_t)(ib->end - ib->start));
+        if (g_icon_fonts[size].valid)
+            g_fonts[size].fallback = &g_icon_fonts[size];
         g_font_ready[size] = true;
     }
     return &g_fonts[size];

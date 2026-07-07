@@ -70,6 +70,32 @@ To add an icon: append its FontAwesome codepoint to `ICONS` in
 `scripts/gen_fonts.sh`, add a matching `SYMBOL_*` macro in `graphics.h` (the
 UTF-8 encoding of the codepoint), regenerate, and commit.
 
+## Custom icon font (fallback layer)
+
+App-specific marks that are **not** FontAwesome — currently just the M17
+wordmark logo (`SYMBOL_M17`, U+E900) — live in a separate *custom icon font*
+rather than being merged into the text blobs. Each text font is given the
+same-size custom-icon font as a `fallback` (mirroring LVGL's
+`lv_font_t.fallback`), so `lvFont_getGlyph` walks the chain and those code
+points render like any other glyph — a single-colour, theme-tinted silhouette
+that also works on 1bpp targets. Keeping it separate means the `ubuntu_*.bin`
+blobs stay byte-for-byte stable when the icon set changes, and vice-versa. The
+per-size blobs are `openrtx/fonts/icons_*.bin`, embedded alongside the text
+fonts in `fontData.S` and wired as fallbacks in `graphics.c` (`get_font`).
+
+The M17 glyph is a UI-layer name (`SYMBOL_M17` in `src/ui/style/Symbols.hpp`,
+not `graphics.h`). Its source is a 3-colour *stroked* SVG
+(`openrtx/fonts/m17_logo.svg`, M17 project logo, CC BY 4.0). `gen_fonts.sh`
+flattens the strokes to fills (Inkscape `object-stroke-to-path`), drops the grey
+drop-shadow layer, and wraps the foreground in a one-glyph TTF via
+`scripts/svg_to_glyph_font.py` (fonttools) before baking it at every size. So
+regenerating the icon font needs `inkscape` and `python3-fonttools` on top of
+`npx`.
+
+To add a custom icon: give it a Private-Use code point, add its SVG to the
+`gen_fonts.sh` icon-font step (extend `svg_to_glyph_font.py` for multiple
+glyphs), add a `SYMBOL_*` macro in `Symbols.hpp`, regenerate, and commit.
+
 ## UTF-8 and non-Latin (roadmap)
 
 The text path decodes UTF-8, and the decoder reads the font `cmap` generically

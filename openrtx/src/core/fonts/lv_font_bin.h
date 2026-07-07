@@ -31,9 +31,14 @@ extern "C" {
 
 /** A parsed font blob. Populated by lvFont_init(); holds only offsets into the
  *  embedded data, no glyph is decoded until lvFont_getGlyph(). */
-typedef struct {
-    const uint8_t *data;  //< the whole .bin blob (borrowed, not owned)
-    uint32_t size;        //< blob length in bytes
+typedef struct lvFont {
+    const uint8_t *data; //< the whole .bin blob (borrowed, not owned)
+    uint32_t size;       //< blob length in bytes
+
+    /* Optional next font to consult for code points this one lacks, mirroring
+     * LVGL's lv_font_t.fallback chain (used to layer an app/icon font onto the
+     * base text font). Borrowed; NULL for no fallback. */
+    const struct lvFont *fallback;
 
     uint16_t ppem;        //< nominal pixel size
     int16_t ascent;       //< pixels above the baseline
@@ -58,6 +63,10 @@ typedef struct {
 
 /** A located glyph: geometry plus a pointer to the start of its pixel bits. */
 typedef struct {
+    /* The font the glyph was actually resolved from — the queried font or one
+     * of its fallbacks. Pixel decoding must use this font's parameters (bpp,
+     * compression, ...), so lvFont_decodeGlyph()/lvGlyph_pixelRaw() read it. */
+    const struct lvFont *src;
     int16_t ofs_x;      //< baseline-left to glyph-box left (signed)
     int16_t ofs_y;      //< baseline to glyph-box BOTTOM (signed, LVGL anchor)
     uint16_t box_w;     //< glyph bitmap width in pixels
