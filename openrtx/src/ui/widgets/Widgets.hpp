@@ -22,6 +22,14 @@ namespace ortxui
 class Label : public Object
 {
 public:
+    /**
+     * How text that is wider than the label's box is handled:
+     *   Wrap      - the backend wraps to further lines (the historic default).
+     *   Ellipsize - the text is kept to one line, truncated to fit with a
+     *               trailing ellipsis glyph (…).
+     */
+    enum class Overflow : uint8_t { Wrap, Ellipsize };
+
     void setText(const char *t)
     {
         text_ = (t != nullptr) ? t : "";
@@ -42,6 +50,10 @@ public:
     {
         align_ = a;
     }
+    void setOverflow(Overflow o)
+    {
+        overflow_ = o;
+    }
 
     Size natural() const override; //< measured text width x font height
     void draw(DrawCtx &d) override;
@@ -51,6 +63,7 @@ private:
     Sem color_ = Sem::OnSurface;
     fontSize_t font_ = FONT_SIZE_8PT;
     textAlign_t align_ = TEXT_ALIGN_LEFT;
+    Overflow overflow_ = Overflow::Wrap;
 };
 
 /**

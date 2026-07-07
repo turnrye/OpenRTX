@@ -17,7 +17,10 @@ Size Label::natural() const
 
 void Label::draw(DrawCtx &d)
 {
-    d.textInBox(area_, font_, align_, color_, text_);
+    if (overflow_ == Overflow::Ellipsize)
+        d.textInBoxEllipsized(area_, font_, align_, color_, text_);
+    else
+        d.textInBox(area_, font_, align_, color_, text_);
 }
 
 void Panel::draw(DrawCtx &d)

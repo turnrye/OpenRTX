@@ -129,6 +129,10 @@ void VfoView::build()
     chanName_.setAlign(TEXT_ALIGN_LEFT);
     chanName_.setColor(Sem::Primary); /* blue channel name */
     chanName_.setGrow(1);
+    /* A long name/destination (e.g. "@HELLOWORLD") is truncated with an
+     * ellipsis to its Flex-assigned width rather than wrapping into the
+     * meter row below. */
+    chanName_.setOverflow(Label::Overflow::Ellipsize);
 
     chanRow_.addChild(&chanIdx_);
     chanRow_.addChild(&chanName_);
@@ -564,9 +568,9 @@ void VfoView::m17DstLabel(char *out, uint16_t sz)
 {
     const char *dst = state.settings.m17_dest;
     if (dst[0] == '\0')
-        snprintf(out, sz, "#BROADCAST");
+        snprintf(out, sz, "@BROADCAST");
     else
-        snprintf(out, sz, "#%s", dst);
+        snprintf(out, sz, "@%s", dst);
 }
 
 void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
