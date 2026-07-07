@@ -1,0 +1,40 @@
+nop The FM CTCSS/DCS tone in the VFO mode stack follows the direction: a
+nop decode (RX) tone shows while receiving and hides while transmitting; an
+nop encode (TX) tone would show only on TX. Enable a decode tone via
+nop Settings > FM (CTCSS En. -> Decode), return to the VFO, then PTT.
+rssi 0
+sleep 1000
+key ENTER
+sleep 400
+nop Main menu: Banks/Channels/Contacts/GPS/Settings -> DOWN x4.
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Settings: Display/Time&Date/GPS/Radio/M17/FM -> DOWN x5.
+key DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop FM: CTCSS Tone / CTCSS En. -> DOWN to CTCSS En., edit, UP to "Decode".
+key DOWN
+sleep 200
+key ENTER
+sleep 200
+key UP
+sleep 200
+key ENTER
+sleep 300
+nop ESC back to the VFO.
+key ESC
+sleep 200
+key ESC
+sleep 200
+key ESC
+sleep 500
+screenshot fm_tone_rx.bmp
+sleep 300
+nop PTT: the decode tone hides (no encode tone enabled).
+ptt
+sleep 500
+screenshot fm_tone_tx.bmp
+sleep 300
+ptt
+sleep 300
+quit

@@ -181,17 +181,24 @@ void VfoView::syncMode(const channel_t &ch)
             break;
     }
 
-    /* Second mode-stack line (under the mode). In FM it is the PL/CTCSS
-     * transmit tone (e.g. "88.5") when enabled; in M17 it is the CAN, shown as
-     * its live RX/TX value ("ANY" while promiscuous-RX, "C<n>" on TX / filtered
-     * RX). Blank otherwise. */
+    /* Second mode-stack line (under the mode). In FM it is the CTCSS/DCS tone
+     * matching the current direction -- the TX (encode) tone while transmitting,
+     * otherwise the RX (decode) tone -- so it appears only when that direction's
+     * tone is enabled, like the M17 CAN. In M17 it is the CAN ("ANY" while
+     * promiscuous-RX, "C<n>" on TX / filtered RX). Blank otherwise. */
     modeSub_[0] = '\0';
     if (ch.mode == OPMODE_M17) {
         m17CanLabel(modeSub_, sizeof(modeSub_));
-    } else if ((ch.mode == OPMODE_FM) && (ch.fm.txToneEn != 0u)) {
-        const uint16_t t = ctcss_tone[ch.fm.txTone];
-        snprintf(modeSub_, sizeof(modeSub_), "%u.%u", (unsigned)(t / 10),
-                 (unsigned)(t % 10));
+    } else if (ch.mode == OPMODE_FM) {
+        const bool txing = (rtx_getStatus()->opStatus == TX);
+        const bool showTx = txing && (ch.fm.txToneEn != 0u);
+        const bool showRx = !txing && (ch.fm.rxToneEn != 0u);
+        if (showTx || showRx) {
+            const uint8_t idx = showTx ? ch.fm.txTone : ch.fm.rxTone;
+            const uint16_t t = ctcss_tone[idx];
+            snprintf(modeSub_, sizeof(modeSub_), "%u.%u", (unsigned)(t / 10),
+                     (unsigned)(t % 10));
+        }
     }
 
     /* Repaint only when the visible stack changes: covers mode/bandwidth, the
