@@ -7,7 +7,9 @@
 #include "views/M17View.hpp"
 #include "views/TextInputView.hpp"
 #include "core/Event.hpp"
+#include "core/Layout.hpp"
 #include "interfaces/keyboard.h"
+#include "interfaces/delays.h"
 #include "core/state.h"
 #include "core/voicePrompts.h"
 #include "core/voicePromptUtils.h"
@@ -114,6 +116,7 @@ void M17View::beginEdit()
         callsign_.configure(callBuf_, sizeof(callBuf_), CHARSET_CALLSIGN,
                             TextInput::Mode::SingleLine,
                             TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
+        callsign_.setMultiTap(MTAP_CALLSIGN);
         callsign_.begin();
     }
 
@@ -220,20 +223,37 @@ NavIntent M17View::onEvent(const Event &e)
     if (editing_) {
         if (editRow_ == RowCallsign) {
             if (e.kind == EvKind::Encoder) {
-                callsignCycle(e.encoder);
+                /* Knob moves the cursor on arrow-less radios, cycles elsewhere. */
+                if (kbdHasArrows())
+                    callsignCycle(e.encoder);
+                else
+                    callsignMove(e.encoder > 0 ? +1 : -1);
             } else if (e.kind == EvKind::Key) {
-                if ((e.keys & KEY_ENTER) != 0u)
+                const uint32_t k = e.keys;
+                if ((k & KEY_ENTER) != 0u) {
                     callsignConfirm();
-                else if ((e.keys & KEY_ESC) != 0u)
+                } else if ((k & KEY_ESC) != 0u) {
                     endEdit();
-                else if ((e.keys & KEY_UP) != 0u)
+                } else if ((k & KBD_CHAR_MASK) != 0u) {
+                    /* Numeric-keypad multi-tap; '*' backspaces. */
+                    const uint8_t ki =
+                        static_cast<uint8_t>(__builtin_ctz(k & KBD_CHAR_MASK));
+                    if (ki == 10u)
+                        callsign_.backspace();
+                    else
+                        callsign_.tapKey(ki, getTick());
+                    writeValueText(RowCallsign);
+                    list_.invalidate();
+                    announceCursorChar();
+                } else if ((k & KEY_UP) != 0u) {
                     callsignCycle(+1);
-                else if ((e.keys & KEY_DOWN) != 0u)
+                } else if ((k & KEY_DOWN) != 0u) {
                     callsignCycle(-1);
-                else if ((e.keys & KEY_LEFT) != 0u)
+                } else if ((k & KEY_LEFT) != 0u) {
                     callsignMove(-1);
-                else if ((e.keys & KEY_RIGHT) != 0u)
+                } else if ((k & KEY_RIGHT) != 0u) {
                     callsignMove(+1);
+                }
             }
             return NavIntent::none();
         }
@@ -266,7 +286,7 @@ NavIntent M17View::onEvent(const Event &e)
                 if (editor_ != nullptr) {
                     editor_->open("Meta Text", state.settings.M17_meta_text,
                                   sizeof(state.settings.M17_meta_text),
-                                  CHARSET_TEXT, /*multiline=*/true,
+                                  CHARSET_TEXT, MTAP_TEXT, /*multiline=*/true,
                                   /*rtx=*/false);
                     return NavIntent::push(editor_);
                 }

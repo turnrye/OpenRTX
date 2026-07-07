@@ -8,6 +8,8 @@
 #include "style/Symbols.hpp"
 #include "style/Charsets.hpp"
 #include "core/Event.hpp"
+#include "core/Layout.hpp"
+#include "interfaces/delays.h"
 #include "core/utils.h"
 #include "core/cps.h"
 #include "rtx/rtx.h"
@@ -611,6 +613,7 @@ void VfoView::beginDstEdit()
     dst_.configure(dstBuf_, sizeof(dstBuf_), CHARSET_CALLSIGN,
                    TextInput::Mode::SingleLine, TextInput::CursorStyle::Bracket,
                    FONT_SIZE_8PT);
+    dst_.setMultiTap(MTAP_CALLSIGN);
     dst_.begin();
     dstEditing_ = true;
     renderDstEdit();
@@ -653,7 +656,11 @@ void VfoView::endDstEdit(bool commit)
 NavIntent VfoView::onDstEditEvent(const Event &e)
 {
     if (e.kind == EvKind::Encoder) {
-        dstCycle(e.encoder);
+        /* Knob moves the cursor on arrow-less radios, cycles elsewhere. */
+        if (kbdHasArrows())
+            dstCycle(e.encoder);
+        else
+            dstMove(e.encoder > 0 ? +1 : -1);
     } else if (e.kind == EvKind::Key) {
         const uint32_t k = e.keys;
         if ((k & KEY_ENTER) != 0u)
@@ -664,6 +671,16 @@ NavIntent VfoView::onDstEditEvent(const Event &e)
             /* # clears the destination and exits (classic parity). */
             dst_.clear();
             endDstEdit(true);
+        } else if ((k & KBD_CHAR_MASK) != 0u) {
+            /* Numeric-keypad multi-tap (# handled above); '*' backspaces. */
+            const uint8_t ki =
+                static_cast<uint8_t>(__builtin_ctz(k & KBD_CHAR_MASK));
+            if (ki == 10u)
+                dst_.backspace();
+            else
+                dst_.tapKey(ki, getTick());
+            renderDstEdit();
+            announceDstChar();
         } else if ((k & KEY_UP) != 0u)
             dstCycle(+1);
         else if ((k & KEY_DOWN) != 0u)

@@ -19,11 +19,12 @@ namespace ortxui
 /**
  * Reusable text-input field over a caller-owned buffer.
  *
- * Editing is deterministic cursor-cycle (the platform gives only a key bitmask,
- * no T9), which keeps it golden-testable: UP/DOWN cycle the character under the
- * cursor through the configured Charset, LEFT/RIGHT move it (extending with a
- * space at the end), and the host maps keys to these ops. The same state drives
- * two renderers:
+ * Two deterministic (golden-testable) input methods drive the same buffer, and
+ * the host picks per keypad capability: cursor-cycle (UP/DOWN cycle the char
+ * through the Charset, LEFT/RIGHT or knob move) for arrow/knob radios, and ETSI
+ * phone-style multi-tap (tapKey(): a digit types a letter, repeats cycle, a
+ * different key or a lapsed window commits and advances) for numeric keypads.
+ * The same state drives two renderers:
  *  - `formatBracketed()` composes an inline "W1[A]W" string for editors that
  *    live inside another widget (a list row or the VFO channel line);
  *  - `draw()` paints the field into its own area for a modal, with a block
@@ -54,6 +55,13 @@ public:
      *  single editable blank so there is always a character under the cursor. */
     void begin();
 
+    /** Bind the ETSI multi-tap table for numeric-keypad entry (optional; only
+     *  needed when the host routes digit keys to tapKey()). */
+    void setMultiTap(const MultiTapTable &t)
+    {
+        tapTable_ = &t;
+    }
+
     /* ---- Edit ops (driven by the host's key mapping) ---- */
     void cycle(int dir);      //< cycle the char under the cursor
     void moveCursor(int dir); //< move the cursor; right past the end extends
@@ -61,6 +69,14 @@ public:
     void backspace();         //< delete the char before the cursor
     void clear();             //< empty the buffer
     void stripTrailingSpaces();
+
+    /** ETSI multi-tap: press of keypad key `keyIndex` (0-9, *=10, #=11) at tick
+     *  `nowTick`. Same key within the window cycles the character in place; a
+     *  different key or a lapsed window commits and advances (overwrite model).*/
+    void tapKey(uint8_t keyIndex, long long nowTick);
+    /** Finalize any in-progress multi-tap character (call before a cursor move
+     *  or on commit) so the next tap starts a fresh character. */
+    void commitPending();
 
     /* ---- Accessors ---- */
     uint16_t length() const
@@ -100,6 +116,13 @@ private:
     CursorStyle cursorStyle_ = CursorStyle::Bracket;
     fontSize_t font_ = FONT_SIZE_8PT;
     uint16_t topRow_ = 0; //< first visible wrapped row (MultiLine scroll)
+
+    /* Multi-tap (ETSI keypad) state. */
+    const MultiTapTable *tapTable_ = nullptr;
+    bool tapActive_ = false; //< a character is mid-tap under the cursor
+    uint8_t tapSet_ = 0;     //< index into the current key's cycle string
+    int8_t tapKeyIdx_ = -1;  //< last keypad key tapped
+    long long tapTick_ = 0;  //< tick of the last tap (for the window)
 };
 
 } // namespace ortxui

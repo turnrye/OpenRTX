@@ -8,6 +8,7 @@
 #define ORTX_UI_CHARSETS_HPP
 
 #include <cstdint>
+#include "hwconfig.h"
 
 namespace ortxui
 {
@@ -59,6 +60,51 @@ constexpr Charset CHARSET_CALLSIGN{ kCharsCallsign, sizeof(kCharsCallsign) - 1,
 constexpr Charset CHARSET_TEXT{ kCharsText, sizeof(kCharsText) - 1, "Text" };
 constexpr Charset CHARSET_NUMERIC{ kCharsNumeric, sizeof(kCharsNumeric) - 1,
                                    "Numeric" };
+
+/**
+ * ETSI phone-style multi-tap table for numeric-keypad radios: repeated presses
+ * of one key cycle through its string (in place); a different key or a >700ms
+ * pause commits the character and advances. Indexed by key 0-9, then '*' = 10,
+ * '#' = 11. An empty string means the key produces no character (it is an
+ * action key — '*' is backspace, handled by the host). The space character
+ * lives on '0' or '#' per the target's CONFIG_KBD_SPACE_ON_HASH silkscreen.
+ */
+struct MultiTapTable {
+    const char *keys[12];
+};
+
+/* Callsign (M17 base-40: A-Z 0-9 - / . and space). Uppercase only, digit last
+ * in each group so a quick tap gives the letter. */
+constexpr MultiTapTable MTAP_CALLSIGN = { {
+    CONFIG_KBD_SPACE_ON_HASH ? "0" : "0 ", //< 0 (+ space unless space is on #)
+    "1-/.",                                //< 1 and the M17 symbols
+    "ABC2",
+    "DEF3",
+    "GHI4",
+    "JKL5",
+    "MNO6",
+    "PQRS7",
+    "TUV8",
+    "WXYZ9",
+    "",                                  //< '*' = backspace (host action)
+    CONFIG_KBD_SPACE_ON_HASH ? " " : "", //< '#' = space when space is on #
+} };
+
+/* Free text (M17 meta / SMS): lowercase-first, then uppercase, then digit. */
+constexpr MultiTapTable MTAP_TEXT = { {
+    CONFIG_KBD_SPACE_ON_HASH ? "0" : " 0",
+    ".,?!1-/@",
+    "abc2ABC",
+    "def3DEF",
+    "ghi4GHI",
+    "jkl5JKL",
+    "mno6MNO",
+    "pqrs7PQRS",
+    "tuv8TUV",
+    "wxyz9WXYZ",
+    "",
+    CONFIG_KBD_SPACE_ON_HASH ? " " : "",
+} };
 
 } // namespace ortxui
 

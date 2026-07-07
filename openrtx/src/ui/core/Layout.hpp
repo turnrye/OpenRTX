@@ -83,6 +83,22 @@ constexpr SizeClass sizeClass()
                                            SizeClass::Compact;
 }
 
+/* Keypad input capability, from the target hwconfig. Text entry adapts to it:
+ * a numeric keypad gets ETSI phone-style multi-tap; cursor movement uses the
+ * LEFT/RIGHT arrows when present, otherwise the knob / UP-DOWN. */
+constexpr bool kbdHasArrows()
+{
+    return CONFIG_KBD_HAS_ARROWS != 0;
+}
+constexpr bool kbdHasNumeric()
+{
+    return CONFIG_KBD_HAS_NUMERIC != 0;
+}
+constexpr bool kbdSpaceOnHash()
+{
+    return CONFIG_KBD_SPACE_ON_HASH != 0;
+}
+
 } // namespace ortxui
 
 #endif /* ORTX_UI_LAYOUT_HPP */

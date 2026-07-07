@@ -6,7 +6,9 @@
 
 #include "views/TextInputView.hpp"
 #include "core/Event.hpp"
+#include "core/Layout.hpp"
 #include "interfaces/keyboard.h"
+#include "interfaces/delays.h"
 #include "core/state.h"
 #include "core/voicePrompts.h"
 #include "core/voicePromptUtils.h"
@@ -35,7 +37,16 @@ void TextInputView::build()
 
     field_.setGrow(1); /* the scrolling field fills the middle */
 
-    hint_.setText(regular ? "Up/Dn:char  L/R:move  #:del" : "Up/Dn L/R #");
+    if (kbdHasNumeric()) {
+        /* Multi-tap keypad hint; the space key is '0' or '#' per the target. */
+        if (regular)
+            hint_.setText(kbdSpaceOnHash() ? "2-9:type  *:del  #:space" :
+                                             "2-9:type  *:del  0:space");
+        else
+            hint_.setText(kbdSpaceOnHash() ? "2-9 *:del #sp" : "2-9 *:del 0sp");
+    } else {
+        hint_.setText(regular ? "Up/Dn:char  L/R:move  #:del" : "Up/Dn L/R #");
+    }
     hint_.setColor(Sem::OnSurfaceMuted);
     hint_.setFont(regular ? FONT_SIZE_6PT : FONT_SIZE_5PT);
     hint_.setAlign(TEXT_ALIGN_CENTER);
@@ -51,7 +62,8 @@ void TextInputView::build()
 }
 
 void TextInputView::open(const char *title, char *dst, uint16_t cap,
-                         const Charset &cs, bool multiline, bool rtx)
+                         const Charset &cs, const MultiTapTable &tap,
+                         bool multiline, bool rtx)
 {
     dst_ = dst;
     rtx_ = rtx;
@@ -73,6 +85,7 @@ void TextInputView::open(const char *title, char *dst, uint16_t cap,
                      multiline ? TextInput::Mode::MultiLine :
                                  TextInput::Mode::SingleLine,
                      TextInput::CursorStyle::Block, f);
+    field_.setMultiTap(tap);
     field_.begin();
 
     screen_.markAllDirty();
@@ -103,35 +116,68 @@ void TextInputView::commit()
 
 NavIntent TextInputView::onEvent(const Event &e)
 {
+    /* The knob moves the cursor where there are no arrows (the only way to
+     * reposition), and cycles the character where arrows already move it. */
     if (e.kind == EvKind::Encoder) {
-        field_.cycle(e.encoder);
+        if (kbdHasArrows()) {
+            field_.cycle(e.encoder);
+        } else {
+            field_.commitPending();
+            field_.moveCursor(e.encoder > 0 ? +1 : -1);
+        }
         afterEdit();
         return NavIntent::none();
     }
 
-    if (e.kind == EvKind::Key) {
-        const uint32_t k = e.keys;
-        if ((k & KEY_ENTER) != 0u) {
-            commit();
-            return NavIntent::pop();
-        }
-        if ((k & KEY_ESC) != 0u)
-            return NavIntent::pop();
-        if ((k & KEY_UP) != 0u)
-            field_.cycle(+1);
-        else if ((k & KEY_DOWN) != 0u)
-            field_.cycle(-1);
-        else if ((k & KEY_LEFT) != 0u)
+    if (e.kind != EvKind::Key)
+        return NavIntent::none();
+
+    const uint32_t k = e.keys;
+    if ((k & KEY_ENTER) != 0u) {
+        field_.commitPending();
+        commit();
+        return NavIntent::pop();
+    }
+    if ((k & KEY_ESC) != 0u)
+        return NavIntent::pop();
+
+    /* Numeric-keypad multi-tap (additive — digit keys only exist on keypad
+     * radios). '*' is backspace; the rest type via the ETSI table. */
+    if ((k & KBD_CHAR_MASK) != 0u) {
+        const uint8_t ki =
+            static_cast<uint8_t>(__builtin_ctz(k & KBD_CHAR_MASK));
+        if (ki == 10u) /* KEY_STAR */
+            field_.backspace();
+        else
+            field_.tapKey(ki, getTick());
+        afterEdit();
+        return NavIntent::none();
+    }
+
+    /* Arrows (or their absence): move vs cursor-cycle the character. */
+    if (kbdHasArrows()) {
+        if ((k & KEY_LEFT) != 0u)
             field_.moveCursor(-1);
         else if ((k & KEY_RIGHT) != 0u)
             field_.moveCursor(+1);
-        else if ((k & KEY_HASH) != 0u)
-            field_.backspace();
+        else if ((k & KEY_UP) != 0u)
+            field_.cycle(+1);
+        else if ((k & KEY_DOWN) != 0u)
+            field_.cycle(-1);
         else
             return NavIntent::none();
-        afterEdit();
+    } else {
+        if ((k & KEY_UP) != 0u) {
+            field_.commitPending();
+            field_.moveCursor(-1);
+        } else if ((k & KEY_DOWN) != 0u) {
+            field_.commitPending();
+            field_.moveCursor(+1);
+        } else {
+            return NavIntent::none();
+        }
     }
-
+    afterEdit();
     return NavIntent::none();
 }
 

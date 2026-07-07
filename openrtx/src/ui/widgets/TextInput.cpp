@@ -19,6 +19,10 @@ namespace
  * this many glyphs). */
 constexpr uint16_t kLineBuf = 128;
 
+/* Multi-tap window: a same-key press within this many ms cycles the character
+ * in place; longer commits it. Matches the classic input_longPressTimeout. */
+constexpr long long kMultiTapMs = 700;
+
 /* Minimal UTF-8 encoder (BMP) for insert(); built-in charsets are ASCII so the
  * one-byte path is what runs today. Returns the byte count. */
 int utf8Encode(uint32_t cp, char out[4])
@@ -64,6 +68,8 @@ void TextInput::configure(char *buf, uint16_t cap, const Charset &cs, Mode mode,
     len_ = 0;
     cursor_ = 0;
     topRow_ = 0;
+    tapActive_ = false;
+    tapKeyIdx_ = -1;
 }
 
 void TextInput::begin()
@@ -79,6 +85,8 @@ void TextInput::begin()
     }
     cursor_ = 0;
     topRow_ = 0;
+    tapActive_ = false;
+    tapKeyIdx_ = -1;
 }
 
 void TextInput::cycle(int dir)
@@ -133,6 +141,40 @@ void TextInput::backspace()
             static_cast<size_t>(len_ - cursor_) + 1); /* include NUL */
     len_--;
     cursor_--;
+    tapActive_ = false;
+}
+
+void TextInput::tapKey(uint8_t keyIndex, long long nowTick)
+{
+    if ((buf_ == nullptr) || (tapTable_ == nullptr) || (keyIndex >= 12))
+        return;
+    const char *str = tapTable_->keys[keyIndex];
+    if ((str == nullptr) || (str[0] == '\0'))
+        return; /* action / unused key — nothing to type */
+
+    const size_t n = strlen(str);
+    const bool cont = tapActive_
+                   && (tapKeyIdx_ == static_cast<int8_t>(keyIndex))
+                   && ((nowTick - tapTick_) < kMultiTapMs);
+    if (cont) {
+        tapSet_ = static_cast<uint8_t>((tapSet_ + 1) % n);
+    } else {
+        /* Different key or window lapsed: the previous character is committed;
+         * advance to a fresh slot (moveCursor extends at the end). */
+        if (tapActive_)
+            moveCursor(+1);
+        tapSet_ = 0;
+    }
+    buf_[cursor_] = str[tapSet_]; /* overwrite the character under the cursor */
+    tapActive_ = true;
+    tapKeyIdx_ = static_cast<int8_t>(keyIndex);
+    tapTick_ = nowTick;
+}
+
+void TextInput::commitPending()
+{
+    tapActive_ = false;
+    tapKeyIdx_ = -1;
 }
 
 void TextInput::clear()
@@ -143,6 +185,8 @@ void TextInput::clear()
     len_ = 0;
     cursor_ = 0;
     topRow_ = 0;
+    tapActive_ = false;
+    tapKeyIdx_ = -1;
 }
 
 void TextInput::stripTrailingSpaces()

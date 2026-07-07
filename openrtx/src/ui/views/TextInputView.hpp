@@ -40,7 +40,7 @@ public:
      * chars; it is copied into a working buffer and only written back on commit.
      */
     void open(const char *title, char *dst, uint16_t cap, const Charset &cs,
-              bool multiline, bool rtx);
+              const MultiTapTable &tap, bool multiline, bool rtx);
 
     void announce() override;
     NavIntent onEvent(const Event &e) override;
