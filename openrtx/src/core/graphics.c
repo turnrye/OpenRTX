@@ -567,21 +567,41 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
             start.y += f->line_height;
         }
 
-        /* Draw pixels, suppressing those outside the clip window. 1bpp fonts
-         * give alpha 0 or 255; anti-aliased (multi-bpp) blending lands in a
-         * later phase, so for now any non-zero coverage sets the pixel. */
+        /* Draw pixels, suppressing those outside the clip window. On colour
+         * displays each glyph is decoded to 8-bit coverage and alpha-blended
+         * (anti-aliasing); on 1bpp displays the coverage is thresholded. */
+#ifdef CONFIG_PIX_FMT_RGB565
+        static uint8_t cov[64 * 64];
+        bool decoded = ((uint32_t)w * h <= sizeof(cov))
+                    && lvFont_decodeGlyph(f, &glyph, cov);
+#endif
         for (uint16_t yy = 0; yy < h; yy++) {
             for (uint16_t xx = 0; xx < w; xx++) {
-                if (lvGlyph_pixelRaw(f, &glyph, xx, yy) == 0)
+#ifdef CONFIG_PIX_FMT_RGB565
+                uint8_t a = decoded ? cov[(uint32_t)yy * w + xx] :
+                                      lvGlyph_pixelRaw(f, &glyph, xx, yy);
+                if (a == 0)
                     continue;
-
+#else
+                if (lvGlyph_pixelRaw(f, &glyph, xx, yy) < 128)
+                    continue;
+#endif
                 int16_t px = (int16_t)(start.x + xo + xx);
                 int16_t py = (int16_t)(start.y + top + yy);
 
                 if (py >= clip_top_y && py <= clip_bot_y && py >= 0 && px >= 0
                     && px < (int16_t)max_x) {
                     point_t pos = { (uint16_t)px, (uint16_t)py };
+#ifdef CONFIG_PIX_FMT_RGB565
+                    /* Modulate the text colour's alpha by the glyph coverage;
+                     * gfx_setPixel blends over the framebuffer. */
+                    color_t c = color;
+                    c.alpha =
+                        (uint8_t)(((uint16_t)color.alpha * a + 127) / 255);
+                    gfx_setPixel(pos, c);
+#else
                     gfx_setPixel(pos, color);
+#endif
                 }
             }
         }

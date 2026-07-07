@@ -81,6 +81,11 @@ bool lvFont_getGlyph(const lvFont_t *f, uint32_t code, lvGlyph_t *g);
 uint8_t lvGlyph_pixelRaw(const lvFont_t *f, const lvGlyph_t *g, uint16_t x,
                          uint16_t y);
 
+/** Decode a glyph's pixels into `out` as 8-bit coverage (0..255), box_w*box_h
+ *  bytes row-major. Handles both raw and RLE-compressed (anti-aliased) fonts.
+ *  Returns false on a zero-size glyph. */
+bool lvFont_decodeGlyph(const lvFont_t *f, const lvGlyph_t *g, uint8_t *out);
+
 #ifdef __cplusplus
 }
 #endif

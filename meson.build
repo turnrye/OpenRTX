@@ -405,7 +405,7 @@ linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
 #
 linux_default_src = linux_src + ui_src
 linux_default_def = linux_def + {'CONFIG_SCREEN_WIDTH': '160', 'CONFIG_SCREEN_HEIGHT': '128', 'CONFIG_PIX_FMT_RGB565': '',
-                                 'CONFIG_GPS': '', 'CONFIG_RTC': ''}
+                                 'CONFIG_FONT_AA': '', 'CONFIG_GPS': '', 'CONFIG_RTC': ''}
 linux_small_def   = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIGHT': '64', 'CONFIG_PIX_FMT_BW': '',
                                  'CONFIG_GPS': '', 'CONFIG_RTC': ''}
 
@@ -457,7 +457,7 @@ md3x0_src = ['platform/drivers/CPS/cps_io_native_MD3x0.c',
              'platform/targets/MD-3x0/hwconfig.c']
 
 md3x0_inc = ['platform/targets/MD-3x0']
-md3x0_def = {'PLATFORM_MD3x0': '', 'timegm': 'mktime'}
+md3x0_def = {'PLATFORM_MD3x0': '', 'CONFIG_FONT_AA': '', 'timegm': 'mktime'}
 
 md3x0_src += openrtx_src + stm32f405_src + ui_src + mdx_src
 md3x0_inc += openrtx_inc + stm32f405_inc
@@ -481,7 +481,7 @@ mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/drivers/baseband/HR_C6000_UV3x0.cpp']
 
 mduv3x0_inc = ['platform/targets/MD-UV3x0']
-mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'timegm': 'mktime'}
+mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'CONFIG_FONT_AA': '', 'timegm': 'mktime'}
 
 mduv3x0_src += openrtx_src + stm32f405_src + ui_src + mdx_src
 mduv3x0_inc += openrtx_inc + stm32f405_inc
@@ -579,7 +579,7 @@ cs7000_src = ['platform/drivers/NVM/nvmem_CS7000.c',
              'platform/targets/CS7000/platform.c']
 
 cs7000_inc = ['platform/targets/CS7000']
-cs7000_def = {'PLATFORM_CS7000': '', 'timegm': 'mktime'}
+cs7000_def = {'PLATFORM_CS7000': '', 'CONFIG_FONT_AA': '', 'timegm': 'mktime'}
 
 cs7000_src += openrtx_src + stm32f405_src + ui_src
 cs7000_inc += openrtx_inc + stm32f405_inc
@@ -610,7 +610,7 @@ cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
                'platform/targets/CS7000-PLUS/platform.c']
 
 cs7000p_inc = ['platform/targets/CS7000-PLUS']
-cs7000p_def = {'PLATFORM_CS7000P': '', 'timegm': 'mktime'}
+cs7000p_def = {'PLATFORM_CS7000P': '', 'CONFIG_FONT_AA': '', 'timegm': 'mktime'}
 
 cs7000p_src += openrtx_src + stm32h743_src + miosix_cm7_src + ui_src
 cs7000p_inc += openrtx_inc + stm32h743_inc + miosix_cm7_inc
@@ -632,7 +632,7 @@ dm1701_src = ['platform/targets/DM-1701/platform.c',
               'platform/drivers/baseband/HR_C6000_UV3x0.cpp']
 
 dm1701_inc = ['platform/targets/DM-1701']
-dm1701_def = {'PLATFORM_DM1701': '', 'timegm': 'mktime'}
+dm1701_def = {'PLATFORM_DM1701': '', 'CONFIG_FONT_AA': '', 'timegm': 'mktime'}
 
 dm1701_src += openrtx_src + stm32f405_src + ui_src + mdx_src
 dm1701_inc += openrtx_inc + stm32f405_inc

@@ -216,6 +216,14 @@ bool lvFont_getGlyph(const lvFont_t *f, uint32_t code, lvGlyph_t *g)
  * stream, so getGlyph() returns true with box_w == box_h == 0 and a valid
  * advance — the blit loop draws nothing and advances normally. */
 
+/* Scale a bpp-bit pixel value to 8-bit coverage (LVGL's OPA tables are the same
+ * linear map, e.g. 4bpp -> value * 17). */
+static uint8_t opa_scale(uint8_t v, uint8_t bpp)
+{
+    uint32_t maxv = (1u << bpp) - 1u;
+    return (uint8_t)((v * 255u + maxv / 2u) / maxv);
+}
+
 uint8_t lvGlyph_pixelRaw(const lvFont_t *f, const lvGlyph_t *g, uint16_t x,
                          uint16_t y)
 {
@@ -223,6 +231,118 @@ uint8_t lvGlyph_pixelRaw(const lvFont_t *f, const lvGlyph_t *g, uint16_t x,
         return 0;
     uint32_t idx = (uint32_t)y * g->box_w + x;
     uint32_t v = rd_bits(g->bmp, g->bmp_bit + idx * f->bpp, f->bpp);
-    uint32_t maxv = (1u << f->bpp) - 1u;
-    return (uint8_t)((v * 255u + maxv / 2u) / maxv);
+    return opa_scale((uint8_t)v, f->bpp);
+}
+
+/* ---- RLE (modified I3BN) decompressor ----
+ * Ported from LVGL's lv_font_fmt_txt.c (rle_next / decompress). The glyph
+ * bitstream stores a run when a pixel value repeats the previous one: a 1-bit
+ * flag chain, collapsing to a 6-bit counter after 11 repeats. compression == 1
+ * additionally XOR-prefilters each line against the previous one. */
+
+enum { RLE_SINGLE = 0, RLE_REPEAT, RLE_COUNTER };
+
+typedef struct {
+    const uint8_t *in;
+    uint32_t rdp; //< absolute bit position into *in
+    uint8_t bpp;
+    uint8_t state;
+    uint8_t prev;
+    int32_t cnt;
+    bool started; //< false until the first pixel has been read
+} rle_t;
+
+static uint8_t rle_next(rle_t *r)
+{
+    uint8_t ret = 0;
+
+    if (r->state == RLE_SINGLE) {
+        ret = (uint8_t)rd_bits(r->in, r->rdp, r->bpp);
+        if (r->started && (r->prev == ret)) {
+            r->cnt = 0;
+            r->state = RLE_REPEAT;
+        }
+        r->started = true;
+        r->prev = ret;
+        r->rdp += r->bpp;
+    } else if (r->state == RLE_REPEAT) {
+        uint8_t v = (uint8_t)rd_bits(r->in, r->rdp, 1);
+        r->cnt++;
+        r->rdp += 1;
+        if (v == 1) {
+            ret = r->prev;
+            if (r->cnt == 11) { /* RLE_BIT_COLLAPSED_COUNT + 1 */
+                r->cnt = (int32_t)rd_bits(r->in, r->rdp, 6);
+                r->rdp += 6;
+                if (r->cnt != 0) {
+                    r->state = RLE_COUNTER;
+                } else {
+                    ret = (uint8_t)rd_bits(r->in, r->rdp, r->bpp);
+                    r->prev = ret;
+                    r->rdp += r->bpp;
+                    r->state = RLE_SINGLE;
+                }
+            }
+        } else {
+            ret = (uint8_t)rd_bits(r->in, r->rdp, r->bpp);
+            r->prev = ret;
+            r->rdp += r->bpp;
+            r->state = RLE_SINGLE;
+        }
+    } else { /* RLE_COUNTER */
+        ret = r->prev;
+        r->cnt--;
+        if (r->cnt == 0) {
+            ret = (uint8_t)rd_bits(r->in, r->rdp, r->bpp);
+            r->prev = ret;
+            r->rdp += r->bpp;
+            r->state = RLE_SINGLE;
+        }
+    }
+    return ret;
+}
+
+bool lvFont_decodeGlyph(const lvFont_t *f, const lvGlyph_t *g, uint8_t *out)
+{
+    uint16_t w = g->box_w, h = g->box_h;
+    if (w == 0 || h == 0)
+        return false;
+
+    if (f->compression == 0) {
+        /* Raw: bpp bits per pixel, row-major. */
+        for (uint32_t i = 0; i < (uint32_t)w * h; i++) {
+            uint32_t v = rd_bits(g->bmp, g->bmp_bit + i * f->bpp, f->bpp);
+            out[i] = opa_scale((uint8_t)v, f->bpp);
+        }
+        return true;
+    }
+
+    /* Compressed: decode line by line, undoing the per-line XOR prefilter. */
+    if (w > 64)
+        return false; /* guard the fixed line buffers */
+    const bool prefilter = (f->compression == 1);
+    rle_t r = { g->bmp, g->bmp_bit, f->bpp, RLE_SINGLE, 0, 0, false };
+    uint8_t line1[64], line2[64];
+
+    for (uint16_t x = 0; x < w; x++)
+        line1[x] = rle_next(&r);
+    for (uint16_t x = 0; x < w; x++)
+        out[x] = opa_scale(line1[x], f->bpp);
+
+    for (uint16_t y = 1; y < h; y++) {
+        if (prefilter) {
+            for (uint16_t x = 0; x < w; x++)
+                line2[x] = rle_next(&r);
+            for (uint16_t x = 0; x < w; x++) {
+                line1[x] ^= line2[x];
+                out[(uint32_t)y * w + x] = opa_scale(line1[x], f->bpp);
+            }
+        } else {
+            for (uint16_t x = 0; x < w; x++)
+                line1[x] = rle_next(&r);
+            for (uint16_t x = 0; x < w; x++)
+                out[(uint32_t)y * w + x] = opa_scale(line1[x], f->bpp);
+        }
+    }
+    return true;
 }
