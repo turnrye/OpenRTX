@@ -80,7 +80,6 @@ void MacroView::build()
             tiles_[i].setAlign(Align::Center);
             tiles_[i].setPadding(2, 1);
             tiles_[i].setGrow(1);
-            tiles_[i].setBackground(Sem::Surface);
 
             keyLbl_[i].setFont(keyFont);
             keyLbl_[i].setAlign(regular ? TEXT_ALIGN_CENTER : TEXT_ALIGN_LEFT);
