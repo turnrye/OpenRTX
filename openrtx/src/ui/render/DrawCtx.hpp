@@ -72,6 +72,14 @@ public:
     void textInBox(const Rect &box, fontSize_t size, textAlign_t align,
                    Sem color, const char *str);
 
+    /**
+     * Like textInBox(), but if the text is wider than the box it is truncated
+     * and an ellipsis ("...") is appended so it fits. Used for list values and
+     * labels that may hold arbitrary-length content.
+     */
+    void textInBoxEllipsized(const Rect &box, fontSize_t size,
+                             textAlign_t align, Sem color, const char *str);
+
 private:
     Rect clip_;
 };

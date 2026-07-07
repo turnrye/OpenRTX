@@ -9,6 +9,7 @@
 #include "hwconfig.h"
 
 #include <cmath>
+#include <cstring>
 
 namespace ortxui
 {
@@ -120,6 +121,35 @@ void DrawCtx::textInBox(const Rect &box, fontSize_t size, textAlign_t align,
         static_cast<int16_t>(box.y + (static_cast<int>(box.h) + fh) / 2 - 1);
     const point_t start = { x, baseline };
     gfx_print(start, size, TEXT_ALIGN_LEFT, themeColor(color), "%s", str);
+}
+
+void DrawCtx::textInBoxEllipsized(const Rect &box, fontSize_t size,
+                                  textAlign_t align, Sem color, const char *str)
+{
+    if (str == nullptr)
+        return;
+    if (gfx_getTextWidth(size, str) <= box.w) {
+        textInBox(box, size, align, color, str);
+        return;
+    }
+
+    /* Too wide: drop trailing characters until the prefix plus an ellipsis
+     * fits. The ellipsis is ASCII "..." because U+2026 is not in the baked
+     * font. */
+    static const char kEllipsis[] = "...";
+    const uint16_t ellW = gfx_getTextWidth(size, kEllipsis);
+
+    char buf[64];
+    size_t n = strnlen(str, sizeof(buf) - sizeof(kEllipsis));
+    memcpy(buf, str, n);
+    buf[n] = '\0';
+    while ((n > 0)
+           && (static_cast<uint16_t>(gfx_getTextWidth(size, buf) + ellW)
+               > box.w)) {
+        buf[--n] = '\0';
+    }
+    memcpy(buf + n, kEllipsis, sizeof(kEllipsis)); /* includes the NUL */
+    textInBox(box, size, align, color, buf);
 }
 
 } // namespace ortxui

@@ -44,6 +44,10 @@ void M17View::build()
         items_[i].value = bufs_[i];
         writeValueText(i);
     }
+    /* Meta Txt can be up to 52 chars — too long for the per-row scratch — so
+     * point it straight at the live settings buffer and let the List ellipsize
+     * it to fit the value column. */
+    items_[RowMeta].value = state.settings.M17_meta_text;
 
     list_.setItems(items_, RowCount);
     list_.setRowHeight(regular ? 22 : 18); /* two-line value rows */
@@ -73,22 +77,10 @@ void M17View::writeValueText(uint8_t row)
             }
             return;
         }
-        case RowMeta: {
-            /* Read-only; classic truncates to 7 chars + '*' when longer.
-             * memcpy (not snprintf %s) so the compiler sees the bounded
-             * length and doesn't warn about the 53-byte source. */
-            const size_t ml = strnlen(st.M17_meta_text,
-                                      sizeof(st.M17_meta_text));
-            if (ml > 7) {
-                memcpy(bufs_[row], st.M17_meta_text, 7);
-                bufs_[row][7] = '*';
-                bufs_[row][8] = '\0';
-            } else {
-                memcpy(bufs_[row], st.M17_meta_text, ml);
-                bufs_[row][ml] = '\0';
-            }
+        case RowMeta:
+            /* The value points straight at the live settings buffer (set in
+             * build); the List ellipsizes it. Nothing to format here. */
             return;
-        }
         case RowCan: {
             const bool ed = editing_ && (editRow_ == RowCan);
             snprintf(bufs_[row], sizeof(bufs_[row]), ed ? "<%u>" : "%u",

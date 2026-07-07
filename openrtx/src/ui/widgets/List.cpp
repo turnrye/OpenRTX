@@ -159,23 +159,28 @@ void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
     const int16_t textW = static_cast<int16_t>(row.w - 6 - rightPad);
 
     if (it.value != nullptr) {
-        /* Value row: label on the upper line, value low and right-aligned. */
+        /* Value row: label on the upper line, value on the lower line and
+         * right-aligned. The two lines split the row cleanly (no vertical
+         * overlap) so a full-width ellipsized value never runs under the label.
+         * Both ellipsize when the content is wider than the column. */
         const int16_t half = static_cast<int16_t>(row.h / 2);
         const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
                             static_cast<uint16_t>(textW),
-                            static_cast<uint16_t>(half + 2) };
-        d.textInBox(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor, it.label);
+                            static_cast<uint16_t>(half) };
+        d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
+                              it.label);
 
         const Rect vbox = { static_cast<int16_t>(row.x + 6),
-                            static_cast<int16_t>(row.y + half - 2),
+                            static_cast<int16_t>(row.y + half),
                             static_cast<uint16_t>(textW),
                             static_cast<uint16_t>(row.h - half) };
-        d.textInBox(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
-                    it.value);
+        d.textInBoxEllipsized(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
+                              it.value);
     } else {
         const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
                             static_cast<uint16_t>(textW), row.h };
-        d.textInBox(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor, it.label);
+        d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
+                              it.label);
     }
 
     if (it.checkbox) {
