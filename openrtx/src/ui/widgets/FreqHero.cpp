@@ -26,17 +26,15 @@ void FreqHero::setFreq(uint32_t hz)
 
 void FreqHero::draw(DrawCtx &d)
 {
-    /* Narrow screens (128px Compact: gd77/dm1801) cannot fit the 16pt frequency
-     * next to a 40px mode stack, so shrink both on a width threshold. */
+    /* Narrow screens (128px Compact: gd77/dm1801) cannot fit the 12pt frequency
+     * next to the mode label, so shrink the frequency on a width threshold. */
     const bool compact = (area_.w < 150);
-    /* Sized so the frequency to kHz PLUS the small trailing sub-kHz digits and
-     * the mode stack all fit across the width (a 16pt main left no room for the
-     * sub-kHz digits, which were then dropped). */
     const fontSize_t mainFont = compact ? FONT_SIZE_10PT : FONT_SIZE_12PT;
     const fontSize_t subFont = compact ? FONT_SIZE_6PT : FONT_SIZE_8PT;
-    const int16_t modeW = compact ? 28 : 40;
+    const fontSize_t modeFont = compact ? FONT_SIZE_6PT : FONT_SIZE_8PT;
 
-    /* Frequency + sub-digits share a baseline near the bottom of the band. */
+    /* Frequency, sub-digits and the mode label all share one baseline near the
+     * bottom of the band. */
     const int16_t indent = 4;
     const int16_t baseY = static_cast<int16_t>(area_.bottom() - 3);
 
@@ -44,35 +42,21 @@ void FreqHero::draw(DrawCtx &d)
     const Point mainAt = { static_cast<int16_t>(area_.x + indent), baseY };
     d.text(mainAt, mainFont, TEXT_ALIGN_LEFT, Sem::OnSurface, mainBuf_);
 
-    /* Only draw the trailing sub-kHz digits if they clear the mode column. */
-    const int16_t modeLeft = static_cast<int16_t>(area_.right() - modeW);
-    const int16_t subX = static_cast<int16_t>(area_.x + indent + mainW + 2);
-    const uint16_t subW = gfx_getTextWidth(subFont, subBuf_);
-    if (subX + subW <= modeLeft - 2) {
-        const Point subAt = { subX, baseY };
-        d.text(subAt, subFont, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
+    /* Mode/bandwidth label (WFM/NFM/M17), right-aligned on the baseline. */
+    int16_t modeLeft = static_cast<int16_t>(area_.right() - indent);
+    if (mode_[0] != '\0') {
+        const uint16_t mw = gfx_getTextWidth(modeFont, mode_);
+        modeLeft = static_cast<int16_t>(area_.right() - indent - (int16_t)mw);
+        d.text({ modeLeft, baseY }, modeFont, TEXT_ALIGN_LEFT, Sem::OnSurface,
+               mode_);
     }
 
-    /* Right-aligned mode stack: mode/bandwidth over the PL tone, vertically
-     * centred with padding so it doesn't crowd the top edge. Power is omitted
-     * (it is shown on the meter while transmitting). */
-    const int16_t mx = modeLeft;
-    const uint16_t mw = static_cast<uint16_t>(modeW);
-    const fontSize_t modeFont = compact ? FONT_SIZE_6PT : FONT_SIZE_8PT;
-    const int16_t h1 = compact ? 12 : 16; //< mode line height
-    const int16_t h2 = compact ? 11 : 13; //< tone line height
-    const int16_t gap = 2;
-    const bool hasTone = (m2_[0] != '\0');
-    const int16_t blockH = static_cast<int16_t>(hasTone ? h1 + gap + h2 : h1);
-    const int16_t top = static_cast<int16_t>(area_.y + (area_.h - blockH) / 2);
-
-    const Rect r1 = { mx, top, mw, static_cast<uint16_t>(h1) };
-    d.textInBox(r1, modeFont, TEXT_ALIGN_RIGHT, Sem::OnSurface, m1_);
-    if (hasTone) {
-        const Rect r2 = { mx, static_cast<int16_t>(top + h1 + gap), mw,
-                          static_cast<uint16_t>(h2) };
-        d.textInBox(r2, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, Sem::OnSurfaceMuted,
-                    m2_);
+    /* Only draw the trailing sub-kHz digits if they clear the mode label. */
+    const int16_t subX = static_cast<int16_t>(area_.x + indent + mainW + 2);
+    const uint16_t subW = gfx_getTextWidth(subFont, subBuf_);
+    if (subX + (int16_t)subW <= modeLeft - 2) {
+        const Point subAt = { subX, baseY };
+        d.text(subAt, subFont, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
     }
 }
 

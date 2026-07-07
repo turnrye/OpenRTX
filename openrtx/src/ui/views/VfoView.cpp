@@ -114,24 +114,26 @@ void VfoView::build()
      * room below so the channel line and meter both fit within 64px. */
     hero_.setBasis(regular ? 40 : 26);
 
-    /* Channel line: index (muted) + name (blue). The compact screen uses a
-     * smaller name font so a full line (ascent + descent) still fits the tight
-     * budget without clipping. */
-    const fontSize_t chanFont = regular ? FONT_SIZE_10PT : FONT_SIZE_6PT;
+    /* Channel row, all one text size: the "where am I" slot (index / "VFO") on
+     * the left, the channel name or M17 destination in the middle, and a
+     * right-aligned secondary detail (M17 CAN / FM tone) sitting directly under
+     * the mode label in the hero. The compact screen uses a smaller font so a
+     * full line (ascent + descent) still fits its tight budget. */
+    const fontSize_t chanFont = regular ? FONT_SIZE_8PT : FONT_SIZE_6PT;
     chanRow_.setAxis(Axis::Row);
     chanRow_.setAlign(Align::Center);
     chanRow_.setJustify(Justify::Start);
     chanRow_.setPadding(4, 0);
     chanRow_.setGap(6);
-    /* Make the row as tall as the channel-name font's full line height (ascent
-     * + descent) so descenders (and the '@' / caps of an M17 destination) are
-     * not clipped against the meter row below. */
+    /* Make the row as tall as the font's full line height (ascent + descent) so
+     * descenders (and the '@' / caps of an M17 destination) are not clipped
+     * against the meter row below. */
     chanRow_.setBasis(gfx_getFontLineHeight(chanFont));
 
-    chanIdx_.setFont(FONT_SIZE_6PT);
+    chanIdx_.setFont(chanFont);
     chanIdx_.setAlign(TEXT_ALIGN_LEFT);
     chanIdx_.setColor(Sem::OnSurfaceMuted);
-    chanIdx_.setBasis(22);
+    chanIdx_.setBasis(regular ? 28 : 20);
 
     chanName_.setFont(chanFont);
     chanName_.setAlign(TEXT_ALIGN_LEFT);
@@ -142,8 +144,14 @@ void VfoView::build()
      * meter row below. */
     chanName_.setOverflow(Label::Overflow::Ellipsize);
 
+    chanDetail_.setFont(chanFont);
+    chanDetail_.setAlign(TEXT_ALIGN_RIGHT);
+    chanDetail_.setColor(Sem::OnSurfaceMuted);
+    chanDetail_.setBasis(regular ? 36 : 24);
+
     chanRow_.addChild(&chanIdx_);
     chanRow_.addChild(&chanName_);
+    chanRow_.addChild(&chanDetail_);
 
     /* Signal meter. */
     meter_.setBasis(regular ? 14 : 12);
@@ -201,8 +209,10 @@ void VfoView::syncMode(const channel_t &ch)
         }
     }
 
-    /* Repaint only when the visible stack changes: covers mode/bandwidth, the
-     * FM tone, and the dynamic M17 CAN (settings + TX/RX). */
+    /* Repaint only when the visible pair changes: covers mode/bandwidth, the
+     * FM tone, and the dynamic M17 CAN (settings + TX/RX). The mode label sits
+     * on the frequency baseline (hero); the detail sits under it on the channel
+     * row. */
     char sig[24];
     snprintf(sig, sizeof(sig), "%s|%s", m1, modeSub_);
     if (strcmp(sig, modeCache_) == 0)
@@ -210,8 +220,10 @@ void VfoView::syncMode(const channel_t &ch)
     strncpy(modeCache_, sig, sizeof(modeCache_) - 1);
     modeCache_[sizeof(modeCache_) - 1] = '\0';
 
-    hero_.setMode(m1, modeSub_);
+    hero_.setMode(m1);
     hero_.invalidate();
+    chanDetail_.setText(modeSub_);
+    chanDetail_.invalidate();
 }
 
 void VfoView::syncMeter(const state_t &s)
@@ -569,13 +581,15 @@ void VfoView::refreshInput()
 {
     const uint32_t val = inputTxSet_ ? newTx_ : newRx_;
     hero_.setFreq(val);
-    hero_.setMode(inputTxSet_ ? "TX" : "RX", "");
+    hero_.setMode(inputTxSet_ ? "TX" : "RX");
     hero_.invalidate();
 
     chanIdx_.setText("");
     chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
+    chanDetail_.setText("");
     chanIdx_.invalidate();
     chanName_.invalidate();
+    chanDetail_.invalidate();
 }
 
 void VfoView::clearFmTone()
