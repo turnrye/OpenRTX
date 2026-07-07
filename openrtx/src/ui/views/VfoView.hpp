@@ -105,6 +105,8 @@ private:
     char idxCache_[8] = { 1, 0 };   //< sentinel forces the first paint
     char nameCache_[40] = { 1, 0 }; //< composed name, or bracket-cursor dest
     char readoutBuf_[12] = { 0 };
+    char toneBuf_[8] = { 0 };       //< PL/CTCSS tone shown in the mode stack
+    char pwrBuf_[8] = { 0 };        //< TX power shown in the mode stack
 
     uint32_t lastFreq_ = 0xFFFFFFFFu;
     uint8_t lastMode_ = 0xFFu;

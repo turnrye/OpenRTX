@@ -7,6 +7,7 @@
 #include "views/VfoView.hpp"
 #include "core/Event.hpp"
 #include "core/utils.h"
+#include "core/cps.h"
 #include "rtx/rtx.h"
 #include "interfaces/keyboard.h"
 #include "interfaces/platform.h"
@@ -184,10 +185,29 @@ void VfoView::syncMode(const channel_t &ch)
             break;
     }
 
-    const char *m2 = ((ch.mode == OPMODE_FM) && (ch.fm.txToneEn != 0u)) ?
-                         "CCS" :
-                         "";
-    const char *m3 = (ch.power >= 2000u) ? "H" : "L";
+    /* Middle line: the PL/CTCSS transmit tone. Show the actual tone frequency
+     * (e.g. "88.5") when TX tone is enabled, so it reads as the PL state rather
+     * than a bare "CCS" flag; blank when no tone. */
+    const char *m2 = "";
+    if ((ch.mode == OPMODE_FM) && (ch.fm.txToneEn != 0u)) {
+        const uint16_t t = ctcss_tone[ch.fm.txTone];
+        snprintf(toneBuf_, sizeof(toneBuf_), "%u.%u", (unsigned)(t / 10),
+                 (unsigned)(t % 10));
+        m2 = toneBuf_;
+    }
+
+    /* Bottom line: the actual TX power (e.g. "5W" / "2.5W"), clearer than a
+     * bare high/low letter. */
+    const uint32_t mw = ch.power;
+    if ((mw >= 1000u) && ((mw % 1000u) == 0u))
+        snprintf(pwrBuf_, sizeof(pwrBuf_), "%luW", (unsigned long)(mw / 1000u));
+    else if (mw >= 1000u)
+        snprintf(pwrBuf_, sizeof(pwrBuf_), "%lu.%luW",
+                 (unsigned long)(mw / 1000u),
+                 (unsigned long)((mw % 1000u) / 100u));
+    else
+        snprintf(pwrBuf_, sizeof(pwrBuf_), "%lumW", (unsigned long)mw);
+    const char *m3 = pwrBuf_;
 
     hero_.setMode(m1, m2, m3);
     hero_.invalidate();

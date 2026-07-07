@@ -29,7 +29,11 @@ void FreqHero::draw(DrawCtx &d)
     /* Narrow screens (128px Compact: gd77/dm1801) cannot fit the 16pt frequency
      * next to a 40px mode stack, so shrink both on a width threshold. */
     const bool compact = (area_.w < 150);
-    const fontSize_t mainFont = compact ? FONT_SIZE_12PT : FONT_SIZE_16PT;
+    /* Sized so the frequency to kHz PLUS the small trailing sub-kHz digits and
+     * the mode stack all fit across the width (a 16pt main left no room for the
+     * sub-kHz digits, which were then dropped). */
+    const fontSize_t mainFont = compact ? FONT_SIZE_10PT : FONT_SIZE_12PT;
+    const fontSize_t subFont = compact ? FONT_SIZE_6PT : FONT_SIZE_8PT;
     const int16_t modeW = compact ? 28 : 40;
 
     /* Frequency + sub-digits share a baseline near the bottom of the band. */
@@ -43,10 +47,10 @@ void FreqHero::draw(DrawCtx &d)
     /* Only draw the trailing sub-kHz digits if they clear the mode column. */
     const int16_t modeLeft = static_cast<int16_t>(area_.right() - modeW);
     const int16_t subX = static_cast<int16_t>(area_.x + indent + mainW + 2);
-    const uint16_t subW = gfx_getTextWidth(FONT_SIZE_8PT, subBuf_);
+    const uint16_t subW = gfx_getTextWidth(subFont, subBuf_);
     if (subX + subW <= modeLeft - 2) {
         const Point subAt = { subX, baseY };
-        d.text(subAt, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
+        d.text(subAt, subFont, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
     }
 
     /* Right-aligned mode stack: mode/bw (top), tone (mid), power (bottom). */
