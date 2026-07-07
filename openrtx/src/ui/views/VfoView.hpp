@@ -78,7 +78,8 @@ private:
     /* --- M17 destination (shown in the channel line, edited via #) --- */
     void composeChanLine(const state_t &s, char *idxOut, char *nameOut,
                          uint16_t nameSz); //< build the index + name slot text
-    void m17DstLabel(char *out, uint16_t sz); //< "#<dest>" (or "#BROADCAST")
+    void m17DstLabel(char *out, uint16_t sz); //< "@<dest>" (or "@BROADCAST")
+    void m17CanLabel(char *out, uint16_t sz); //< "C<n>" (+ '*' if promiscuous)
     NavIntent
     onDstEditEvent(const Event &e); //< key handling while editing dest
     void beginDstEdit();            //< open the destination editor

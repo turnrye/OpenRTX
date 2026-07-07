@@ -589,17 +589,32 @@ void VfoView::m17DstLabel(char *out, uint16_t sz)
         snprintf(out, sz, "@%s", dst);
 }
 
+void VfoView::m17CanLabel(char *out, uint16_t sz)
+{
+    /* The Channel Access Number in the far-left channel-line slot, reflecting
+     * the live operation: on TX you always key up on your own CAN ("C<n>"); on
+     * RX show "ANY" when the CAN check is off (promiscuous — any CAN is heard),
+     * otherwise the CAN you are filtered to. */
+    const bool txing = (rtx_getStatus()->opStatus == TX);
+    if (!txing && !state.settings.m17_can_rx)
+        snprintf(out, sz, "ANY");
+    else
+        snprintf(out, sz, "C%u", (unsigned)state.settings.m17_can);
+}
+
 void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
                               uint16_t nameSz)
 {
     const channel_t &ch = s.channel;
 
     if (s.tuner_mode == VFO) {
-        idxOut[0] = '\0';
-        if (ch.mode == OPMODE_M17)
-            m17DstLabel(nameOut, nameSz); /* show the M17 destination */
-        else
+        if (ch.mode == OPMODE_M17) {
+            m17CanLabel(idxOut, 8);       /* far left: CAN + RX-promiscuous */
+            m17DstLabel(nameOut, nameSz); /* the M17 destination */
+        } else {
+            idxOut[0] = '\0';
             snprintf(nameOut, nameSz, "VFO");
+        }
     } else {
         snprintf(idxOut, 8, "%03u", s.channel_index + 1);
         snprintf(nameOut, nameSz, "%s", (ch.name[0] != '\0') ? ch.name : "---");

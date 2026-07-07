@@ -1,0 +1,25 @@
+nop VFO+M17 far-left CAN indicator reflects the live operation: "ANY" while
+nop receiving with the CAN check off (promiscuous, the default), and the CAN
+nop you key up on ("C0") while transmitting. Switch VFO to M17 via the macro
+nop overlay, then toggle PTT.
+rssi 0
+sleep 1000
+keyhold MONI
+sleep 300
+key 5
+sleep 300
+keyrelease MONI
+sleep 500
+screenshot m17_can_rx.bmp
+sleep 300
+nop PTT: the far-left switches to the CAN keyed up on.
+ptt
+sleep 500
+screenshot m17_can_tx.bmp
+sleep 300
+nop Release: back to "ANY".
+ptt
+sleep 500
+screenshot m17_can_rx2.bmp
+sleep 300
+quit
