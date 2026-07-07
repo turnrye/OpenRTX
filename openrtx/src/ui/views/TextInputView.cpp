@@ -46,7 +46,10 @@ void TextInputView::build()
         else
             hint_.setText(kbdSpaceOnHash() ? "2-9 *:del #sp" : "2-9 *:del 0sp");
     } else {
-        hint_.setText(regular ? "Up/Dn:char  L/R:move  #:del" : "Up/Dn L/R #");
+        /* Delete lives in the wheel (cycle a character to the ⌫ slot), so it
+         * needs no dedicated key here. */
+        hint_.setText(regular ? "Up/Dn:char (\xEF\x95\x9A del)  L/R:move" :
+                                "Up/Dn L/R");
     }
     hint_.setColor(Sem::OnSurfaceMuted);
     hint_.setFont(regular ? FONT_SIZE_6PT : FONT_SIZE_5PT);

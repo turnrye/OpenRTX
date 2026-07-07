@@ -32,8 +32,10 @@ namespace ortxui
  *    (M17 SMS is ~821 chars). `DrawCtx` does not enforce its clip, so drawing
  *    self-limits to whole lines within `area_`.
  *
- * `insert()` is the injection point for a future UTF-8 character picker pushed
- * on top of the modal; today all built-in charsets are ASCII.
+ * Deletion works on every radio: the cursor wheel has a trailing ⌫ slot, and
+ * cycling a character to it then moving/committing removes it (keypad radios
+ * also get '*' as a backspace shortcut). `insert()` is used by the UTF-8
+ * character picker to add accented/symbol code points not on the keyboard.
  */
 class TextInput : public Object
 {
@@ -106,6 +108,8 @@ public:
 private:
     void ensureCursorVisibleV(uint16_t cursorRow, uint16_t rows,
                               uint16_t visRows);
+    void deleteAt(uint16_t pos); //< remove the character at `pos`
+    void resolvePendingDelete(); //< apply a cycled-to ⌫ delete at the cursor
 
     char *buf_ = nullptr;
     uint16_t cap_ = 0;

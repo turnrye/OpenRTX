@@ -25,4 +25,7 @@
 /** The M17 wordmark logo (U+E900), drawn in place of the "M17" mode label. */
 #define SYMBOL_M17 "\xEE\xA4\x80"
 
+/** FontAwesome backspace (U+F55A), shown as the character-wheel delete slot. */
+#define SYMBOL_BACKSPACE "\xEF\x95\x9A"
+
 #endif /* ORTX_UI_SYMBOLS_HPP */

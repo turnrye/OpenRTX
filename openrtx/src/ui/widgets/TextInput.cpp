@@ -6,6 +6,7 @@
 
 #include "widgets/TextInput.hpp"
 #include "render/DrawCtx.hpp"
+#include "style/Symbols.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -22,6 +23,13 @@ constexpr uint16_t kLineBuf = 128;
 /* Multi-tap window: a same-key press within this many ms cycles the character
  * in place; longer commits it. Matches the classic input_longPressTimeout. */
 constexpr long long kMultiTapMs = 700;
+
+/* Sentinel stored in the buffer when the cursor character is cycled to the
+ * "delete" slot in the wheel. It only ever exists at the cursor (transient) and
+ * is resolved into an actual deletion on the next move / commit; it is rendered
+ * as the ⌫ glyph. */
+constexpr char kDelete = 0x7F;
+constexpr char kDeleteGlyph[] = SYMBOL_BACKSPACE;
 
 /* Minimal UTF-8 encoder (BMP) for insert(); built-in charsets are ASCII so the
  * one-byte path is what runs today. Returns the byte count. */
@@ -91,16 +99,61 @@ void TextInput::begin()
 
 void TextInput::cycle(int dir)
 {
-    if ((buf_ == nullptr) || (cs_ == nullptr) || (cursor_ >= len_))
+    if ((buf_ == nullptr) || (cs_ == nullptr))
         return;
-    const int idx = cs_->indexOf(buf_[cursor_]);
-    buf_[cursor_] = cs_->at(idx + dir);
+    /* Cycling on an empty field starts a fresh editable blank. */
+    if (len_ == 0) {
+        if (cap_ < 2)
+            return;
+        buf_[0] = ' ';
+        buf_[1] = '\0';
+        len_ = 1;
+        cursor_ = 0;
+    }
+    if (cursor_ >= len_)
+        return;
+
+    /* The wheel is the charset plus one trailing "delete" slot (rendered ⌫).
+     * Landing on it marks the character for deletion; a move or commit applies
+     * it. Reachable from either end (cycle down from blank, or up past the last
+     * symbol), so it's visible on every radio without a dedicated key. */
+    const int n = static_cast<int>(cs_->len);
+    const int total = n + 1;
+    int idx = (buf_[cursor_] == kDelete) ? n : cs_->indexOf(buf_[cursor_]);
+    idx = ((idx + dir) % total + total) % total;
+    buf_[cursor_] = (idx == n) ? kDelete : cs_->at(idx);
+}
+
+void TextInput::deleteAt(uint16_t pos)
+{
+    if ((buf_ == nullptr) || (pos >= len_))
+        return;
+    memmove(buf_ + pos, buf_ + pos + 1,
+            static_cast<size_t>(len_ - pos)); /* trailing chars incl NUL */
+    len_--;
+    if ((len_ > 0) && (cursor_ >= len_))
+        cursor_ = static_cast<uint16_t>(len_ - 1);
+    else if (len_ == 0)
+        cursor_ = 0;
+    tapActive_ = false;
+}
+
+void TextInput::resolvePendingDelete()
+{
+    if ((buf_ != nullptr) && (cursor_ < len_) && (buf_[cursor_] == kDelete))
+        deleteAt(cursor_);
 }
 
 void TextInput::moveCursor(int dir)
 {
     if (buf_ == nullptr)
         return;
+    /* A move key applied while sitting on the ⌫ slot performs the delete
+     * (consuming the keypress) rather than moving. */
+    if ((cursor_ < len_) && (buf_[cursor_] == kDelete)) {
+        deleteAt(cursor_);
+        return;
+    }
     if (dir < 0) {
         if (cursor_ > 0)
             cursor_--;
@@ -135,7 +188,14 @@ void TextInput::insert(uint32_t cp)
 
 void TextInput::backspace()
 {
-    if ((buf_ == nullptr) || (cursor_ == 0) || (len_ == 0))
+    if (buf_ == nullptr)
+        return;
+    /* On the ⌫ slot, '*' deletes that slot; otherwise it backspaces. */
+    if ((cursor_ < len_) && (buf_[cursor_] == kDelete)) {
+        deleteAt(cursor_);
+        return;
+    }
+    if ((cursor_ == 0) || (len_ == 0))
         return;
     memmove(buf_ + cursor_ - 1, buf_ + cursor_,
             static_cast<size_t>(len_ - cursor_) + 1); /* include NUL */
@@ -193,6 +253,7 @@ void TextInput::stripTrailingSpaces()
 {
     if (buf_ == nullptr)
         return;
+    resolvePendingDelete(); /* a pending ⌫ at commit deletes its slot */
     while ((len_ > 0) && (buf_[len_ - 1] == ' '))
         buf_[--len_] = '\0';
     if (cursor_ > len_)
@@ -206,9 +267,14 @@ void TextInput::formatBracketed(char *out, size_t sz) const
     char *o = out;
     size_t rem = sz;
     if (buf_ != nullptr) {
-        for (uint16_t i = 0; (i < len_) && (rem > 4); i++) {
-            const int n = (i == cursor_) ? snprintf(o, rem, "[%c]", buf_[i]) :
-                                           snprintf(o, rem, "%c", buf_[i]);
+        for (uint16_t i = 0; (i < len_) && (rem > 6); i++) {
+            int n;
+            if (i == cursor_)
+                n = (buf_[i] == kDelete) ?
+                        snprintf(o, rem, "[%s]", kDeleteGlyph) :
+                        snprintf(o, rem, "[%c]", buf_[i]);
+            else
+                n = snprintf(o, rem, "%c", buf_[i]);
             if (n < 0)
                 break;
             o += n;
@@ -269,15 +335,19 @@ void TextInput::draw(DrawCtx &d)
     auto drawCursor = [&](const Rect &lineBox, uint16_t lineStart) {
         const uint16_t preW = spanWidth(buf_, lineStart, cursor_, font_);
         const int16_t cx = static_cast<int16_t>(area_.x + preW);
-        const bool onChar = (cursor_ < len_) && (buf_[cursor_] != ' ');
+        const bool isDel = (cursor_ < len_) && (buf_[cursor_] == kDelete);
+        const bool onChar = (cursor_ < len_) && (buf_[cursor_] != ' ')
+                         && !isDel;
         char t[2] = { onChar ? buf_[cursor_] : ' ', '\0' };
-        uint16_t cw = onChar ? gfx_getTextWidth(font_, t) : 3u;
+        const char *glyph = isDel ? kDeleteGlyph : t;
+        const bool visible = isDel || onChar;
+        uint16_t cw = visible ? gfx_getTextWidth(font_, glyph) : 3u;
         if (cw < 2u)
             cw = 2u;
         const Rect cell = { cx, lineBox.y, cw, lineBox.h };
         d.fillRect(cell, Sem::Primary);
-        if (onChar)
-            d.textInBox(cell, font_, TEXT_ALIGN_LEFT, Sem::OnPrimary, t);
+        if (visible)
+            d.textInBox(cell, font_, TEXT_ALIGN_LEFT, Sem::OnPrimary, glyph);
     };
 
     if (mode_ == Mode::SingleLine) {
@@ -324,6 +394,9 @@ void TextInput::draw(DrawCtx &d)
                 n = sizeof(tmp) - 1;
             memcpy(tmp, buf_ + pos, n);
             tmp[n] = '\0';
+            for (uint16_t j = 0; j < n; j++)
+                if (tmp[j] == kDelete) /* the ⌫ slot is drawn by the cursor */
+                    tmp[j] = ' ';
             d.textInBox(lineBox, font_, TEXT_ALIGN_LEFT, Sem::OnSurface, tmp);
             if (r == cursorRow)
                 drawCursor(lineBox, pos);
