@@ -53,6 +53,7 @@
 #include "views/ChannelsView.hpp"
 #include "views/ContactsView.hpp"
 #include "views/BanksView.hpp"
+#include "views/TextInputView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -119,6 +120,7 @@ DefaultsView defaultsView;
 ChannelsView channelsView;
 ContactsView contactsView;
 BanksView banksView;
+TextInputView textInputView;
 #ifdef CONFIG_M17
 M17View m17View;
 #endif
@@ -235,8 +237,10 @@ extern "C" void ui_init()
     channelsView.build();
     contactsView.build();
     banksView.build();
+    textInputView.build();
 #ifdef CONFIG_M17
     m17View.build();
+    m17View.setTextEditor(&textInputView);
 #endif
 #ifdef CONFIG_GPS
     gpsView.build();

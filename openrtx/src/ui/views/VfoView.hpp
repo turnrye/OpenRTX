@@ -13,6 +13,7 @@
 #include "widgets/TopBar.hpp"
 #include "widgets/FreqHero.hpp"
 #include "widgets/DotMeter.hpp"
+#include "widgets/TextInput.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -122,11 +123,11 @@ private:
     uint32_t newRx_ = 0;       //< frequency accumulated so far, RX
     uint32_t newTx_ = 0;       //< frequency accumulated so far, TX
 
-    /* M17 destination editor (classic MAIN_VFO # -> dst input). */
+    /* M17 destination editor (classic MAIN_VFO # -> dst input): edited in place
+     * through the shared TextInput widget (inline bracket rendering). */
     bool dstEditing_ = false; //< destination editor active
     char dstBuf_[10] = { 0 }; //< settings.m17_dest is char[10]
-    uint8_t dstLen_ = 0;      //< characters in dstBuf_
-    uint8_t dstCursor_ = 0;   //< cursor position in dstBuf_
+    TextInput dst_;
 
     View *menu_ = nullptr;
 };

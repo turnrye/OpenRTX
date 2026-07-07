@@ -12,10 +12,13 @@
 #include "layout/Flex.hpp"
 #include "widgets/TopBar.hpp"
 #include "widgets/List.hpp"
+#include "widgets/TextInput.hpp"
 #include "core/state.h"
 
 namespace ortxui
 {
+
+class TextInputView;
 
 /**
  * The Settings > M17 screen (value-row style), mirroring the classic M17 menu:
@@ -38,6 +41,12 @@ public:
     void build();
     void syncFromState(const state_t &s) override;
     NavIntent onEvent(const Event &e) override;
+
+    /** Wire the shared modal text editor used for the (long) Meta Txt field. */
+    void setTextEditor(TextInputView *e)
+    {
+        editor_ = e;
+    }
 
     Screen &screen() override
     {
@@ -67,18 +76,21 @@ private:
     TopBar topBar_;
     List list_;
 
+    TextInputView *editor_ = nullptr; //< shared modal, for Meta Txt
+
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][24] = {};
     bool editing_ = false;
     uint8_t editRow_ = 0;
 
-    /* Callsign edit state. */
+    /* Callsign edit state: the buffer is edited through the shared TextInput
+     * widget (inline bracket rendering), which owns the cursor. */
     char callBuf_[10] = {};
-    uint8_t callLen_ = 0;
-    uint8_t cursor_ = 0;
+    TextInput callsign_;
 
     /* Change-gate mirrors. */
     char lastCall_[10] = { '\1' }; //< force first render
+    char lastMeta_[53] = { '\1' }; //< force first render
     uint8_t lastCan_ = 0xFFu;
     uint8_t lastCanRx_ = 0xFFu;
 };

@@ -5,11 +5,13 @@
  */
 
 #include "views/M17View.hpp"
+#include "views/TextInputView.hpp"
 #include "core/Event.hpp"
 #include "interfaces/keyboard.h"
 #include "core/state.h"
 #include "core/voicePrompts.h"
 #include "core/voicePromptUtils.h"
+#include "style/Charsets.hpp"
 #include "hwconfig.h"
 
 #include <cstdio>
@@ -17,22 +19,6 @@
 
 namespace ortxui
 {
-
-namespace
-{
-/* Callsign edit alphabet (space first so a fresh slot reads as blank). */
-const char kCharset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.";
-constexpr int kCharsetLen = (int)(sizeof(kCharset) - 1);
-constexpr uint8_t kCallMax = 9; //< settings.callsign is char[10]
-
-int charsetIndex(char c)
-{
-    for (int i = 0; i < kCharsetLen; i++)
-        if (kCharset[i] == c)
-            return i;
-    return 0;
-}
-} // namespace
 
 void M17View::build()
 {
@@ -81,16 +67,7 @@ void M17View::writeValueText(uint8_t row)
         case RowCallsign: {
             if (editing_ && (editRow_ == RowCallsign)) {
                 /* Render the buffer with the cursor character in brackets. */
-                char *o = bufs_[row];
-                size_t rem = sizeof(bufs_[row]);
-                for (uint8_t i = 0; (i < callLen_) && (rem > 4); i++) {
-                    int n = (i == cursor_) ?
-                                snprintf(o, rem, "[%c]", callBuf_[i]) :
-                                snprintf(o, rem, "%c", callBuf_[i]);
-                    o += n;
-                    rem -= n;
-                }
-                *o = '\0';
+                callsign_.formatBracketed(bufs_[row], sizeof(bufs_[row]));
             } else {
                 snprintf(bufs_[row], sizeof(bufs_[row]), "%s", st.callsign);
             }
@@ -142,13 +119,10 @@ void M17View::beginEdit()
     if (editRow_ == RowCallsign) {
         strncpy(callBuf_, state.settings.callsign, sizeof(callBuf_) - 1);
         callBuf_[sizeof(callBuf_) - 1] = '\0';
-        callLen_ = (uint8_t)strlen(callBuf_);
-        if (callLen_ == 0) { /* start from a single editable blank */
-            callBuf_[0] = ' ';
-            callBuf_[1] = '\0';
-            callLen_ = 1;
-        }
-        cursor_ = 0;
+        callsign_.configure(callBuf_, sizeof(callBuf_), CHARSET_CALLSIGN,
+                            TextInput::Mode::SingleLine,
+                            TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
+        callsign_.begin();
     }
 
     writeValueText(editRow_);
@@ -183,14 +157,12 @@ void M17View::announceCursorChar()
     /* Speak the character under the cursor (phonetically at higher verbosity)
      * so a callsign can be edited by ear. */
     if (state.settings.vpLevel >= vpLow)
-        vp_announceInputChar(callBuf_[cursor_]);
+        vp_announceInputChar(callsign_.cursorChar());
 }
 
 void M17View::callsignCycle(int dir)
 {
-    int idx = charsetIndex(callBuf_[cursor_]);
-    idx = ((idx + dir) % kCharsetLen + kCharsetLen) % kCharsetLen;
-    callBuf_[cursor_] = kCharset[idx];
+    callsign_.cycle(dir);
     writeValueText(RowCallsign);
     list_.invalidate();
     announceCursorChar();
@@ -198,20 +170,7 @@ void M17View::callsignCycle(int dir)
 
 void M17View::callsignMove(int dir)
 {
-    if (dir < 0) {
-        if (cursor_ > 0)
-            cursor_--;
-    } else {
-        if (cursor_ + 1 < callLen_) {
-            cursor_++;
-        } else if (callLen_ < kCallMax) {
-            /* Extend with a blank and step onto it. */
-            callBuf_[callLen_] = ' ';
-            callBuf_[callLen_ + 1] = '\0';
-            callLen_++;
-            cursor_ = (uint8_t)(callLen_ - 1);
-        }
-    }
+    callsign_.moveCursor(dir);
     writeValueText(RowCallsign);
     list_.invalidate();
     announceCursorChar();
@@ -220,8 +179,7 @@ void M17View::callsignMove(int dir)
 void M17View::callsignConfirm()
 {
     /* Strip trailing spaces, then commit. */
-    while ((callLen_ > 0) && (callBuf_[callLen_ - 1] == ' '))
-        callBuf_[--callLen_] = '\0';
+    callsign_.stripTrailingSpaces();
 
     strncpy(state.settings.callsign, callBuf_,
             sizeof(state.settings.callsign) - 1);
@@ -242,6 +200,12 @@ void M17View::syncFromState(const state_t &s)
         && (strncmp(st.callsign, lastCall_, sizeof(lastCall_)) != 0)) {
         memcpy(lastCall_, st.callsign, sizeof(lastCall_));
         writeValueText(RowCallsign);
+        changed = true;
+    }
+    /* Meta Txt is edited by the modal editor; pick up its result on return. */
+    if (strncmp(st.M17_meta_text, lastMeta_, sizeof(lastMeta_)) != 0) {
+        memcpy(lastMeta_, st.M17_meta_text, sizeof(lastMeta_));
+        writeValueText(RowMeta);
         changed = true;
     }
     if (!(editing_ && editRow_ == RowCan) && (st.m17_can != lastCan_)) {
@@ -304,9 +268,19 @@ NavIntent M17View::onEvent(const Event &e)
         if ((e.keys & KEY_ESC) != 0u)
             return NavIntent::pop();
         if ((e.keys & KEY_ENTER) != 0u) {
-            /* Meta Txt is read-only for now; the rest open an editor. */
-            if (list_.selected() != RowMeta)
-                beginEdit();
+            /* Meta Txt is long free text: hand it to the modal editor. The
+             * others edit in place with the cursor cycle. */
+            if (list_.selected() == RowMeta) {
+                if (editor_ != nullptr) {
+                    editor_->open("Meta Text", state.settings.M17_meta_text,
+                                  sizeof(state.settings.M17_meta_text),
+                                  CHARSET_TEXT, /*multiline=*/true,
+                                  /*rtx=*/false);
+                    return NavIntent::push(editor_);
+                }
+                return NavIntent::none();
+            }
+            beginEdit();
             return NavIntent::none();
         }
     }

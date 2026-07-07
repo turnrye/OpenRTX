@@ -6,6 +6,7 @@
 
 #include "views/VfoView.hpp"
 #include "style/Symbols.hpp"
+#include "style/Charsets.hpp"
 #include "core/Event.hpp"
 #include "core/utils.h"
 #include "core/cps.h"
@@ -54,20 +55,6 @@ uint8_t powerToDots(uint32_t mw, uint8_t total)
     if (f > total)
         f = static_cast<float>(total);
     return static_cast<uint8_t>(std::lround(f));
-}
-
-/* Callsign/destination charset for the in-place cursor editor (same set the
- * Settings > M17 callsign editor uses). */
-const char kDstCharset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.";
-constexpr int kDstCharsetLen = (int)(sizeof(kDstCharset) - 1);
-constexpr uint8_t kDstMax = 9; //< settings.m17_dest is char[10]
-
-int dstCharsetIndex(char c)
-{
-    for (int i = 0; i < kDstCharsetLen; i++)
-        if (kDstCharset[i] == c)
-            return i;
-    return 0;
 }
 
 /* Return the 0-based digit for a bare number key (KEY_0..KEY_9 are bits 0..9),
@@ -601,22 +588,9 @@ void VfoView::renderDstEdit()
 {
     /* Compose "#W1A[B]W" with the cursor character in brackets, straight into
      * the channel-line name slot (no custom cursor rendering needed). */
-    char buf[40];
-    uint16_t p = 0;
-    buf[p++] = '#';
-    for (uint8_t i = 0; (i < dstLen_) && (p + 3u < sizeof(buf)); i++) {
-        if (i == dstCursor_) {
-            buf[p++] = '[';
-            buf[p++] = dstBuf_[i];
-            buf[p++] = ']';
-        } else {
-            buf[p++] = dstBuf_[i];
-        }
-    }
-    buf[p] = '\0';
-
-    strncpy(nameCache_, buf, sizeof(nameCache_) - 1);
-    nameCache_[sizeof(nameCache_) - 1] = '\0';
+    char body[36];
+    dst_.formatBracketed(body, sizeof(body));
+    snprintf(nameCache_, sizeof(nameCache_), "#%s", body);
     idxCache_[0] = '\0';
     chanIdx_.setText(idxCache_);
     chanName_.setText(nameCache_);
@@ -627,20 +601,17 @@ void VfoView::renderDstEdit()
 void VfoView::announceDstChar()
 {
     if (state.settings.vpLevel >= vpLow)
-        vp_announceInputChar(dstBuf_[dstCursor_]);
+        vp_announceInputChar(dst_.cursorChar());
 }
 
 void VfoView::beginDstEdit()
 {
     strncpy(dstBuf_, state.settings.m17_dest, sizeof(dstBuf_) - 1);
     dstBuf_[sizeof(dstBuf_) - 1] = '\0';
-    dstLen_ = (uint8_t)strlen(dstBuf_);
-    if (dstLen_ == 0) { /* start from a single editable blank */
-        dstBuf_[0] = ' ';
-        dstBuf_[1] = '\0';
-        dstLen_ = 1;
-    }
-    dstCursor_ = 0;
+    dst_.configure(dstBuf_, sizeof(dstBuf_), CHARSET_CALLSIGN,
+                   TextInput::Mode::SingleLine, TextInput::CursorStyle::Bracket,
+                   FONT_SIZE_8PT);
+    dst_.begin();
     dstEditing_ = true;
     renderDstEdit();
     screen_.markAllDirty();
@@ -649,29 +620,14 @@ void VfoView::beginDstEdit()
 
 void VfoView::dstCycle(int dir)
 {
-    int idx = dstCharsetIndex(dstBuf_[dstCursor_]);
-    idx = ((idx + dir) % kDstCharsetLen + kDstCharsetLen) % kDstCharsetLen;
-    dstBuf_[dstCursor_] = kDstCharset[idx];
+    dst_.cycle(dir);
     renderDstEdit();
     announceDstChar();
 }
 
 void VfoView::dstMove(int dir)
 {
-    if (dir < 0) {
-        if (dstCursor_ > 0)
-            dstCursor_--;
-    } else {
-        if (dstCursor_ + 1 < dstLen_) {
-            dstCursor_++;
-        } else if (dstLen_ < kDstMax) {
-            /* Extend with a blank and step onto it. */
-            dstBuf_[dstLen_] = ' ';
-            dstBuf_[dstLen_ + 1] = '\0';
-            dstLen_++;
-            dstCursor_ = (uint8_t)(dstLen_ - 1);
-        }
-    }
+    dst_.moveCursor(dir);
     renderDstEdit();
     announceDstChar();
 }
@@ -680,8 +636,7 @@ void VfoView::endDstEdit(bool commit)
 {
     if (commit) {
         /* Strip trailing spaces, then store the destination. */
-        while ((dstLen_ > 0) && (dstBuf_[dstLen_ - 1] == ' '))
-            dstBuf_[--dstLen_] = '\0';
+        dst_.stripTrailingSpaces();
         strncpy(state.settings.m17_dest, dstBuf_,
                 sizeof(state.settings.m17_dest) - 1);
         state.settings.m17_dest[sizeof(state.settings.m17_dest) - 1] = '\0';
@@ -707,8 +662,7 @@ NavIntent VfoView::onDstEditEvent(const Event &e)
             endDstEdit(false);
         else if ((k & KEY_HASH) != 0u) {
             /* # clears the destination and exits (classic parity). */
-            dstBuf_[0] = '\0';
-            dstLen_ = 0;
+            dst_.clear();
             endDstEdit(true);
         } else if ((k & KEY_UP) != 0u)
             dstCycle(+1);

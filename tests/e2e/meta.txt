@@ -1,0 +1,34 @@
+nop Settings > M17 > Meta Txt: opens the modal text editor (title, scrolling
+nop field with a block cursor, key hint) and commits back to the M17 list.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop M17 is Settings row idx 4 (Display, Time&Date, GPS, Radio, M17, ...)
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Move to Meta Txt (row 1) and open the modal editor with ENTER.
+key DOWN
+sleep 300
+key ENTER
+sleep 500
+nop Cursor-cycle a few characters, extending the field with RIGHT.
+key UP UP UP
+sleep 300
+key RIGHT
+sleep 300
+key UP UP
+sleep 300
+key RIGHT
+sleep 300
+key UP
+sleep 400
+screenshot meta_modal.bmp
+sleep 300
+nop Commit with ENTER; the M17 list shows the new meta value.
+key ENTER
+sleep 600
+screenshot meta_committed.bmp
+sleep 300
+quit
