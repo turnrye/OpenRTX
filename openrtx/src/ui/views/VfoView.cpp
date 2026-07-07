@@ -108,29 +108,32 @@ void VfoView::build()
     topBar_.init("");
     setTopBar(&topBar_);
 
-    /* Frequency hero (a little taller than the text needs so the mode stack
-     * has vertical breathing room). */
-    hero_.setBasis(regular ? 40 : 32);
+    /* Frequency hero. On the roomy screen it is a little taller than the text
+     * needs so the mode stack breathes; on the tiny mono screen it is trimmed
+     * to just clear the frequency and the mode/tone stack, freeing vertical
+     * room below so the channel line and meter both fit within 64px. */
+    hero_.setBasis(regular ? 40 : 26);
 
-    /* Channel line: index (muted) + name (blue). */
+    /* Channel line: index (muted) + name (blue). The compact screen uses a
+     * smaller name font so a full line (ascent + descent) still fits the tight
+     * budget without clipping. */
+    const fontSize_t chanFont = regular ? FONT_SIZE_10PT : FONT_SIZE_6PT;
     chanRow_.setAxis(Axis::Row);
     chanRow_.setAlign(Align::Center);
     chanRow_.setJustify(Justify::Start);
     chanRow_.setPadding(4, 0);
     chanRow_.setGap(6);
-    /* On the roomy screen, make the row tall enough to hold the channel-name
-     * font's full line height (ascent + descent) so descenders (and the '@' /
-     * caps of an M17 destination) are not clipped against the meter row below.
-     * The tiny mono screen has no vertical room to spare, so it keeps its
-     * compact row and accepts the historic tight fit. */
-    chanRow_.setBasis(regular ? gfx_getFontLineHeight(FONT_SIZE_10PT) : 13);
+    /* Make the row as tall as the channel-name font's full line height (ascent
+     * + descent) so descenders (and the '@' / caps of an M17 destination) are
+     * not clipped against the meter row below. */
+    chanRow_.setBasis(gfx_getFontLineHeight(chanFont));
 
     chanIdx_.setFont(FONT_SIZE_6PT);
     chanIdx_.setAlign(TEXT_ALIGN_LEFT);
     chanIdx_.setColor(Sem::OnSurfaceMuted);
     chanIdx_.setBasis(22);
 
-    chanName_.setFont(regular ? FONT_SIZE_10PT : FONT_SIZE_8PT);
+    chanName_.setFont(chanFont);
     chanName_.setAlign(TEXT_ALIGN_LEFT);
     chanName_.setColor(Sem::Primary); /* blue channel name */
     chanName_.setGrow(1);
@@ -603,7 +606,7 @@ void VfoView::renderDstEdit()
      * callsign body scrolls within the remaining width -- a leading/trailing
      * ellipsis marks where it is truncated, so the cursor is always visible. */
     const bool regular = (sizeClass() == SizeClass::Regular);
-    const fontSize_t font = regular ? FONT_SIZE_10PT : FONT_SIZE_8PT;
+    const fontSize_t font = regular ? FONT_SIZE_10PT : FONT_SIZE_6PT;
     const uint16_t atW = gfx_getTextWidth(font, "@");
     const uint16_t boxW = chanName_.area().w;
     const uint16_t bodyW = (boxW > atW) ? static_cast<uint16_t>(boxW - atW) : 0;
