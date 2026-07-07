@@ -118,7 +118,12 @@ void VfoView::build()
     chanRow_.setJustify(Justify::Start);
     chanRow_.setPadding(4, 0);
     chanRow_.setGap(6);
-    chanRow_.setBasis(regular ? 16 : 13);
+    /* On the roomy screen, make the row tall enough to hold the channel-name
+     * font's full line height (ascent + descent) so descenders (and the '@' /
+     * caps of an M17 destination) are not clipped against the meter row below.
+     * The tiny mono screen has no vertical room to spare, so it keeps its
+     * compact row and accepts the historic tight fit. */
+    chanRow_.setBasis(regular ? gfx_getFontLineHeight(FONT_SIZE_10PT) : 13);
 
     chanIdx_.setFont(FONT_SIZE_6PT);
     chanIdx_.setAlign(TEXT_ALIGN_LEFT);

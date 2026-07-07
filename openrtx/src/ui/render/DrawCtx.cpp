@@ -130,7 +130,8 @@ void DrawCtx::textInBox(const Rect &box, fontSize_t size, textAlign_t align,
                         Sem color, const char *str)
 {
     const int tw = static_cast<int>(gfx_getTextWidth(size, str));
-    const int fh = static_cast<int>(gfx_getFontHeight(size));
+    const int ascent = static_cast<int>(gfx_getFontHeight(size));
+    const int lineH = static_cast<int>(gfx_getFontLineHeight(size));
 
     int16_t x = box.x;
     if (align == TEXT_ALIGN_CENTER)
@@ -138,9 +139,12 @@ void DrawCtx::textInBox(const Rect &box, fontSize_t size, textAlign_t align,
     else if (align == TEXT_ALIGN_RIGHT)
         x = static_cast<int16_t>(box.x + static_cast<int>(box.w) - tw);
 
-    /* The backend anchors a line by its baseline; centre it in the box. */
-    const int16_t baseline =
-        static_cast<int16_t>(box.y + (static_cast<int>(box.h) + fh) / 2 - 1);
+    /* The backend anchors a line by its baseline. Centre the whole glyph box
+     * (ascent above the baseline, descent below) in the frame, so descenders
+     * have room below the baseline instead of the baseline sitting on the
+     * frame's bottom edge and clipping them. */
+    const int16_t baseline = static_cast<int16_t>(
+        box.y + (static_cast<int>(box.h) - lineH) / 2 + ascent);
     const point_t start = { x, baseline };
     gfx_print(start, size, TEXT_ALIGN_LEFT, themeColor(color), "%s", str);
 }

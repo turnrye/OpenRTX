@@ -12,7 +12,10 @@ namespace ortxui
 
 Size Label::natural() const
 {
-    return { gfx_getTextWidth(font_, text_), gfx_getFontHeight(font_) };
+    /* Reserve the full line height (ascent + descent), not just the ascent, so
+     * a layout that centres the label leaves room for descenders below the
+     * baseline instead of clipping them at the frame edge. */
+    return { gfx_getTextWidth(font_, text_), gfx_getFontLineHeight(font_) };
 }
 
 void Label::draw(DrawCtx &d)
