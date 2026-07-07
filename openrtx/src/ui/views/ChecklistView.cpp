@@ -21,7 +21,6 @@ void ChecklistView::build()
     static const char *const kLabels[RowCount] = {
         "Phonetic",
         "Macro Latch",
-        "Battery icon",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -60,7 +59,6 @@ void ChecklistView::syncFromState(const state_t &s)
     const settings_t &st = s.settings;
     items_[RowPhonetic].checked = (st.vpPhoneticSpell != 0u);
     items_[RowLatch].checked = (st.macroMenuLatch != 0u);
-    items_[RowBatteryIcon].checked = st.showBatteryIcon;
 
     seeded_ = true;
     list_.invalidate();
@@ -100,9 +98,6 @@ void ChecklistView::applyToggle(uint16_t row, bool on)
             break;
         case RowLatch:
             state.settings.macroMenuLatch = on ? 1u : 0u;
-            break;
-        case RowBatteryIcon:
-            state.settings.showBatteryIcon = on;
             break;
         default:
             break;

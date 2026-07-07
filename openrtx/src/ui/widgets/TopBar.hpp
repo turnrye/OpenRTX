@@ -40,10 +40,10 @@ public:
     void update(const state_t &s);
 
 private:
-    Label leftPad_; //< balances the right cluster so the centre is ~centred
-    Label middle_;  //< page title, or the clock when there is no title
-    Label lock_;    //< keypad-lock glyph, shown on every screen while locked
-    Label pct_;     //< battery percentage (when showBatteryIcon is false)
+    Label lock_;   //< keypad-lock glyph at the far left (blank slot otherwise);
+                   //  its reserved width also balances the right status cluster
+    Label middle_; //< page title, or the clock when there is no title
+    Label pct_;    //< battery percentage (when showBatteryIcon is false)
     BatteryIcon battery_; //< battery glyph (when showBatteryIcon is true)
 
     const char *titleStr_ = "";

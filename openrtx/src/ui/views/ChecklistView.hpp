@@ -43,7 +43,6 @@ private:
     enum Row : uint8_t {
         RowPhonetic,
         RowLatch,
-        RowBatteryIcon,
         RowCount,
     };
 

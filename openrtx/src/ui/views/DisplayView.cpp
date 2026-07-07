@@ -22,7 +22,7 @@ void DisplayView::build()
     const bool regular = (sizeClass() == SizeClass::Regular);
 
     static const char *const kLabels[RowCount] = {
-        "Brightness", "Contrast", "Squelch", "Vox", "Timer",
+        "Brightness", "Contrast", "Squelch", "Vox", "Timer", "Battery",
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -68,6 +68,8 @@ uint8_t DisplayView::curValue(uint8_t row) const
             return state.settings.voxLevel;
         case RowTimer:
             return state.settings.display_timer;
+        case RowBattery:
+            return state.settings.showBatteryIcon ? 1u : 0u;
         default:
             return 0u;
     }
@@ -97,6 +99,9 @@ void DisplayView::applyValue(uint8_t row, uint8_t v)
              * live each tick. */
             state.settings.display_timer = v;
             break;
+        case RowBattery:
+            state.settings.showBatteryIcon = (v != 0u);
+            break;
         default:
             break;
     }
@@ -118,6 +123,8 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
         snprintf(inner, sizeof(inner), "S%u", v);
     else if (row == RowTimer)
         snprintf(inner, sizeof(inner), "%s", kTimerLabels[(v < 16u) ? v : 0u]);
+    else if (row == RowBattery)
+        snprintf(inner, sizeof(inner), "%s", v ? "Icon" : "Percent");
     else
         snprintf(inner, sizeof(inner), "%u", v);
 
@@ -154,6 +161,7 @@ void DisplayView::adjust(int dir)
         { 0u, 15u, 1u },  //< Squelch
         { 0u, 10u, 1u },  //< Vox
         { 0u, 15u, 1u },  //< Timer (TIMER_OFF..TIMER_1H)
+        { 0u, 1u, 1u },   //< Battery (Percent / Icon)
     };
     const Range &r = kRanges[editRow_];
 
@@ -174,8 +182,14 @@ void DisplayView::syncFromState(const state_t &s)
     View::syncFromState(s); /* top bar */
 
     const settings_t &st = s.settings;
-    const uint8_t vals[RowCount] = { st.brightness, st.contrast, st.sqlLevel,
-                                     st.voxLevel, (uint8_t)st.display_timer };
+    const uint8_t vals[RowCount] = {
+        st.brightness,
+        st.contrast,
+        st.sqlLevel,
+        st.voxLevel,
+        (uint8_t)st.display_timer,
+        (uint8_t)(st.showBatteryIcon ? 1u : 0u),
+    };
     bool changed = false;
 
     for (uint8_t i = 0; i < RowCount; i++) {

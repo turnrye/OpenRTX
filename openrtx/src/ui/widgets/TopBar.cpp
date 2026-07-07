@@ -25,10 +25,14 @@ void TopBar::init(const char *title)
     setPadding(4, 0);
     setGap(4);
 
-    /* A left pad the size of the right cluster keeps the centred element near
-     * the true middle while still leaving it the full width for long titles. */
-    leftPad_.setText("");
-    leftPad_.setBasis(regular ? 28 : 22);
+    /* Far-left keypad-lock slot: the glyph while locked, blank otherwise. Its
+     * fixed width also balances the right status cluster, keeping the centred
+     * title/clock centred. */
+    lock_.setFont(font);
+    lock_.setAlign(TEXT_ALIGN_LEFT);
+    lock_.setColor(Sem::Accent);
+    lock_.setText("");
+    lock_.setBasis(regular ? 28 : 22);
 
     /* Centre: page title, or the clock when there is no title. */
     middle_.setFont(font);
@@ -36,13 +40,7 @@ void TopBar::init(const char *title)
     middle_.setColor(Sem::OnSurface);
     middle_.setGrow(1);
 
-    /* Right cluster: lock glyph (while locked) + battery as percentage or icon. */
-    lock_.setFont(font);
-    lock_.setAlign(TEXT_ALIGN_RIGHT);
-    lock_.setColor(Sem::Accent);
-    lock_.setText(SYMBOL_LOCK);
-    lock_.setBasis(regular ? 12 : 10);
-    lock_.setFlag(FLAG_HIDDEN, true);
+    /* Right cluster: battery as percentage or icon. */
 
     pct_.setFont(font);
     pct_.setAlign(TEXT_ALIGN_RIGHT);
@@ -54,9 +52,8 @@ void TopBar::init(const char *title)
     battery_.setAlignSelf(Align::Center);
     battery_.setArea({ 0, 0, 22, 11 }); /* natural size for cross-centring */
 
-    addChild(&leftPad_);
-    addChild(&middle_);
     addChild(&lock_);
+    addChild(&middle_);
     addChild(&pct_);
     addChild(&battery_);
 
@@ -104,9 +101,10 @@ void TopBar::update(const state_t &s)
     }
 
     if (s.keypad_locked != lastLocked_) {
-        lock_.setFlag(FLAG_HIDDEN, !s.keypad_locked);
+        /* Constant-width slot, so just swap the glyph — no re-flow needed. */
+        lock_.setText(s.keypad_locked ? SYMBOL_LOCK : "");
+        lock_.invalidate();
         lastLocked_ = s.keypad_locked;
-        relayout = true;
     }
 
     if (relayout) {
