@@ -72,9 +72,10 @@ UTF-8 encoding of the codepoint), regenerate, and commit.
 
 ## Custom icon font (fallback layer)
 
-App-specific marks that are **not** FontAwesome — currently just the M17
-wordmark logo (`SYMBOL_M17`, U+E900) — live in a separate *custom icon font*
-rather than being merged into the text blobs. Each text font is given the
+App-specific marks that are **not** FontAwesome live in a separate *custom icon
+font* rather than being merged into the text blobs: the M17 wordmark logo
+(`SYMBOL_M17`, U+E900) and the Latin-1 supplement (U+00A1–U+00FF: accented
+letters + symbols) that backs the UTF-8 character picker (`PickerView`). Each text font is given the
 same-size custom-icon font as a `fallback` (mirroring LVGL's
 `lv_font_t.fallback`), so `lvFont_getGlyph` walks the chain and those code
 points render like any other glyph — a single-colour, theme-tinted silhouette

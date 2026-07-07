@@ -5,6 +5,7 @@
  */
 
 #include "views/TextInputView.hpp"
+#include "views/PickerView.hpp"
 #include "core/Event.hpp"
 #include "core/Layout.hpp"
 #include "interfaces/keyboard.h"
@@ -91,6 +92,16 @@ void TextInputView::open(const char *title, char *dst, uint16_t cap,
     screen_.markAllDirty();
 }
 
+void TextInputView::onShow()
+{
+    /* Returning from the character picker: insert the chosen code point. */
+    uint32_t cp = 0;
+    if ((picker_ != nullptr) && picker_->takeResult(cp)) {
+        field_.insert(cp);
+        field_.invalidate();
+    }
+}
+
 void TextInputView::announce()
 {
     vpSay(title_.text());
@@ -126,6 +137,15 @@ NavIntent TextInputView::onEvent(const Event &e)
             field_.moveCursor(e.encoder > 0 ? +1 : -1);
         }
         afterEdit();
+        return NavIntent::none();
+    }
+
+    /* A long-press opens the UTF-8 character picker (accented Latin, symbols). */
+    if (e.kind == EvKind::KeyLong) {
+        if (picker_ != nullptr) {
+            picker_->open();
+            return NavIntent::push(picker_);
+        }
         return NavIntent::none();
     }
 

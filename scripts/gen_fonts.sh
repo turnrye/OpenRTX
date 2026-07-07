@@ -79,12 +79,17 @@ for pt in 5 6 8 9 10 12 16; do
 
     # The custom icon font lives in its OWN per-size blobs, embedded as a
     # fallback so the base ubuntu blobs stay byte-for-byte unchanged (see
-    # docs/fonts.md). Same 1bpp/4bpp split as the text fonts.
+    # docs/fonts.md). It holds the M17 logo plus the Latin-1 supplement
+    # (0xA1-0xFF: accented letters + symbols) from Ubuntu, so the UTF-8
+    # character picker and any inserted accented text render. Per-glyph baseline
+    # offsets keep them aligned with the base text. Same 1bpp/4bpp split.
     if [ -n "${ICON_TTF:-}" ]; then
         npx --yes lv_font_conv@latest --font "$ICON_TTF" -r "$M17_CP" \
+            --font "$TTF" -r 0xA1-0xFF \
             --size "$p" --bpp 1 --format bin --no-compress --no-kerning \
             -o "$OUT/icons_${pt}_1.bin"
         npx --yes lv_font_conv@latest --font "$ICON_TTF" -r "$M17_CP" \
+            --font "$TTF" -r 0xA1-0xFF \
             --size "$p" --bpp 4 --format bin --no-kerning \
             -o "$OUT/icons_${pt}_4.bin"
     fi

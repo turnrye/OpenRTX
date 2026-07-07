@@ -54,6 +54,7 @@
 #include "views/ContactsView.hpp"
 #include "views/BanksView.hpp"
 #include "views/TextInputView.hpp"
+#include "views/PickerView.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -121,6 +122,7 @@ ChannelsView channelsView;
 ContactsView contactsView;
 BanksView banksView;
 TextInputView textInputView;
+PickerView pickerView;
 #ifdef CONFIG_M17
 M17View m17View;
 #endif
@@ -238,6 +240,8 @@ extern "C" void ui_init()
     contactsView.build();
     banksView.build();
     textInputView.build();
+    pickerView.build();
+    textInputView.setPicker(&pickerView);
 #ifdef CONFIG_M17
     m17View.build();
     m17View.setTextEditor(&textInputView);

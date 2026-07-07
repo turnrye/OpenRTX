@@ -17,6 +17,8 @@
 namespace ortxui
 {
 
+class PickerView;
+
 /**
  * A generic full-screen modal text editor: a title, a scrolling TextInput
  * field, and a key hint. A caller opens it for a destination buffer, the user
@@ -42,6 +44,13 @@ public:
     void open(const char *title, char *dst, uint16_t cap, const Charset &cs,
               const MultiTapTable &tap, bool multiline, bool rtx);
 
+    /** Wire the shared UTF-8 character picker (opened by a long-press). */
+    void setPicker(PickerView *p)
+    {
+        picker_ = p;
+    }
+
+    void onShow() override;
     void announce() override;
     NavIntent onEvent(const Event &e) override;
 
@@ -64,6 +73,7 @@ private:
     char *dst_ = nullptr;
     uint16_t cap_ = 0;
     bool rtx_ = false;
+    PickerView *picker_ = nullptr; //< shared UTF-8 character picker
 };
 
 } // namespace ortxui

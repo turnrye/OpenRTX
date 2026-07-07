@@ -1,0 +1,32 @@
+nop UTF-8 character picker: a long-press in the Meta modal opens a grid of
+nop accented Latin + symbols (from the custom icon/fallback font); ENTER
+nop inserts the chosen code point. 'keylong' injects the long-press because the
+nop harness clock is frozen (a real timed hold can't elapse 700ms).
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Open the Meta Txt modal (row 1).
+key DOWN
+sleep 300
+key ENTER
+sleep 500
+nop Long-press opens the picker.
+keylong 1
+sleep 500
+screenshot picker_open.bmp
+sleep 300
+nop Navigate the grid and pick a character.
+key RIGHT RIGHT RIGHT DOWN
+sleep 400
+screenshot picker_sel.bmp
+sleep 300
+nop ENTER selects and returns to the field with the code point inserted.
+key ENTER
+sleep 600
+screenshot picker_inserted.bmp
+sleep 300
+quit
