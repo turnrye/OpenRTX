@@ -38,6 +38,7 @@
 #include "render/DrawCtx.hpp"
 #include "style/SemanticColor.hpp"
 #include "views/VfoView.hpp"
+#include "views/MacroView.hpp"
 #include "views/MenuView.hpp"
 #include "views/InfoView.hpp"
 #include "views/AboutView.hpp"
@@ -105,6 +106,7 @@ constexpr uint16_t kSettingsMenuCount = sizeof(kSettingsMenu)
 /* The view singletons and the Navigator whose stack top is the active screen.
  * Each View owns its widget tree in static storage. */
 VfoView vfoView;
+MacroView macroView;
 MenuView mainMenu;
 MenuView settingsMenu;
 InfoView infoView;
@@ -143,6 +145,12 @@ void wireRow(MenuView &menu, const char *const *table, uint16_t count,
  * suspended; any keypress (or RF/volume activity) wakes it again. */
 bool standby = false;
 long long last_event_tick = 0;
+
+/* Macro menu overlay (shown while MONI is held; long-press latches it open when
+ * settings.macroMenuLatch is set). Managed here because it is triggered by a
+ * global held key, not a view's own navigation intent. */
+bool macroOpen = false;
+bool macroLatched = false;
 
 void enterStandby()
 {
@@ -214,6 +222,7 @@ extern "C" void ui_init()
     last_state = state;
 
     vfoView.build();
+    macroView.build();
     mainMenu.build("Menu", kMainMenu, kMainMenuCount);
     settingsMenu.build("Settings", kSettingsMenu, kSettingsMenuCount);
     infoView.build();
@@ -312,6 +321,35 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
                 && (state.settings.vpLevel > vpBeep)) {
                 vp_replayLastPrompt();
                 return;
+            }
+
+            /* Keypad lock: while locked, ignore keys unless the macro menu is
+             * open or MONI is pressed (so it can always be opened to unlock). */
+            if (state.keypad_locked && !macroOpen
+                && ((msg.keys & KEY_MONI) == 0u))
+                return;
+
+            /* Macro menu: shown while MONI is held. A long-press latches it open
+             * (if enabled); a MONI press while latched, or releasing MONI when
+             * not latched, closes it. */
+            const bool moni = ((msg.keys & KEY_MONI) != 0u);
+            if (moni) {
+                if (!macroOpen) {
+                    nav.openOverlay(&macroView);
+                    macroOpen = true;
+                    macroLatched = false;
+                } else if (macroLatched) {
+                    nav.closeOverlay();
+                    macroOpen = false;
+                    macroLatched = false;
+                    return;
+                }
+                if (msg.long_press && (state.settings.macroMenuLatch != 0u))
+                    macroLatched = true;
+            } else if (macroOpen && !macroLatched) {
+                nav.closeOverlay();
+                macroOpen = false;
+                return; /* consume the closing (key-release) event */
             }
         }
 

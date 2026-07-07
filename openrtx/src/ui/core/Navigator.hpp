@@ -43,6 +43,20 @@ public:
         return (depth_ > 0) ? stack_[depth_ - 1] : nullptr;
     }
 
+    /**
+     * Open/close a modal overlay (e.g. the macro menu) on top of the current
+     * screen. Unlike push/pop these are public so ui_shim can drive an overlay
+     * that is triggered globally (a held key), outside a view's onEvent intent.
+     */
+    void openOverlay(View *v)
+    {
+        push(v);
+    }
+    void closeOverlay()
+    {
+        pop();
+    }
+
 private:
     static constexpr uint8_t kMaxDepth = 8;
 

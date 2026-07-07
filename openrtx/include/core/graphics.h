@@ -86,6 +86,7 @@ typedef enum {
  * decodes UTF-8), e.g. gfx_print(pos, FONT_SIZE_8PT, ..., SYMBOL_WIFI). Extend
  * the set by adding codepoints to scripts/gen_fonts.sh and regenerating.
  */
+#define SYMBOL_SIGNAL        "\xEF\x80\x92" /* 0xF012 */
 #define SYMBOL_SETTINGS      "\xEF\x80\x93" /* 0xF013 */
 #define SYMBOL_LOCK          "\xEF\x80\xA3" /* 0xF023 */
 #define SYMBOL_MUTE          "\xEF\x80\xA6" /* 0xF026 */
@@ -97,6 +98,7 @@ typedef enum {
 #define SYMBOL_CHARGE        "\xEF\x83\xA7" /* 0xF0E7 */
 #define SYMBOL_BELL          "\xEF\x83\xB3" /* 0xF0F3 */
 #define SYMBOL_GPS           "\xEF\x84\xA4" /* 0xF124 */
+#define SYMBOL_BRIGHTNESS    "\xEF\x86\x85" /* 0xF185 */
 #define SYMBOL_WIFI          "\xEF\x87\xAB" /* 0xF1EB */
 #define SYMBOL_BATTERY_FULL  "\xEF\x89\x80" /* 0xF240 */
 #define SYMBOL_BATTERY_HALF  "\xEF\x89\x82" /* 0xF242 */

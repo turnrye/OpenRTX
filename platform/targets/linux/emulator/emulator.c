@@ -28,7 +28,8 @@ emulator_state_t emulator_state =
     4,        // volume level
     1,        // chSelector
     false,    // PTT status
-    false     // power off
+    false,    // power off
+    0         // held keys
 };
 
 typedef int (*_climenu_fn)(void *self, int argc, char **argv);
@@ -217,6 +218,40 @@ static int pressMultiKeys(void *_self, int _argc, char **_argv)
     return SH_CONTINUE; // continue
 }
 
+// holdKeys presses and HOLDS the given keys down (reported on every keyboard
+// scan) until releaseKeys is called. Unlike 'key'/'keycombo' (momentary), this
+// lets a script model a held button — e.g. MONI for the macro menu, or holding
+// a key long enough to trigger a long-press.
+static int holdKeys(void *_self, int _argc, char **_argv)
+{
+    (void) _self;
+    keyboard_t combo = 0;
+
+    for(int i = 0; i < _argc; i++)
+    {
+        if(_argv[i] != NULL)
+            combo |= keyname2keyboard(_argv[i]);
+    }
+
+    emulator_state.heldKeys = combo;
+    printf("Hold keys: 0x%08X\n", (unsigned)combo);
+    shell_ready(NULL, 0, NULL);
+    return SH_CONTINUE; // continue
+}
+
+// releaseKeys clears any keys held by holdKeys.
+static int releaseKeys(void *_self, int _argc, char **_argv)
+{
+    (void) _self;
+    (void) _argc;
+    (void) _argv;
+
+    emulator_state.heldKeys = 0;
+    printf("Release held keys\n");
+    shell_ready(NULL, 0, NULL);
+    return SH_CONTINUE; // continue
+}
+
 // NOTE: unused function
 // static int template(void *_self, int _argc, char **_argv)
 // {
@@ -350,6 +385,8 @@ static _climenu_option _options[] =
                                 NULL,   pressKey
     },
     {"keycombo", "Press a bunch of keys simultaneously", NULL, pressMultiKeys },
+    {"keyhold",  "Hold keys down until 'keyrelease' (e.g. 'keyhold MONI')", NULL, holdKeys },
+    {"keyrelease", "Release keys held by 'keyhold'", NULL, releaseKeys },
     {"show",     "Show current radio state (ptt, rssi, etc)", NULL, printState},
     {"screenshot", "[screenshot.bmp] Save screenshot to first arg or screenshot.bmp if none given",
                                 NULL,   screenshot
@@ -547,17 +584,19 @@ void emulator_start()
 
 keyboard_t emulator_getKeys()
 {
+    /* Keys held via 'keyhold' are reported on every scan (until 'keyrelease'),
+     * OR-ed with any momentary key dequeued from the shell key queue. This lets
+     * a script hold e.g. MONI down across screenshots and other keypresses. */
+    keyboard_t out = emulator_state.heldKeys;
+
     if(_skq_in > _skq_out)
     {
         //only if we've fallen behind and there's data in there:
-        keyboard_t out = _shellkeyq[ _skq_head ];
+        out |= _shellkeyq[ _skq_head ];
         _shellkeyq[ _skq_head ] = 0;
         _skq_out++;
         _skq_head = (_skq_head + 1) % _skq_cap;
-        return out;
     }
-    else
-    {
-        return 0; //no keys
-    }
+
+    return out;
 }

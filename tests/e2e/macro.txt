@@ -1,0 +1,17 @@
+nop Macro menu: holding MONI shows the icon-tile grid of quick actions; a number
+nop key acts on the current channel while held; releasing MONI closes it. The
+nop overlay is opaque and shows no S-meter, so it is deterministic on its own.
+rssi 0
+sleep 1000
+keyhold MONI
+sleep 500
+screenshot macro_open.bmp
+sleep 300
+nop Key 6 cycles power one step (1.0W -> 2.5W) while MONI is held.
+key 6
+sleep 400
+screenshot macro_power.bmp
+sleep 300
+keyrelease
+sleep 400
+quit

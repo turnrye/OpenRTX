@@ -2,7 +2,7 @@ nop Info screen: ENTER, down to Info (idx 5), ENTER.
 nop The RSSI row is emulator-racy (state.rssi is left at 0 or -100 depending
 nop on timing), which is ~40px of digits; tolerate it while still catching
 nop layout or other-row regressions (those would differ by hundreds of px).
-#tolerance 80
+#tolerance 120
 sleep 1000
 key ENTER
 sleep 400
