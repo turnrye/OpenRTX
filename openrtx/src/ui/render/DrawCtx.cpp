@@ -42,20 +42,48 @@ void DrawCtx::drawRect(const Rect &r, Sem color)
 
 void DrawCtx::drawCircle(Point c, uint16_t r, Sem color)
 {
-    const point_t centre = { c.x, c.y };
-    gfx_drawCircle(centre, r, themeColor(color));
+    /* Anti-aliased ~1px ring: coverage peaks on the radius and fades either
+     * side; gfx_setPixel blends the modulated alpha (thresholded on mono). */
+    const color_t col = themeColor(color);
+    const float rf = static_cast<float>(r);
+    const int R = static_cast<int>(r) + 1;
+    for (int dy = -R; dy <= R; dy++) {
+        for (int dx = -R; dx <= R; dx++) {
+            const float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+            float cov = 1.0f - std::fabs(dist - rf);
+            if (cov <= 0.0f)
+                continue;
+            if (cov > 1.0f)
+                cov = 1.0f;
+            color_t p = col;
+            p.alpha = static_cast<uint8_t>(col.alpha * cov);
+            gfx_setPixel({ static_cast<int16_t>(c.x + dx),
+                           static_cast<int16_t>(c.y + dy) },
+                         p);
+        }
+    }
 }
 
 void DrawCtx::fillCircle(Point c, uint16_t r, Sem color)
 {
+    /* Anti-aliased disc: full coverage inside with a 1px soft edge. */
     const color_t col = themeColor(color);
-    const int rr = static_cast<int>(r);
-    for (int dy = -rr; dy <= rr; dy++) {
-        const int dx =
-            static_cast<int>(std::lround(std::sqrt(double(rr * rr - dy * dy))));
-        const point_t start = { static_cast<int16_t>(c.x - dx),
-                                static_cast<int16_t>(c.y + dy) };
-        gfx_drawRect(start, static_cast<uint16_t>(2 * dx + 1), 1, col, true);
+    const float rf = static_cast<float>(r);
+    const int R = static_cast<int>(r) + 1;
+    for (int dy = -R; dy <= R; dy++) {
+        for (int dx = -R; dx <= R; dx++) {
+            const float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+            float cov = rf + 0.5f - dist;
+            if (cov <= 0.0f)
+                continue;
+            if (cov > 1.0f)
+                cov = 1.0f;
+            color_t p = col;
+            p.alpha = static_cast<uint8_t>(col.alpha * cov);
+            gfx_setPixel({ static_cast<int16_t>(c.x + dx),
+                           static_cast<int16_t>(c.y + dy) },
+                         p);
+        }
     }
 }
 

@@ -15,6 +15,7 @@
 #include "core/voicePromptUtils.h"
 #include "hwconfig.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -26,6 +27,32 @@ namespace
 
 /* Digits per RX/TX frequency in keypad entry (classic FREQ_DIGITS). */
 constexpr uint8_t kFreqDigits = 7;
+
+/* The TX power meter is a dB (log) scale relative to the radio's maximum
+ * output. There is no per-device max-power field yet (hwInfo_t only carries
+ * bands), so assume 5 W — the rating of essentially every OpenRTX-supported
+ * radio; when a hwInfo max-power field lands, read it here instead. The meter
+ * empties kPowerSpanDb below the max, so full power fills every dot and each
+ * halving of power (~3 dB) drops a few dots. */
+constexpr uint32_t kMaxPowerMw = 5000;
+constexpr float kPowerSpanDb = 10.0f;
+
+/* Number of filled dots (0..total) for a TX power on the dB scale. Any nonzero
+ * power lights at least one dot (you are transmitting something). */
+uint8_t powerToDots(uint32_t mw, uint8_t total)
+{
+    if (mw == 0u)
+        return 0;
+    const float db =
+        10.0f
+        * std::log10(static_cast<float>(mw) / static_cast<float>(kMaxPowerMw));
+    float f = total * (1.0f + db / kPowerSpanDb);
+    if (f < 1.0f)
+        f = 1.0f;
+    if (f > total)
+        f = static_cast<float>(total);
+    return static_cast<uint8_t>(std::lround(f));
+}
 
 /* Callsign/destination charset for the in-place cursor editor (same set the
  * Settings > M17 callsign editor uses). */
@@ -181,12 +208,14 @@ void VfoView::syncMeter(const state_t &s)
         return;
 
     if (status == TX) {
+        const uint32_t mw = s.channel.power;
+
         meter_.setLabel("TX");
         meter_.setColor(Sem::TxDanger);
         meter_.setShowScale(false);
-        meter_.setLevel(9, 9); /* solid power bar */
+        /* Fill dots on a dB power scale relative to the radio's max output. */
+        meter_.setLevel(powerToDots(mw, 9), 9);
 
-        const uint32_t mw = s.channel.power;
         if (mw >= 1000u)
             snprintf(readoutBuf_, sizeof(readoutBuf_), "%lu.%luW",
                      (unsigned long)(mw / 1000u),
