@@ -33,6 +33,7 @@ path = [
     "tests/e2e/golden/**/*.bmp",
     "README.md",
     "CONTRIBUTING.md",
+    "docs/**/*",
     "99-openrtx.rules",
     ".github/**/*",
     ".devcontainer/**/*",
