@@ -385,14 +385,49 @@ void gfx_drawVLine(int16_t x, uint16_t width, color_t color)
  * @param length: the length of the input text, used for boundary checking
  * @param max_width: right-edge pixel limit for line measurement
  */
+/*
+ * Decode one UTF-8 codepoint at `s` (never reading past a NUL); returns the
+ * number of bytes consumed (>= 1). Malformed or truncated sequences fall back
+ * to a single byte. This lets ASCII, the FontAwesome symbol strings, and future
+ * non-Latin text share one text path.
+ */
+static uint8_t utf8_decode(const char *s, uint32_t *cp)
+{
+    uint8_t b0 = (uint8_t)s[0];
+    if (b0 < 0x80u) {
+        *cp = b0;
+        return 1;
+    }
+    if (((b0 & 0xE0u) == 0xC0u) && ((s[1] & 0xC0) == 0x80)) {
+        *cp = ((uint32_t)(b0 & 0x1Fu) << 6) | (uint8_t)(s[1] & 0x3F);
+        return 2;
+    }
+    if (((b0 & 0xF0u) == 0xE0u) && ((s[1] & 0xC0) == 0x80)
+        && ((s[2] & 0xC0) == 0x80)) {
+        *cp = ((uint32_t)(b0 & 0x0Fu) << 12) | ((uint32_t)(s[1] & 0x3F) << 6)
+            | (uint8_t)(s[2] & 0x3F);
+        return 3;
+    }
+    if (((b0 & 0xF8u) == 0xF0u) && ((s[1] & 0xC0) == 0x80)
+        && ((s[2] & 0xC0) == 0x80) && ((s[3] & 0xC0) == 0x80)) {
+        *cp = ((uint32_t)(b0 & 0x07u) << 18) | ((uint32_t)(s[1] & 0x3F) << 12)
+            | ((uint32_t)(s[2] & 0x3F) << 6) | (uint8_t)(s[3] & 0x3F);
+        return 4;
+    }
+    *cp = b0;
+    return 1;
+}
+
 static inline uint16_t get_line_size(const lvFont_t *f, const char *text,
                                      uint16_t length, uint16_t max_width)
 {
     uint16_t line_size = 0;
     lvGlyph_t glyph;
-    for (unsigned i = 0; i < length && text[i] != '\n' && text[i] != '\r';
-         i++) {
-        if (!lvFont_getGlyph(f, (unsigned char)text[i], &glyph))
+    uint16_t i = 0;
+    while (i < length && text[i] != '\n' && text[i] != '\r') {
+        uint32_t cp;
+        i += utf8_decode(&text[i], &cp);
+        if (!lvFont_getGlyph(f, cp, &glyph))
             continue;
         if (line_size + glyph.adv_w <= max_width)
             line_size += glyph.adv_w;
@@ -475,19 +510,24 @@ uint16_t gfx_measureText(fontSize_t size, const char *buf, uint16_t start_x,
     uint16_t cur_y = f->line_height;
     lvGlyph_t glyph;
 
-    for (unsigned i = 0; i < len; i++) {
+    unsigned i = 0;
+    while (i < len) {
         char c = buf[i];
 
         if (c == '\n') {
             cur_x = start_x;
             cur_y += f->line_height;
+            i++;
             continue;
         } else if (c == '\r') {
             cur_x = start_x;
+            i++;
             continue;
         }
 
-        if (!lvFont_getGlyph(f, (unsigned char)c, &glyph))
+        uint32_t cp;
+        i += utf8_decode(&buf[i], &cp);
+        if (!lvFont_getGlyph(f, cp, &glyph))
             continue;
 
         if (cur_x + glyph.adv_w > max_x) {
@@ -519,7 +559,8 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
     uint16_t line_h = 0;
     lvGlyph_t glyph;
 
-    for (unsigned i = 0; i < len; i++) {
+    unsigned i = 0;
+    while (i < len) {
         /* Even the topmost pixel of the next glyph falls below clip_bot_y. */
         if ((int16_t)(start.y - (int16_t)f->line_height) > clip_bot_y)
             break;
@@ -540,14 +581,20 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
                 start.x = reset_x;
             }
             start.y += f->line_height;
+            i++;
             continue;
         } else if (c == '\r') {
             start.x = reset_x;
+            i++;
             continue;
         }
 
-        if (!lvFont_getGlyph(f, (unsigned char)c, &glyph))
+        uint32_t cp;
+        uint8_t clen = utf8_decode(&buf[i], &cp);
+        if (!lvFont_getGlyph(f, cp, &glyph)) {
+            i += clen;
             continue;
+        }
 
         uint16_t w = glyph.box_w, h = glyph.box_h;
         int16_t xo = glyph.ofs_x;
@@ -607,6 +654,7 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
         }
 
         start.x += glyph.adv_w;
+        i += clen;
     }
 
     if (line_size > max_line_size)
