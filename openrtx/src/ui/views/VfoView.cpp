@@ -166,13 +166,6 @@ void VfoView::build()
 
 void VfoView::syncMode(const channel_t &ch)
 {
-    const bool changed = (ch.mode != lastMode_)
-                      || (ch.bandwidth != lastBandwidth_)
-                      || (ch.fm.txToneEn != lastToneEn_)
-                      || (ch.power != lastPower_);
-    if (!changed)
-        return;
-
     const char *m1 = "--";
     switch (ch.mode) {
         case OPMODE_FM:
@@ -188,24 +181,30 @@ void VfoView::syncMode(const channel_t &ch)
             break;
     }
 
-    /* Middle line: the PL/CTCSS transmit tone. Show the actual tone frequency
-     * (e.g. "88.5") when TX tone is enabled, so it reads as the PL state rather
-     * than a bare "CCS" flag; blank when no tone. */
-    const char *m2 = "";
-    if ((ch.mode == OPMODE_FM) && (ch.fm.txToneEn != 0u)) {
+    /* Second mode-stack line (under the mode). In FM it is the PL/CTCSS
+     * transmit tone (e.g. "88.5") when enabled; in M17 it is the CAN, shown as
+     * its live RX/TX value ("ANY" while promiscuous-RX, "C<n>" on TX / filtered
+     * RX). Blank otherwise. */
+    modeSub_[0] = '\0';
+    if (ch.mode == OPMODE_M17) {
+        m17CanLabel(modeSub_, sizeof(modeSub_));
+    } else if ((ch.mode == OPMODE_FM) && (ch.fm.txToneEn != 0u)) {
         const uint16_t t = ctcss_tone[ch.fm.txTone];
-        snprintf(toneBuf_, sizeof(toneBuf_), "%u.%u", (unsigned)(t / 10),
+        snprintf(modeSub_, sizeof(modeSub_), "%u.%u", (unsigned)(t / 10),
                  (unsigned)(t % 10));
-        m2 = toneBuf_;
     }
 
-    hero_.setMode(m1, m2);
-    hero_.invalidate();
+    /* Repaint only when the visible stack changes: covers mode/bandwidth, the
+     * FM tone, and the dynamic M17 CAN (settings + TX/RX). */
+    char sig[24];
+    snprintf(sig, sizeof(sig), "%s|%s", m1, modeSub_);
+    if (strcmp(sig, modeCache_) == 0)
+        return;
+    strncpy(modeCache_, sig, sizeof(modeCache_) - 1);
+    modeCache_[sizeof(modeCache_) - 1] = '\0';
 
-    lastMode_ = ch.mode;
-    lastBandwidth_ = ch.bandwidth;
-    lastToneEn_ = ch.fm.txToneEn;
-    lastPower_ = ch.power;
+    hero_.setMode(m1, modeSub_);
+    hero_.invalidate();
 }
 
 void VfoView::syncMeter(const state_t &s)
@@ -553,7 +552,7 @@ void VfoView::exitInput()
 
     /* Force the change-gated readout to repaint from live state next sync. */
     lastFreq_ = 0xFFFFFFFFu;
-    lastMode_ = 0xFFu;
+    modeCache_[0] = '\1';
     idxCache_[0] = '\1';
     nameCache_[0] = '\1';
     screen_.markAllDirty();
@@ -584,7 +583,7 @@ void VfoView::m17DstLabel(char *out, uint16_t sz)
 {
     const char *dst = state.settings.m17_dest;
     if (dst[0] == '\0')
-        snprintf(out, sz, "@BROADCAST");
+        snprintf(out, sz, "@ALL");
     else
         snprintf(out, sz, "@%s", dst);
 }
@@ -608,13 +607,14 @@ void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
     const channel_t &ch = s.channel;
 
     if (s.tuner_mode == VFO) {
-        if (ch.mode == OPMODE_M17) {
-            m17CanLabel(idxOut, 8);       /* far left: CAN + RX-promiscuous */
-            m17DstLabel(nameOut, nameSz); /* the M17 destination */
-        } else {
-            idxOut[0] = '\0';
-            snprintf(nameOut, nameSz, "VFO");
-        }
+        /* Far-left is the "where am I" slot: "VFO" here, the memory index in
+         * memory mode. In M17 the destination fills the name slot; FM has no
+         * name (just the frequency). The CAN lives in the mode stack, not here. */
+        snprintf(idxOut, 8, "VFO");
+        if (ch.mode == OPMODE_M17)
+            m17DstLabel(nameOut, nameSz);
+        else
+            nameOut[0] = '\0';
     } else {
         snprintf(idxOut, 8, "%03u", s.channel_index + 1);
         snprintf(nameOut, nameSz, "%s", (ch.name[0] != '\0') ? ch.name : "---");

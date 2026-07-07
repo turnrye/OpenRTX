@@ -78,8 +78,8 @@ private:
     /* --- M17 destination (shown in the channel line, edited via #) --- */
     void composeChanLine(const state_t &s, char *idxOut, char *nameOut,
                          uint16_t nameSz); //< build the index + name slot text
-    void m17DstLabel(char *out, uint16_t sz); //< "@<dest>" (or "@BROADCAST")
-    void m17CanLabel(char *out, uint16_t sz); //< "C<n>" (+ '*' if promiscuous)
+    void m17DstLabel(char *out, uint16_t sz); //< "@<dest>" (or "@ALL")
+    void m17CanLabel(char *out, uint16_t sz); //< "ANY" (promisc RX) or "C<n>"
     NavIntent
     onDstEditEvent(const Event &e); //< key handling while editing dest
     void beginDstEdit();            //< open the destination editor
@@ -107,13 +107,10 @@ private:
     char idxCache_[8] = { 1, 0 };   //< sentinel forces the first paint
     char nameCache_[40] = { 1, 0 }; //< composed name, or bracket-cursor dest
     char readoutBuf_[12] = { 0 };
-    char toneBuf_[8] = { 0 };       //< PL/CTCSS tone shown in the mode stack
+    char modeSub_[8] = { 0 }; //< mode-stack 2nd line: PL tone (FM) / CAN (M17)
+    char modeCache_[24] = { 1, 0 }; //< change-gate for the "m1|m2" mode stack
 
     uint32_t lastFreq_ = 0xFFFFFFFFu;
-    uint8_t lastMode_ = 0xFFu;
-    uint8_t lastBandwidth_ = 0xFFu;
-    uint8_t lastToneEn_ = 0xFFu;
-    uint32_t lastPower_ = 0xFFFFFFFFu;
     uint8_t lastStatus_ = 0xFFu;
     int32_t lastRssi_ = INT32_MIN;
 
