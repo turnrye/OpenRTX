@@ -45,7 +45,7 @@ void GpsSettingsView::build()
     writeValueText(RowTimezone);
 
     list_.setItems(items_, RowCount);
-    list_.setRowHeight(regular ? 22 : 18); /* two-line value rows */
+    list_.setRowHeight(regular ? 26 : 20); /* two-line value rows */
     list_.setFlag(FLAG_FOCUSABLE, true);
     list_.setGrow(1);
 

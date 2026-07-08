@@ -159,31 +159,27 @@ void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
     const int16_t textW = static_cast<int16_t>(row.w - 6 - rightPad);
 
     if (it.value != nullptr) {
-        /* Value row on ONE line, vertically centred like a checkbox row (so the
-         * vertical padding matches): the value is right-aligned at its natural
-         * width (capped at half the column) and the label fills the rest on the
-         * left. Both ellipsize when wider than their share. */
-        uint16_t vW = gfx_getTextWidth(FONT_SIZE_8PT, it.value);
-        int16_t valW = static_cast<int16_t>(vW);
-        const int16_t maxVal = static_cast<int16_t>(textW / 2);
-        if (valW > maxVal)
-            valW = maxVal;
-        if (valW < 0)
-            valW = 0;
-        const int16_t gap = 8;
+        /* Value row: label on top, value on the lower line (right-aligned and
+         * full-width so long values ellipsize cleanly). The two lines are inset
+         * with vertical padding so the row breathes like a checkbox row (rely on
+         * the view giving value rows a taller rowHeight). */
+        const int16_t pad = 3;
+        const int16_t inner = static_cast<int16_t>(row.h - 2 * pad);
+        const int16_t labelH = static_cast<int16_t>(inner * 11 / 20);
 
-        const Rect vbox = { static_cast<int16_t>(row.x + 6 + textW - valW),
-                            row.y, static_cast<uint16_t>(valW), row.h };
-        d.textInBoxEllipsized(vbox, FONT_SIZE_8PT, TEXT_ALIGN_RIGHT, valueColor,
-                              it.value);
-
-        int16_t lblW = static_cast<int16_t>(textW - valW - gap);
-        if (lblW < 0)
-            lblW = 0;
-        const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
-                            static_cast<uint16_t>(lblW), row.h };
+        const Rect lbox = { static_cast<int16_t>(row.x + 6),
+                            static_cast<int16_t>(row.y + pad),
+                            static_cast<uint16_t>(textW),
+                            static_cast<uint16_t>(labelH) };
         d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
                               it.label);
+
+        const Rect vbox = { static_cast<int16_t>(row.x + 6),
+                            static_cast<int16_t>(row.y + pad + labelH),
+                            static_cast<uint16_t>(textW),
+                            static_cast<uint16_t>(inner - labelH) };
+        d.textInBoxEllipsized(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
+                              it.value);
     } else {
         const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
                             static_cast<uint16_t>(textW), row.h };
