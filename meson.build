@@ -1150,6 +1150,13 @@ if meson.is_cross_build() and host_machine.system() == 'emscripten'
                             link_args           : wasm_link_args,
                             name_suffix         : 'html')
 
+  # Ship the cross-origin-isolation service worker next to the output so it is
+  # served from the same directory as the page (its scope). Needed on hosts that
+  # cannot set COOP/COEP headers (GitHub Pages); a no-op on isolated hosts.
+  configure_file(input  : 'platform/targets/wasm/coi-serviceworker.js',
+                 output : 'coi-serviceworker.js',
+                 copy   : true)
+
   alias_target('wasm', openrtx_wasm)
 
 endif

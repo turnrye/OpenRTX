@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Builds the WebAssembly emulator and publishes it to GitHub Pages, one build
+# per branch. master lands at the site root; every other branch lands under
+# /branch/<name>/. This is fork-specific (turnrye/openrtx) and never runs
+# upstream. See platform/targets/wasm/README.md.
+name: WASM Pages
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+  delete:
+
+# Serialise Pages writes: peaceiris pushes to the gh-pages branch, so concurrent
+# runs would race. Queue them instead of cancelling (each build should publish).
+concurrency:
+  group: wasm-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-deploy:
+    # Fork-only, and not for branch deletions (handled by the cleanup job).
+    if: github.repository == 'turnrye/openrtx' && github.event_name != 'delete'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0          # full history + tags for `git describe`
+
+      - name: Install meson & ninja
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build
+          pipx install meson
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.2
+
+      - name: Build WebAssembly
+        run: |
+          meson setup build_wasm --cross-file cross_wasm.txt
+          ninja -C build_wasm wasm
+
+      - name: Assemble publish directory
+        run: |
+          mkdir -p publish
+          cp build_wasm/openrtx_wasm.js build_wasm/openrtx_wasm.wasm publish/
+          cp build_wasm/openrtx_wasm.html publish/index.html
+          cp platform/targets/wasm/coi-serviceworker.js publish/
+
+      - name: Compute destination directory
+        id: dest
+        run: |
+          safe="$(echo "${GITHUB_REF_NAME}" | tr '/' '-')"
+          if [ "${GITHUB_REF_NAME}" = "master" ]; then
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=branch/${safe}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./publish
+          destination_dir: ${{ steps.dest.outputs.dir }}
+          keep_files: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'deploy: ${{ github.ref_name }} @ ${{ github.sha }}'
+
+      - name: Summary
+        run: |
+          base="https://turnrye.github.io/openrtx"
+          if [ -z "${{ steps.dest.outputs.dir }}" ]; then
+            echo "Published **master** to ${base}/" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published **${GITHUB_REF_NAME}** to ${base}/${{ steps.dest.outputs.dir }}/" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  cleanup:
+    # When a branch is deleted, drop its published build from gh-pages.
+    if: github.repository == 'turnrye/openrtx' && github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout gh-pages
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Remove the deleted branch's build
+        if: steps.checkout.outcome == 'success'
+        run: |
+          safe="$(echo "${{ github.event.ref }}" | tr '/' '-')"
+          dir="branch/${safe}"
+          if [ -d "$dir" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git rm -r "$dir"
+            git commit -m "cleanup: remove Pages build for deleted branch ${{ github.event.ref }}"
+            git push
+          else
+            echo "No published build at $dir; nothing to remove."
+          fi
