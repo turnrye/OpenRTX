@@ -105,9 +105,12 @@ void GpsView::build()
     static const char *const kUnits[RowCount] = { "N", "E", "QTH", "ALT",
                                                   "SPD" };
     for (uint8_t i = 0; i < RowCount; i++) {
-        rows_[i].setValueFont(valFont);
-        rows_[i].setUnit(kUnits[i]);
-        rows_[i].setValue("--");
+        /* value + small unit, right-aligned and sharing one baseline. */
+        rows_[i].setRun(0, valFont, Sem::OnSurface, TextRow::Side::Right);
+        rows_[i].setRun(1, FONT_SIZE_6PT, Sem::OnSurfaceMuted,
+                        TextRow::Side::Right);
+        rows_[i].setText(0, "--");
+        rows_[i].setText(1, kUnits[i]);
         rows_[i].setGrow(1);
         statsCol_.addChild(&rows_[i]);
     }
@@ -194,19 +197,19 @@ void GpsView::syncFromState(const state_t &s)
         const char *dir = "";
         formatCoord(g.latitude, true, valBufs_[RowLat],
                     sizeof(valBufs_[RowLat]), &dir);
-        rows_[RowLat].setValue(valBufs_[RowLat]);
-        rows_[RowLat].setUnit(dir);
+        rows_[RowLat].setText(0, valBufs_[RowLat]);
+        rows_[RowLat].setText(1, dir);
         rows_[RowLat].invalidate();
 
         formatCoord(g.longitude, false, valBufs_[RowLon],
                     sizeof(valBufs_[RowLon]), &dir);
-        rows_[RowLon].setValue(valBufs_[RowLon]);
-        rows_[RowLon].setUnit(dir);
+        rows_[RowLon].setText(0, valBufs_[RowLon]);
+        rows_[RowLon].setText(1, dir);
         rows_[RowLon].invalidate();
 
         formatLocator(g.latitude, g.longitude, valBufs_[RowLoc],
                       sizeof(valBufs_[RowLoc]));
-        rows_[RowLoc].setValue(valBufs_[RowLoc]);
+        rows_[RowLoc].setText(0, valBufs_[RowLoc]);
         rows_[RowLoc].invalidate();
 
         lastLat_ = g.latitude;
@@ -215,14 +218,14 @@ void GpsView::syncFromState(const state_t &s)
 
     if (g.altitude != lastAlt_) {
         snprintf(valBufs_[RowAlt], sizeof(valBufs_[RowAlt]), "%dm", g.altitude);
-        rows_[RowAlt].setValue(valBufs_[RowAlt]);
+        rows_[RowAlt].setText(0, valBufs_[RowAlt]);
         rows_[RowAlt].invalidate();
         lastAlt_ = g.altitude;
     }
 
     if (g.speed != lastSpeed_) {
         snprintf(valBufs_[RowSpd], sizeof(valBufs_[RowSpd]), "%ukm/h", g.speed);
-        rows_[RowSpd].setValue(valBufs_[RowSpd]);
+        rows_[RowSpd].setText(0, valBufs_[RowSpd]);
         rows_[RowSpd].invalidate();
         lastSpeed_ = g.speed;
     }

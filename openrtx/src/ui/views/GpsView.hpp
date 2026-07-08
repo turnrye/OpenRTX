@@ -12,7 +12,7 @@
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
 #include "widgets/TopBar.hpp"
-#include "widgets/StatValue.hpp"
+#include "widgets/TextRow.hpp"
 #include "widgets/Compass.hpp"
 #include "core/state.h"
 
@@ -61,7 +61,7 @@ private:
     Flex body_;
     Compass compass_;
     Flex statsCol_;
-    StatValue rows_[RowCount];
+    TextRow rows_[RowCount];
     Label status_;
 
     char valBufs_[RowCount][16] = {};
