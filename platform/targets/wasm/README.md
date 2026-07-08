@@ -29,6 +29,15 @@ Two edges are adapted (both guarded by `#ifdef __EMSCRIPTEN__`):
 - **NVM** — `nvmem_linux.c` has no `$HOME`/XDG dirs in the browser, so radio
   state is stored at `/persist/state.bin` in the Emscripten virtual filesystem.
   The codeplug is created on first run via the existing `cps_create()` path.
+- **Rendering** — with `PROXY_TO_PTHREAD` the SDL renderer runs on a worker,
+  which has no WebGL context, so `sdl_engine.c` forces the software renderer;
+  it blits on the CPU and presents through the 2D canvas Emscripten proxies to
+  the main thread.
+- **Keyboard** — `PROXY_TO_PTHREAD` does not deliver SDL's DOM keyboard events
+  to the worker, so the page captures keydown/keyup on the canvas and pushes a
+  `keyboard_t` bitmask to the `emulator_setKeyState()` export, which
+  `emulator_getKeys()` ORs into the scanned key state. Click the canvas (its
+  border turns green when focused) to give it keyboard control.
 
 ## Prerequisites
 
@@ -51,8 +60,9 @@ meson setup build_wasm --cross-file cross_wasm.txt
 ninja -C build_wasm wasm
 ```
 
-This produces `build_wasm/openrtx_wasm.html`, `openrtx_wasm.js`,
-`openrtx_wasm.wasm`, and `openrtx_wasm.worker.js`.
+This produces `build_wasm/openrtx_wasm.html`, `openrtx_wasm.js`, and
+`openrtx_wasm.wasm`. (Recent Emscripten inlines the pthread worker, so there is
+no separate `.worker.js`.)
 
 ## Run
 
@@ -84,5 +94,9 @@ This is an initial port focused on getting the UI running in the browser.
 - **Busy-wait render loop.** `sdlEngine_run()` polls without yielding (as it
   does natively); on a worker this pegs a core. A small `SDL_Delay` would be
   gentler in the browser.
-- The `codec2` subproject is compiled from source under emcc; if it needs
-  toolchain tweaks they are independent of this target.
+- **No PTT.** The `P`-key push-to-talk is read on native through a separate
+  `SDL_GetKeyboardState` path that the JS keyboard bridge doesn't feed yet;
+  wiring it into `emulator_setKeyState()` is a small follow-up.
+- The `codec2` subproject is compiled from source under emcc (it builds cleanly
+  after routing `audio_codec.c` to the bundled flat header, like the embedded
+  targets).
