@@ -263,6 +263,14 @@ static bool set_brightness(uint8_t brightness)
 
 void sdlEngine_init()
 {
+#ifdef __EMSCRIPTEN__
+    // Bind SDL's keyboard handlers to the canvas rather than the default whole
+    // #window. This keeps typing in the on-page command box from reaching the
+    // radio UI, and makes "click the screen, then type" drive the keypad. Must
+    // be set before SDL_Init registers the DOM listeners.
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#canvas");
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0)
     {
         printf("SDL video init error!!\n");
