@@ -98,7 +98,7 @@ private:
     Flex chanRow_;
     Label chanIdx_;
     Label chanName_;
-    Label chanDetail_; //< right-aligned CAN (M17) / tone (FM) on the name row
+    TaggedValue chanDetail_; //< right-aligned CAN (M17) / tone (FM) on name row
     DotMeter meter_;
     Flex spacer_;
 

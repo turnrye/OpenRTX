@@ -133,7 +133,9 @@ void VfoView::build()
     chanIdx_.setFont(chanFont);
     chanIdx_.setAlign(TEXT_ALIGN_LEFT);
     chanIdx_.setColor(Sem::OnSurfaceMuted);
-    chanIdx_.setBasis(regular ? 28 : 20);
+    /* Wide enough for the widest content ("VFO" ~30px @ 8pt, ~23px @ 6pt) so
+     * the box clip never cuts a glyph. */
+    chanIdx_.setBasis(regular ? 34 : 26);
 
     chanName_.setFont(chanFont);
     chanName_.setAlign(TEXT_ALIGN_LEFT);
@@ -144,10 +146,11 @@ void VfoView::build()
      * meter row below. */
     chanName_.setOverflow(Label::Overflow::Ellipsize);
 
-    chanDetail_.setFont(chanFont);
-    chanDetail_.setAlign(TEXT_ALIGN_RIGHT);
+    /* Detail = a small "CAN" tag + the value at the row font (or just a tone
+     * value in FM). Wide enough for "CAN" + "ANY" without eating the name. */
+    chanDetail_.setFonts(regular ? FONT_SIZE_5PT : FONT_SIZE_5PT, chanFont);
     chanDetail_.setColor(Sem::OnSurfaceMuted);
-    chanDetail_.setBasis(regular ? 36 : 24);
+    chanDetail_.setBasis(regular ? 48 : 34);
 
     chanRow_.addChild(&chanIdx_);
     chanRow_.addChild(&chanName_);
@@ -189,13 +192,15 @@ void VfoView::syncMode(const channel_t &ch)
             break;
     }
 
-    /* Second mode-stack line (under the mode). In FM it is the CTCSS/DCS tone
-     * matching the current direction -- the TX (encode) tone while transmitting,
-     * otherwise the RX (decode) tone -- so it appears only when that direction's
-     * tone is enabled, like the M17 CAN. In M17 it is the CAN ("ANY" while
-     * promiscuous-RX, "C<n>" on TX / filtered RX). Blank otherwise. */
+    /* Channel-row detail (right, under the mode): a small "CAN" tag + value in
+     * M17 -- "ANY" while promiscuous-RX, the CAN number on TX / filtered RX --
+     * or, in FM, the CTCSS/DCS tone (no tag) matching the current direction
+     * (the TX/encode tone while transmitting, else the RX/decode tone), so it
+     * shows only when that direction's tone is enabled. Blank otherwise. */
+    const char *tag = "";
     modeSub_[0] = '\0';
     if (ch.mode == OPMODE_M17) {
+        tag = "CAN";
         m17CanLabel(modeSub_, sizeof(modeSub_));
     } else if (ch.mode == OPMODE_FM) {
         const bool txing = (rtx_getStatus()->opStatus == TX);
@@ -213,8 +218,8 @@ void VfoView::syncMode(const channel_t &ch)
      * FM tone, and the dynamic M17 CAN (settings + TX/RX). The mode label sits
      * on the frequency baseline (hero); the detail sits under it on the channel
      * row. */
-    char sig[24];
-    snprintf(sig, sizeof(sig), "%s|%s", m1, modeSub_);
+    char sig[28];
+    snprintf(sig, sizeof(sig), "%s|%s|%s", m1, tag, modeSub_);
     if (strcmp(sig, modeCache_) == 0)
         return;
     strncpy(modeCache_, sig, sizeof(modeCache_) - 1);
@@ -222,7 +227,8 @@ void VfoView::syncMode(const channel_t &ch)
 
     hero_.setMode(m1);
     hero_.invalidate();
-    chanDetail_.setText(modeSub_);
+    chanDetail_.setTag(tag);
+    chanDetail_.setValue(modeSub_);
     chanDetail_.invalidate();
 }
 
@@ -586,7 +592,8 @@ void VfoView::refreshInput()
 
     chanIdx_.setText("");
     chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
-    chanDetail_.setText("");
+    chanDetail_.setTag("");
+    chanDetail_.setValue("");
     chanIdx_.invalidate();
     chanName_.invalidate();
     chanDetail_.invalidate();
@@ -611,15 +618,15 @@ void VfoView::m17DstLabel(char *out, uint16_t sz)
 
 void VfoView::m17CanLabel(char *out, uint16_t sz)
 {
-    /* The Channel Access Number in the far-left channel-line slot, reflecting
-     * the live operation: on TX you always key up on your own CAN ("C<n>"); on
-     * RX show "ANY" when the CAN check is off (promiscuous — any CAN is heard),
-     * otherwise the CAN you are filtered to. */
+    /* The CAN value shown after the "CAN" tag, reflecting the live operation:
+     * on TX you always key up on your own CAN (the number); on RX show "ANY"
+     * when the CAN check is off (promiscuous — any CAN is heard), otherwise the
+     * CAN you are filtered to. */
     const bool txing = (rtx_getStatus()->opStatus == TX);
     if (!txing && !state.settings.m17_can_rx)
         snprintf(out, sz, "ANY");
     else
-        snprintf(out, sz, "C%u", (unsigned)state.settings.m17_can);
+        snprintf(out, sz, "%u", (unsigned)state.settings.m17_can);
 }
 
 void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,
