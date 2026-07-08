@@ -67,44 +67,6 @@ private:
 };
 
 /**
- * A right-aligned "tag value" pair on one baseline: a small-font tag (e.g.
- * "CAN") followed by a value at the main font ("ANY" / "0" / a tone). The two
- * bottom-align on the value's baseline; an empty tag draws just the value. Used
- * for the VFO channel-row detail (M17 CAN / FM tone).
- */
-class TaggedValue : public Object
-{
-public:
-    void setTag(const char *t)
-    {
-        tag_ = (t != nullptr) ? t : "";
-    }
-    void setValue(const char *v)
-    {
-        value_ = (v != nullptr) ? v : "";
-    }
-    void setFonts(fontSize_t tag, fontSize_t val)
-    {
-        tagFont_ = tag;
-        valFont_ = val;
-    }
-    void setColor(Sem c)
-    {
-        color_ = c;
-    }
-
-    Size natural() const override;
-    void draw(DrawCtx &d) override;
-
-private:
-    const char *tag_ = "";
-    const char *value_ = "";
-    fontSize_t tagFont_ = FONT_SIZE_5PT;
-    fontSize_t valFont_ = FONT_SIZE_8PT;
-    Sem color_ = Sem::OnSurfaceMuted;
-};
-
-/**
  * A solid filled rectangle in a role colour (status/action bars, surfaces).
  */
 class Panel : public Object
