@@ -281,7 +281,15 @@ void sdlEngine_init()
                               CONFIG_SCREEN_WIDTH * 3, CONFIG_SCREEN_HEIGHT * 3,
                               SDL_WINDOW_SHOWN );
 
+    // In the browser, main() runs on a pthread worker (PROXY_TO_PTHREAD), where
+    // the default OpenGL/WebGL renderer has no GL context (GLctx lives on the
+    // main thread). Force the software renderer, which blits on the CPU and
+    // presents through the 2D canvas that Emscripten proxies to the main thread.
+#ifdef __EMSCRIPTEN__
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+#else
     renderer = SDL_CreateRenderer(window, -1, 0);
+#endif
     SDL_RenderSetLogicalSize(renderer, CONFIG_SCREEN_WIDTH, CONFIG_SCREEN_HEIGHT);
     displayTexture = SDL_CreateTexture(renderer,
                                        PIXEL_FORMAT,
