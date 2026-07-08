@@ -624,7 +624,7 @@ void VfoView::m17CanLabel(char *out, uint16_t sz)
      * CAN you are filtered to. */
     const bool txing = (rtx_getStatus()->opStatus == TX);
     if (!txing && !state.settings.m17_can_rx)
-        snprintf(out, sz, "ANY");
+        snprintf(out, sz, "any");
     else
         snprintf(out, sz, "%u", (unsigned)state.settings.m17_can);
 }
