@@ -51,6 +51,11 @@ void M17View::build()
      * it to fit the value column. */
     items_[RowMeta].value = state.settings.M17_meta_text;
 
+    /* CAN RX (check the CAN on receive) is a boolean -> checkbox, not a value. */
+    items_[RowCanRx].checkbox = true;
+    items_[RowCanRx].checked = state.settings.m17_can_rx;
+    items_[RowCanRx].value = nullptr;
+
     list_.setItems(items_, RowCount);
     list_.setRowHeight(regular ? 22 : 18); /* two-line value rows */
     list_.setFlag(FLAG_FOCUSABLE, true);
@@ -133,18 +138,21 @@ void M17View::endEdit()
 
 void M17View::adjust(int dir)
 {
+    /* Only CAN is an adjustable value now (CAN RX is a checkbox). */
     settings_t &st = state.settings;
+    st.m17_can = (uint8_t)((st.m17_can + dir + 16) % 16);
+    lastCan_ = st.m17_can;
 
-    if (editRow_ == RowCan) {
-        st.m17_can = (uint8_t)((st.m17_can + dir + 16) % 16);
-        lastCan_ = st.m17_can;
-    } else { /* RowCanRx: any step toggles */
-        st.m17_can_rx = !st.m17_can_rx;
-        lastCanRx_ = st.m17_can_rx;
-    }
-
-    writeValueText(editRow_);
+    writeValueText(RowCan);
     list_.invalidate();
+}
+
+void M17View::applyToggle(uint16_t row, bool on)
+{
+    if (row == RowCanRx) {
+        state.settings.m17_can_rx = on;
+        lastCanRx_ = on;
+    }
 }
 
 void M17View::announceCursorChar()
@@ -208,9 +216,9 @@ void M17View::syncFromState(const state_t &s)
         writeValueText(RowCan);
         changed = true;
     }
-    if (!(editing_ && editRow_ == RowCanRx) && (st.m17_can_rx != lastCanRx_)) {
+    if (st.m17_can_rx != lastCanRx_) {
         lastCanRx_ = st.m17_can_rx;
-        writeValueText(RowCanRx);
+        items_[RowCanRx].checked = st.m17_can_rx;
         changed = true;
     }
 
@@ -280,6 +288,15 @@ NavIntent M17View::onEvent(const Event &e)
         if ((e.keys & KEY_ESC) != 0u)
             return NavIntent::pop();
         if ((e.keys & KEY_ENTER) != 0u) {
+            /* CAN RX is a checkbox: ENTER toggles it in place. */
+            ListItem *it = list_.selectedItem();
+            if ((it != nullptr) && it->checkbox) {
+                it->checked = !it->checked;
+                applyToggle(list_.selected(), it->checked);
+                list_.invalidate();
+                vpSay(it->checked ? "On" : "Off"); /* toggle: no nav change */
+                return NavIntent::none();
+            }
             /* Meta Txt is long free text: hand it to the modal editor. The
              * others edit in place with the cursor cycle. */
             if (list_.selected() == RowMeta) {

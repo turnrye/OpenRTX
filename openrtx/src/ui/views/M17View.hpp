@@ -65,11 +65,12 @@ private:
     void writeValueText(uint8_t row);
     void beginEdit();
     void endEdit();
-    void adjust(int dir);        //< value rows (CAN / CAN RX)
-    void callsignCycle(int dir); //< cycle the char under the cursor
-    void callsignMove(int dir);  //< move the cursor (extend at the end)
-    void callsignConfirm();      //< strip + write to settings.callsign
-    void announceCursorChar();   //< speak the char under the cursor (voice)
+    void adjust(int dir);                    //< value rows (CAN)
+    void applyToggle(uint16_t row, bool on); //< flip the CAN-RX checkbox
+    void callsignCycle(int dir);             //< cycle the char under the cursor
+    void callsignMove(int dir); //< move the cursor (extend at the end)
+    void callsignConfirm();     //< strip + write to settings.callsign
+    void announceCursorChar();  //< speak the char under the cursor (voice)
 
     Screen screen_;
     Flex root_;

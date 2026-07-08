@@ -56,6 +56,7 @@ private:
     void beginEdit();
     void endEdit();
     void adjust(int dir);
+    void applyToggle(uint16_t row, bool on); //< flip a checkbox setting
 
     Screen screen_;
     Flex root_;
