@@ -320,6 +320,16 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
 {
     const long long now = getTick();
 
+    /* Wake-keeping activity — ongoing RF (TX or an open squelch) or the user
+     * turning the volume — keeps the display awake and wakes it from standby.
+     * Checked every tick, BEFORE draining the event queue: state_task bundles
+     * the volume update with an EVENT_STATUS, so gating this on an empty queue
+     * would let that status event mask the change and the volume-wake would
+     * never fire. exitStandby also refreshes the idle timer. */
+    if ((rtx_getStatus()->opStatus == TX) || rtx_rxSquelchOpen()
+        || (state.volume != last_state.volume))
+        exitStandby(now);
+
     if (evQueue_rdPos != evQueue_wrPos) {
         /* Pop one event per tick, matching the classic loop cadence. */
         const event_t raw = evQueue[evQueue_rdPos];
@@ -384,14 +394,8 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
         return;
     }
 
-    /* No event this tick: ongoing RF or a volume change keeps the screen awake,
-     * otherwise blank the backlight once the idle timer elapses. */
-    const bool txOngoing = (rtx_getStatus()->opStatus == TX);
-    if (txOngoing || rtx_rxSquelchOpen()
-        || (state.volume != last_state.volume)) {
-        exitStandby(now);
-        return;
-    }
+    /* No event this tick: blank the backlight once the idle timer elapses
+     * (the wake-keeping activity was already handled at the top). */
     if (_ui_checkStandby(now - last_event_tick))
         enterStandby();
 }
