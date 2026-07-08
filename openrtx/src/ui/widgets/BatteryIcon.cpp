@@ -13,10 +13,11 @@ namespace ortxui
 
 Size BatteryIcon::natural() const
 {
-    /* A vertical (upright) battery with the terminal on top, sized to sit in
-     * the top bar; draw() fits within whatever area the row assigns. */
+    /* An upright battery with the terminal on top. The height is kept a couple
+     * of pixels short of the top-bar height so the glyph has padding above and
+     * below; draw() fits within whatever area the row assigns. */
     const bool regular = (sizeClass() == SizeClass::Regular);
-    return regular ? Size{ 14, 15 } : Size{ 11, 11 };
+    return regular ? Size{ 13, 12 } : Size{ 10, 9 };
 }
 
 void BatteryIcon::draw(DrawCtx &d)
@@ -26,24 +27,25 @@ void BatteryIcon::draw(DrawCtx &d)
 
     const int16_t nubH = 2;
     const int16_t bodyH = static_cast<int16_t>(area_.h - nubH);
-    if (bodyH < 6)
+    if (bodyH < 5)
         return;
 
     /* Battery aspect: taller than wide. Centre it in the assigned width. */
-    int16_t W = static_cast<int16_t>(bodyH * 65 / 100);
+    int16_t W = static_cast<int16_t>(bodyH * 4 / 5);
     if (W > static_cast<int16_t>(area_.w))
         W = static_cast<int16_t>(area_.w);
     if (W < 6)
         W = 6;
 
     const int16_t bx = static_cast<int16_t>(area_.x + (area_.w - W) / 2);
-    const int16_t byNub = area_.y;
     const int16_t byBody = static_cast<int16_t>(area_.y + nubH);
-    const uint16_t r = (W >= 10) ? 2u : 1u;
+    const uint16_t r = (W >= 9) ? 2u : 1u;
 
-    /* Terminal nub, centred on top of the body. */
-    const int16_t nubW = static_cast<int16_t>(W / 2);
-    d.fillRoundRect({ static_cast<int16_t>(bx + (W - nubW) / 2), byNub,
+    /* Terminal: a short cap centred on top of the body (about three fifths of
+     * the body width so it reads as a battery contact, not a bottle neck). It
+     * overlaps the body by 1px so the two join cleanly. */
+    const int16_t nubW = static_cast<int16_t>((W * 3) / 5);
+    d.fillRoundRect({ static_cast<int16_t>(bx + (W - nubW) / 2), area_.y,
                       static_cast<uint16_t>(nubW),
                       static_cast<uint16_t>(nubH + 1) },
                     1, Sem::OnSurface);
