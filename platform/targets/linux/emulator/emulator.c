@@ -495,6 +495,22 @@ int emulator_command(const char *line)
 
     return ret;
 }
+
+/*
+ * DOM keyboard bridge. Under PROXY_TO_PTHREAD the firmware runs on a worker and
+ * SDL's DOM keyboard events are not delivered there, so physical keys never
+ * reach sdlEngine_getKeys(). Instead the page captures keydown/keyup on the
+ * canvas and pushes the combined keyboard_t bitmask here; emulator_getKeys()
+ * ORs it into the scanned key state. Written from the browser main thread, read
+ * from the UI worker — a single aligned 32-bit word, so volatile is enough.
+ */
+static volatile keyboard_t emulator_jsKeys = 0;
+
+EMSCRIPTEN_KEEPALIVE
+void emulator_setKeyState(uint32_t mask)
+{
+    emulator_jsKeys = (keyboard_t) mask;
+}
 #else
 void *startCLIMenu(void *arg)
 {
@@ -585,17 +601,22 @@ void emulator_start()
 
 keyboard_t emulator_getKeys()
 {
+    keyboard_t out = 0;
+
+#ifdef __EMSCRIPTEN__
+    // Physical keys held on the page (see emulator_setKeyState). These are
+    // level-triggered: reported on every scan for as long as they are held.
+    out |= emulator_jsKeys;
+#endif
+
     if(_skq_in > _skq_out)
     {
         //only if we've fallen behind and there's data in there:
-        keyboard_t out = _shellkeyq[ _skq_head ];
+        out |= _shellkeyq[ _skq_head ];
         _shellkeyq[ _skq_head ] = 0;
         _skq_out++;
         _skq_head = (_skq_head + 1) % _skq_cap;
-        return out;
     }
-    else
-    {
-        return 0; //no keys
-    }
+
+    return out;
 }
