@@ -10,6 +10,7 @@
 #include "core/View.hpp"
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
+#include "widgets/TextRow.hpp"
 #include "widgets/TopBar.hpp"
 #include "widgets/FreqHero.hpp"
 #include "widgets/DotMeter.hpp"
@@ -97,7 +98,7 @@ private:
     Flex chanRow_;
     Label chanIdx_;
     Label chanName_;
-    TaggedValue chanDetail_; //< right-aligned CAN (M17) / tone (FM) on name row
+    TextRow chanDetail_; //< right-aligned CAN (M17) / tone (FM) on name row
     DotMeter meter_;
     Flex spacer_;
 

@@ -42,12 +42,15 @@ void TextRow::setColor(uint8_t i, Sem color)
 int16_t TextRow::baselineY() const
 {
     /* Centre the tallest run's line box in the row and place the shared baseline
-     * at that run's ascent, so every run bottom-aligns on the same line. */
+     * at that run's ascent, so every run bottom-aligns on the same line. The
+     * reference is drawn from the configured runs (their fonts), not the current
+     * text, so the baseline stays put whether or not a run currently has text —
+     * layout runs before the text is set. */
     int16_t refAsc = 0;
     int16_t refLH = 0;
     int16_t bestAsc = -1;
     for (uint8_t i = 0; i < count_; i++) {
-        if (!visible(runs_[i]))
+        if (!runs_[i].active)
             continue;
         const int16_t asc =
             static_cast<int16_t>(gfx_getFontAscent(runs_[i].font));
@@ -62,19 +65,24 @@ int16_t TextRow::baselineY() const
 
 Size TextRow::natural() const
 {
+    /* Height is the tallest configured run's line box, independent of the
+     * current text, so a layout done before text is set still reserves the row.
+     * Width is the current content (visible runs) plus the intra-group gaps. */
     int16_t w = 0;
     int16_t h = 0;
     int16_t nLeft = 0;
     int16_t nRight = 0;
     for (uint8_t i = 0; i < count_; i++) {
-        if (!visible(runs_[i]))
+        if (!runs_[i].active)
             continue;
-        w = static_cast<int16_t>(
-            w + gfx_getTextWidth(runs_[i].font, runs_[i].text));
         const int16_t lh =
             static_cast<int16_t>(gfx_getFontLineHeight(runs_[i].font));
         if (lh > h)
             h = lh;
+        if (!visible(runs_[i]))
+            continue;
+        w = static_cast<int16_t>(
+            w + gfx_getTextWidth(runs_[i].font, runs_[i].text));
         if (runs_[i].side == Side::Left)
             nLeft++;
         else

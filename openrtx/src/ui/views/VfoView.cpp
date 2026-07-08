@@ -147,9 +147,13 @@ void VfoView::build()
     chanName_.setOverflow(Label::Overflow::Ellipsize);
 
     /* Detail = a small "CAN" tag + the value at the row font (or just a tone
-     * value in FM). Wide enough for "CAN" + "ANY" without eating the name. */
-    chanDetail_.setFonts(regular ? FONT_SIZE_5PT : FONT_SIZE_5PT, chanFont);
-    chanDetail_.setColor(Sem::OnSurfaceMuted);
+     * value in FM), right-aligned and sharing one baseline. Wide enough for
+     * "CAN" + a value without eating the name. */
+    chanDetail_.setRun(0, FONT_SIZE_5PT, Sem::OnSurfaceMuted,
+                       TextRow::Side::Right); /* tag */
+    chanDetail_.setRun(1, chanFont, Sem::OnSurfaceMuted,
+                       TextRow::Side::Right); /* value */
+    chanDetail_.setGap(3);
     chanDetail_.setBasis(regular ? 48 : 34);
 
     chanRow_.addChild(&chanIdx_);
@@ -233,8 +237,8 @@ void VfoView::syncMode(const channel_t &ch)
 
     hero_.setMode(m1);
     hero_.invalidate();
-    chanDetail_.setTag(tag);
-    chanDetail_.setValue(modeSub_);
+    chanDetail_.setText(0, tag);
+    chanDetail_.setText(1, modeSub_);
     chanDetail_.invalidate();
 }
 
@@ -598,8 +602,8 @@ void VfoView::refreshInput()
 
     chanIdx_.setText("");
     chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
-    chanDetail_.setTag("");
-    chanDetail_.setValue("");
+    chanDetail_.setText(0, "");
+    chanDetail_.setText(1, "");
     chanIdx_.invalidate();
     chanName_.invalidate();
     chanDetail_.invalidate();
