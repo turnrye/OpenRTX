@@ -13,6 +13,11 @@
 #include <cstdio>
 #include <cstring>
 
+/* The view is only built/wired under CONFIG_RTC (platform_setTime and the rest
+ * of the time API are RTC-only); compile its body away on targets without an
+ * RTC (e.g. Module17) so this translation unit still builds there. */
+#ifdef CONFIG_RTC
+
 namespace ortxui
 {
 
@@ -245,3 +250,5 @@ NavIntent TimeDateView::onEvent(const Event &e)
 }
 
 } // namespace ortxui
+
+#endif /* CONFIG_RTC */
