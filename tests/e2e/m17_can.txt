@@ -1,7 +1,8 @@
-nop VFO+M17 far-left CAN indicator reflects the live operation: "ANY" while
-nop receiving with the CAN check off (promiscuous, the default), and the CAN
-nop you key up on ("C0") while transmitting. Switch VFO to M17 via the macro
-nop overlay, then toggle PTT.
+nop VFO+M17 CAN detail shows only when the CAN actually gates traffic: nothing
+nop while receiving with the CAN check off (promiscuous, the default — the CAN
+nop filters nothing, so it is hidden), and "CAN 0" while transmitting (you key
+nop up on your own CAN). Switch VFO to M17 via the macro overlay, then toggle
+nop PTT.
 rssi 0
 sleep 1000
 keyhold MONI
@@ -12,12 +13,12 @@ keyrelease MONI
 sleep 500
 screenshot m17_can_rx.bmp
 sleep 300
-nop PTT: the far-left switches to the CAN keyed up on.
+nop PTT: the CAN detail appears -- the CAN you key up on.
 ptt
 sleep 500
 screenshot m17_can_tx.bmp
 sleep 300
-nop Release: back to "ANY".
+nop Release: the CAN detail hides again (promiscuous RX, nothing gated).
 ptt
 sleep 500
 screenshot m17_can_rx2.bmp

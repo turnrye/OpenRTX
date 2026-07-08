@@ -192,16 +192,22 @@ void VfoView::syncMode(const channel_t &ch)
             break;
     }
 
-    /* Channel-row detail (right, under the mode): a small "CAN" tag + value in
-     * M17 -- "ANY" while promiscuous-RX, the CAN number on TX / filtered RX --
-     * or, in FM, the CTCSS/DCS tone (no tag) matching the current direction
-     * (the TX/encode tone while transmitting, else the RX/decode tone), so it
-     * shows only when that direction's tone is enabled. Blank otherwise. */
+    /* Channel-row detail (right, under the mode): a small "CAN" tag + number in
+     * M17 -- but only when the CAN is actually gating traffic: on TX (you key
+     * up on it) or when RX is filtered to it (m17_can_rx). While RX is
+     * promiscuous and idle the CAN filters nothing, so hide it. In FM it is the
+     * CTCSS/DCS tone (no tag) matching the current direction (the TX/encode tone
+     * while transmitting, else the RX/decode tone), shown only when that
+     * direction's tone is enabled. Blank otherwise. */
     const char *tag = "";
     modeSub_[0] = '\0';
     if (ch.mode == OPMODE_M17) {
-        tag = "CAN";
-        m17CanLabel(modeSub_, sizeof(modeSub_));
+        const bool txing = (rtx_getStatus()->opStatus == TX);
+        if (txing || state.settings.m17_can_rx) {
+            tag = "CAN";
+            snprintf(modeSub_, sizeof(modeSub_), "%u",
+                     (unsigned)state.settings.m17_can);
+        }
     } else if (ch.mode == OPMODE_FM) {
         const bool txing = (rtx_getStatus()->opStatus == TX);
         const bool showTx = txing && (ch.fm.txToneEn != 0u);
@@ -614,19 +620,6 @@ void VfoView::m17DstLabel(char *out, uint16_t sz)
         snprintf(out, sz, "@ALL");
     else
         snprintf(out, sz, "@%s", dst);
-}
-
-void VfoView::m17CanLabel(char *out, uint16_t sz)
-{
-    /* The CAN value shown after the "CAN" tag, reflecting the live operation:
-     * on TX you always key up on your own CAN (the number); on RX show "ANY"
-     * when the CAN check is off (promiscuous — any CAN is heard), otherwise the
-     * CAN you are filtered to. */
-    const bool txing = (rtx_getStatus()->opStatus == TX);
-    if (!txing && !state.settings.m17_can_rx)
-        snprintf(out, sz, "any");
-    else
-        snprintf(out, sz, "%u", (unsigned)state.settings.m17_can);
 }
 
 void VfoView::composeChanLine(const state_t &s, char *idxOut, char *nameOut,

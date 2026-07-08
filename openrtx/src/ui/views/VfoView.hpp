@@ -79,7 +79,6 @@ private:
     void composeChanLine(const state_t &s, char *idxOut, char *nameOut,
                          uint16_t nameSz); //< build the index + name slot text
     void m17DstLabel(char *out, uint16_t sz); //< "@<dest>" (or "@ALL")
-    void m17CanLabel(char *out, uint16_t sz); //< "ANY" (promisc RX) or "C<n>"
     NavIntent
     onDstEditEvent(const Event &e); //< key handling while editing dest
     void beginDstEdit();            //< open the destination editor
