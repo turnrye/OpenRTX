@@ -30,7 +30,7 @@ void ContactsView::build()
     topBar_.init("Contacts");
     setTopBar(&topBar_);
 
-    list_.setRowHeight(regular ? 16 : 12);
+    list_.setContentPad(1);
     list_.setFlag(FLAG_FOCUSABLE, true);
     list_.setGrow(1);
 

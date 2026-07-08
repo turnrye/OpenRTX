@@ -11,6 +11,7 @@
 #include "core/Object.hpp"
 #include "core/graphics.h"
 #include "style/SemanticColor.hpp"
+#include "widgets/SettingRow.hpp"
 
 namespace ortxui
 {
@@ -64,9 +65,14 @@ public:
     void setItems(const ListItem *items, uint16_t count);
     /** Back the list with an on-demand model (large / lazily-read lists). */
     void setModel(const ListModel *model);
-    void setRowHeight(int16_t h)
+    /** Per-row vertical content inset and label/value gutter. Rows size
+     *  themselves to their content plus this inset, so a value row is taller
+     *  than a plain/checkbox row but every row keeps the same padding. */
+    void setContentPad(int16_t padY, int16_t gap = 2)
     {
-        rowH_ = h;
+        padY_ = padY;
+        gap_ = gap;
+        rowWidget_.setPad(padY_, gap_);
     }
     void setSelectable(bool s)
     {
@@ -90,11 +96,11 @@ public:
     void draw(DrawCtx &d) override;
 
 private:
-    uint16_t visibleRows() const;
     void scrollToSelected();
     void moveSelection(int dir);
-    void drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
-                 bool selected);
+    void getItem(uint16_t i, ListItem &out) const;
+    static SettingRow::Kind kindOf(const ListItem &it);
+    int16_t rowHeight(uint16_t i) const;
 
     /** Effective row count from whichever backing (model or static array). */
     uint16_t rows() const
@@ -107,7 +113,9 @@ private:
     uint16_t count_ = 0;
     uint16_t selected_ = 0;
     uint16_t top_ = 0; //< index of the first visible row (scroll offset)
-    int16_t rowH_ = 14;
+    int16_t padY_ = 4; //< per-row vertical content inset
+    int16_t gap_ = 2;  //< label/value gutter in a value row
+    mutable SettingRow rowWidget_; //< flyweight: bound + painted per row
     bool selectable_ = true;
 };
 

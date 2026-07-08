@@ -59,7 +59,7 @@ void AboutView::build()
         authorItems_[i].label = kAuthors[i];
 
     authors_.setItems(authorItems_, n);
-    authors_.setRowHeight(regular ? 13 : 11);
+    authors_.setContentPad(1);
     authors_.setSelectable(false);
     authors_.setGrow(1);
     authors_.setFlag(FLAG_FOCUSABLE, true);

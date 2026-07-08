@@ -23,7 +23,6 @@ void BanksView::build()
 {
     const int16_t W = CONFIG_SCREEN_WIDTH;
     const int16_t H = CONFIG_SCREEN_HEIGHT;
-    const bool regular = (sizeClass() == SizeClass::Regular);
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
     root_.setAxis(Axis::Column);
@@ -31,7 +30,7 @@ void BanksView::build()
     topBar_.init("Banks");
     setTopBar(&topBar_);
 
-    list_.setRowHeight(regular ? 16 : 12);
+    list_.setContentPad(1);
     list_.setFlag(FLAG_FOCUSABLE, true);
     list_.setGrow(1);
 

@@ -19,7 +19,6 @@ void DisplayView::build()
 {
     const int16_t W = CONFIG_SCREEN_WIDTH;
     const int16_t H = CONFIG_SCREEN_HEIGHT;
-    const bool regular = (sizeClass() == SizeClass::Regular);
 
     static const char *const kLabels[RowCount] = {
         "Brightness", "Contrast", "Squelch", "Vox", "Timer", "Battery",
@@ -42,7 +41,7 @@ void DisplayView::build()
     }
 
     list_.setItems(items_, RowCount);
-    list_.setRowHeight(regular ? 26 : 20); /* taller two-line value rows */
+    list_.setContentPad(4);
     list_.setFlag(FLAG_FOCUSABLE, true);
     list_.setGrow(1);
 

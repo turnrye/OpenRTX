@@ -36,7 +36,7 @@ void MenuView::build(const char *title, const char *const *items,
         items_[i].label = items[i];
 
     list_.setArea({ 0, topH, (uint16_t)W, (uint16_t)(H - topH) });
-    list_.setRowHeight((sizeClass() == SizeClass::Regular) ? 16 : 13);
+    list_.setContentPad(1);
     list_.setItems(items_, count);
     list_.setFlag(FLAG_FOCUSABLE, true);
 

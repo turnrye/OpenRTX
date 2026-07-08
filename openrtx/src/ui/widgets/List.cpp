@@ -45,22 +45,47 @@ ListItem *List::selectedItem()
     return const_cast<ListItem *>(&items_[selected_]);
 }
 
-uint16_t List::visibleRows() const
+void List::getItem(uint16_t i, ListItem &out) const
 {
-    if (rowH_ <= 0)
-        return 1;
+    if (model_ != nullptr)
+        model_->rowAt(i, out);
+    else if (items_ != nullptr)
+        out = items_[i];
+}
 
-    const uint16_t v = static_cast<uint16_t>(area_.h / rowH_);
-    return (v == 0) ? 1 : v;
+SettingRow::Kind List::kindOf(const ListItem &it)
+{
+    if (it.checkbox)
+        return SettingRow::Kind::Checkbox;
+    if (it.value != nullptr)
+        return SettingRow::Kind::Value;
+    return SettingRow::Kind::Plain;
+}
+
+int16_t List::rowHeight(uint16_t i) const
+{
+    ListItem it;
+    getItem(i, it);
+    return rowWidget_.heightFor(kindOf(it));
 }
 
 void List::scrollToSelected()
 {
-    const uint16_t vis = visibleRows();
-    if (selected_ < top_)
+    /* Rows are variable height, so scroll by pixels: pull the top down to the
+     * selection if it is above the window, else advance the top until the
+     * selection's row fits within the viewport height. */
+    if (selected_ < top_) {
         top_ = selected_;
-    else if (selected_ >= static_cast<uint16_t>(top_ + vis))
-        top_ = static_cast<uint16_t>(selected_ - vis + 1);
+        return;
+    }
+    while (top_ < selected_) {
+        int sum = 0;
+        for (uint16_t i = top_; i <= selected_; i++)
+            sum += rowHeight(i);
+        if (sum <= static_cast<int>(area_.h))
+            break;
+        top_++;
+    }
 }
 
 void List::setSelected(uint16_t i)
@@ -148,117 +173,47 @@ bool List::onEvent(const Event &e)
     return false;
 }
 
-void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
-                   bool selected)
-{
-    const Sem labelColor = selected ? Sem::OnPrimary : Sem::OnSurface;
-    const Sem valueColor = selected ? Sem::OnPrimary : Sem::OnSurfaceMuted;
-
-    /* A checkbox reserves room on the right; keep text clear of it. */
-    const int16_t rightPad = it.checkbox ? 20 : 4;
-    const int16_t textW = static_cast<int16_t>(row.w - 6 - rightPad);
-
-    if (it.value != nullptr) {
-        /* Value row: label on top, value on the lower line (right-aligned and
-         * full-width so long values ellipsize cleanly). The two lines are inset
-         * with vertical padding so the row breathes like a checkbox row (rely on
-         * the view giving value rows a taller rowHeight). */
-        const int16_t pad = 3;
-        const int16_t inner = static_cast<int16_t>(row.h - 2 * pad);
-        const int16_t labelH = static_cast<int16_t>(inner * 11 / 20);
-
-        const Rect lbox = { static_cast<int16_t>(row.x + 6),
-                            static_cast<int16_t>(row.y + pad),
-                            static_cast<uint16_t>(textW),
-                            static_cast<uint16_t>(labelH) };
-        d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
-                              it.label);
-
-        const Rect vbox = { static_cast<int16_t>(row.x + 6),
-                            static_cast<int16_t>(row.y + pad + labelH),
-                            static_cast<uint16_t>(textW),
-                            static_cast<uint16_t>(inner - labelH) };
-        d.textInBoxEllipsized(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
-                              it.value);
-    } else {
-        const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
-                            static_cast<uint16_t>(textW), row.h };
-        d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
-                              it.label);
-    }
-
-    if (it.checkbox) {
-        const int16_t bs = 12; /* box side */
-        const int16_t bx = static_cast<int16_t>(row.right() - bs - 4);
-        const int16_t by = static_cast<int16_t>(row.y + (row.h - bs) / 2);
-        const Rect box = { bx, by, static_cast<uint16_t>(bs),
-                           static_cast<uint16_t>(bs) };
-
-        /* Anti-aliased rounded box: an outer rounded rect in the border colour
-         * hollowed by an inner one in the row's own background (blue when the
-         * row is selected, else the screen background), leaving a smooth ring. */
-        const Sem border = selected ? Sem::OnPrimary : Sem::OnSurfaceMuted;
-        const Sem rowBg = selected ? Sem::Primary : Sem::Background;
-        d.fillRoundRect(box, 2, border);
-        d.fillRoundRect(
-            { static_cast<int16_t>(bx + 1), static_cast<int16_t>(by + 1),
-              static_cast<uint16_t>(bs - 2), static_cast<uint16_t>(bs - 2) },
-            1, rowBg);
-
-        if (it.checked) {
-            /* An anti-aliased two-stroke tick in the mark colour. */
-            const Point p0 = { static_cast<int16_t>(bx + 2),
-                               static_cast<int16_t>(by + bs / 2) };
-            const Point p1 = { static_cast<int16_t>(bx + bs / 2 - 1),
-                               static_cast<int16_t>(by + bs - 3) };
-            const Point p2 = { static_cast<int16_t>(bx + bs - 2),
-                               static_cast<int16_t>(by + 2) };
-            d.lineAA(p0, p1, Sem::Mark);
-            d.lineAA(p1, p2, Sem::Mark);
-        }
-    }
-}
-
 void List::draw(DrawCtx &d)
 {
     const uint16_t n = rows();
     if ((n == 0) || ((items_ == nullptr) && (model_ == nullptr)))
         return;
 
-    const uint16_t vis = visibleRows();
-    uint16_t end = static_cast<uint16_t>(top_ + vis);
-    if (end > n)
-        end = n;
+    /* Paint each visible row through the shared SettingRow flyweight: bind it to
+     * the item, size it to the item's content, lay it out and paint its
+     * subtree. Rows stack by their own heights, so a two-line value row is
+     * taller than a plain / checkbox row while keeping the same padding. */
+    rowWidget_.setPad(padY_, gap_);
 
-    for (uint16_t i = top_; i < end; i++) {
-        const int16_t rowY = static_cast<int16_t>(area_.y + (i - top_) * rowH_);
-        const Rect row = { area_.x, rowY, area_.w,
-                           static_cast<uint16_t>(rowH_) };
+    int16_t y = area_.y;
+    uint16_t i = top_;
+    for (; i < n; i++) {
+        ListItem it;
+        getItem(i, it);
+        const SettingRow::Kind kind = kindOf(it);
+        const int16_t h = rowWidget_.heightFor(kind);
+        if (y > area_.bottom())
+            break;
 
-        /* Divider at the row's baseline; a selected row's fill covers its own. */
-        const Rect sep = { area_.x, static_cast<int16_t>(row.bottom()), area_.w,
-                           1 };
-        d.fillRect(sep, Sem::Separator);
-
+        const Rect row = { area_.x, y, area_.w, static_cast<uint16_t>(h) };
         const bool selected = selectable_ && (i == selected_);
-        if (selected)
-            d.fillRect(row, Sem::Primary);
+        rowWidget_.bind(kind, it.label, it.value, it.checked, selected);
+        rowWidget_.setArea(row);
+        rowWidget_.onLayout();
+        rowWidget_.paintTree(d);
 
-        /* Model rows are fetched into a scratch and drawn immediately. */
-        if (model_ != nullptr) {
-            ListItem tmp;
-            model_->rowAt(i, tmp);
-            drawRow(d, tmp, row, selected);
-        } else {
-            drawRow(d, items_[i], row, selected);
-        }
+        y = static_cast<int16_t>(y + h);
     }
 
-    /* Scroll indicator: a thin track with a thumb sized to the visible span. */
-    if (n > vis) {
+    /* Scroll indicator when the list overflows the viewport (there is a row
+     * above the window or one that did not fit below). The scrolling lists are
+     * uniform-height, so a count-based thumb tracks the pixels exactly. */
+    const bool overflow = (top_ > 0) || (i < n);
+    if (overflow) {
+        const uint16_t vis = static_cast<uint16_t>(i - top_);
         const int16_t barX = static_cast<int16_t>(area_.right() - 1);
         const int trackH = static_cast<int>(area_.h);
-        int thumbH = trackH * vis / n;
+        int thumbH = (n > 0) ? trackH * vis / n : trackH;
         if (thumbH < 2)
             thumbH = 2;
         const int16_t thumbY =
