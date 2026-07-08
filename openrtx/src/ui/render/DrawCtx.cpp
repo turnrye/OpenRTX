@@ -54,6 +54,48 @@ void DrawCtx::fillRect(const Rect &r, Sem color)
     gfx_drawRect(start, r.w, r.h, themeColor(color), true);
 }
 
+void DrawCtx::fillRoundRect(const Rect &box, uint16_t radius, Sem color)
+{
+    if (box.empty())
+        return;
+
+    uint16_t rr = radius;
+    if (rr > box.w / 2)
+        rr = box.w / 2;
+    if (rr > box.h / 2)
+        rr = box.h / 2;
+    if (rr == 0) {
+        fillRect(box, color);
+        return;
+    }
+
+    const int16_t x0 = box.x;
+    const int16_t y0 = box.y;
+    const int16_t x1 = static_cast<int16_t>(box.x + box.w - 1);
+    const int16_t y1 = static_cast<int16_t>(box.y + box.h - 1);
+
+    /* Middle band (full height) plus the two side bands between the corners. */
+    fillRect({ static_cast<int16_t>(x0 + rr), y0,
+               static_cast<uint16_t>(box.w - 2 * rr), box.h },
+             color);
+    fillRect({ x0, static_cast<int16_t>(y0 + rr), rr,
+               static_cast<uint16_t>(box.h - 2 * rr) },
+             color);
+    fillRect({ static_cast<int16_t>(x1 - rr + 1), static_cast<int16_t>(y0 + rr),
+               rr, static_cast<uint16_t>(box.h - 2 * rr) },
+             color);
+
+    /* Anti-aliased corners: a fillCircle at each corner centre rounds it. */
+    const int16_t cl = static_cast<int16_t>(x0 + rr);
+    const int16_t cr = static_cast<int16_t>(x1 - rr);
+    const int16_t ct = static_cast<int16_t>(y0 + rr);
+    const int16_t cb = static_cast<int16_t>(y1 - rr);
+    fillCircle({ cl, ct }, rr, color);
+    fillCircle({ cr, ct }, rr, color);
+    fillCircle({ cl, cb }, rr, color);
+    fillCircle({ cr, cb }, rr, color);
+}
+
 void DrawCtx::drawRect(const Rect &r, Sem color)
 {
     if (r.empty())

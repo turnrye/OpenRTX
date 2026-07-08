@@ -48,9 +48,9 @@ void TopBar::init(const char *title)
     pct_.setText(pctBuf_);
     pct_.setBasis(regular ? 28 : 24);
 
-    battery_.setBasis(22);
+    /* Upright battery glyph: a narrow slot, cross-centred at its natural size. */
+    battery_.setBasis(regular ? 16 : 12);
     battery_.setAlignSelf(Align::Center);
-    battery_.setArea({ 0, 0, 22, 11 }); /* natural size for cross-centring */
 
     addChild(&lock_);
     addChild(&middle_);

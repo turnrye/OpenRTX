@@ -52,6 +52,11 @@ public:
     /** Filled rectangle. */
     void fillRect(const Rect &r, Sem color);
 
+    /** Filled rounded rectangle; the corners are anti-aliased (arcs of the AA
+     *  fillCircle), the straight edges crisp. `radius` is clamped to half the
+     *  smaller side. */
+    void fillRoundRect(const Rect &r, uint16_t radius, Sem color);
+
     /** 1px rectangle outline. */
     void drawRect(const Rect &r, Sem color);
 
