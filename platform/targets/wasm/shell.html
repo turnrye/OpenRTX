@@ -18,6 +18,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenRTX (WebAssembly)</title>
+  <!-- Enables cross-origin isolation (SharedArrayBuffer/pthreads) on hosts that
+       cannot set COOP/COEP headers, e.g. GitHub Pages. On a properly-isolated
+       host (like scripts/serve_wasm.py) it detects the headers and does nothing.
+       Must load before the wasm runtime. -->
+  <script src="coi-serviceworker.js"></script>
   <style>
     :root { color-scheme: light dark; }
     body {

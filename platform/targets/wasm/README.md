@@ -81,6 +81,29 @@ Click the screen to give the canvas keyboard focus. Arrow keys navigate,
 `Enter` selects, `Esc` goes back, `0`–`9` are the keypad, `PgUp`/`PgDn` turn the
 knob, `M` is monitor.
 
+## GitHub Pages (CI)
+
+`.github/workflows/wasm-pages.yml` builds this target and publishes it to
+GitHub Pages on the `turnrye/openrtx` fork (it is guarded to that repo and never
+runs upstream). Every branch push is published:
+
+- `master` → `https://turnrye.github.io/openrtx/`
+- any other branch → `https://turnrye.github.io/openrtx/branch/<name>/`
+  (`/` in the branch name becomes `-`)
+
+Builds accumulate on the `gh-pages` branch; deleting a branch removes its build.
+
+GitHub Pages cannot set the COOP/COEP headers that `SharedArrayBuffer`
+(pthreads) needs, so `platform/targets/wasm/coi-serviceworker.js` (bundled with
+each build and loaded first by `shell.html`) installs them from a service worker
+instead. The only visible effect is one automatic reload on a page's first
+visit. On a header-capable host (e.g. local `serve_wasm.py`) the worker detects
+it is already isolated and does nothing.
+
+One-time fork setup: enable **Settings → Pages → Deploy from a branch →
+`gh-pages` / root**, and **Settings → Actions → General → Workflow permissions →
+Read and write**.
+
 ## Status / known limitations
 
 This is an initial port focused on getting the UI running in the browser.

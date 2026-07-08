@@ -73,6 +73,14 @@ path = "lib/qdec/**/*"
 SPDX-License-Identifier = "MIT"
 SPDX-FileCopyrightText = "2019 SimpleHacks (\"Simple hacks for a simple life\")"
 
+# Third-party service worker that enables cross-origin isolation (and thus
+# SharedArrayBuffer/pthreads) on hosts that cannot set COOP/COEP headers,
+# e.g. GitHub Pages. Vendored verbatim from gzuidhof/coi-serviceworker.
+[[annotations]]
+path = "platform/targets/wasm/coi-serviceworker.js"
+SPDX-License-Identifier = "MIT"
+SPDX-FileCopyrightText = "2021 Guido Zuidhof and contributors"
+
 [[annotations]]
 path = [
     "platform/mcu/CMSIS/Include/**/*",
