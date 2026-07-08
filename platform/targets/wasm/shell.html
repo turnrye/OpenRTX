@@ -123,6 +123,64 @@
         document.getElementById('canvas').focus();
       },
     };
+
+    // --- Keyboard bridge ---------------------------------------------------
+    // Under PROXY_TO_PTHREAD, SDL's DOM keyboard events don't reach the worker
+    // the firmware runs on, so physical keys are captured here and pushed into
+    // the firmware's key state via emulator_setKeyState(). The bit values mirror
+    // keyboard_t in openrtx/include/interfaces/keyboard.h; the key mapping
+    // mirrors sdk_key_code_to_key() in sdl_engine.c.
+    const K = {
+      KEY_0:1<<0, KEY_1:1<<1, KEY_2:1<<2, KEY_3:1<<3, KEY_4:1<<4,
+      KEY_5:1<<5, KEY_6:1<<6, KEY_7:1<<7, KEY_8:1<<8, KEY_9:1<<9,
+      KEY_STAR:1<<10, KEY_HASH:1<<11, KEY_ENTER:1<<12, KEY_ESC:1<<13,
+      KEY_UP:1<<14, KEY_DOWN:1<<15, KEY_LEFT:1<<16, KEY_RIGHT:1<<17,
+      KEY_MONI:1<<18, KEY_F1:1<<19, KNOB_LEFT:1<<27, KNOB_RIGHT:1<<28,
+    };
+
+    function keyToBit(e) {
+      switch (e.key) {
+        case 'ArrowUp':    return K.KEY_UP;
+        case 'ArrowDown':  return K.KEY_DOWN;
+        case 'ArrowLeft':  return K.KEY_LEFT;
+        case 'ArrowRight': return K.KEY_RIGHT;
+        case 'Enter':      return K.KEY_ENTER;
+        case 'Escape':     return K.KEY_ESC;
+        case 'PageUp':     return K.KNOB_LEFT;
+        case 'PageDown':   return K.KNOB_RIGHT;
+        case '*':          return K.KEY_STAR;
+        case '#':          return K.KEY_HASH;
+        case 'n': case 'N': return K.KEY_F1;
+        case 'm': case 'M': return K.KEY_MONI;
+        case '0': return K.KEY_0; case '1': return K.KEY_1;
+        case '2': return K.KEY_2; case '3': return K.KEY_3;
+        case '4': return K.KEY_4; case '5': return K.KEY_5;
+        case '6': return K.KEY_6; case '7': return K.KEY_7;
+        case '8': return K.KEY_8; case '9': return K.KEY_9;
+        default: return 0;
+      }
+    }
+
+    let heldMask = 0;
+    function pushKeys() {
+      if (Module && Module.ccall) {
+        try {
+          Module.ccall('emulator_setKeyState', null, ['number'], [heldMask >>> 0]);
+        } catch (e) { /* runtime not ready yet */ }
+      }
+    }
+
+    const canvasEl = document.getElementById('canvas');
+    canvasEl.addEventListener('keydown', (e) => {
+      const bit = keyToBit(e);
+      if (bit) { heldMask |= bit; pushKeys(); e.preventDefault(); }
+    });
+    canvasEl.addEventListener('keyup', (e) => {
+      const bit = keyToBit(e);
+      if (bit) { heldMask &= ~bit; pushKeys(); e.preventDefault(); }
+    });
+    // Releasing focus drops all held keys so nothing sticks down.
+    canvasEl.addEventListener('blur', () => { heldMask = 0; pushKeys(); });
   </script>
 
   {{{ SCRIPT }}}
