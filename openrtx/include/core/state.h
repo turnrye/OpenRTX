@@ -49,7 +49,8 @@ typedef struct {
     bool gpsDetected;
     bool backup_eflash;
     bool restore_eflash;
-    bool txDisable;
+    bool pttDisable;
+    bool keypad_locked;  //< keypad lock (macro menu fn 9); gates input in ui_shim
     uint8_t step_index;
 } state_t;
 

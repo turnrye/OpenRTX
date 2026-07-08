@@ -1,0 +1,34 @@
+#codeplug channels.rtxc
+nop A full-length M17 destination must stay on one channel-line (no wrap).
+rssi 0
+sleep 1000
+key ENTER
+sleep 400
+key DOWN ENTER
+sleep 500
+key DOWN DOWN ENTER
+sleep 600
+key HASH
+sleep 400
+nop Type 9 chars via multi-tap (distinct keys each commit + advance).
+key 2
+sleep 150
+key 3
+sleep 150
+key 4
+sleep 150
+key 5
+sleep 150
+key 6
+sleep 150
+key 7
+sleep 150
+key 8
+sleep 150
+key 9
+sleep 150
+key 2
+sleep 400
+screenshot m17_dst_long.bmp
+sleep 300
+quit

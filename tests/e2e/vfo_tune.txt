@@ -1,0 +1,18 @@
+nop VFO tuning: UP steps the RX+TX frequency by one step (12.5 kHz default).
+nop Three steps from the 430.000 default lands on 430.037.
+nop Tuning triggers an rtx reconfigure, after which the emulator RSSI reads one
+nop of two values; pin a strong signal so the S-meter saturates identically in
+nop both, keeping the frame deterministic.
+rssi 0
+sleep 1000
+nop Space the three steps so each is processed before the screenshot even when
+nop the UI thread is loaded (parallel suite runs), landing deterministically.
+key UP
+sleep 250
+key UP
+sleep 250
+key UP
+sleep 400
+screenshot vfo_tune.bmp
+sleep 300
+quit

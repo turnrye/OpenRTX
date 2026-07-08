@@ -1,0 +1,19 @@
+nop Settings > FM: CTCSS tone + enable value rows and the edit affordance.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop FM is Settings row idx 5 (Display, Time&Date, GPS, Radio, M17, FM, ...)
+key DOWN DOWN DOWN DOWN DOWN ENTER
+sleep 500
+screenshot fm_settings.bmp
+sleep 300
+nop Edit CTCSS Tone: ENTER opens edit (value <..>), UP cycles the tone table
+key ENTER
+sleep 400
+key UP UP UP
+sleep 400
+screenshot fm_tone_edit.bmp
+sleep 300
+quit

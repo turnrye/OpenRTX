@@ -1,0 +1,7 @@
+nop VFO home screen at boot (freq hero, channel line, RX dot meter, top bar)
+nop Pin RSSI so the S-meter can't jitter across a level boundary.
+rssi -100
+sleep 1000
+screenshot vfo.bmp
+sleep 300
+quit

@@ -1,0 +1,21 @@
+#codeplug channels.rtxc
+nop Main-menu Banks browser: "All channels" entry plus the codeplug banks.
+sleep 1000
+key ENTER
+sleep 400
+nop Banks is main-menu row idx 0 (already selected on entering the menu)
+key ENTER
+sleep 500
+screenshot banks_list.bmp
+sleep 300
+nop Move the highlight to "2m Repeaters" (idx 1)
+key DOWN
+sleep 400
+screenshot banks_selected.bmp
+sleep 300
+nop ENTER enables the bank and loads its first channel, popping to the VFO.
+nop Not asserted (post-load VFO S-meter is RSSI-timing-flaky); manually
+nop verified to load 146.520 (2m Calling, first channel of the bank).
+key ENTER
+sleep 500
+quit

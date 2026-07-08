@@ -1,0 +1,31 @@
+nop ETSI multi-tap keypad entry in the M17 Meta modal: a digit key types a
+nop letter; repeating the same key within 700ms cycles it; a different key
+nop commits the character and advances. Deterministic via spaced key presses.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop M17 is Settings row idx 4.
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Open the Meta Txt modal (row 1).
+key DOWN
+sleep 300
+key ENTER
+sleep 500
+nop Type over the default: 3 -> 'd'; 6 6 6 -> 'o' (cycle m,n,o); 4 -> 'g'.
+nop Each different key auto-commits the previous character.
+key 3
+sleep 250
+key 6
+sleep 250
+key 6
+sleep 250
+key 6
+sleep 250
+key 4
+sleep 400
+screenshot multitap.bmp
+sleep 300
+quit

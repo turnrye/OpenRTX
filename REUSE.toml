@@ -12,10 +12,22 @@ SPDX-License-Identifier = "GPL-2.0-or-later"
 SPDX-FileCopyrightText = "Terraneo Federico"
 precedence = "override"
 
+# The text font blobs embed Ubuntu glyphs (text) and FontAwesome glyphs (icons).
 [[annotations]]
-path = "openrtx/include/fonts/adafruit/**/*"
-SPDX-License-Identifier = "Ubuntu-font-1.0"
-SPDX-FileCopyrightText = "2012 Adafruit Industries"
+path = "openrtx/fonts/ubuntu_*.bin"
+SPDX-License-Identifier = "Ubuntu-font-1.0 AND OFL-1.1"
+SPDX-FileCopyrightText = "2010-2011 Canonical Ltd. AND Fonticons, Inc."
+precedence = "override"
+
+# The custom icon font blobs and their source SVG are the M17 project logo,
+# used under CC BY 4.0.
+[[annotations]]
+path = [
+    "openrtx/fonts/icons_*.bin",
+    "openrtx/fonts/m17_logo.svg",
+]
+SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-FileCopyrightText = "M17 Project"
 precedence = "override"
 
 # This section is for OpenRTX sources that cannot have comments in them, like `json` files
@@ -27,8 +39,12 @@ path = [
     "voiceprompts.vpc",
     "osx.txt",
     "tests/unit/assets/**/*",
+    "tests/e2e/**/*.txt",
+    "tests/e2e/**/*.rtxc",
+    "tests/e2e/golden/**/*.bmp",
     "README.md",
     "CONTRIBUTING.md",
+    "docs/**/*",
     "99-openrtx.rules",
     ".github/**/*",
     ".devcontainer/**/*",
@@ -40,34 +56,10 @@ path = [
     "subprojects/codec2.wrap",
     "subprojects/XPowersLib.wrap",
     "scripts/uf2families.json",
-    "scripts/generate_symbols.py",
 ]
 SPDX-License-Identifier = "GPL-3.0-or-later"
 SPDX-FileCopyrightText = "OpenRTX Contributors"
 
-# This section is for font glyph sources that were taken from Pictogrammers
-[[annotations]]
-path = [
-    "openrtx/include/fonts/symbols/sources/access-point.svg",
-    "openrtx/include/fonts/symbols/sources/access-point.svg",
-    "openrtx/include/fonts/symbols/sources/alpha-m-box-outline.svg",
-    "openrtx/include/fonts/symbols/sources/call-made.svg",
-    "openrtx/include/fonts/symbols/sources/call-received.svg",
-    "openrtx/include/fonts/symbols/sources/cog.svg",
-    "openrtx/include/fonts/symbols/sources/crosshairs-gps.svg",
-    "openrtx/include/fonts/symbols/sources/crosshairs.svg",
-    "openrtx/include/fonts/symbols/sources/lock.svg",
-    "openrtx/include/fonts/symbols/sources/network.svg",
-    "openrtx/include/fonts/symbols/sources/transmission-tower.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-1.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-2.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-3.svg",
-    "openrtx/include/fonts/symbols/sources/wifi-strength-4.svg"
-]
-SPDX-License-Identifier = "Apache-2.0"
-SPDX-FileCopyrightText = "Pictogrammers"
-
-# This section is for font glyph sources that were taken from Pictogrammers
 [[annotations]]
 path = "lib/qdec/**/*"
 SPDX-License-Identifier = "MIT"

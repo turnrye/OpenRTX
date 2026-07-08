@@ -1,0 +1,25 @@
+#codeplug channels.rtxc
+nop VFO shows the TX frequency while transmitting a channel with an RX/TX
+nop offset. Load 70cm Rptr (idx 1: RX 446.000 / TX 446.600), then PTT: the
+nop frequency hero switches 446.000 -> 446.600 and reverts on release. Pin a
+nop strong signal so the RX S-meter saturates identically (see vfo_mem).
+rssi 0
+sleep 1000
+nop ESC toggles VFO -> memory (loads channel 001), UP steps to 002 70cm Rptr.
+key ESC
+sleep 400
+key UP
+sleep 500
+screenshot tx_offset_rx.bmp
+sleep 300
+nop PTT engages TX: the hero shows the 446.600 TX frequency + orange meter.
+ptt
+sleep 500
+screenshot tx_offset_tx.bmp
+sleep 300
+nop Release PTT: back to the 446.000 RX frequency.
+ptt
+sleep 500
+screenshot tx_offset_rx2.bmp
+sleep 300
+quit

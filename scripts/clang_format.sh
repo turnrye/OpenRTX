@@ -51,7 +51,6 @@ openrtx/include/core/event.h
 openrtx/include/core/fir.hpp
 openrtx/include/core/goertzel.hpp
 openrtx/include/core/gps.h
-openrtx/include/core/graphics.h
 openrtx/include/core/iir.hpp
 openrtx/include/core/queue.h
 openrtx/include/core/ringbuf.hpp
@@ -85,10 +84,7 @@ openrtx/include/protocols/M17/StreamFrame.hpp
 openrtx/include/protocols/M17/Synchronizer.hpp
 openrtx/include/protocols/M17/Utils.hpp
 openrtx/include/protocols/M17/Viterbi.hpp
-openrtx/include/rtx/OpMode.hpp
 openrtx/include/rtx/OpMode_FM.hpp
-openrtx/include/rtx/OpMode_M17.hpp
-openrtx/include/rtx/rtx.h
 openrtx/include/ui/EnglishStrings.h
 openrtx/include/ui/SpanishStrings.h
 openrtx/include/ui/ui_default.h
@@ -103,7 +99,6 @@ openrtx/src/core/cps.c
 openrtx/src/core/data_conversion.c
 openrtx/src/core/datetime.c
 openrtx/src/core/gps.c
-openrtx/src/core/graphics.c
 openrtx/src/core/openrtx.c
 openrtx/src/core/queue.c
 openrtx/src/core/threads.c
@@ -118,15 +113,7 @@ openrtx/src/protocols/M17/LinkSetupFrame.cpp
 openrtx/src/protocols/M17/MetaText.cpp
 openrtx/src/protocols/M17/Modulator.cpp
 openrtx/src/rtx/OpMode_FM.cpp
-openrtx/src/rtx/OpMode_M17.cpp
-openrtx/src/rtx/rtx.cpp
-openrtx/src/ui/default/ui.c
-openrtx/src/ui/default/ui_main.c
-openrtx/src/ui/default/ui_menu.c
-openrtx/src/ui/default/ui_strings.c
-openrtx/src/ui/module17/ui.c
-openrtx/src/ui/module17/ui_main.c
-openrtx/src/ui/module17/ui_menu.c
+openrtx/src/ui/ui_strings.c
 platform/drivers/ADC/ADC0_GDx.c
 platform/drivers/ADC/adc_at32.c
 platform/drivers/ADC/adc_at32.h

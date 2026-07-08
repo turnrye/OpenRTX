@@ -66,6 +66,7 @@ target_include_directories(app
 
     openrtx/include
     platform
+    openrtx/src/ui
 
     subprojects/codec2
     subprojects/codec2/src
@@ -114,11 +115,41 @@ target_sources(app
     openrtx/src/protocols/M17/FrameEncoder.cpp
     openrtx/src/protocols/M17/FrameDecoder.cpp
     openrtx/src/protocols/M17/LinkSetupFrame.cpp
+    openrtx/src/protocols/M17/PacketDeframer.cpp
+    openrtx/src/protocols/M17/PacketFramer.cpp
+    openrtx/src/protocols/M17/SmsPacket.cpp
 
-    openrtx/src/ui/default/ui.c
-    openrtx/src/ui/default/ui_main.c
-    openrtx/src/ui/default/ui_menu.c
-    openrtx/src/ui/default/ui_strings.c
+    openrtx/src/ui/ui_shim.cpp
+    openrtx/src/ui/core/Object.cpp
+    openrtx/src/ui/core/View.cpp
+    openrtx/src/ui/core/Navigator.cpp
+    openrtx/src/ui/style/Theme.cpp
+    openrtx/src/ui/render/DrawCtx.cpp
+    openrtx/src/ui/layout/Flex.cpp
+    openrtx/src/ui/widgets/Widgets.cpp
+    openrtx/src/ui/widgets/List.cpp
+    openrtx/src/ui/widgets/BatteryIcon.cpp
+    openrtx/src/ui/widgets/TopBar.cpp
+    openrtx/src/ui/widgets/DotMeter.cpp
+    openrtx/src/ui/widgets/FreqHero.cpp
+    openrtx/src/ui/widgets/StatValue.cpp
+    openrtx/src/ui/widgets/Compass.cpp
+    openrtx/src/ui/views/VfoView.cpp
+    openrtx/src/ui/views/MenuView.cpp
+    openrtx/src/ui/views/InfoView.cpp
+    openrtx/src/ui/views/AboutView.cpp
+    openrtx/src/ui/views/DisplayView.cpp
+    openrtx/src/ui/views/ChecklistView.cpp
+    openrtx/src/ui/views/GpsView.cpp
+    openrtx/src/ui/views/FmView.cpp
+    openrtx/src/ui/views/RadioView.cpp
+    openrtx/src/ui/views/M17View.cpp
+    openrtx/src/ui/views/GpsSettingsView.cpp
+    openrtx/src/ui/views/DefaultsView.cpp
+    openrtx/src/ui/views/ChannelsView.cpp
+    openrtx/src/ui/views/ContactsView.cpp
+    openrtx/src/ui/views/BanksView.cpp
+    openrtx/src/ui/ui_strings.c
 
     subprojects/codec2/src/dump.c
     subprojects/codec2/src/lpc.c

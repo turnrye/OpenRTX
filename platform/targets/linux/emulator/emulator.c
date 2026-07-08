@@ -20,6 +20,9 @@
 
 #include "emulator.h"
 #include "sdl_engine.h"
+#include "core/ui.h"
+#include "core/event.h"
+#include "core/input.h"
 
 /* Custom SDL Event to request a screenshot */
 extern Uint32 SDL_Screenshot_Event;
@@ -32,7 +35,8 @@ emulator_state_t emulator_state =
     4,        // volume level
     1,        // chSelector
     false,    // PTT status
-    false     // power off
+    false,    // power off
+    0         // held keys
 };
 
 typedef int (*_climenu_fn)(void *self, int argc, char **argv);
@@ -221,6 +225,68 @@ static int pressMultiKeys(void *_self, int _argc, char **_argv)
     return SH_CONTINUE; // continue
 }
 
+// holdKeys presses and HOLDS the given keys down (reported on every keyboard
+// scan) until releaseKeys is called. Unlike 'key'/'keycombo' (momentary), this
+// lets a script model a held button — e.g. MONI for the macro menu, or holding
+// a key long enough to trigger a long-press.
+static int holdKeys(void *_self, int _argc, char **_argv)
+{
+    (void) _self;
+    keyboard_t combo = 0;
+
+    for(int i = 0; i < _argc; i++)
+    {
+        if(_argv[i] != NULL)
+            combo |= keyname2keyboard(_argv[i]);
+    }
+
+    emulator_state.heldKeys = combo;
+    printf("Hold keys: 0x%08X\n", (unsigned)combo);
+    shell_ready(NULL, 0, NULL);
+    return SH_CONTINUE; // continue
+}
+
+// keyLong injects a COMPLETED long-press keyboard event for the given key(s),
+// bypassing the timing-based long-press detection in input_scanKeyboard. This
+// is needed because the e2e harness runs the emulator under `faketime -f`,
+// which FREEZES the wall clock (for a stable top-bar clock in goldens) — so the
+// 700ms long-press timer never elapses and a real `keyhold` can never trigger a
+// long-press. `keylong 1` makes a long-press deterministic and testable.
+static int keyLong(void *_self, int _argc, char **_argv)
+{
+    (void) _self;
+    keyboard_t combo = 0;
+
+    for(int i = 0; i < _argc; i++)
+    {
+        if(_argv[i] != NULL)
+            combo |= keyname2keyboard(_argv[i]);
+    }
+
+    kbd_msg_t msg;
+    msg.value = 0;
+    msg.long_press = 1;
+    msg.keys = combo;
+    ui_pushEvent(EVENT_KBD, msg.value);
+
+    printf("Long-press keys: 0x%08X\n", (unsigned)combo);
+    shell_ready(NULL, 0, NULL);
+    return SH_CONTINUE; // continue
+}
+
+// releaseKeys clears any keys held by holdKeys.
+static int releaseKeys(void *_self, int _argc, char **_argv)
+{
+    (void) _self;
+    (void) _argc;
+    (void) _argv;
+
+    emulator_state.heldKeys = 0;
+    printf("Release held keys\n");
+    shell_ready(NULL, 0, NULL);
+    return SH_CONTINUE; // continue
+}
+
 // NOTE: unused function
 // static int template(void *_self, int _argc, char **_argv)
 // {
@@ -354,6 +420,9 @@ static _climenu_option _options[] =
                                 NULL,   pressKey
     },
     {"keycombo", "Press a bunch of keys simultaneously", NULL, pressMultiKeys },
+    {"keyhold",  "Hold keys down until 'keyrelease' (e.g. 'keyhold MONI')", NULL, holdKeys },
+    {"keyrelease", "Release keys held by 'keyhold'", NULL, releaseKeys },
+    {"keylong",  "Inject a long-press event for keys (e.g. 'keylong 1'); works under the frozen test clock", NULL, keyLong },
     {"show",     "Show current radio state (ptt, rssi, etc)", NULL, printState},
     {"screenshot", "[screenshot.bmp] Save screenshot to first arg or screenshot.bmp if none given",
                                 NULL,   screenshot
@@ -601,7 +670,10 @@ void emulator_start()
 
 keyboard_t emulator_getKeys()
 {
-    keyboard_t out = 0;
+    /* Keys held via 'keyhold' are reported on every scan (until 'keyrelease'),
+     * OR-ed with any momentary key dequeued from the shell key queue. This lets
+     * a script hold e.g. MONI down across screenshots and other keypresses. */
+    keyboard_t out = emulator_state.heldKeys;
 
 #ifdef __EMSCRIPTEN__
     // Physical keys held on the page (see emulator_setKeyState). These are

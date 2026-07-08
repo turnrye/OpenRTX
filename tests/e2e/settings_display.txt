@@ -1,0 +1,38 @@
+nop Display value-row editing: enter Settings > Display, edit Brightness
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Display is the first Settings row; ENTER opens it
+key ENTER
+sleep 500
+screenshot display_settings.bmp
+sleep 300
+nop ENTER edits Brightness (value shows <100>), DOWN lowers it by 5 twice
+key ENTER
+sleep 400
+key DOWN DOWN
+sleep 400
+screenshot display_brightness_edit.bmp
+sleep 300
+nop ENTER commits (value shows 90, no brackets)
+key ENTER
+sleep 400
+screenshot display_brightness_committed.bmp
+sleep 300
+nop navigate to Timer (last row), edit it: 30 s -> 25 s
+key DOWN DOWN DOWN DOWN
+sleep 400
+key ENTER
+sleep 400
+key DOWN
+sleep 400
+screenshot display_timer_edit.bmp
+sleep 300
+nop ENTER commits (value shows 25 s, no brackets)
+key ENTER
+sleep 400
+screenshot display_timer_committed.bmp
+sleep 300
+quit

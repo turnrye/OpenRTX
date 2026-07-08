@@ -1,0 +1,11 @@
+nop Main menu: ENTER from VFO, then step the selection down
+sleep 1000
+key ENTER
+sleep 400
+screenshot main_menu.bmp
+sleep 300
+key DOWN
+sleep 400
+screenshot main_menu_down1.bmp
+sleep 300
+quit

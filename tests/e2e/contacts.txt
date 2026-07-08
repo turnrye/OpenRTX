@@ -1,0 +1,16 @@
+#codeplug channels.rtxc
+nop Main-menu Contacts browser: read-only list of the codeplug contacts.
+sleep 1000
+key ENTER
+sleep 400
+nop Contacts is main-menu row idx 2 (Banks, Channels, Contacts, ...)
+key DOWN DOWN ENTER
+sleep 500
+screenshot contacts_list.bmp
+sleep 300
+nop Scroll the highlight down one (ENTER is a no-op here, read-only viewer)
+key DOWN
+sleep 400
+screenshot contacts_selected.bmp
+sleep 300
+quit

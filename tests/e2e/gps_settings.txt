@@ -1,0 +1,25 @@
+nop Settings > GPS: enable toggle + timezone value.
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop GPS settings is Settings row idx 2 (Display, Time&Date, GPS, ...)
+key DOWN DOWN ENTER
+sleep 500
+screenshot gps_settings.bmp
+sleep 300
+nop Toggle GPS Enabled On, then set UTC Timezone to +1.0 (edit shown as <..>)
+key ENTER
+sleep 300
+key UP
+sleep 300
+key ENTER
+sleep 300
+key DOWN DOWN ENTER
+sleep 300
+key UP UP
+sleep 400
+screenshot gps_settings_edit.bmp
+sleep 300
+quit

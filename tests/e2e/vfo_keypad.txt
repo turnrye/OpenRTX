@@ -1,0 +1,19 @@
+nop VFO frequency keypad entry. Digits fill the RX frequency most-significant
+nop first; the seventh digit auto-advances to the TX set. Pin a strong signal so
+nop the S-meter saturates identically before and after the rtx reconfigure that
+nop applying a frequency triggers (see vfo_tune).
+rssi 0
+sleep 1000
+nop Enter 1 4 5 -> the hero shows 145.000 under an "ENTER RX" prompt.
+key 1 4 5
+sleep 400
+screenshot vfo_keypad_rx.bmp
+sleep 300
+nop Finish RX (5 0 0 0 -> 145.500), then ENTER mirrors TX=RX and applies it.
+key 5 0 0 0
+sleep 300
+key ENTER
+sleep 400
+screenshot vfo_keypad_applied.bmp
+sleep 300
+quit
