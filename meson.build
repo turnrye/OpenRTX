@@ -940,7 +940,15 @@ targets = [
   },
 ]
 
-radio_tool  = find_program('radio_tool')
+# radio_tool only wraps/flashes embedded firmware images, which the emscripten
+# build never produces. Its subproject fallback also can't configure under a
+# cross toolchain (it needs libusb/CMake), so skip the lookup entirely there and
+# let its downstream flash targets disable themselves.
+if host_machine.system() == 'emscripten'
+  radio_tool = disabler()
+else
+  radio_tool = find_program('radio_tool')
+endif
 bin2sgl     = find_program('scripts/bin2sgl.py',               required:false, disabler:true)
 objcopy     = find_program('objcopy',                          required:false, disabler:true)
 gd77_loader = find_program('scripts/gd-77_firmware_loader.py', required:false, disabler:true)
