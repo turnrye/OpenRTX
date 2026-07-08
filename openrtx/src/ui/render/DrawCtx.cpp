@@ -159,6 +159,50 @@ void DrawCtx::line(Point a, Point b, Sem color)
     gfx_drawLine(start, end, themeColor(color));
 }
 
+void DrawCtx::lineAA(Point a, Point b, Sem color, float width)
+{
+    const color_t col = themeColor(color);
+    const float x0 = a.x, y0 = a.y, x1 = b.x, y1 = b.y;
+    const float dx = x1 - x0, dy = y1 - y0;
+    const float len2 = dx * dx + dy * dy;
+    const float half = width * 0.5f;
+
+    /* Rasterise the segment's bounding box (padded), shading each pixel by its
+     * coverage = how far its centre is inside the stroke's half-width. */
+    const int minx =
+        static_cast<int>(std::floor(std::fmin(x0, x1) - half - 1.0f));
+    const int maxx =
+        static_cast<int>(std::ceil(std::fmax(x0, x1) + half + 1.0f));
+    const int miny =
+        static_cast<int>(std::floor(std::fmin(y0, y1) - half - 1.0f));
+    const int maxy =
+        static_cast<int>(std::ceil(std::fmax(y0, y1) + half + 1.0f));
+
+    for (int py = miny; py <= maxy; py++) {
+        for (int px = minx; px <= maxx; px++) {
+            /* Distance from the pixel centre to the segment. */
+            const float fx = px - x0, fy = py - y0;
+            float t = (len2 > 0.0f) ? ((fx * dx + fy * dy) / len2) : 0.0f;
+            if (t < 0.0f)
+                t = 0.0f;
+            if (t > 1.0f)
+                t = 1.0f;
+            const float cx = x0 + t * dx, cy = y0 + t * dy;
+            const float dist =
+                std::sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+            float cov = half + 0.5f - dist;
+            if (cov <= 0.0f)
+                continue;
+            if (cov > 1.0f)
+                cov = 1.0f;
+            color_t p = col;
+            p.alpha = static_cast<uint8_t>(col.alpha * cov);
+            gfx_setPixel({ static_cast<int16_t>(px), static_cast<int16_t>(py) },
+                         p);
+        }
+    }
+}
+
 point_t DrawCtx::text(Point at, fontSize_t size, textAlign_t align, Sem color,
                       const char *str)
 {

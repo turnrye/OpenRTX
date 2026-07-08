@@ -159,23 +159,31 @@ void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
     const int16_t textW = static_cast<int16_t>(row.w - 6 - rightPad);
 
     if (it.value != nullptr) {
-        /* Value row: label on the upper line, value on the lower line and
-         * right-aligned. The two lines split the row cleanly (no vertical
-         * overlap) so a full-width ellipsized value never runs under the label.
-         * Both ellipsize when the content is wider than the column. */
-        const int16_t half = static_cast<int16_t>(row.h / 2);
+        /* Value row on ONE line, vertically centred like a checkbox row (so the
+         * vertical padding matches): the value is right-aligned at its natural
+         * width (capped at half the column) and the label fills the rest on the
+         * left. Both ellipsize when wider than their share. */
+        uint16_t vW = gfx_getTextWidth(FONT_SIZE_8PT, it.value);
+        int16_t valW = static_cast<int16_t>(vW);
+        const int16_t maxVal = static_cast<int16_t>(textW / 2);
+        if (valW > maxVal)
+            valW = maxVal;
+        if (valW < 0)
+            valW = 0;
+        const int16_t gap = 8;
+
+        const Rect vbox = { static_cast<int16_t>(row.x + 6 + textW - valW),
+                            row.y, static_cast<uint16_t>(valW), row.h };
+        d.textInBoxEllipsized(vbox, FONT_SIZE_8PT, TEXT_ALIGN_RIGHT, valueColor,
+                              it.value);
+
+        int16_t lblW = static_cast<int16_t>(textW - valW - gap);
+        if (lblW < 0)
+            lblW = 0;
         const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
-                            static_cast<uint16_t>(textW),
-                            static_cast<uint16_t>(half) };
+                            static_cast<uint16_t>(lblW), row.h };
         d.textInBoxEllipsized(lbox, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, labelColor,
                               it.label);
-
-        const Rect vbox = { static_cast<int16_t>(row.x + 6),
-                            static_cast<int16_t>(row.y + half),
-                            static_cast<uint16_t>(textW),
-                            static_cast<uint16_t>(row.h - half) };
-        d.textInBoxEllipsized(vbox, FONT_SIZE_6PT, TEXT_ALIGN_RIGHT, valueColor,
-                              it.value);
     } else {
         const Rect lbox = { static_cast<int16_t>(row.x + 6), row.y,
                             static_cast<uint16_t>(textW), row.h };
@@ -189,18 +197,28 @@ void List::drawRow(DrawCtx &d, const ListItem &it, const Rect &row,
         const int16_t by = static_cast<int16_t>(row.y + (row.h - bs) / 2);
         const Rect box = { bx, by, static_cast<uint16_t>(bs),
                            static_cast<uint16_t>(bs) };
-        d.drawRect(box, selected ? Sem::OnPrimary : Sem::OnSurfaceMuted);
+
+        /* Anti-aliased rounded box: an outer rounded rect in the border colour
+         * hollowed by an inner one in the row's own background (blue when the
+         * row is selected, else the screen background), leaving a smooth ring. */
+        const Sem border = selected ? Sem::OnPrimary : Sem::OnSurfaceMuted;
+        const Sem rowBg = selected ? Sem::Primary : Sem::Background;
+        d.fillRoundRect(box, 2, border);
+        d.fillRoundRect(
+            { static_cast<int16_t>(bx + 1), static_cast<int16_t>(by + 1),
+              static_cast<uint16_t>(bs - 2), static_cast<uint16_t>(bs - 2) },
+            1, rowBg);
 
         if (it.checked) {
-            /* A two-stroke tick in the mark colour. */
+            /* An anti-aliased two-stroke tick in the mark colour. */
             const Point p0 = { static_cast<int16_t>(bx + 2),
                                static_cast<int16_t>(by + bs / 2) };
             const Point p1 = { static_cast<int16_t>(bx + bs / 2 - 1),
                                static_cast<int16_t>(by + bs - 3) };
             const Point p2 = { static_cast<int16_t>(bx + bs - 2),
                                static_cast<int16_t>(by + 2) };
-            d.line(p0, p1, Sem::Mark);
-            d.line(p1, p2, Sem::Mark);
+            d.lineAA(p0, p1, Sem::Mark);
+            d.lineAA(p1, p2, Sem::Mark);
         }
     }
 }

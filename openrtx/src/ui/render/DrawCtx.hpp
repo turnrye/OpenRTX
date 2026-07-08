@@ -69,6 +69,10 @@ public:
     /** 1px line between two points. */
     void line(Point a, Point b, Sem color);
 
+    /** Anti-aliased line of the given width (coverage-blended; a crisp 1px line
+     *  on 1bpp targets since gfx_setPixel thresholds there). */
+    void lineAA(Point a, Point b, Sem color, float width = 1.3f);
+
     /**
      * Draw a NUL-terminated string. Returns the drawn text extent as reported
      * by the backend. Multi-line strings (with '\n') are supported.
