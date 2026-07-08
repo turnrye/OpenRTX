@@ -14,15 +14,32 @@
  * contains C — so the pixel format is passed in as a -D flag instead).
  */
 
+#ifdef __EMSCRIPTEN__
+/*
+ * The wasm/LLVM assembler rejects the ELF .note.GNU-stack marker and a bare
+ * .rodata, and it requires every global data symbol to carry an explicit
+ * .size. Put the blobs in .data and size each symbol (the zero-length _end
+ * marker gets 0; _start spans up to _end). Functionally identical: on wasm it
+ * is all linear memory, read-only-ness is not enforced.
+ */
+.section .data,"",@
+#else
 .section .note.GNU-stack,""
 .section .rodata
+#endif
 
 .macro FONT_BLOB name, path
 .global _font_\name\()_start
 .global _font_\name\()_end
 _font_\name\()_start:
     .incbin "\path"
+#ifdef __EMSCRIPTEN__
+_font_\name\()_end:
+.size _font_\name\()_end, 0
+.size _font_\name\()_start, _font_\name\()_end - _font_\name\()_start
+#else
 .set _font_\name\()_end, .
+#endif
 .endm
 
 /* Custom icon font: per-size blobs holding app-specific glyphs (today just the
@@ -34,7 +51,13 @@ _font_\name\()_start:
 .global _icons_\name\()_end
 _icons_\name\()_start:
     .incbin "\path"
+#ifdef __EMSCRIPTEN__
+_icons_\name\()_end:
+.size _icons_\name\()_end, 0
+.size _icons_\name\()_start, _icons_\name\()_end - _icons_\name\()_start
+#else
 .set _icons_\name\()_end, .
+#endif
 .endm
 
 #ifdef CONFIG_FONT_AA
