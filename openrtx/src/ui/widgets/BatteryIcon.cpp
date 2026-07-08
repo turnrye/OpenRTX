@@ -41,24 +41,38 @@ void BatteryIcon::draw(DrawCtx &d)
     const int16_t byBody = static_cast<int16_t>(area_.y + nubH);
     const uint16_t r = (W >= 9) ? 2u : 1u;
 
-    /* Terminal: a short cap centred on top of the body (about three fifths of
-     * the body width so it reads as a battery contact, not a bottle neck). It
-     * overlaps the body by 1px so the two join cleanly. */
+    /* Terminal: a SQUARED-off cap centred on top of the body (about three
+     * fifths of the body width, crisp corners so it reads as a battery contact,
+     * not a rounded bottle neck). It overlaps the body by 1px so they join. */
     const int16_t nubW = static_cast<int16_t>((W * 3) / 5);
-    d.fillRoundRect({ static_cast<int16_t>(bx + (W - nubW) / 2), area_.y,
-                      static_cast<uint16_t>(nubW),
-                      static_cast<uint16_t>(nubH + 1) },
-                    1, Sem::OnSurface);
+    d.fillRect({ static_cast<int16_t>(bx + (W - nubW) / 2), area_.y,
+                 static_cast<uint16_t>(nubW), static_cast<uint16_t>(nubH + 1) },
+               Sem::OnSurface);
 
     /* Body outline = an outer rounded rect hollowed by an inner one in the bar
-     * colour (the top bar's Surface), leaving an anti-aliased rounded ring. */
+     * colour (the top bar's Surface). The TOP corners are then squared off (a
+     * real battery has a flat top under its terminal); the bottom keeps its
+     * anti-aliased rounding. */
     d.fillRoundRect({ bx, byBody, static_cast<uint16_t>(W),
                       static_cast<uint16_t>(bodyH) },
                     r, Sem::OnSurface);
+    d.fillRect({ bx, byBody, r, r }, Sem::OnSurface);
+    d.fillRect({ static_cast<int16_t>(bx + W - r), byBody, r, r },
+               Sem::OnSurface);
+
+    const uint16_t ir = (r > 0u) ? static_cast<uint16_t>(r - 1u) : 0u;
     d.fillRoundRect(
         { static_cast<int16_t>(bx + 1), static_cast<int16_t>(byBody + 1),
           static_cast<uint16_t>(W - 2), static_cast<uint16_t>(bodyH - 2) },
-        static_cast<uint16_t>(r > 0 ? r - 1 : 0), Sem::Surface);
+        ir, Sem::Surface);
+    if (ir > 0u) {
+        d.fillRect({ static_cast<int16_t>(bx + 1),
+                     static_cast<int16_t>(byBody + 1), ir, ir },
+                   Sem::Surface);
+        d.fillRect({ static_cast<int16_t>(bx + W - 1 - ir),
+                     static_cast<int16_t>(byBody + 1), ir, ir },
+                   Sem::Surface);
+    }
 
     /* Charge fill, from the bottom up, inset 2px from the outline. */
     const int innerH = bodyH - 4;
