@@ -147,7 +147,10 @@ void VfoView::build()
     chanDetail_.setRun(1, chanFont, Sem::OnSurfaceMuted,
                        TextRow::Side::Right); /* value */
     chanDetail_.setGap(3);
-    chanDetail_.setBasis(regular ? 48 : 34);
+    /* Wide enough for the longest tagged value -- "CTCSS 254.1" -- so the tag
+     * is never clipped; the roomy meta strip has space to spare, and the M17
+     * "CAN n" simply right-aligns within it. */
+    chanDetail_.setBasis(regular ? 70 : 48);
 
     /* Signal meter, pinned to the bottom of the screen: the growing spacer sits
      * ABOVE it, pushing the readout down and letting the identity block breathe
@@ -226,9 +229,10 @@ void VfoView::syncMode(const channel_t &ch)
      * M17 -- but only when the CAN is actually gating traffic: on TX (you key
      * up on it) or when RX is filtered to it (m17_can_rx). While RX is
      * promiscuous and idle the CAN filters nothing, so hide it. In FM it is the
-     * CTCSS/DCS tone (no tag) matching the current direction (the TX/encode tone
-     * while transmitting, else the RX/decode tone), shown only when that
-     * direction's tone is enabled. Blank otherwise. */
+     * CTCSS tone, tagged "CTCSS" (small, like the CAN tag), matching the current
+     * direction (the TX/encode tone while transmitting, else the RX/decode
+     * tone), shown only when that direction's tone is enabled. Blank
+     * otherwise. */
     const char *tag = "";
     modeSub_[0] = '\0';
     if (ch.mode == OPMODE_M17) {
@@ -245,6 +249,7 @@ void VfoView::syncMode(const channel_t &ch)
         if (showTx || showRx) {
             const uint8_t idx = showTx ? ch.fm.txTone : ch.fm.rxTone;
             const uint16_t t = ctcss_tone[idx];
+            tag = "CTCSS";
             snprintf(modeSub_, sizeof(modeSub_), "%u.%u", (unsigned)(t / 10),
                      (unsigned)(t % 10));
         }
