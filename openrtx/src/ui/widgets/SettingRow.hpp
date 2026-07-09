@@ -25,6 +25,13 @@ namespace ortxui
  *
  * The row paints its own selection fill, bottom separator and (for a boolean)
  * an anti-aliased checkbox; the label / value children paint after draw().
+ *
+ * A value row is adaptive: when the label and value fit side by side within the
+ * row width they collapse onto ONE line (label left, value right, each centred),
+ * just like a checkbox row; only when they do not fit does the value drop to a
+ * second line. The decision is measured per row from the bound text and the
+ * assigned width, so a short "Direction +" sits on one line while a long value
+ * wraps — mixed row heights within a menu are expected.
  */
 class SettingRow : public Flex
 {
@@ -33,7 +40,7 @@ public:
 
     enum class Kind : uint8_t {
         Plain,    //< a single label (submenu / channel / credit line)
-        Value,    //< label over a right-aligned value line
+        Value,    //< label + value; one line if they fit, else two
         Checkbox, //< a label with an anti-aliased tick box at the right
     };
 
@@ -44,14 +51,22 @@ public:
     void bind(Kind kind, const char *label, const char *value, bool checked,
               bool selected);
 
-    /** Row height for a given kind under the current padding — used by the List
-     *  to lay rows out before binding their text. */
-    int16_t heightFor(Kind kind) const;
+    /** Row height for a given kind and content at the given row width — used by
+     *  the List to lay rows out before binding their text. A value row that fits
+     *  side by side is as short as a plain row; otherwise it carries a second
+     *  line. label / value are ignored for non-value kinds. */
+    int16_t heightFor(Kind kind, const char *label, const char *value,
+                      int16_t rowW) const;
 
     Size natural() const override;
+    void onLayout() override;
     void draw(DrawCtx &d) override;
 
 private:
+    /** Whether a value row's label and value fit side by side on one line at
+     *  the given row width (with a minimum gutter between them). */
+    bool fitsOneLine(const char *label, const char *value, int16_t rowW) const;
+
     Label label_;
     Label value_;
     Kind kind_ = Kind::Plain;
@@ -60,7 +75,9 @@ private:
     int16_t padY_ = 4;
     int16_t gap_ = 2;
 
-    static constexpr int16_t kPadX = 6; //< left inset for the label
+    static constexpr int16_t kPadX = 6;   //< left inset for the label
+    static constexpr int16_t kFitGap = 8; //< min gutter between label & value
+                                          //  when they share one line
     /* Smaller fonts on the compact panels keep the list dense on a 64px
      * screen, mirroring the other size-class-aware widgets. */
     static constexpr fontSize_t kLabelFont =

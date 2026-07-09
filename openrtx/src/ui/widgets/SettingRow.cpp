@@ -62,18 +62,56 @@ void SettingRow::bind(Kind kind, const char *label, const char *value,
     }
 }
 
-int16_t SettingRow::heightFor(Kind kind) const
+bool SettingRow::fitsOneLine(const char *label, const char *value,
+                             int16_t rowW) const
 {
-    int16_t h = static_cast<int16_t>(2 * padY_
-                                     + gfx_getFontLineHeight(kLabelFont));
-    if (kind == Kind::Value)
-        h = static_cast<int16_t>(h + gap_ + gfx_getFontLineHeight(kValueFont));
-    return h;
+    const int16_t avail = static_cast<int16_t>(rowW - 2 * kPadX);
+    if (avail <= 0)
+        return false;
+    const int need =
+        gfx_getTextWidth(kLabelFont, (label != nullptr) ? label : "") + kFitGap
+        + gfx_getTextWidth(kValueFont, (value != nullptr) ? value : "");
+    return need <= avail;
+}
+
+int16_t SettingRow::heightFor(Kind kind, const char *label, const char *value,
+                              int16_t rowW) const
+{
+    const int16_t oneLine =
+        static_cast<int16_t>(2 * padY_ + gfx_getFontLineHeight(kLabelFont));
+    /* A value row keeps its second line only when the two texts do not fit side
+     * by side; a fitting row is as short as a plain row (the label font is the
+     * taller of the two). */
+    if ((kind == Kind::Value) && !fitsOneLine(label, value, rowW))
+        return static_cast<int16_t>(oneLine + gap_
+                                    + gfx_getFontLineHeight(kValueFont));
+    return oneLine;
 }
 
 Size SettingRow::natural() const
 {
-    return { area_.w, static_cast<uint16_t>(heightFor(kind_)) };
+    return { area_.w, static_cast<uint16_t>(heightFor(
+                          kind_, label_.text(), value_.text(), area_.w)) };
+}
+
+void SettingRow::onLayout()
+{
+    /* Choose the row shape from the bound text and the assigned width: a value
+     * row that fits collapses to a single line (label left, value right, each
+     * vertically centred); otherwise the value drops to a second line. Plain /
+     * checkbox rows are always the single-line column. */
+    const bool oneLine = (kind_ != Kind::Value)
+                      || fitsOneLine(label_.text(), value_.text(), area_.w);
+    if (oneLine) {
+        setAxis(Axis::Row);
+        setJustify(Justify::SpaceBetween);
+        setAlign(Align::Center);
+    } else {
+        setAxis(Axis::Column);
+        setJustify(Justify::Center);
+        setAlign(Align::Stretch);
+    }
+    Flex::onLayout();
 }
 
 void SettingRow::draw(DrawCtx &d)
@@ -104,10 +142,10 @@ void SettingRow::draw(DrawCtx &d)
     const Sem border = selected_ ? Sem::OnPrimary : Sem::OnSurfaceMuted;
     const Sem rowBg = selected_ ? Sem::Primary : Sem::Background;
     d.fillRoundRect(box, 2, border);
-    d.fillRoundRect({ static_cast<int16_t>(bx + 1), static_cast<int16_t>(by + 1),
-                      static_cast<uint16_t>(bs - 2),
-                      static_cast<uint16_t>(bs - 2) },
-                    1, rowBg);
+    d.fillRoundRect(
+        { static_cast<int16_t>(bx + 1), static_cast<int16_t>(by + 1),
+          static_cast<uint16_t>(bs - 2), static_cast<uint16_t>(bs - 2) },
+        1, rowBg);
 
     if (checked_) {
         const Point p0 = { static_cast<int16_t>(bx + 2),

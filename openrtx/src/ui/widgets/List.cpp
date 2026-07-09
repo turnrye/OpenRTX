@@ -66,7 +66,7 @@ int16_t List::rowHeight(uint16_t i) const
 {
     ListItem it;
     getItem(i, it);
-    return rowWidget_.heightFor(kindOf(it));
+    return rowWidget_.heightFor(kindOf(it), it.label, it.value, area_.w);
 }
 
 void List::scrollToSelected()
@@ -191,7 +191,8 @@ void List::draw(DrawCtx &d)
         ListItem it;
         getItem(i, it);
         const SettingRow::Kind kind = kindOf(it);
-        const int16_t h = rowWidget_.heightFor(kind);
+        const int16_t h = rowWidget_.heightFor(kind, it.label, it.value,
+                                               area_.w);
         if (y > area_.bottom())
             break;
 
