@@ -80,7 +80,8 @@
     <kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> navigate &middot;
     <kbd>Enter</kbd> select &middot; <kbd>Esc</kbd> back &middot;
     <kbd>0</kbd>&ndash;<kbd>9</kbd> keypad &middot;
-    <kbd>PgUp</kbd>/<kbd>PgDn</kbd> knob &middot; <kbd>M</kbd> monitor
+    <kbd>PgUp</kbd>/<kbd>PgDn</kbd> knob &middot; <kbd>M</kbd> monitor &middot;
+    <kbd>P</kbd> push-to-talk (hold)
   </div>
 
   <div id="status">Loading&hellip;</div>
@@ -175,17 +176,28 @@
       }
     }
 
+    // PTT (P) is read via a separate path in the firmware, so it gets its own
+    // export rather than a keyboard_t bit. Held while the key is down.
+    function setPtt(down) {
+      if (Module && Module.ccall) {
+        try { Module.ccall('emulator_setPtt', null, ['number'], [down ? 1 : 0]); }
+        catch (e) { /* runtime not ready yet */ }
+      }
+    }
+
     const canvasEl = document.getElementById('canvas');
     canvasEl.addEventListener('keydown', (e) => {
+      if (e.key === 'p' || e.key === 'P') { setPtt(1); e.preventDefault(); return; }
       const bit = keyToBit(e);
       if (bit) { heldMask |= bit; pushKeys(); e.preventDefault(); }
     });
     canvasEl.addEventListener('keyup', (e) => {
+      if (e.key === 'p' || e.key === 'P') { setPtt(0); e.preventDefault(); return; }
       const bit = keyToBit(e);
       if (bit) { heldMask &= ~bit; pushKeys(); e.preventDefault(); }
     });
-    // Releasing focus drops all held keys so nothing sticks down.
-    canvasEl.addEventListener('blur', () => { heldMask = 0; pushKeys(); });
+    // Releasing focus drops all held keys (and PTT) so nothing sticks down.
+    canvasEl.addEventListener('blur', () => { heldMask = 0; pushKeys(); setPtt(0); });
   </script>
 
   <script async type="text/javascript" src="openrtx_wasm.js"></script>
