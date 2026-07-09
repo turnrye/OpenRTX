@@ -511,6 +511,15 @@ void emulator_setKeyState(uint32_t mask)
 {
     emulator_jsKeys = (keyboard_t) mask;
 }
+
+// PTT is read separately by platform_getPttStatus() through SDL_GetKeyboardState,
+// which never receives DOM key events on the worker. Drive the page's PTT into
+// emulator_state.PTTstatus (which that function already ORs in) instead.
+EMSCRIPTEN_KEEPALIVE
+void emulator_setPtt(int down)
+{
+    emulator_state.PTTstatus = (down != 0);
+}
 #else
 void *startCLIMenu(void *arg)
 {
