@@ -114,41 +114,34 @@ void VfoView::build()
      * room below so the channel line and meter both fit within 64px. */
     hero_.setBasis(regular ? 40 : 26);
 
-    /* Channel row, all one text size: the "where am I" slot (index / "VFO") on
-     * the left, the channel name or M17 destination in the middle, and a
-     * right-aligned secondary detail (M17 CAN / FM tone) sitting directly under
-     * the mode label in the hero. The compact screen uses a smaller font so a
-     * full line (ascent + descent) still fits its tight budget. */
+    /* Channel identity, all one text size. The compact screen uses a smaller
+     * font so a full line (ascent + descent) still fits its tight budget. */
     const fontSize_t chanFont = regular ? FONT_SIZE_8PT : FONT_SIZE_6PT;
-    chanRow_.setAxis(Axis::Row);
-    chanRow_.setAlign(Align::Center);
-    chanRow_.setJustify(Justify::Start);
-    chanRow_.setPadding(4, 0);
-    chanRow_.setGap(6);
-    /* Make the row as tall as the font's full line height (ascent + descent) so
-     * descenders (and the '@' / caps of an M17 destination) are not clipped
-     * against the meter row below. */
-    chanRow_.setBasis(gfx_getFontLineHeight(chanFont));
+    /* Row height = the font's full line height (ascent + descent) so descenders
+     * (and the '@' / caps of an M17 destination) are not clipped. */
+    const int16_t rowH = gfx_getFontLineHeight(chanFont);
 
+    /* Index / "where am I" slot: "VFO" or the 1-based memory index. Wide enough
+     * for the widest content ("VFO" ~30px @ 8pt, ~23px @ 6pt). */
     chanIdx_.setFont(chanFont);
     chanIdx_.setAlign(TEXT_ALIGN_LEFT);
     chanIdx_.setColor(Sem::OnSurfaceMuted);
-    /* Wide enough for the widest content ("VFO" ~30px @ 8pt, ~23px @ 6pt) so
-     * the box clip never cuts a glyph. */
     chanIdx_.setBasis(regular ? 34 : 26);
 
+    /* Channel name / M17 destination, in blue -- the "who / where" headline. On
+     * the roomy screen it gets its OWN full-width line, so a long destination
+     * ("@HELLOWORLD") shows in full instead of ellipsizing in the sliver left
+     * between the index and the CAN tag. */
     chanName_.setFont(chanFont);
     chanName_.setAlign(TEXT_ALIGN_LEFT);
-    chanName_.setColor(Sem::Primary); /* blue channel name */
+    chanName_.setColor(Sem::Primary);
     chanName_.setGrow(1);
-    /* A long name/destination (e.g. "@HELLOWORLD") is truncated with an
-     * ellipsis to its Flex-assigned width rather than wrapping into the
-     * meter row below. */
+    /* Still ellipsize as a backstop (a pathological name wider than the whole
+     * line) rather than wrapping into the row below. */
     chanName_.setOverflow(Label::Overflow::Ellipsize);
 
     /* Detail = a small "CAN" tag + the value at the row font (or just a tone
-     * value in FM), right-aligned and sharing one baseline. Wide enough for
-     * "CAN" + a value without eating the name. */
+     * value in FM), right-aligned and sharing one baseline. */
     chanDetail_.setRun(0, FONT_SIZE_5PT, Sem::OnSurfaceMuted,
                        TextRow::Side::Right); /* tag */
     chanDetail_.setRun(1, chanFont, Sem::OnSurfaceMuted,
@@ -156,23 +149,56 @@ void VfoView::build()
     chanDetail_.setGap(3);
     chanDetail_.setBasis(regular ? 48 : 34);
 
-    chanRow_.addChild(&chanIdx_);
-    chanRow_.addChild(&chanName_);
-    chanRow_.addChild(&chanDetail_);
-
-    /* Signal meter. */
+    /* Signal meter, pinned to the bottom of the screen: the growing spacer sits
+     * ABOVE it, pushing the readout down and letting the identity block breathe
+     * near the top. */
     meter_.setBasis(regular ? 14 : 12);
     meter_.setColor(Sem::RxSuccess);
     meter_.setLabel("RX");
-
-    /* Open space below pushes the readout to the top. */
     spacer_.setGrow(1);
 
     root_.addChild(&topBar_);
     root_.addChild(&hero_);
-    root_.addChild(&chanRow_);
-    root_.addChild(&meter_);
+
+    if (regular) {
+        /* Roomy layout: the destination is the headline on its own full-width
+         * line; below it a quieter meta strip carries the index (left) and the
+         * CAN / tone detail (right, under the mode label in the hero). */
+        nameRow_.setAxis(Axis::Row);
+        nameRow_.setAlign(Align::Center);
+        nameRow_.setJustify(Justify::Start);
+        nameRow_.setPadding(4, 0);
+        nameRow_.setBasis(rowH);
+        nameRow_.addChild(&chanName_);
+
+        metaRow_.setAxis(Axis::Row);
+        metaRow_.setAlign(Align::Center);
+        metaRow_.setJustify(Justify::SpaceBetween);
+        metaRow_.setPadding(4, 0);
+        metaRow_.setBasis(rowH);
+        metaRow_.addChild(&chanIdx_);
+        metaRow_.addChild(&chanDetail_);
+
+        root_.addChild(&nameRow_);
+        root_.addChild(&metaRow_);
+    } else {
+        /* Compact layout: no room for a second line, so the index, name and
+         * detail share one row (the name ellipsizes) as before. */
+        chanRow_.setAxis(Axis::Row);
+        chanRow_.setAlign(Align::Center);
+        chanRow_.setJustify(Justify::Start);
+        chanRow_.setPadding(4, 0);
+        chanRow_.setGap(6);
+        chanRow_.setBasis(rowH);
+        chanRow_.addChild(&chanIdx_);
+        chanRow_.addChild(&chanName_);
+        chanRow_.addChild(&chanDetail_);
+
+        root_.addChild(&chanRow_);
+    }
+
     root_.addChild(&spacer_);
+    root_.addChild(&meter_);
     screen_.addChild(&root_);
     root_.onLayout();
 

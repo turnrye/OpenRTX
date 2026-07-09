@@ -23,12 +23,15 @@ namespace ortxui
 /**
  * The VFO home screen (mockups 5-6): a left-weighted instrument readout.
  *
- * A Flex column of shared top bar / frequency hero (big freq + sub-digits +
- * mode-tone-power stack) / channel line (index + name in blue) / signal meter /
- * open space. Widgets are direct members in static storage. build() wires the
- * tree and lays it out once; syncFromState() pulls the shown radio fields from
- * the state snapshot change-gated, and drives the meter from the RX/TX status
- * (green RX with an S-scale, orange TX as a solid power bar).
+ * A Flex column: shared top bar / frequency hero (big freq + sub-digits + mode
+ * label) / the channel name or M17 destination as a full-width blue headline /
+ * a meta strip (index left, M17 CAN or FM tone right) / open space / the signal
+ * meter pinned to the bottom. The compact (64px) screen has no room for the
+ * two-line identity block, so there the index, name and detail share one row
+ * (the name ellipsizes). Widgets are direct members in static storage. build()
+ * wires the tree and lays it out once; syncFromState() pulls the shown radio
+ * fields from the state snapshot change-gated, and drives the meter from the
+ * RX/TX status (green RX with an S-scale, orange TX as a solid power bar).
  *
  * As the navigation root, ENTER drills into the main menu (wired via setMenu()).
  * The screen is also interactive: UP/DOWN (or the knob) tune the frequency in
@@ -95,10 +98,12 @@ private:
     Flex root_;
     TopBar topBar_;
     FreqHero hero_;
-    Flex chanRow_;
+    Flex chanRow_; //< compact only: index + name + detail on one row
+    Flex nameRow_; //< regular: full-width destination / name headline
+    Flex metaRow_; //< regular: index (left) + CAN / tone detail (right)
     Label chanIdx_;
     Label chanName_;
-    TextRow chanDetail_; //< right-aligned CAN (M17) / tone (FM) on name row
+    TextRow chanDetail_; //< right-aligned CAN (M17) / tone (FM)
     DotMeter meter_;
     Flex spacer_;
 
