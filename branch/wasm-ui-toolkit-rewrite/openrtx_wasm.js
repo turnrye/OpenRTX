@@ -10004,6 +10004,8 @@ var _free = makeInvalidEarlyAccess("_free");
 
 var _emulator_setKeyState = Module["_emulator_setKeyState"] = makeInvalidEarlyAccess("_emulator_setKeyState");
 
+var _emulator_setPtt = Module["_emulator_setPtt"] = makeInvalidEarlyAccess("_emulator_setPtt");
+
 var _malloc = makeInvalidEarlyAccess("_malloc");
 
 var _strerror = makeInvalidEarlyAccess("_strerror");
@@ -10074,6 +10076,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["emulator_command"] != "undefined", "missing Wasm export: emulator_command");
   assert(typeof wasmExports["free"] != "undefined", "missing Wasm export: free");
   assert(typeof wasmExports["emulator_setKeyState"] != "undefined", "missing Wasm export: emulator_setKeyState");
+  assert(typeof wasmExports["emulator_setPtt"] != "undefined", "missing Wasm export: emulator_setPtt");
   assert(typeof wasmExports["malloc"] != "undefined", "missing Wasm export: malloc");
   assert(typeof wasmExports["strerror"] != "undefined", "missing Wasm export: strerror");
   assert(typeof wasmExports["pthread_self"] != "undefined", "missing Wasm export: pthread_self");
@@ -10109,6 +10112,7 @@ function assignWasmExports(wasmExports) {
   _emulator_command = Module["_emulator_command"] = createExportWrapper("emulator_command", wasmExports["emulator_command"], 1);
   _free = createExportWrapper("free", wasmExports["free"], 1);
   _emulator_setKeyState = Module["_emulator_setKeyState"] = createExportWrapper("emulator_setKeyState", wasmExports["emulator_setKeyState"], 1);
+  _emulator_setPtt = Module["_emulator_setPtt"] = createExportWrapper("emulator_setPtt", wasmExports["emulator_setPtt"], 1);
   _malloc = createExportWrapper("malloc", wasmExports["malloc"], 1);
   _strerror = createExportWrapper("strerror", wasmExports["strerror"], 1);
   _pthread_self = wasmExports["pthread_self"];
