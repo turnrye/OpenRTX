@@ -304,9 +304,13 @@ extern "C" void ui_drawSplashScreen()
 
     const Point logo = { 0, (int16_t)((CONFIG_SCREEN_HEIGHT / 2) - 6) };
     const Point call = { 0, (int16_t)(CONFIG_SCREEN_HEIGHT - 8) };
-    d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Primary, "OPN\nRTX");
+    /* Render the splash 1bpp (no anti-aliasing) in the gold brand accent, to
+     * match the crisp classic boot logo. */
+    gfx_setFontThreshold(true);
+    d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Accent, "OPN\nRTX");
     d.text(call, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, Sem::OnSurface,
            state.settings.callsign);
+    gfx_setFontThreshold(false);
 
     vp_announceSplashScreen();
 }

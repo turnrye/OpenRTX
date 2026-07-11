@@ -241,6 +241,16 @@ void gfx_resetClipRect(void)
     clip_y1 = CONFIG_SCREEN_HEIGHT - 1;
 }
 
+/* When set, glyph coverage is thresholded to hard on/off pixels instead of
+ * alpha-blended, giving the crisp 1bpp look of the classic splash. Only affects
+ * colour targets — 1bpp targets already threshold. Defaults to off. */
+static bool font_threshold = false;
+
+void gfx_setFontThreshold(bool on)
+{
+    font_threshold = on;
+}
+
 inline void gfx_setPixel(point_t pos, color_t color)
 {
     if (pos.x >= CONFIG_SCREEN_WIDTH || pos.y >= CONFIG_SCREEN_HEIGHT
@@ -679,7 +689,7 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
 #ifdef CONFIG_PIX_FMT_RGB565
                 uint8_t a = decoded ? cov[(uint32_t)yy * w + xx] :
                                       lvGlyph_pixelRaw(f, &glyph, xx, yy);
-                if (a == 0)
+                if (font_threshold ? (a < 128) : (a == 0))
                     continue;
 #else
                 if (lvGlyph_pixelRaw(f, &glyph, xx, yy) < 128)
@@ -693,10 +703,12 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
                     point_t pos = { (uint16_t)px, (uint16_t)py };
 #ifdef CONFIG_PIX_FMT_RGB565
                     /* Modulate the text colour's alpha by the glyph coverage;
-                     * gfx_setPixel blends over the framebuffer. */
+                     * gfx_setPixel blends over the framebuffer. When
+                     * thresholding, draw the colour solid for a crisp edge. */
                     color_t c = color;
-                    c.alpha =
-                        (uint8_t)(((uint16_t)color.alpha * a + 127) / 255);
+                    if (!font_threshold)
+                        c.alpha =
+                            (uint8_t)(((uint16_t)color.alpha * a + 127) / 255);
                     gfx_setPixel(pos, c);
 #else
                     gfx_setPixel(pos, color);
