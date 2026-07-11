@@ -291,6 +291,11 @@ extern "C" void ui_init()
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);
 
+    /* Apply the persisted text-rendering setting (crisp/1bpp vs smooth/AA). The
+     * theme (Instrument vs High Contrast) needs no apply — themeColor() reads it
+     * live. Both are no-ops on 1bpp targets. */
+    gfx_setFontMono(state.settings.crispText);
+
     standby = false;
     last_event_tick = getTick();
 
@@ -305,12 +310,13 @@ extern "C" void ui_drawSplashScreen()
     const Point logo = { 0, (int16_t)((CONFIG_SCREEN_HEIGHT / 2) - 6) };
     const Point call = { 0, (int16_t)(CONFIG_SCREEN_HEIGHT - 8) };
     /* Render the splash 1bpp (no anti-aliasing) in the gold brand accent, to
-     * match the crisp classic boot logo. */
-    gfx_setFontThreshold(true);
+     * match the crisp classic boot logo. Restore the user's text setting after
+     * (this also establishes its resting value for the first UI frame). */
+    gfx_setFontMono(true);
     d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Accent, "OPN\nRTX");
     d.text(call, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, Sem::OnSurface,
            state.settings.callsign);
-    gfx_setFontThreshold(false);
+    gfx_setFontMono(state.settings.crispText);
 
     vp_announceSplashScreen();
 }

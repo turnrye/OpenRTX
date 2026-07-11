@@ -1,0 +1,45 @@
+nop Display > Theme (High Contrast) and Text (Crisp): pure-mono, non-AA UI.
+sleep 1000
+key ENTER
+sleep 400
+nop Settings is the 4th main-menu row; Display is the first Settings row
+key DOWN DOWN DOWN DOWN ENTER
+sleep 400
+key ENTER
+sleep 500
+nop scroll past Brightness..Battery to the Theme row (row 6)
+key DOWN DOWN DOWN DOWN DOWN DOWN
+sleep 400
+nop edit Theme: UP raises Standard -> High Contrast (whole UI recolours mono)
+key ENTER
+sleep 300
+key UP
+sleep 300
+key ENTER
+sleep 300
+screenshot theme_display_hc.bmp
+sleep 300
+nop move to Text, edit: UP raises Smooth -> Crisp (drops text anti-aliasing)
+key DOWN ENTER
+sleep 300
+key UP
+sleep 300
+key ENTER
+sleep 300
+screenshot theme_display_crisp.bmp
+sleep 300
+nop back out to the VFO home screen: white-on-black, crisp
+key ESC
+sleep 300
+key ESC
+sleep 300
+key ESC
+sleep 600
+screenshot theme_vfo.bmp
+sleep 300
+nop the main menu list also renders pure mono
+key ENTER
+sleep 500
+screenshot theme_menu.bmp
+sleep 300
+quit

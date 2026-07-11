@@ -6,6 +6,7 @@
 
 #include "views/DisplayView.hpp"
 #include "core/Event.hpp"
+#include "core/graphics.h"
 #include "interfaces/keyboard.h"
 #include "interfaces/display.h"
 #include "hwconfig.h"
@@ -22,6 +23,9 @@ void DisplayView::build()
 
     static const char *const kLabels[RowCount] = {
         "Brightness", "Contrast", "Squelch", "Vox", "Timer", "Battery",
+#ifdef CONFIG_PIX_FMT_RGB565
+        "Theme",      "Text",
+#endif
     };
 
     root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
@@ -69,6 +73,12 @@ uint8_t DisplayView::curValue(uint8_t row) const
             return state.settings.display_timer;
         case RowBattery:
             return state.settings.showBatteryIcon ? 1u : 0u;
+#ifdef CONFIG_PIX_FMT_RGB565
+        case RowTheme:
+            return state.settings.highContrast ? 1u : 0u;
+        case RowText:
+            return state.settings.crispText ? 1u : 0u;
+#endif
         default:
             return 0u;
     }
@@ -101,6 +111,19 @@ void DisplayView::applyValue(uint8_t row, uint8_t v)
         case RowBattery:
             state.settings.showBatteryIcon = (v != 0u);
             break;
+#ifdef CONFIG_PIX_FMT_RGB565
+        case RowTheme:
+            /* themeColor() reads this live; repaint the whole screen so the new
+             * palette takes effect immediately. */
+            state.settings.highContrast = (v != 0u);
+            screen_.markAllDirty();
+            break;
+        case RowText:
+            state.settings.crispText = (v != 0u);
+            gfx_setFontMono(v != 0u);
+            screen_.markAllDirty();
+            break;
+#endif
         default:
             break;
     }
@@ -115,7 +138,7 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
         "15 min", "30 min", "45 min", "1 hour",
     };
 
-    char inner[8];
+    char inner[16];
     if ((row == RowVox) && (v == 0u))
         snprintf(inner, sizeof(inner), "Off");
     else if (row == RowSquelch)
@@ -124,6 +147,12 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
         snprintf(inner, sizeof(inner), "%s", kTimerLabels[(v < 16u) ? v : 0u]);
     else if (row == RowBattery)
         snprintf(inner, sizeof(inner), "%s", v ? "Icon" : "Percent");
+#ifdef CONFIG_PIX_FMT_RGB565
+    else if (row == RowTheme)
+        snprintf(inner, sizeof(inner), "%s", v ? "High Contrast" : "Standard");
+    else if (row == RowText)
+        snprintf(inner, sizeof(inner), "%s", v ? "Crisp" : "Smooth");
+#endif
     else
         snprintf(inner, sizeof(inner), "%u", v);
 
@@ -161,6 +190,10 @@ void DisplayView::adjust(int dir)
         { 0u, 10u, 1u },  //< Vox
         { 0u, 15u, 1u },  //< Timer (TIMER_OFF..TIMER_1H)
         { 0u, 1u, 1u },   //< Battery (Percent / Icon)
+#ifdef CONFIG_PIX_FMT_RGB565
+        { 0u, 1u, 1u },   //< Theme (Standard / High Contrast)
+        { 0u, 1u, 1u },   //< Text (Smooth / Crisp)
+#endif
     };
     const Range &r = kRanges[editRow_];
 
@@ -188,6 +221,10 @@ void DisplayView::syncFromState(const state_t &s)
         st.voxLevel,
         (uint8_t)st.display_timer,
         (uint8_t)(st.showBatteryIcon ? 1u : 0u),
+#ifdef CONFIG_PIX_FMT_RGB565
+        (uint8_t)(st.highContrast ? 1u : 0u),
+        (uint8_t)(st.crispText ? 1u : 0u),
+#endif
     };
     bool changed = false;
 

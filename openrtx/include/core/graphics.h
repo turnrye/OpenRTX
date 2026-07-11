@@ -176,13 +176,13 @@ void gfx_setClipRect(int16_t x, int16_t y, uint16_t width, uint16_t height);
 void gfx_resetClipRect(void);
 
 /**
- * Enable or disable glyph coverage thresholding. When enabled, text anti-
- * aliasing is dropped on colour targets (each pixel is fully on or off), giving
- * the crisp 1bpp look of the classic splash. No effect on monochrome targets,
- * which always threshold. Defaults to off.
- * @param on: true to threshold coverage, false to alpha-blend (default).
+ * Select the crisp (1bpp, non-anti-aliased) text font, or the default smooth
+ * anti-aliased font. On colour targets both sets are embedded and this switches
+ * the font returned for all subsequent text. No effect on monochrome targets,
+ * which ship only the 1bpp font. Defaults to off (smooth).
+ * @param on: true for the crisp 1bpp font, false for the smooth AA font.
  */
-void gfx_setFontThreshold(bool on);
+void gfx_setFontMono(bool on);
 
 /**
  * Draw a line from start to end coordinates, ends included.

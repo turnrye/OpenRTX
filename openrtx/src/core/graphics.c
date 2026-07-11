@@ -48,6 +48,23 @@ DECL_FONT_BLOB(10);
 DECL_FONT_BLOB(12);
 DECL_FONT_BLOB(16);
 
+#ifdef CONFIG_FONT_AA
+/* Colour targets embed the anti-aliased 4bpp text set above and, in parallel,
+ * the compact 1bpp text set below, so the user can switch to a crisp
+ * non-anti-aliased font at run time (Display > Text). Mono targets already ship
+ * only the 1bpp set, so there is nothing to add there. Icons stay 4bpp. */
+#define DECL_FONT_MONO_BLOB(pt)                     \
+    extern const uint8_t _font_mono_##pt##_start[]; \
+    extern const uint8_t _font_mono_##pt##_end[]
+DECL_FONT_MONO_BLOB(5);
+DECL_FONT_MONO_BLOB(6);
+DECL_FONT_MONO_BLOB(8);
+DECL_FONT_MONO_BLOB(9);
+DECL_FONT_MONO_BLOB(10);
+DECL_FONT_MONO_BLOB(12);
+DECL_FONT_MONO_BLOB(16);
+#endif
+
 typedef struct {
     const uint8_t *start;
     const uint8_t *end;
@@ -78,29 +95,78 @@ static const fontBlob_t iconBlobs[FONT_SIZE_NUM] = {
     { _icons_16_start, _icons_16_end }, // FONT_SIZE_16PT
 };
 
+#ifdef CONFIG_FONT_AA
+/* Parallel 1bpp text set (crisp / non-anti-aliased), selected at run time. */
+static const fontBlob_t monoFontBlobs[FONT_SIZE_NUM] = {
+    { _font_mono_5_start, _font_mono_5_end },   // FONT_SIZE_5PT
+    { _font_mono_6_start, _font_mono_6_end },   // FONT_SIZE_6PT
+    { _font_mono_8_start, _font_mono_8_end },   // FONT_SIZE_8PT
+    { _font_mono_9_start, _font_mono_9_end },   // FONT_SIZE_9PT
+    { _font_mono_10_start, _font_mono_10_end }, // FONT_SIZE_10PT
+    { _font_mono_12_start, _font_mono_12_end }, // FONT_SIZE_12PT
+    { _font_mono_16_start, _font_mono_16_end }, // FONT_SIZE_16PT
+};
+static lvFont_t g_fonts_mono[FONT_SIZE_NUM];
+static bool g_font_mono_ready[FONT_SIZE_NUM];
+static bool g_use_mono_font = false;
+#endif
+
 static lvFont_t g_fonts[FONT_SIZE_NUM];
 static lvFont_t g_icon_fonts[FONT_SIZE_NUM];
 static bool g_font_ready[FONT_SIZE_NUM];
+static bool g_icon_ready[FONT_SIZE_NUM];
+
+/** Decode (once) and return the same-size custom icon font as a fallback, so app
+ *  glyphs (e.g. the M17 logo) resolve without touching the text blobs. Shared by
+ *  the AA and mono text fonts. Returns NULL if the blob is invalid. */
+static const lvFont_t *icon_fallback(fontSize_t size)
+{
+    if (!g_icon_ready[size]) {
+        const fontBlob_t *ib = &iconBlobs[size];
+        lvFont_init(&g_icon_fonts[size], ib->start,
+                    (uint32_t)(ib->end - ib->start));
+        g_icon_ready[size] = true;
+    }
+    return g_icon_fonts[size].valid ? &g_icon_fonts[size] : NULL;
+}
 
 /** Return the decoded font for a size, initialising it from the embedded blob
- *  on first use. Falls back to the smallest font on a bad index. */
+ *  on first use. Falls back to the smallest font on a bad index. On colour
+ *  targets the crisp (1bpp) text set is returned when the user has selected it
+ *  via gfx_setFontMono(). */
 static const lvFont_t *get_font(fontSize_t size)
 {
     if ((unsigned)size >= FONT_SIZE_NUM)
         size = FONT_SIZE_5PT;
+#ifdef CONFIG_FONT_AA
+    if (g_use_mono_font) {
+        if (!g_font_mono_ready[size]) {
+            const fontBlob_t *b = &monoFontBlobs[size];
+            lvFont_init(&g_fonts_mono[size], b->start,
+                        (uint32_t)(b->end - b->start));
+            g_fonts_mono[size].fallback = icon_fallback(size);
+            g_font_mono_ready[size] = true;
+        }
+        return &g_fonts_mono[size];
+    }
+#endif
     if (!g_font_ready[size]) {
         const fontBlob_t *b = &fontBlobs[size];
         lvFont_init(&g_fonts[size], b->start, (uint32_t)(b->end - b->start));
-        /* Layer the same-size custom icon font on as a fallback so app glyphs
-         * (e.g. the M17 logo) resolve without touching the text blobs. */
-        const fontBlob_t *ib = &iconBlobs[size];
-        lvFont_init(&g_icon_fonts[size], ib->start,
-                    (uint32_t)(ib->end - ib->start));
-        if (g_icon_fonts[size].valid)
-            g_fonts[size].fallback = &g_icon_fonts[size];
+        g_fonts[size].fallback = icon_fallback(size);
         g_font_ready[size] = true;
     }
     return &g_fonts[size];
+}
+
+void gfx_setFontMono(bool on)
+{
+#ifdef CONFIG_FONT_AA
+    g_use_mono_font = on;
+#else
+    /* Mono targets ship only the 1bpp font; nothing to switch. */
+    (void)on;
+#endif
 }
 
 #ifdef CONFIG_PIX_FMT_RGB565
@@ -239,16 +305,6 @@ void gfx_resetClipRect(void)
     clip_y0 = 0;
     clip_x1 = CONFIG_SCREEN_WIDTH - 1;
     clip_y1 = CONFIG_SCREEN_HEIGHT - 1;
-}
-
-/* When set, glyph coverage is thresholded to hard on/off pixels instead of
- * alpha-blended, giving the crisp 1bpp look of the classic splash. Only affects
- * colour targets — 1bpp targets already threshold. Defaults to off. */
-static bool font_threshold = false;
-
-void gfx_setFontThreshold(bool on)
-{
-    font_threshold = on;
 }
 
 inline void gfx_setPixel(point_t pos, color_t color)
@@ -689,7 +745,7 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
 #ifdef CONFIG_PIX_FMT_RGB565
                 uint8_t a = decoded ? cov[(uint32_t)yy * w + xx] :
                                       lvGlyph_pixelRaw(f, &glyph, xx, yy);
-                if (font_threshold ? (a < 128) : (a == 0))
+                if (a == 0)
                     continue;
 #else
                 if (lvGlyph_pixelRaw(f, &glyph, xx, yy) < 128)
@@ -703,12 +759,10 @@ point_t gfx_printBufferClipped(point_t start, fontSize_t size,
                     point_t pos = { (uint16_t)px, (uint16_t)py };
 #ifdef CONFIG_PIX_FMT_RGB565
                     /* Modulate the text colour's alpha by the glyph coverage;
-                     * gfx_setPixel blends over the framebuffer. When
-                     * thresholding, draw the colour solid for a crisp edge. */
+                     * gfx_setPixel blends over the framebuffer. */
                     color_t c = color;
-                    if (!font_threshold)
-                        c.alpha =
-                            (uint8_t)(((uint16_t)color.alpha * a + 127) / 255);
+                    c.alpha =
+                        (uint8_t)(((uint16_t)color.alpha * a + 127) / 255);
                     gfx_setPixel(pos, c);
 #else
                     gfx_setPixel(pos, color);
