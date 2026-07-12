@@ -97,10 +97,88 @@ void TextInput::begin()
     tapKeyIdx_ = -1;
 }
 
+uint16_t TextInput::cellLen(uint16_t pos) const
+{
+    if ((buf_ == nullptr) || (pos >= len_))
+        return 0;
+    const uint8_t b = static_cast<uint8_t>(buf_[pos]);
+    if ((b & 0x80u) == 0x00u)
+        return 1; /* ASCII / kDelete */
+    if ((b & 0xE0u) == 0xC0u)
+        return 2;
+    if ((b & 0xF0u) == 0xE0u)
+        return 3;
+    return 1; /* stray continuation byte: step one to stay live */
+}
+
+uint16_t TextInput::nextCell(uint16_t pos) const
+{
+    const uint16_t n = static_cast<uint16_t>(pos + cellLen(pos));
+    return (n < len_) ? n : len_;
+}
+
+uint16_t TextInput::prevCell(uint16_t pos) const
+{
+    if (pos == 0)
+        return 0;
+    uint16_t i = static_cast<uint16_t>(pos - 1);
+    /* Walk back over UTF-8 continuation bytes to the lead byte. */
+    while ((i > 0) && ((static_cast<uint8_t>(buf_[i]) & 0xC0u) == 0x80u))
+        i--;
+    return i;
+}
+
+void TextInput::spliceCell(uint16_t pos, const char *enc, int n)
+{
+    /* Replace the cell at pos (its cellLen bytes) with the n bytes at enc,
+     * shifting the tail and adjusting len_. No-op if it would not fit. */
+    if ((buf_ == nullptr) || (pos > len_))
+        return;
+    const uint16_t old = cellLen(pos);
+    if (static_cast<int>(len_) - old + n + 1 > cap_)
+        return;
+    memmove(buf_ + pos + n, buf_ + pos + old,
+            static_cast<size_t>(len_ - pos - old) + 1); /* include NUL */
+    for (int i = 0; i < n; i++)
+        buf_[pos + i] = enc[i];
+    len_ = static_cast<uint16_t>(len_ - old + n);
+}
+
+void TextInput::insertBlankAt(uint16_t pos)
+{
+    if ((buf_ == nullptr) || (pos > len_) || (len_ + 1 >= cap_))
+        return;
+    memmove(buf_ + pos + 1, buf_ + pos,
+            static_cast<size_t>(len_ - pos) + 1); /* include NUL */
+    buf_[pos] = ' ';
+    len_++;
+}
+
+void TextInput::setEditMode(EditMode m)
+{
+    editMode_ = m;
+    insertPending_ = false;
+    /* Overtype always sits on a cell; if the caret was at the end, pull it back
+     * onto the last character. */
+    if ((m == EditMode::Overtype) && (cursor_ >= len_) && (len_ > 0))
+        cursor_ = prevCell(len_);
+}
+
 void TextInput::cycle(int dir)
 {
     if ((buf_ == nullptr) || (cs_ == nullptr))
         return;
+    /* Insert mode: the caret sits between cells; the first dial opens a fresh
+     * blank cell here (pushing text right) and then dials it, subsequent dials
+     * keep editing that same cell. Moving the caret commits it. */
+    if (editMode_ == EditMode::Insert) {
+        if (!insertPending_) {
+            if (len_ + 1 >= cap_)
+                return;
+            insertBlankAt(cursor_);
+            insertPending_ = true;
+        }
+    }
     /* Cycling on an empty field starts a fresh editable blank. */
     if (len_ == 0) {
         if (cap_ < 2)
@@ -119,23 +197,36 @@ void TextInput::cycle(int dir)
      * symbol), so it's visible on every radio without a dedicated key. */
     const int n = static_cast<int>(cs_->len);
     const int total = n + 1;
-    int idx = (buf_[cursor_] == kDelete) ? n : cs_->indexOf(buf_[cursor_]);
+    const uint16_t clen = cellLen(cursor_);
+    int idx = (buf_[cursor_] == kDelete) ? n :
+              (clen == 1)                ? cs_->indexOf(buf_[cursor_]) :
+                                           -1; /* multibyte cell: start fresh */
     idx = ((idx + dir) % total + total) % total;
-    buf_[cursor_] = (idx == n) ? kDelete : cs_->at(idx);
+    const char rep = (idx == n) ? kDelete : cs_->at(idx);
+    if (clen == 1)
+        buf_[cursor_] = rep; /* fast path, no length change */
+    else
+        spliceCell(cursor_, &rep,
+                   1); /* collapse a multibyte cell to one byte */
 }
 
 void TextInput::deleteAt(uint16_t pos)
 {
     if ((buf_ == nullptr) || (pos >= len_))
         return;
-    memmove(buf_ + pos, buf_ + pos + 1,
-            static_cast<size_t>(len_ - pos)); /* trailing chars incl NUL */
-    len_--;
-    if ((len_ > 0) && (cursor_ >= len_))
-        cursor_ = static_cast<uint16_t>(len_ - 1);
-    else if (len_ == 0)
+    const uint16_t clen = cellLen(pos);
+    memmove(buf_ + pos, buf_ + pos + clen,
+            static_cast<size_t>(len_ - pos - clen) + 1); /* incl NUL */
+    len_ = static_cast<uint16_t>(len_ - clen);
+    if (cursor_ > len_)
+        cursor_ = len_;
+    /* Overtype keeps the cursor on a cell; Insert may rest as a caret at len_. */
+    if ((editMode_ == EditMode::Overtype) && (cursor_ >= len_) && (len_ > 0))
+        cursor_ = prevCell(len_);
+    if (len_ == 0)
         cursor_ = 0;
     tapActive_ = false;
+    insertPending_ = false;
 }
 
 void TextInput::resolvePendingDelete()
@@ -154,13 +245,23 @@ void TextInput::moveCursor(int dir)
         deleteAt(cursor_);
         return;
     }
+    /* Leaving a freshly inserted cell commits it (it is already in the buffer);
+     * the caret then floats between committed cells again. */
+    insertPending_ = false;
     if (dir < 0) {
         if (cursor_ > 0)
-            cursor_--;
+            cursor_ = prevCell(cursor_);
     } else {
-        if (cursor_ + 1 < len_) {
-            cursor_++;
-        } else if (len_ + 1 < cap_) {
+        const uint16_t nxt = nextCell(cursor_);
+        if (nxt < len_ || (cursor_ < len_ && nxt == len_)) {
+            /* Insert mode allows the caret to rest just past the last cell; in
+             * Overtype we keep the cursor on a cell and extend to add one. */
+            cursor_ = (editMode_ == EditMode::Insert) ? nxt :
+                      (nxt < len_)                    ? nxt :
+                                                        cursor_;
+        }
+        if ((editMode_ == EditMode::Overtype) && (nxt >= len_)
+            && (len_ + 1 < cap_)) {
             /* Extend with a blank and step onto it. */
             buf_[len_] = ' ';
             buf_[len_ + 1] = '\0';
@@ -184,6 +285,33 @@ void TextInput::insert(uint32_t cp)
         buf_[cursor_ + i] = enc[i];
     len_ = static_cast<uint16_t>(len_ + n);
     cursor_ = static_cast<uint16_t>(cursor_ + n);
+    insertPending_ = false;
+}
+
+void TextInput::putCodePoint(uint32_t cp)
+{
+    /* The character picker respects the edit mode so it lands exactly like a
+     * typed character: Insert pushes text right at the caret (advancing past
+     * the new glyph); Overtype replaces the cell under the cursor in place and
+     * leaves the cursor on it -- seeding an empty field first if needed. */
+    if (buf_ == nullptr)
+        return;
+    if (editMode_ == EditMode::Insert) {
+        insert(cp);
+        return;
+    }
+    if (len_ == 0) {
+        if (cap_ < 2)
+            return;
+        buf_[0] = ' ';
+        buf_[1] = '\0';
+        len_ = 1;
+        cursor_ = 0;
+    }
+    char enc[4];
+    const int n = utf8Encode(cp, enc);
+    spliceCell(cursor_, enc, n);
+    insertPending_ = false;
 }
 
 void TextInput::backspace()
@@ -197,11 +325,14 @@ void TextInput::backspace()
     }
     if ((cursor_ == 0) || (len_ == 0))
         return;
-    memmove(buf_ + cursor_ - 1, buf_ + cursor_,
+    const uint16_t prev = prevCell(cursor_);
+    const uint16_t clen = static_cast<uint16_t>(cursor_ - prev);
+    memmove(buf_ + prev, buf_ + cursor_,
             static_cast<size_t>(len_ - cursor_) + 1); /* include NUL */
-    len_--;
-    cursor_--;
+    len_ = static_cast<uint16_t>(len_ - clen);
+    cursor_ = prev;
     tapActive_ = false;
+    insertPending_ = false;
 }
 
 void TextInput::tapKey(uint8_t keyIndex, long long nowTick)
@@ -217,15 +348,24 @@ void TextInput::tapKey(uint8_t keyIndex, long long nowTick)
                    && (tapKeyIdx_ == static_cast<int8_t>(keyIndex))
                    && ((nowTick - tapTick_) < kMultiTapMs);
     if (cont) {
+        /* Same key within the window: cycle the character in place. */
         tapSet_ = static_cast<uint8_t>((tapSet_ + 1) % n);
+    } else if (editMode_ == EditMode::Insert) {
+        /* Insert: commit the previous tap (step the caret past it) and open a
+         * fresh cell at the caret, pushing the rest of the text right. */
+        if (tapActive_)
+            cursor_ = nextCell(cursor_);
+        insertPending_ = false;
+        insertBlankAt(cursor_);
+        tapSet_ = 0;
     } else {
-        /* Different key or window lapsed: the previous character is committed;
-         * advance to a fresh slot (moveCursor extends at the end). */
+        /* Overtype: the previous character is committed; advance to a fresh
+         * slot (moveCursor extends at the end) and overwrite it. */
         if (tapActive_)
             moveCursor(+1);
         tapSet_ = 0;
     }
-    buf_[cursor_] = str[tapSet_]; /* overwrite the character under the cursor */
+    buf_[cursor_] = str[tapSet_]; /* set the character under the cursor */
     tapActive_ = true;
     tapKeyIdx_ = static_cast<int8_t>(keyIndex);
     tapTick_ = nowTick;
@@ -418,10 +558,27 @@ void TextInput::draw(DrawCtx &d)
     auto drawCursor = [&](const Rect &lineBox, uint16_t lineStart) {
         const uint16_t preW = spanWidth(buf_, lineStart, cursor_, font_);
         const int16_t cx = static_cast<int16_t>(area_.x + preW);
+
+        /* Insert mode shows a thin caret *between* cells, except while a fresh
+         * cell is being dialed/tapped -- then the composing cell gets the block,
+         * same as overtype. */
+        const bool composing = insertPending_ || tapActive_;
+        if ((editMode_ == EditMode::Insert) && !composing) {
+            const Rect bar = { cx, lineBox.y, 2u, lineBox.h };
+            d.fillRect(bar, Sem::Primary);
+            return;
+        }
+
+        /* Block over the whole cell (a picker-inserted accent is one cell). */
+        const uint16_t clen = cellLen(cursor_);
         const bool isDel = (cursor_ < len_) && (buf_[cursor_] == kDelete);
-        const bool onChar = (cursor_ < len_) && (buf_[cursor_] != ' ')
-                         && !isDel;
-        char t[2] = { onChar ? buf_[cursor_] : ' ', '\0' };
+        char t[5];
+        uint16_t tn = (clen < sizeof(t)) ? clen : 0u;
+        for (uint16_t i = 0; i < tn; i++)
+            t[i] = buf_[cursor_ + i];
+        t[tn] = '\0';
+        const bool onChar = (cursor_ < len_) && !isDel
+                         && !((clen == 1) && (buf_[cursor_] == ' '));
         const char *glyph = isDel ? kDeleteGlyph : t;
         const bool visible = isDel || onChar;
         uint16_t cw = visible ? gfx_getTextWidth(font_, glyph) : 3u;

@@ -61,7 +61,8 @@ public:
 
 private:
     void commit();
-    void afterEdit(); //< re-render + announce the cursor character
+    void afterEdit();   //< re-render + announce the cursor character
+    void refreshHint(); //< key hint line, reflecting the current edit mode
 
     Screen screen_;
     Flex root_;
