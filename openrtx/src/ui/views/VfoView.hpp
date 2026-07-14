@@ -13,7 +13,7 @@
 #include "widgets/TextRow.hpp"
 #include "widgets/TopBar.hpp"
 #include "widgets/FreqHero.hpp"
-#include "widgets/DotMeter.hpp"
+#include "widgets/SignalMeter.hpp"
 #include "widgets/TextInput.hpp"
 #include "core/state.h"
 
@@ -104,7 +104,7 @@ private:
     Label chanIdx_;
     Label chanName_;
     TextRow chanDetail_; //< right-aligned CAN (M17) / tone (FM)
-    DotMeter meter_;
+    SignalMeter meter_;
     Flex spacer_;
 
     /* Channel-line slot: composed index + name text, change-gated by string
@@ -119,6 +119,8 @@ private:
     uint32_t lastFreq_ = 0xFFFFFFFFu;
     uint8_t lastStatus_ = 0xFFu;
     int32_t lastRssi_ = INT32_MIN;
+    uint8_t lastSql_ = 0xFFu;  //< squelch level last drawn on the meter marker
+    uint8_t lastMode_ = 0xFFu; //< channel mode (marker only shows in FM)
 
     /* Frequency keypad entry (mirrors the classic MAIN_VFO_INPUT screen). */
     bool inputActive_ = false; //< keypad entry in progress

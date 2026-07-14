@@ -86,4 +86,67 @@ void Navigator::syncActive(const state_t &s)
         v->syncFromState(s);
 }
 
+void Navigator::presentOverlay(View *v, OverlayDismiss policy, long long now,
+                               uint32_t timeoutMs, bool (*cond)())
+{
+    if (v == nullptr)
+        return;
+
+    if (overlay_ == v) {
+        /* Already showing: just refresh its policy and poke window so the
+         * repeating trigger keeps the one overlay alive (no re-push). */
+        overlayPolicy_ = policy;
+        overlayTimeoutMs_ = timeoutMs;
+        overlayCond_ = cond;
+        overlayPoke_ = now;
+        return;
+    }
+
+    /* A different managed overlay replaces whatever was up. */
+    dismissOverlay();
+
+    overlay_ = v;
+    overlayPolicy_ = policy;
+    overlayTimeoutMs_ = timeoutMs;
+    overlayCond_ = cond;
+    overlayPoke_ = now;
+    push(v);
+}
+
+void Navigator::dismissOverlay()
+{
+    if (overlay_ == nullptr)
+        return;
+
+    /* Only unwind (and forget) our overlay while it is the exposed top of the
+     * stack. If another modal was pushed above it, leave the bookkeeping in
+     * place: tickOverlay() reclaims it once that modal pops and it is exposed
+     * again, so a buried overlay is never orphaned. */
+    if (active() != overlay_)
+        return;
+
+    pop();
+    overlay_ = nullptr;
+    overlayCond_ = nullptr;
+}
+
+void Navigator::tickOverlay(long long now)
+{
+    if (overlay_ == nullptr)
+        return;
+
+    /* Only act while our overlay is exposed; if a modal covers it, wait. */
+    if (active() != overlay_)
+        return;
+
+    bool expired = false;
+    if (overlayPolicy_ == OverlayDismiss::Transient)
+        expired = (now - overlayPoke_) >= (long long)overlayTimeoutMs_;
+    else if (overlayPolicy_ == OverlayDismiss::WhileActive)
+        expired = (overlayCond_ == nullptr) || !overlayCond_();
+
+    if (expired)
+        dismissOverlay();
+}
+
 } // namespace ortxui

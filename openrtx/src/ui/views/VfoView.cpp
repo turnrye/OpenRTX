@@ -42,21 +42,44 @@ constexpr uint8_t kFreqDigits = 7;
 constexpr uint32_t kMaxPowerMw = 5000;
 constexpr float kPowerSpanDb = 10.0f;
 
-/* Number of filled dots (0..total) for a TX power on the dB scale. Any nonzero
- * power lights at least one dot (you are transmitting something). */
-uint8_t powerToDots(uint32_t mw, uint8_t total)
+float clampFrac(float f)
+{
+    if (f < 0.0f)
+        return 0.0f;
+    if (f > 1.0f)
+        return 1.0f;
+    return f;
+}
+
+/* Meter fill fraction [0,1] for a TX power on the dB scale. Any nonzero power
+ * shows at least a sliver (you are transmitting something). */
+float powerToFrac(uint32_t mw)
 {
     if (mw == 0u)
-        return 0;
+        return 0.0f;
     const float db =
         10.0f
         * std::log10(static_cast<float>(mw) / static_cast<float>(kMaxPowerMw));
-    float f = total * (1.0f + db / kPowerSpanDb);
-    if (f < 1.0f)
-        f = 1.0f;
-    if (f > total)
-        f = static_cast<float>(total);
-    return static_cast<uint8_t>(std::lround(f));
+    return clampFrac(1.0f + db / kPowerSpanDb);
+}
+
+/* Meter fill fraction [0,1] for an RSSI, a continuous mirror of rssiToSlevel()
+ * normalised to S11 (the meter's full scale, matching the classic S-meter). By
+ * mapping in the dB domain the bar keeps full resolution instead of snapping to
+ * whole S-points, so the squelch mark (fed the same way) lands precisely. */
+float rssiToFrac(float rssi)
+{
+    /* S1..S9 rise 6 dB/point (-121..-73), S9..S11 rise 10 dB/point (-73..-53). */
+    float s;
+    if (rssi <= -121.0f)
+        s = 0.0f;
+    else if (rssi < -73.0f)
+        s = (127.0f + rssi) / 6.0f;
+    else if (rssi < -53.0f)
+        s = (163.0f + rssi) / 10.0f;
+    else
+        s = 11.0f;
+    return clampFrac(s / 11.0f);
 }
 
 /* Return the 0-based digit for a bare number key (KEY_0..KEY_9 are bits 0..9),
@@ -155,7 +178,9 @@ void VfoView::build()
     /* Signal meter, pinned to the bottom of the screen: the growing spacer sits
      * ABOVE it, pushing the readout down and letting the identity block breathe
      * near the top. */
-    meter_.setBasis(regular ? 14 : 12);
+    /* Tall enough that the label/readout (6 pt) clear the bar band above the
+     * S-scale numbers (5 pt) without the ascenders clipping. */
+    meter_.setBasis(regular ? 19 : 15);
     meter_.setColor(Sem::RxSuccess);
     meter_.setLabel("RX");
     spacer_.setGrow(1);
@@ -278,7 +303,10 @@ void VfoView::syncMeter(const state_t &s)
     /* Live TX/RX comes from the rtx module (state.rtxStatus is only the
      * requested mode); this matches how the classic UI reads it. */
     const uint8_t status = rtx_getStatus()->opStatus;
-    const bool changed = (status != lastStatus_) || (s.rssi != lastRssi_);
+    const uint8_t sql = s.settings.sqlLevel;
+    const uint8_t mode = s.channel.mode;
+    const bool changed = (status != lastStatus_) || (s.rssi != lastRssi_)
+                      || (sql != lastSql_) || (mode != lastMode_);
     if (!changed)
         return;
 
@@ -288,8 +316,9 @@ void VfoView::syncMeter(const state_t &s)
         meter_.setLabel("TX");
         meter_.setColor(Sem::TxDanger);
         meter_.setShowScale(false);
-        /* Fill dots on a dB power scale relative to the radio's max output. */
-        meter_.setLevel(powerToDots(mw, 9), 9);
+        meter_.setMarker(-1.0f); /* squelch is an RX/FM concept */
+        /* Fill on a dB power scale relative to the radio's max output. */
+        meter_.setValue(powerToFrac(mw));
 
         if (mw >= 1000u)
             snprintf(readoutBuf_, sizeof(readoutBuf_), "%lu.%luW",
@@ -300,12 +329,20 @@ void VfoView::syncMeter(const state_t &s)
                      (unsigned long)mw);
     } else {
         const uint8_t level = rssiToSlevel(s.rssi);
-        const uint8_t filled = (level > 9u) ? 9u : level;
 
         meter_.setLabel("RX");
         meter_.setColor(Sem::RxSuccess);
         meter_.setShowScale(true);
-        meter_.setLevel(filled, 9);
+        meter_.setValue(rssiToFrac(static_cast<float>(s.rssi)));
+
+        /* FM squelch opens at squelch_rssi = -127 + sqlLevel*66/15 dBm (see
+         * OpMode_FM); feed it through the same continuous RSSI->fraction map as
+         * the fill so the red gate sits exactly where the signal has to reach.
+         * Only FM RF-gates on RSSI, so the mark is hidden in the digital modes. */
+        if (mode == OPMODE_FM)
+            meter_.setMarker(rssiToFrac(-127.0f + (sql * 66.0f) / 15.0f));
+        else
+            meter_.setMarker(-1.0f);
 
         if (level > 9u)
             snprintf(readoutBuf_, sizeof(readoutBuf_), "+%u",
@@ -319,6 +356,8 @@ void VfoView::syncMeter(const state_t &s)
 
     lastStatus_ = status;
     lastRssi_ = s.rssi;
+    lastSql_ = sql;
+    lastMode_ = mode;
 }
 
 void VfoView::syncFromState(const state_t &s)
