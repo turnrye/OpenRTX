@@ -34,8 +34,9 @@ namespace ortxui
  *
  * Deletion works on every radio: the cursor wheel has a trailing ⌫ slot, and
  * cycling a character to it then moving/committing removes it (keypad radios
- * also get '*' as a backspace shortcut). `insert()` is used by the UTF-8
- * character picker to add accented/symbol code points not on the keyboard.
+ * also get '*' as a backspace shortcut). `putCodePoint()` is the UTF-8 character
+ * picker seam for accented/symbol code points not on the keyboard; it inserts or
+ * overwrites per the active EditMode, just like a typed character would.
  */
 class TextInput : public Object
 {
@@ -45,6 +46,15 @@ public:
         Bracket, //< inline "[X]" (formatBracketed); parity with the old editors
         Block,   //< inverse cell drawn by draw() (modal)
     };
+    /**
+     * Character-entry model. Overtype (the default, and the only model for the
+     * inline editors) keeps a cell under the cursor and replaces it in place;
+     * the cursor is a block. Insert places the cursor as a caret *between* cells
+     * and pushes text right to make room, so characters can be added mid-string;
+     * the cursor is a thin bar (a block only while a freshly inserted cell is
+     * being dialed). Only the modal editor exposes a toggle between the two.
+     */
+    enum class EditMode : uint8_t { Overtype, Insert };
 
     /**
      * Bind the field to `buf` (holds up to `cap`-1 chars + NUL) with charset
@@ -64,12 +74,26 @@ public:
         tapTable_ = &t;
     }
 
+    /* ---- Mode ---- */
+    void setEditMode(EditMode m); //< Overtype (default) or Insert
+    EditMode editMode() const
+    {
+        return editMode_;
+    }
+    void toggleEditMode()
+    {
+        setEditMode(editMode_ == EditMode::Overtype ? EditMode::Insert :
+                                                      EditMode::Overtype);
+    }
+
     /* ---- Edit ops (driven by the host's key mapping) ---- */
-    void cycle(int dir);      //< cycle the char under the cursor
-    void moveCursor(int dir); //< move the cursor; right past the end extends
-    void insert(uint32_t cp); //< insert a code point (UTF-8 picker seam)
-    void backspace();         //< delete the char before the cursor
-    void clear();             //< empty the buffer
+    void cycle(int dir);      //< dial the cell (Insert: insert+dial a new cell)
+    void moveCursor(int dir); //< move the cursor by one cell
+    void
+    putCodePoint(uint32_t cp); //< picker seam: insert or overwrite per mode
+    void insert(uint32_t cp);  //< insert a code point (UTF-8), advancing
+    void backspace();          //< delete the cell before the cursor
+    void clear();              //< empty the buffer
     void stripTrailingSpaces();
 
     /** ETSI multi-tap: press of keypad key `keyIndex` (0-9, *=10, #=11) at tick
@@ -120,8 +144,19 @@ private:
      * with a leading ellipsis when text precedes `lo` and a trailing one when
      * text follows `hi`. */
     void composeWindow(char *out, size_t sz, uint16_t lo, uint16_t hi) const;
-    void deleteAt(uint16_t pos); //< remove the character at `pos`
+    void deleteAt(uint16_t pos); //< remove the whole cell at `pos`
     void resolvePendingDelete(); //< apply a cycled-to ⌫ delete at the cursor
+
+    /* UTF-8 cell stepping: a "cell" is one code point (1-3 bytes), so the cursor
+     * and edits move over whole characters, not raw bytes -- picker-inserted
+     * accents (2-byte Latin-1) then navigate and delete atomically. */
+    uint16_t cellLen(uint16_t pos) const;  //< bytes of the cell starting at pos
+    uint16_t nextCell(uint16_t pos) const; //< start of the cell after pos
+    uint16_t prevCell(uint16_t pos) const; //< start of the cell before pos
+    void spliceCell(uint16_t pos, const char *enc,
+                    int n);                //< replace cell w/ enc
+    void
+    insertBlankAt(uint16_t pos); //< open a ' ' cell at pos (Insert dialing)
 
     char *buf_ = nullptr;
     uint16_t cap_ = 0;
@@ -130,6 +165,8 @@ private:
     const Charset *cs_ = nullptr;
     Mode mode_ = Mode::SingleLine;
     CursorStyle cursorStyle_ = CursorStyle::Bracket;
+    EditMode editMode_ = EditMode::Overtype;
+    bool insertPending_ = false; //< Insert: cell at cursor_ is being dialed
     fontSize_t font_ = FONT_SIZE_8PT;
     uint16_t topRow_ = 0; //< first visible wrapped row (MultiLine scroll)
 

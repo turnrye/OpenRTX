@@ -47,6 +47,10 @@ private:
         RowVox,
         RowTimer,   //< display standby timeout (settings.display_timer)
         RowBattery, //< battery readout: percentage or icon (showBatteryIcon)
+#ifdef CONFIG_PIX_FMT_RGB565
+        RowTheme, //< Instrument vs High Contrast palette (settings.highContrast)
+        RowText,  //< Smooth (AA) vs Crisp (1bpp) text (settings.crispText)
+#endif
         RowCount,
     };
 
@@ -70,8 +74,10 @@ private:
     List list_;
 
     ListItem items_[RowCount] = {};
-    char bufs_[RowCount][12] = {};
-    uint8_t last_[RowCount] = { 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu };
+    char bufs_[RowCount][20] = {};
+    /* build() seeds last_ with the live value of every row before any sync, so a
+     * zero start never aliases a real value into a skipped first paint. */
+    uint8_t last_[RowCount] = {};
     bool editing_ = false;
     uint8_t editRow_ = 0;
 };

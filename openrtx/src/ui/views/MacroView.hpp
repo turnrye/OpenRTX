@@ -10,6 +10,7 @@
 #include "core/View.hpp"
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
+#include "widgets/BarRow.hpp"
 #include "widgets/TopBar.hpp"
 #include "core/state.h"
 
@@ -55,10 +56,10 @@ private:
     Label keyLbl_[kTiles]; //< "N" + icon (static)
     Label valLbl_[kTiles]; //< live value (change-gated)
     Flex footer_;
-    Label sqlLbl_;
+    BarRow sqlBar_;        //< squelch level, using the shared level-bar control
 
     char valBuf_[kTiles][14] = { { 0 } };
-    char sqlBuf_[24] = { 0 };
+    char sqlBuf_[8] = { 0 };
 };
 
 } // namespace ortxui

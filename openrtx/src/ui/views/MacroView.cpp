@@ -103,12 +103,16 @@ void MacroView::build()
     footer_.setAxis(Axis::Row);
     footer_.setAlign(Align::Center);
     footer_.setBasis(regular ? 14 : 10);
-    sqlLbl_.setFont(regular ? FONT_SIZE_8PT : FONT_SIZE_6PT);
-    sqlLbl_.setAlign(TEXT_ALIGN_CENTER);
-    sqlLbl_.setColor(Sem::RxSuccess);
-    sqlLbl_.setText(sqlBuf_);
-    sqlLbl_.setGrow(1);
-    footer_.addChild(&sqlLbl_);
+    sqlBar_.setFont(regular ? FONT_SIZE_8PT : FONT_SIZE_6PT);
+    sqlBar_.setLabel(SYMBOL_VOLUME " Squelch");
+    sqlBar_.setColors(Sem::SurfaceHigh, Sem::TxDanger); /* squelch = red, as on
+                                                           the VFO meter gate */
+    sqlBar_.setTextColor(Sem::OnSurface);
+    sqlBar_.setReadout(sqlBuf_);
+    /* Fill the footer width via grow (BarRow's natural() exceeds the screen). */
+    sqlBar_.setBasis(0);
+    sqlBar_.setGrow(1);
+    footer_.addChild(&sqlBar_);
     root_.addChild(&footer_);
 
     screen_.addChild(&root_);
@@ -185,18 +189,31 @@ void MacroView::syncFromState(const state_t &s)
         }
     }
 
-    char sq[24];
-    snprintf(sq, sizeof(sq), SYMBOL_VOLUME " Squelch  %u",
-             (unsigned)s.settings.sqlLevel);
+    /* Squelch is an FM-only RF gate (OpMode_FM); in the digital modes it does
+     * nothing, so show it greyed and inert rather than letting it be set. */
+    const bool fmSql = (s.channel.mode == OPMODE_FM);
+    char sq[8];
+    if (fmSql)
+        snprintf(sq, sizeof(sq), "%u", (unsigned)s.settings.sqlLevel);
+    else
+        snprintf(sq, sizeof(sq), "--");
     if (strncmp(sq, sqlBuf_, sizeof(sqlBuf_)) != 0) {
         strncpy(sqlBuf_, sq, sizeof(sqlBuf_) - 1);
         sqlBuf_[sizeof(sqlBuf_) - 1] = '\0';
-        sqlLbl_.invalidate();
+        sqlBar_.setValue(fmSql ? s.settings.sqlLevel / 15.0f : 0.0f);
+        sqlBar_.setColors(Sem::SurfaceHigh,
+                          fmSql ? Sem::TxDanger : Sem::OnSurfaceMuted);
+        sqlBar_.setTextColor(fmSql ? Sem::OnSurface : Sem::OnSurfaceMuted);
+        sqlBar_.invalidate();
     }
 }
 
 void MacroView::stepSquelch(int dir)
 {
+    /* No-op outside FM: squelch only gates the analogue RX path. */
+    if (state.channel.mode != OPMODE_FM)
+        return;
+
     int v = (int)state.settings.sqlLevel + dir;
     if (v < 0)
         v = 0;

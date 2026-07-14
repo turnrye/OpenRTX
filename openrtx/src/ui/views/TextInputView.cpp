@@ -38,23 +38,11 @@ void TextInputView::build()
 
     field_.setGrow(1); /* the scrolling field fills the middle */
 
-    if (kbdHasNumeric()) {
-        /* Multi-tap keypad hint; the space key is '0' or '#' per the target. */
-        if (regular)
-            hint_.setText(kbdSpaceOnHash() ? "2-9:type  *:del  #:space" :
-                                             "2-9:type  *:del  0:space");
-        else
-            hint_.setText(kbdSpaceOnHash() ? "2-9 *:del #sp" : "2-9 *:del 0sp");
-    } else {
-        /* Delete lives in the wheel (cycle a character to the ⌫ slot), so it
-         * needs no dedicated key here. */
-        hint_.setText(regular ? "Up/Dn:char (\xEF\x95\x9A del)  L/R:move" :
-                                "Up/Dn L/R");
-    }
     hint_.setColor(Sem::OnSurfaceMuted);
     hint_.setFont(regular ? FONT_SIZE_6PT : FONT_SIZE_5PT);
     hint_.setAlign(TEXT_ALIGN_CENTER);
     hint_.setBasis(regular ? 10 : 8);
+    refreshHint();
 
     root_.addChild(&title_);
     root_.addChild(&field_);
@@ -91,6 +79,10 @@ void TextInputView::open(const char *title, char *dst, uint16_t cap,
                      TextInput::CursorStyle::Block, f);
     field_.setMultiTap(tap);
     field_.begin();
+    /* Every session starts in the familiar overtype model; the user opts into
+     * insert with '#'. */
+    field_.setEditMode(TextInput::EditMode::Overtype);
+    refreshHint();
 
     screen_.markAllDirty();
 }
@@ -100,7 +92,7 @@ void TextInputView::onShow()
     /* Returning from the character picker: insert the chosen code point. */
     uint32_t cp = 0;
     if ((picker_ != nullptr) && picker_->takeResult(cp)) {
-        field_.insert(cp);
+        field_.putCodePoint(cp); /* insert or overwrite, per the current mode */
         field_.invalidate();
     }
 }
@@ -115,6 +107,30 @@ void TextInputView::afterEdit()
     field_.invalidate();
     if (state.settings.vpLevel >= vpLow)
         vp_announceInputChar(field_.cursorChar());
+}
+
+void TextInputView::refreshHint()
+{
+    const bool regular = (sizeClass() == SizeClass::Regular);
+    const bool ins = (field_.editMode() == TextInput::EditMode::Insert);
+    /* '#' toggles insert/overtype, but only where it isn't the space key. The
+     * hint's mode label names the mode the toggle switches *to*; the cursor
+     * shape (block vs caret) shows the mode you are in now. */
+    const bool canToggle = kbdHasNumeric() && !kbdSpaceOnHash();
+
+    if (kbdHasNumeric()) {
+        if (canToggle)
+            hint_.setText(regular ?
+                              (ins ? "2-9 *:del 0:sp   #:Overtype" :
+                                     "2-9 *:del 0:sp   #:Insert") :
+                              (ins ? "2-9 *:del  #:Ovr" : "2-9 *:del  #:Ins"));
+        else
+            hint_.setText(regular ? "2-9:type  *:del  #:space" :
+                                    "2-9 *:del #sp");
+    } else {
+        hint_.setText(regular ? "Up/Dn:char (\xEF\x95\x9A del)  L/R:move" :
+                                "Up/Dn L/R");
+    }
 }
 
 void TextInputView::commit()
@@ -163,6 +179,17 @@ NavIntent TextInputView::onEvent(const Event &e)
     }
     if ((k & KEY_ESC) != 0u)
         return NavIntent::pop();
+
+    /* '#' toggles insert / overtype, but only where it isn't the space key
+     * (otherwise it stays space and falls through to multi-tap below). This is
+     * checked before the multi-tap block, which would otherwise consume '#'. */
+    if (!kbdSpaceOnHash() && ((k & KEY_HASH) != 0u)) {
+        field_.commitPending();
+        field_.toggleEditMode();
+        refreshHint();
+        afterEdit();
+        return NavIntent::none();
+    }
 
     /* Numeric-keypad multi-tap (additive — digit keys only exist on keypad
      * radios). '*' is backspace; the rest type via the ETSI table. */

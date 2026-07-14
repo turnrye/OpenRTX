@@ -7,18 +7,19 @@
 #include "style/Theme.hpp"
 #include "style/Palette.hpp"
 #include "hwconfig.h"
+#include "core/state.h"
 
 namespace ortxui
 {
 
-#if defined(CONFIG_PIX_FMT_BW)
-
 /*
  * Monochrome resolution. Structure and type carry the UI; colour collapses to
  * ink/paper. Background-like roles become the cleared (paper) state, every
- * foreground role becomes ink.
+ * foreground role becomes ink. This is the native resolution on 1bpp targets,
+ * and the "High Contrast" theme on colour targets (white-on-black, inverted
+ * selection, zero colour) for maximum daylight legibility.
  */
-color_t themeColor(Sem role)
+static color_t monoColor(Sem role)
 {
     switch (role) {
         /* Paper (cleared) roles and text-on-fill collapse to black. */
@@ -36,12 +37,20 @@ color_t themeColor(Sem role)
     }
 }
 
+#if defined(CONFIG_PIX_FMT_BW)
+
+/* 1bpp targets have no colour to offer, so the theme setting is a no-op. */
+color_t themeColor(Sem role)
+{
+    return monoColor(role);
+}
+
 #else
 
 /*
  * Colour resolution: the "Instrument" palette.
  */
-color_t themeColor(Sem role)
+static color_t instrumentColor(Sem role)
 {
     switch (role) {
         case Sem::Background:
@@ -82,6 +91,19 @@ color_t themeColor(Sem role)
         default:
             return palette::onSurface;
     }
+}
+
+/*
+ * Colour targets resolve through the Instrument palette, or collapse to the
+ * monochrome ink/paper resolution when the user picks the High Contrast theme
+ * (settings.highContrast). Read live from settings so a theme change repaints
+ * without any separate sync; the call is per-draw-primitive, not per-pixel.
+ */
+color_t themeColor(Sem role)
+{
+    if (state.settings.highContrast)
+        return monoColor(role);
+    return instrumentColor(role);
 }
 
 #endif

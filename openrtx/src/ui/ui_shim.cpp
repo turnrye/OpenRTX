@@ -39,6 +39,7 @@
 #include "style/SemanticColor.hpp"
 #include "views/VfoView.hpp"
 #include "views/MacroView.hpp"
+#include "views/VolumeOverlayView.hpp"
 #include "views/MenuView.hpp"
 #include "views/InfoView.hpp"
 #include "views/AboutView.hpp"
@@ -110,6 +111,7 @@ constexpr uint16_t kSettingsMenuCount = sizeof(kSettingsMenu)
  * Each View owns its widget tree in static storage. */
 VfoView vfoView;
 MacroView macroView;
+VolumeOverlayView volumeOverlay;
 MenuView mainMenu;
 MenuView settingsMenu;
 InfoView infoView;
@@ -159,6 +161,11 @@ long long last_event_tick = 0;
  * global held key, not a view's own navigation intent. */
 bool macroOpen = false;
 bool macroLatched = false;
+
+/* Transient volume HUD: shown while the user turns the physical volume knob,
+ * auto-dismissed this many ms after the level stops changing. Driven here (not
+ * by a view) because the knob is a polled analogue value, not an input event. */
+constexpr uint32_t kVolumeOverlayMs = 500;
 
 void enterStandby()
 {
@@ -231,6 +238,7 @@ extern "C" void ui_init()
 
     vfoView.build();
     macroView.build();
+    volumeOverlay.build();
     mainMenu.build("Menu", kMainMenu, kMainMenuCount);
     settingsMenu.build("Settings", kSettingsMenu, kSettingsMenuCount);
     infoView.build();
@@ -291,6 +299,11 @@ extern "C" void ui_init()
     vfoView.setMenu(&mainMenu);
     nav.setRoot(&vfoView);
 
+    /* Apply the persisted text-rendering setting (crisp/1bpp vs smooth/AA). The
+     * theme (Instrument vs High Contrast) needs no apply — themeColor() reads it
+     * live. Both are no-ops on 1bpp targets. */
+    gfx_setFontMono(state.settings.crispText);
+
     standby = false;
     last_event_tick = getTick();
 
@@ -304,9 +317,14 @@ extern "C" void ui_drawSplashScreen()
 
     const Point logo = { 0, (int16_t)((CONFIG_SCREEN_HEIGHT / 2) - 6) };
     const Point call = { 0, (int16_t)(CONFIG_SCREEN_HEIGHT - 8) };
-    d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Primary, "OPN\nRTX");
+    /* Render the splash 1bpp (no anti-aliasing) in the gold brand accent, to
+     * match the crisp classic boot logo. Restore the user's text setting after
+     * (this also establishes its resting value for the first UI frame). */
+    gfx_setFontMono(true);
+    d.text(logo, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, Sem::Accent, "OPN\nRTX");
     d.text(call, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, Sem::OnSurface,
            state.settings.callsign);
+    gfx_setFontMono(state.settings.crispText);
 
     vp_announceSplashScreen();
 }
@@ -330,6 +348,22 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
         || (state.volume != last_state.volume))
         exitStandby(now);
 
+    /* Volume HUD: turning the knob (a change in the polled level) presents a
+     * transient level bar and re-pokes it while it keeps moving; it auto-hides
+     * kVolumeOverlayMs after the level settles. Suppressed while the macro menu
+     * is open so the two modals never fight. The FM squelch deliberately is not
+     * shown here — it stays in the macro menu, reusing the same BarRow control.
+     * Checked before draining the queue, like the wake-keeping block: the
+     * volume update rides a periodic EVENT_STATUS, so gating on an empty queue
+     * would let that event mask the change. */
+    if ((state.volume != last_state.volume) && !macroOpen)
+        nav.presentOverlay(&volumeOverlay, OverlayDismiss::Transient, now,
+                           kVolumeOverlayMs);
+
+    /* Apply managed-overlay dismiss policies every tick (unconditionally, for
+     * the same empty-queue reason as above). */
+    nav.tickOverlay(now);
+
     if (evQueue_rdPos != evQueue_wrPos) {
         /* Pop one event per tick, matching the classic loop cadence. */
         const event_t raw = evQueue[evQueue_rdPos];
@@ -344,6 +378,12 @@ extern "C" void ui_updateFSM(bool *sync_rtx)
             const bool woke = exitStandby(now);
             if (woke && ((msg.keys & KEY_MONI) == 0u))
                 return;
+
+            /* Any real input (key or tuning knob, both EVENT_KBD) dismisses the
+             * transient volume HUD, so the event acts on the screen underneath
+             * instead of being swallowed by the overlay. */
+            if (nav.overlay() == &volumeOverlay)
+                nav.dismissOverlay();
 
             /* F1 replays the last voice prompt (global, matches classic). */
             if (((msg.keys & KEY_F1) != 0u)

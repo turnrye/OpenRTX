@@ -1,0 +1,53 @@
+nop Insert vs overtype in the Meta Text modal: '#' toggles the mode, the cursor
+nop switches between a block (overtype) and a thin caret (insert), text can be
+nop inserted mid-string, and the picker obeys the mode. Default Meta = "OpenRTX".
+sleep 1000
+key ENTER
+sleep 400
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+key DOWN DOWN DOWN DOWN ENTER
+sleep 500
+nop Open the Meta Txt modal (row 1).
+key DOWN
+sleep 300
+key ENTER
+sleep 500
+nop Overtype: move the block cursor into the middle -> O p [e] n R T X
+key RIGHT RIGHT
+sleep 400
+screenshot overtype_block.bmp
+sleep 300
+nop '#' switches to Insert: a thin caret appears before 'e' (O p | e n R T X).
+key HASH
+sleep 400
+screenshot insert_caret.bmp
+sleep 300
+nop Dial a fresh character in the middle -- it inserts a cell, pushing 'enRTX'
+nop right rather than overwriting 'e'.
+key UP UP UP
+sleep 400
+screenshot insert_midtext.bmp
+sleep 300
+nop Commit with RIGHT, then the picker inserts an accented char at the caret.
+key RIGHT
+sleep 300
+keylong 1
+sleep 500
+key RIGHT RIGHT DOWN
+sleep 400
+key ENTER
+sleep 500
+screenshot insert_picker.bmp
+sleep 300
+nop '#' back to Overtype: the block cursor returns.
+key HASH
+sleep 400
+screenshot overtype_return.bmp
+sleep 300
+nop Commit the whole thing with ENTER; the M17 list shows the new value.
+key ENTER
+sleep 600
+screenshot insert_committed.bmp
+sleep 300
+quit

@@ -130,11 +130,13 @@ target_sources(app
     openrtx/src/ui/widgets/List.cpp
     openrtx/src/ui/widgets/BatteryIcon.cpp
     openrtx/src/ui/widgets/TopBar.cpp
-    openrtx/src/ui/widgets/DotMeter.cpp
+    openrtx/src/ui/widgets/SignalMeter.cpp
+    openrtx/src/ui/widgets/BarRow.cpp
     openrtx/src/ui/widgets/FreqHero.cpp
     openrtx/src/ui/widgets/StatValue.cpp
     openrtx/src/ui/widgets/Compass.cpp
     openrtx/src/ui/views/VfoView.cpp
+    openrtx/src/ui/views/VolumeOverlayView.cpp
     openrtx/src/ui/views/MenuView.cpp
     openrtx/src/ui/views/InfoView.cpp
     openrtx/src/ui/views/AboutView.cpp

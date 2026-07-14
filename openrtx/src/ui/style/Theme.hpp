@@ -18,10 +18,11 @@ namespace ortxui
  * active build target.
  *
  * On RGB565 colour targets this returns the "Instrument" palette entry for the
- * role. On 1bpp monochrome targets (CONFIG_PIX_FMT_BW) roles collapse to
- * ink/paper so the UI stays fully legible with zero colour. There is a single
- * active theme; a runtime theme object can be introduced later without
- * changing call sites, which all go through this function.
+ * role, or the monochrome ink/paper resolution when the user selects the High
+ * Contrast theme (settings.highContrast). On 1bpp monochrome targets
+ * (CONFIG_PIX_FMT_BW) roles always collapse to ink/paper, so the theme setting
+ * is a no-op there. All call sites go through this one function, so a theme
+ * change takes effect on the next repaint with no other plumbing.
  */
 color_t themeColor(Sem role);
 

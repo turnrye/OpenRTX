@@ -9,9 +9,10 @@
  * openrtx/fonts/) directly into flash via .incbin, one blob per fontSize_t.
  * The paths resolve relative to the build directory (a sibling of the repo
  * root, matching voicePromptData.S). Colour displays get the 4bpp anti-aliased
- * set, monochrome the compact 1bpp set, chosen by the CONFIG_FONT_AA define
- * that meson sets for RGB565 targets (hwconfig.h can't be included here — it
- * contains C — so the pixel format is passed in as a -D flag instead).
+ * set (plus the 1bpp text set as _font_mono_* for the run-time-selectable crisp
+ * font), monochrome targets the compact 1bpp set, chosen by the CONFIG_FONT_AA
+ * define that meson sets for RGB565 targets (hwconfig.h can't be included here —
+ * it contains C — so the pixel format is passed in as a -D flag instead).
  */
 
 #ifdef __EMSCRIPTEN__
@@ -76,6 +77,17 @@ ICON_BLOB 9,  "../openrtx/fonts/icons_9_4.bin"
 ICON_BLOB 10, "../openrtx/fonts/icons_10_4.bin"
 ICON_BLOB 12, "../openrtx/fonts/icons_12_4.bin"
 ICON_BLOB 16, "../openrtx/fonts/icons_16_4.bin"
+
+/* Colour targets also embed the compact 1bpp text set as _font_mono_*, so the
+ * user can switch to a crisp (non-anti-aliased) font at run time. Text only —
+ * the M17 icon glyph keeps its 4bpp blob. ~19 KB of extra flash. */
+FONT_BLOB mono_5,  "../openrtx/fonts/ubuntu_5_1.bin"
+FONT_BLOB mono_6,  "../openrtx/fonts/ubuntu_6_1.bin"
+FONT_BLOB mono_8,  "../openrtx/fonts/ubuntu_8_1.bin"
+FONT_BLOB mono_9,  "../openrtx/fonts/ubuntu_9_1.bin"
+FONT_BLOB mono_10, "../openrtx/fonts/ubuntu_10_1.bin"
+FONT_BLOB mono_12, "../openrtx/fonts/ubuntu_12_1.bin"
+FONT_BLOB mono_16, "../openrtx/fonts/ubuntu_16_1.bin"
 #else
 FONT_BLOB 5,  "../openrtx/fonts/ubuntu_5_1.bin"
 FONT_BLOB 6,  "../openrtx/fonts/ubuntu_6_1.bin"
