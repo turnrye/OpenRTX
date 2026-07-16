@@ -7,6 +7,7 @@
 #include "widgets/TextInput.hpp"
 #include "render/DrawCtx.hpp"
 #include "style/Symbols.hpp"
+#include "interfaces/keyboard.h"
 
 #include <cstdio>
 #include <cstring>
@@ -78,6 +79,120 @@ void TextInput::configure(char *buf, uint16_t cap, const Charset &cs, Mode mode,
     topRow_ = 0;
     tapActive_ = false;
     tapKeyIdx_ = -1;
+    /* Leave any prior slot-mode state behind so a reused widget accepts text. */
+    slotMode_ = false;
+    slotCount_ = 0;
+    slotCursor_ = 0;
+}
+
+void TextInput::configureSlots(char *buf, uint16_t cap, const char *mask,
+                               char placeholder, CursorStyle cursor,
+                               fontSize_t font)
+{
+    if ((buf == nullptr) || (cap == 0) || (mask == nullptr))
+        return;
+
+    buf_ = buf;
+    cap_ = cap;
+    cs_ = nullptr;
+    mode_ = Mode::SingleLine;
+    cursorStyle_ = cursor;
+    font_ = font;
+    editMode_ = EditMode::Overtype;
+    slotMode_ = true;
+    placeholder_ = placeholder;
+    tapActive_ = false;
+    tapKeyIdx_ = -1;
+
+    /* Lay the mask into the buffer, every editable slot set to the placeholder,
+     * and cache each slot's buffer offset so later ops don't rescan the mask.
+     * The whole mask must fit in the buffer (plus a NUL) and in kMaxSlots; a
+     * mask that overruns either bound is a caller sizing error -- lay down what
+     * fits so nothing is silently corrupted, but the caller-visible slotCount()
+     * then reveals the shortfall rather than a wrong value being committed. */
+    slotCount_ = 0;
+    uint16_t i = 0;
+    for (; (mask[i] != '\0') && (i + 1 < cap_); i++) {
+        if (mask[i] == '9') {
+            if (slotCount_ >= kMaxSlots)
+                break; /* mask has more slots than we can track */
+            buf_[i] = placeholder_;
+            slotPos_[slotCount_++] = i;
+        } else {
+            buf_[i] = mask[i];
+        }
+    }
+    buf_[i] = '\0';
+    len_ = i;
+    slotCursor_ = 0;
+    syncSlotCursor();
+}
+
+int TextInput::slotToPos(uint16_t ordinal) const
+{
+    return (ordinal < slotCount_) ? static_cast<int>(slotPos_[ordinal]) : -1;
+}
+
+void TextInput::syncSlotCursor()
+{
+    /* Keep the render cursor on the active slot; when the cursor has run off the
+     * end (all slots filled) rest the bracket on the last slot. */
+    uint16_t ord = slotCursor_;
+    if (ord >= slotCount_)
+        ord = (slotCount_ > 0) ? static_cast<uint16_t>(slotCount_ - 1) : 0;
+    const int p = slotToPos(ord);
+    cursor_ = (p >= 0) ? static_cast<uint16_t>(p) : 0;
+}
+
+void TextInput::putDigit(uint8_t d)
+{
+    if (!slotMode_ || (d > 9) || (slotCursor_ >= slotCount_))
+        return;
+    const int p = slotToPos(slotCursor_);
+    if (p < 0)
+        return;
+    buf_[p] = static_cast<char>('0' + d);
+    slotCursor_++;
+    syncSlotCursor();
+}
+
+void TextInput::setSlotDigit(uint16_t ordinal, int d)
+{
+    if (!slotMode_ || (ordinal >= slotCount_))
+        return;
+    const int p = slotToPos(ordinal);
+    if (p < 0)
+        return;
+    /* Out-of-range digits fall back to the placeholder rather than wrapping to a
+     * wrong digit (e.g. 15 must not become '5'). */
+    buf_[p] = ((d < 0) || (d > 9)) ? placeholder_ : static_cast<char>('0' + d);
+}
+
+int TextInput::slotDigit(uint16_t ordinal) const
+{
+    if (!slotMode_ || (ordinal >= slotCount_))
+        return -1;
+    const int p = slotToPos(ordinal);
+    if (p < 0)
+        return -1;
+    const char c = buf_[p];
+    return ((c >= '0') && (c <= '9')) ? (c - '0') : -1;
+}
+
+uint16_t TextInput::filledSlots() const
+{
+    uint16_t n = 0;
+    while ((n < slotCount_) && (slotDigit(n) >= 0))
+        n++;
+    return n;
+}
+
+void TextInput::setCursorSlot(uint16_t ordinal)
+{
+    if (!slotMode_)
+        return;
+    slotCursor_ = (ordinal <= slotCount_) ? ordinal : slotCount_;
+    syncSlotCursor();
 }
 
 void TextInput::begin()
@@ -239,6 +354,15 @@ void TextInput::moveCursor(int dir)
 {
     if (buf_ == nullptr)
         return;
+    if (slotMode_) {
+        /* Move over editable slots only; separators are skipped by slotToPos. */
+        if ((dir < 0) && (slotCursor_ > 0))
+            slotCursor_--;
+        else if ((dir > 0) && (slotCursor_ + 1 < slotCount_))
+            slotCursor_++;
+        syncSlotCursor();
+        return;
+    }
     /* A move key applied while sitting on the ⌫ slot performs the delete
      * (consuming the keypress) rather than moving. */
     if ((cursor_ < len_) && (buf_[cursor_] == kDelete)) {
@@ -318,6 +442,17 @@ void TextInput::backspace()
 {
     if (buf_ == nullptr)
         return;
+    if (slotMode_) {
+        /* Clear the last filled slot and step back onto it. */
+        if (slotCursor_ == 0)
+            return;
+        slotCursor_--;
+        const int p = slotToPos(slotCursor_);
+        if (p >= 0)
+            buf_[p] = placeholder_;
+        syncSlotCursor();
+        return;
+    }
     /* On the ⌫ slot, '*' deletes that slot; otherwise it backspaces. */
     if ((cursor_ < len_) && (buf_[cursor_] == kDelete)) {
         deleteAt(cursor_);
@@ -375,6 +510,57 @@ void TextInput::commitPending()
 {
     tapActive_ = false;
     tapKeyIdx_ = -1;
+}
+
+TextInput::KeyResult TextInput::handleKey(uint32_t keys, long long nowTick)
+{
+    if ((keys & KEY_ENTER) != 0u) {
+        commitPending();
+        if ((validate_ != nullptr) && !validate_(hookCtx_))
+            return KeyResult::Editing; /* rejected: keep editing, host shows why */
+        if (!slotMode_)
+            stripTrailingSpaces();
+        if (onCommit_ != nullptr)
+            onCommit_(hookCtx_);
+        return KeyResult::Committed;
+    }
+    if ((keys & KEY_ESC) != 0u) {
+        if (onCancel_ != nullptr)
+            onCancel_(hookCtx_);
+        return KeyResult::Cancelled;
+    }
+    if ((keys & KEY_STAR) != 0u) {
+        backspace();
+        return KeyResult::Editing;
+    }
+    if ((keys & KEY_HASH) != 0u) {
+        if (slotMode_)
+            return KeyResult::NotHandled; /* no insert mode for fixed slots */
+        toggleEditMode();
+        return KeyResult::Editing;
+    }
+    const uint32_t digits = keys & KBD_NUM_MASK;
+    if (digits != 0u) {
+        const uint8_t d = static_cast<uint8_t>(__builtin_ctz(digits));
+        if (slotMode_)
+            putDigit(d);
+        else if (tapTable_ != nullptr)
+            tapKey(d, nowTick);
+        else
+            return KeyResult::NotHandled;
+        return KeyResult::Editing;
+    }
+    if ((keys & (KEY_LEFT | KEY_RIGHT)) != 0u) {
+        moveCursor(((keys & KEY_RIGHT) != 0u) ? +1 : -1);
+        return KeyResult::Editing;
+    }
+    if ((keys & (KEY_UP | KEY_DOWN)) != 0u) {
+        if (slotMode_)
+            return KeyResult::NotHandled; /* host owns UP/DOWN (e.g. field swap) */
+        cycle(((keys & KEY_UP) != 0u) ? +1 : -1);
+        return KeyResult::Editing;
+    }
+    return KeyResult::NotHandled;
 }
 
 void TextInput::clear()

@@ -63,6 +63,26 @@ public:
     void configure(char *buf, uint16_t cap, const Charset &cs, Mode mode,
                    CursorStyle cursor, fontSize_t font);
 
+    /**
+     * Configure a fixed-width masked field over `buf` (numeric slot entry:
+     * frequency, time/date). `mask` is a template where '9' marks an editable
+     * digit slot and every other character is a literal separator, shown
+     * verbatim and skipped by the cursor (e.g. "999.999", "99/99/99 99:99:99").
+     * Unfilled slots render as `placeholder`. The buffer is initialised to the
+     * mask with every slot set to the placeholder; use this instead of
+     * configure() (begin() is not needed). Callers read back digits via
+     * slotDigit() (which returns -1 for an unfilled slot) rather than the raw
+     * buffer string, and may bypass draw() with their own renderer.
+     *
+     * handleKey()'s ENTER commits whatever is entered -- unfilled trailing slots
+     * stay as placeholders, which a trailing-zero field (frequency) reads as
+     * zero. A field that instead requires full entry (time/date) must reject a
+     * partial value with a validator via setHooks() (e.g. filledSlots() ==
+     * slotCount()); there is deliberately no built-in fullness gate.
+     */
+    void configureSlots(char *buf, uint16_t cap, const char *mask,
+                        char placeholder, CursorStyle cursor, fontSize_t font);
+
     /** Seed length/cursor from the current buffer; an empty buffer starts as a
      *  single editable blank so there is always a character under the cursor. */
     void begin();
@@ -103,6 +123,47 @@ public:
     /** Finalize any in-progress multi-tap character (call before a cursor move
      *  or on commit) so the next tap starts a fresh character. */
     void commitPending();
+
+    /* ---- Slot/mask mode ops (numeric fixed-width entry) ---- */
+    void
+    putDigit(uint8_t d); //< write 0-9 at the cursor slot, advance the cursor
+    void setSlotDigit(uint16_t ordinal,
+                      int d); //< pre-fill slot: d 0-9, or <0 = placeholder
+    int slotDigit(uint16_t ordinal) const; //< 0-9, or -1 if the slot is empty
+    uint16_t slotCount() const
+    {
+        return slotCount_;
+    }
+    uint16_t filledSlots() const; //< count of filled slots, left-contiguous
+    void setCursorSlot(uint16_t ordinal); //< position the cursor on a slot
+
+    /* ---- Validation + commit/cancel hooks (used by handleKey) ---- */
+    using Predicate = bool (*)(void *ctx); //< return false to reject a commit
+    using Action = void (*)(void *ctx);
+    void setHooks(void *ctx, Predicate validate, Action onCommit,
+                  Action onCancel)
+    {
+        hookCtx_ = ctx;
+        validate_ = validate;
+        onCommit_ = onCommit;
+        onCancel_ = onCancel;
+    }
+
+    /**
+     * Centralized key contract so every editor behaves identically: '*' =
+     * backspace, '#' = insert/overtype toggle (text mode only), ENTER = validate
+     * + commit, ESC = cancel, digits = type (multi-tap in text mode, slot fill in
+     * slot mode), LEFT/RIGHT = move cursor, UP/DOWN = cycle the char (text mode).
+     * Keys the widget does not own (UP/DOWN in slot mode, e.g. an RX/TX field
+     * switch) return NotHandled so the host view can act on them.
+     */
+    enum class KeyResult : uint8_t {
+        NotHandled,
+        Editing,
+        Committed,
+        Cancelled
+    };
+    KeyResult handleKey(uint32_t keys, long long nowTick);
 
     /* ---- Accessors ---- */
     uint16_t length() const
@@ -147,6 +208,11 @@ private:
     void deleteAt(uint16_t pos); //< remove the whole cell at `pos`
     void resolvePendingDelete(); //< apply a cycled-to ⌫ delete at the cursor
 
+    /* Slot mode: map a slot ordinal to its buffer position (the ord-th '9' in
+     * the mask), or -1; keep the render cursor (cursor_) on the active slot. */
+    int slotToPos(uint16_t ordinal) const;
+    void syncSlotCursor();
+
     /* UTF-8 cell stepping: a "cell" is one code point (1-3 bytes), so the cursor
      * and edits move over whole characters, not raw bytes -- picker-inserted
      * accents (2-byte Latin-1) then navigate and delete atomically. */
@@ -176,6 +242,22 @@ private:
     uint8_t tapSet_ = 0;     //< index into the current key's cycle string
     int8_t tapKeyIdx_ = -1;  //< last keypad key tapped
     long long tapTick_ = 0;  //< tick of the last tap (for the window)
+
+    /* Slot/mask mode state. Slot buffer positions are resolved once at configure
+     * time (the mask is not retained, so it may be a temporary), so every slot
+     * op is O(1) and there is no dangling-pointer hazard. */
+    static constexpr uint16_t kMaxSlots = 16;
+    bool slotMode_ = false;
+    char placeholder_ = '-';
+    uint16_t slotCount_ = 0;  //< number of editable slots laid into the buffer
+    uint16_t slotCursor_ = 0; //< active slot ordinal, in [0, slotCount_]
+    uint16_t slotPos_[kMaxSlots] = {}; //< buffer offset of each slot
+
+    /* Validation + commit/cancel hooks (handleKey). */
+    void *hookCtx_ = nullptr;
+    Predicate validate_ = nullptr;
+    Action onCommit_ = nullptr;
+    Action onCancel_ = nullptr;
 };
 
 } // namespace ortxui
