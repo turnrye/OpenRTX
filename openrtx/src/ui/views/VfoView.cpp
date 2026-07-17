@@ -30,8 +30,12 @@ namespace ortxui
 namespace
 {
 
-/* Digits per RX/TX frequency in keypad entry (classic FREQ_DIGITS). */
-constexpr uint8_t kFreqDigits = 7;
+/* Slot mask for keypad frequency entry: 7 editable digits, no separators
+ * (FreqHero composes the MHz.kHz layout). Slot 0 = 100 MHz .. slot 6 = 100 Hz. */
+constexpr char kFreqMask[] = "9999999";
+
+/* How long an out-of-band entry error stays on screen before it self-clears. */
+constexpr long long kInputErrorMs = 1500;
 
 /* The TX power meter is a dB (log) scale relative to the radio's maximum
  * output. There is no per-device max-power field yet (hwInfo_t only carries
@@ -92,14 +96,60 @@ int digitFromKeys(uint32_t keys)
     return __builtin_ctz(digits);
 }
 
-/* Add one decimal digit at 1-based position `pos` to a frequency being entered,
- * most-significant digit first (ported from the classic _ui_freq_add_digit). */
-freq_t freqAddDigit(freq_t freq, uint8_t pos, uint8_t number)
+/* Place value of slot ordinal `o` in an N-slot field: the last slot is 100 Hz,
+ * each earlier slot ten times larger (slot 0 of 7 = 100 MHz). */
+freq_t slotCoeff(uint16_t o, uint16_t n)
 {
-    freq_t coefficient = 100;
-    for (uint8_t i = 0; i < kFreqDigits - pos; i++)
-        coefficient *= 10;
-    return freq + (freq_t)number * coefficient;
+    freq_t c = 100;
+    for (uint16_t i = 0; i + 1 + o < n; i++)
+        c *= 10;
+    return c;
+}
+
+/* Read a slot field back as a frequency in Hz. Un-entered (placeholder) slots
+ * contribute 0, so a partial entry keeps its automatic trailing zeros. */
+freq_t freqFromSlots(const TextInput &f)
+{
+    freq_t v = 0;
+    const uint16_t n = f.slotCount();
+    for (uint16_t o = 0; o < n; o++) {
+        const int d = f.slotDigit(o);
+        if (d >= 0)
+            v += (freq_t)d * slotCoeff(o, n);
+    }
+    return v;
+}
+
+/* Fill a slot field from a frequency, snapping to the field's 100 Hz grid. */
+void slotsFromFreq(TextInput &f, freq_t hz)
+{
+    const uint16_t n = f.slotCount();
+    for (uint16_t o = 0; o < n; o++)
+        f.setSlotDigit(o, static_cast<int>((hz / slotCoeff(o, n)) % 10));
+}
+
+/* Compose the FreqHero entry strings from a 7-slot field: "MMM.KKK" main and a
+ * 2-digit sub (the 100 Hz slot + a fixed 10 Hz zero), with '-' for un-entered
+ * slots so the operator sees exactly how many digits remain. */
+void composeEntry(const TextInput &f, char *main, char *sub)
+{
+    auto sc = [&](uint16_t o) -> char {
+        const int d = f.slotDigit(o);
+        return (d >= 0) ? static_cast<char>('0' + d) : '-';
+    };
+    main[0] = sc(0);
+    main[1] = sc(1);
+    main[2] = sc(2);
+    main[3] = '.';
+    main[4] = sc(3);
+    main[5] = sc(4);
+    main[6] = sc(5);
+    main[7] = '\0';
+
+    const int d6 = f.slotDigit(6);
+    sub[0] = (d6 >= 0) ? static_cast<char>('0' + d6) : '-';
+    sub[1] = (d6 >= 0) ? '0' : '-';
+    sub[2] = '\0';
 }
 
 /* True if a frequency falls inside one of the radio's supported bands
@@ -407,6 +457,12 @@ void VfoView::syncFromState(const state_t &s)
                 chanName_.invalidate();
             }
         }
+    } else if (inputErrorAt_ != 0) {
+        /* Expire a transient out-of-band error (this runs every GUI frame). */
+        if ((getTick() - inputErrorAt_) >= kInputErrorMs) {
+            inputErrorAt_ = 0;
+            refreshInput();
+        }
     }
 
     syncMeter(s);
@@ -462,6 +518,11 @@ NavIntent VfoView::onEvent(const Event &e)
                 stepFreq(-1);
             else
                 stepChannel(-1);
+        } else if ((k & KEY_STAR) != 0u) {
+            /* '*' opens the keypad on the current frequency for an in-place
+             * edit (backspace the trailing kHz); a digit retypes from scratch. */
+            if (state.tuner_mode == VFO)
+                beginInputTweak();
         } else if (state.tuner_mode == VFO) {
             /* A digit opens the frequency keypad (VFO mode only). */
             const int d = digitFromKeys(k);
@@ -483,20 +544,44 @@ NavIntent VfoView::onInputEvent(const Event &e)
     const uint32_t k = e.keys;
     if ((k & KEY_ENTER) != 0u) {
         confirmInput();
-    } else if ((k & KEY_ESC) != 0u) {
-        exitInput(); /* discard the entry */
-    } else if ((k & (KEY_UP | KEY_DOWN)) != 0u) {
-        /* Toggle which frequency (RX/TX) is being entered. */
-        inputTxSet_ = !inputTxSet_;
-        inputPos_ = 0;
-        refreshInput();
-        if (state.settings.vpLevel >= vpLow)
-            vp_announceInputReceiveOrTransmit(inputTxSet_, vpqDefault);
-    } else {
-        const int d = digitFromKeys(k);
-        if (d >= 0)
-            inputDigit((uint8_t)d);
+        return NavIntent::none();
     }
+    if ((k & KEY_ESC) != 0u) {
+        exitInput(); /* discard the entry */
+        return NavIntent::none();
+    }
+    if ((k & (KEY_UP | KEY_DOWN)) != 0u) {
+        switchField(); /* toggle RX/TX, deriving TX from RX + offset */
+        return NavIntent::none();
+    }
+
+    /* Character-level keys go through the shared TextInput key contract, so '*'
+     * is backspace here exactly as in every other editor. Only act on keys that
+     * actually edit the field (a digit, '*' backspace, or a cursor move); ignore
+     * key-release (k==0) and other keys so they can't silently consume the
+     * pristine (pre-filled) state without editing it. */
+    const int digit = digitFromKeys(k);
+    const bool mutating = (digit >= 0) || ((k & KEY_STAR) != 0u)
+                       || ((k & (KEY_LEFT | KEY_RIGHT)) != 0u);
+    if (!mutating)
+        return NavIntent::none();
+
+    TextInput &f = inputTxSet_ ? txInput_ : rxInput_;
+    bool &pristine = inputTxSet_ ? txPristine_ : rxPristine_;
+    if (pristine) {
+        if (digit >= 0)
+            f.clearSlots(); /* first digit retypes the whole frequency */
+        pristine = false;   /* '*' / arrows instead begin an in-place tweak */
+    }
+    f.handleKey(k, getTick()); /* a known-mutating key always edits the field */
+
+    inputErrorAt_ = 0;
+    if ((digit >= 0) && (state.settings.vpLevel >= vpLow)) {
+        vp_flush();
+        vp_queueInteger(digit);
+        vp_play();
+    }
+    refreshInput();
     return NavIntent::none();
 }
 
@@ -577,83 +662,101 @@ bool VfoView::loadChannel(int16_t index)
     return true;
 }
 
-void VfoView::beginInput(uint8_t firstDigit)
+void VfoView::openInput()
 {
     inputActive_ = true;
     inputTxSet_ = false;
-    inputPos_ = 0;
-    newRx_ = 0;
-    newTx_ = 0;
-    inputDigit(firstDigit); /* also draws the initial entry chrome */
+    inputErrorAt_ = 0;
+
+    const channel_t &ch = state.channel;
+    inputShift_ = (int64_t)ch.tx_frequency - (int64_t)ch.rx_frequency;
+
+    rxInput_.configureSlots(rxBuf_, sizeof(rxBuf_), kFreqMask, '-',
+                            TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
+    txInput_.configureSlots(txBuf_, sizeof(txBuf_), kFreqMask, '-',
+                            TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
+
+    slotsFromFreq(rxInput_, ch.rx_frequency);
+    rxInput_.setCursorSlot(
+        rxInput_.slotCount()); /* full pre-fill, cursor at end */
+    rxPristine_ = true;
+    txPristine_ = true; /* TX derived lazily on the first switch / commit */
 }
 
-void VfoView::inputDigit(uint8_t digit)
+void VfoView::beginInput(uint8_t firstDigit)
 {
-    inputPos_++;
-
-    if (!inputTxSet_) {
-        if (inputPos_ == 1)
-            newRx_ = 0;
-        newRx_ = freqAddDigit(newRx_, inputPos_, digit);
-        if (inputPos_ >= kFreqDigits) {
-            /* RX complete: move on to the TX frequency. */
-            inputTxSet_ = true;
-            inputPos_ = 0;
-            newTx_ = 0;
-        }
-    } else {
-        if (inputPos_ == 1)
-            newTx_ = 0;
-        newTx_ = freqAddDigit(newTx_, inputPos_, digit);
-        if (inputPos_ >= kFreqDigits) {
-            applyInput();
-            return;
-        }
-    }
-
+    openInput();
+    /* First digit retypes from the top (the pre-filled RX is pristine). */
+    rxPristine_ = false;
+    rxInput_.clearSlots();
+    rxInput_.putDigit(firstDigit);
     if (state.settings.vpLevel >= vpLow) {
         vp_flush();
-        vp_queueInteger(digit);
+        vp_queueInteger(firstDigit);
         vp_play();
     }
     refreshInput();
 }
 
-void VfoView::confirmInput()
+void VfoView::beginInputTweak()
 {
-    if (!inputTxSet_) {
-        /* Confirm RX, advance to TX entry. */
-        inputTxSet_ = true;
-        inputPos_ = 0;
-        refreshInput();
-        if (state.settings.vpLevel >= vpLow)
-            vp_announceInputReceiveOrTransmit(true, vpqDefault);
-    } else {
-        /* If TX was left untouched, mirror RX onto it. */
-        if (newTx_ == 0)
-            newTx_ = newRx_;
-        applyInput();
-    }
+    /* '*' opens the keypad on the full current frequency, cursor at the last
+     * digit. The field stays pristine: the next '*' backspaces the trailing kHz
+     * to correct in place, while a digit retypes the whole value from the top. */
+    openInput();
+    refreshInput();
 }
 
-void VfoView::applyInput()
+void VfoView::switchField()
 {
-    if (freqInBand(newRx_) && freqInBand(newTx_)) {
-        state.channel.rx_frequency = newRx_;
-        state.channel.tx_frequency = newTx_;
+    if (!inputTxSet_ && txPristine_)
+        deriveTx(); /* refresh TX from the latest RX + offset before showing it */
+    inputTxSet_ = !inputTxSet_;
+    inputErrorAt_ = 0;
+    refreshInput();
+    if (state.settings.vpLevel >= vpLow)
+        vp_announceInputReceiveOrTransmit(inputTxSet_, vpqDefault);
+}
+
+void VfoView::deriveTx()
+{
+    const freq_t rx = freqFromSlots(rxInput_);
+    int64_t tx = (int64_t)rx + inputShift_;
+    if (tx < 0)
+        tx = 0; /* an underflowing offset is rejected in band at commit */
+    slotsFromFreq(txInput_, (freq_t)tx);
+    txInput_.setCursorSlot(txInput_.slotCount());
+}
+
+void VfoView::confirmInput()
+{
+    if (txPristine_)
+        deriveTx(); /* commit RX + the derived offset (simplex -> TX = RX) */
+
+    const freq_t rx = freqFromSlots(rxInput_);
+    const freq_t tx = freqFromSlots(txInput_);
+    if (freqInBand(rx) && freqInBand(tx)) {
+        state.channel.rx_frequency = rx;
+        state.channel.tx_frequency = tx;
         requestSyncRtx();
         if (state.settings.vpLevel >= vpLow) {
             vp_flush();
-            vp_announceFrequencies(newRx_, newTx_, vpqDefault);
+            vp_announceFrequencies(rx, tx, vpqDefault);
             vp_play();
         }
+        exitInput();
+    } else {
+        /* Keep the buffer and flag the error; syncFromState clears it shortly,
+         * or the next edit does. */
+        inputErrorAt_ = getTick();
+        refreshInput();
     }
-    exitInput();
 }
 
 void VfoView::exitInput()
 {
     inputActive_ = false;
+    inputErrorAt_ = 0;
 
     /* Force the change-gated readout to repaint from live state next sync. */
     lastFreq_ = 0xFFFFFFFFu;
@@ -665,13 +768,20 @@ void VfoView::exitInput()
 
 void VfoView::refreshInput()
 {
-    const uint32_t val = inputTxSet_ ? newTx_ : newRx_;
-    hero_.setFreq(val);
+    const TextInput &f = inputTxSet_ ? txInput_ : rxInput_;
+    char main[16];
+    char sub[6];
+    composeEntry(f, main, sub);
+
+    const bool err = (inputErrorAt_ != 0);
+    hero_.setEntry(main, sub);
     hero_.setMode(inputTxSet_ ? "TX" : "RX");
+    hero_.setTextColor(err ? Sem::Mark : Sem::Accent);
     hero_.invalidate();
 
     chanIdx_.setText("");
-    chanName_.setText(inputTxSet_ ? "ENTER TX" : "ENTER RX");
+    chanName_.setText(err ? "OUT OF BAND" :
+                            (inputTxSet_ ? "ENTER TX" : "ENTER RX"));
     chanDetail_.setText(0, "");
     chanDetail_.setText(1, "");
     chanIdx_.invalidate();

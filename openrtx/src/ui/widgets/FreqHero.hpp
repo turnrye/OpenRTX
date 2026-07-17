@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include "core/Object.hpp"
+#include "style/SemanticColor.hpp"
 
 namespace ortxui
 {
@@ -25,6 +26,13 @@ class FreqHero : public Object
 {
 public:
     void setFreq(uint32_t hz);
+
+    /** Keypad-entry rendering: the caller composes the main ("146.5--") and sub
+     *  ("00" / "--") strings itself, with '-' placeholders for un-entered slots,
+     *  and drives the colour with setTextColor(). Bypasses the numeric format of
+     *  setFreq() so partial entry and placeholders show through. */
+    void setEntry(const char *main, const char *sub);
+
     /** Right-aligned mode/bandwidth label (WFM/NFM/M17), on the frequency
      *  baseline. Power is intentionally omitted — it is shown on the meter
      *  while transmitting. */
@@ -33,12 +41,20 @@ public:
         mode_ = (mode != nullptr) ? mode : "";
     }
 
+    /** Colour of the frequency text (not the mode label). Gold while editing,
+     *  the alert colour on an out-of-band entry; setFreq() resets it. */
+    void setTextColor(Sem c)
+    {
+        textColor_ = c;
+    }
+
     void draw(DrawCtx &d) override;
 
 private:
-    char mainBuf_[12] = "0.000";
-    char subBuf_[4] = "00";
+    char mainBuf_[16] = "0.000";
+    char subBuf_[6] = "00";
     const char *mode_ = "";
+    Sem textColor_ = Sem::OnSurface;
 };
 
 } // namespace ortxui

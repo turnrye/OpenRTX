@@ -136,6 +136,7 @@ public:
     }
     uint16_t filledSlots() const; //< count of filled slots, left-contiguous
     void setCursorSlot(uint16_t ordinal); //< position the cursor on a slot
+    void clearSlots(); //< reset every slot to the placeholder, cursor to slot 0
 
     /* ---- Validation + commit/cancel hooks (used by handleKey) ---- */
     using Predicate = bool (*)(void *ctx); //< return false to reject a commit

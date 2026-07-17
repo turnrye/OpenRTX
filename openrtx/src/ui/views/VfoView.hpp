@@ -65,19 +65,21 @@ private:
 
     /* --- interaction --- */
     NavIntent
-    onInputEvent(const Event &e);        //< key handling while entering a freq
-    void stepFreq(int dir);              //< VFO: tune RX+TX by one freq step
-    void stepChannel(int dir);           //< MEM: load the next/prev channel
-    void toggleVfoMem();                 //< switch between VFO and memory mode
-    bool loadChannel(int16_t index);     //< bank-aware channel load into state
-    void beginInput(uint8_t firstDigit); //< open keypad freq entry with a digit
-    void inputDigit(uint8_t digit); //< accumulate a digit into the active set
-    void confirmInput();            //< ENTER: advance RX->TX, or apply TX
-    void applyInput();              //< commit the entered RX/TX if in band
-    void exitInput();               //< leave keypad entry, restore the readout
-    void refreshInput();            //< redraw the hero/label from the entry
-    void announceFreq();            //< speak the current channel frequencies
-    void clearFmTone();             //< drop the momentary FM tone if latched
+    onInputEvent(const Event &e);    //< key handling while entering a freq
+    void stepFreq(int dir);          //< VFO: tune RX+TX by one freq step
+    void stepChannel(int dir);       //< MEM: load the next/prev channel
+    void toggleVfoMem();             //< switch between VFO and memory mode
+    bool loadChannel(int16_t index); //< bank-aware channel load into state
+    void openInput(); //< set up the RX/TX slot fields, pre-filled from state
+    void beginInput(uint8_t firstDigit); //< open entry with a digit (type-over)
+    void beginInputTweak(); //< open entry to edit the current freq in place (*)
+    void switchField();     //< toggle RX/TX entry, deriving TX from RX + offset
+    void deriveTx();        //< fill the TX field with the entered RX + offset
+    void confirmInput();    //< ENTER: validate + commit both RX and TX in band
+    void exitInput();       //< leave keypad entry, restore the readout
+    void refreshInput();    //< redraw the hero/label from the entry
+    void announceFreq();    //< speak the current channel frequencies
+    void clearFmTone();     //< drop the momentary FM tone if latched
 
     /* --- M17 destination (shown in the channel line, edited via #) --- */
     void composeChanLine(const state_t &s, char *idxOut, char *nameOut,
@@ -122,12 +124,22 @@ private:
     uint8_t lastSql_ = 0xFFu;  //< squelch level last drawn on the meter marker
     uint8_t lastMode_ = 0xFFu; //< channel mode (marker only shows in FM)
 
-    /* Frequency keypad entry (mirrors the classic MAIN_VFO_INPUT screen). */
+    /* Frequency keypad entry (mirrors the classic MAIN_VFO_INPUT screen), now on
+     * the shared TextInput slot engine: two 7-slot numeric fields (RX then TX,
+     * 100 MHz..100 Hz), rendered through FreqHero. RX pre-fills from the current
+     * frequency; TX auto-derives from RX plus the channel's existing offset. */
+    static constexpr uint8_t kFreqDigits = 7;
     bool inputActive_ = false; //< keypad entry in progress
     bool inputTxSet_ = false;  //< false = editing RX, true = TX
-    uint8_t inputPos_ = 0;     //< digits entered in the active set
-    uint32_t newRx_ = 0;       //< frequency accumulated so far, RX
-    uint32_t newTx_ = 0;       //< frequency accumulated so far, TX
+    bool rxPristine_ = true; //< RX pre-filled/untouched -> first digit retypes
+    bool txPristine_ = true; //< TX still derived from RX + offset (not edited)
+    int64_t inputShift_ = 0; //< tx - rx captured at open (the repeater offset)
+    long long inputErrorAt_ =
+        0; //< getTick() of the last out-of-band commit; 0=none
+    TextInput rxInput_;
+    TextInput txInput_;
+    char rxBuf_[kFreqDigits + 1] = { 0 };
+    char txBuf_[kFreqDigits + 1] = { 0 };
 
     /* M17 destination editor (classic MAIN_VFO # -> dst input): edited in place
      * through the shared TextInput widget (inline bracket rendering). */

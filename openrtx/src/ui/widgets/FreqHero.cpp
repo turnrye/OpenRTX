@@ -9,6 +9,7 @@
 #include "core/graphics.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace ortxui
 {
@@ -22,6 +23,15 @@ void FreqHero::setFreq(uint32_t hz)
     snprintf(mainBuf_, sizeof(mainBuf_), "%lu.%03lu", (unsigned long)mhz,
              (unsigned long)khz);
     snprintf(subBuf_, sizeof(subBuf_), "%02lu", (unsigned long)sub);
+    textColor_ = Sem::OnSurface; //< the live readout is never left tinted
+}
+
+void FreqHero::setEntry(const char *main, const char *sub)
+{
+    strncpy(mainBuf_, (main != nullptr) ? main : "", sizeof(mainBuf_) - 1);
+    mainBuf_[sizeof(mainBuf_) - 1] = '\0';
+    strncpy(subBuf_, (sub != nullptr) ? sub : "", sizeof(subBuf_) - 1);
+    subBuf_[sizeof(subBuf_) - 1] = '\0';
 }
 
 void FreqHero::draw(DrawCtx &d)
@@ -40,7 +50,7 @@ void FreqHero::draw(DrawCtx &d)
 
     const uint16_t mainW = gfx_getTextWidth(mainFont, mainBuf_);
     const Point mainAt = { static_cast<int16_t>(area_.x + indent), baseY };
-    d.text(mainAt, mainFont, TEXT_ALIGN_LEFT, Sem::OnSurface, mainBuf_);
+    d.text(mainAt, mainFont, TEXT_ALIGN_LEFT, textColor_, mainBuf_);
 
     /* Mode/bandwidth label (WFM/NFM/M17), right-aligned on the baseline. */
     int16_t modeLeft = static_cast<int16_t>(area_.right() - indent);
@@ -56,7 +66,7 @@ void FreqHero::draw(DrawCtx &d)
     const uint16_t subW = gfx_getTextWidth(subFont, subBuf_);
     if (subX + (int16_t)subW <= modeLeft - 2) {
         const Point subAt = { subX, baseY };
-        d.text(subAt, subFont, TEXT_ALIGN_LEFT, Sem::OnSurface, subBuf_);
+        d.text(subAt, subFont, TEXT_ALIGN_LEFT, textColor_, subBuf_);
     }
 }
 

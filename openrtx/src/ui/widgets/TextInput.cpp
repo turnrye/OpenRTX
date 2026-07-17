@@ -195,6 +195,16 @@ void TextInput::setCursorSlot(uint16_t ordinal)
     syncSlotCursor();
 }
 
+void TextInput::clearSlots()
+{
+    if (!slotMode_)
+        return;
+    for (uint16_t o = 0; o < slotCount_; o++)
+        buf_[slotPos_[o]] = placeholder_;
+    slotCursor_ = 0;
+    syncSlotCursor();
+}
+
 void TextInput::begin()
 {
     if ((buf_ == nullptr) || (cap_ == 0))
