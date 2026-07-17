@@ -8,10 +8,8 @@
 #define ORTX_UI_RADIOVIEW_HPP
 
 #include <cstdint>
-#include "core/View.hpp"
-#include "layout/Flex.hpp"
-#include "widgets/TopBar.hpp"
-#include "widgets/List.hpp"
+#include <cstddef>
+#include "core/SettingsListView.hpp"
 #include "widgets/TextInput.hpp"
 #include "core/state.h"
 
@@ -32,17 +30,11 @@ namespace ortxui
  * Offset and Direction change tx_frequency, so they request an rtx resync;
  * Step only changes the tuning increment (state.step_index) and does not.
  */
-class RadioView : public View
+class RadioView : public SettingsListView
 {
 public:
     void build();
     void syncFromState(const state_t &s) override;
-    NavIntent onEvent(const Event &e) override;
-
-    Screen &screen() override
-    {
-        return screen_;
-    }
 
 private:
     enum Row : uint8_t {
@@ -52,25 +44,23 @@ private:
         RowCount,
     };
 
-    void writeValueText(uint8_t row);
-    void beginEdit();
-    void endEdit();
-    void adjust(int dir);  //< cycle edit (Direction/Step)
+    /* SettingsListView hooks: Direction/Step are Steppers; Offset is a Custom
+     * (TextInput keypad) row the view drives itself. */
+    RowKind rowKind(uint8_t row) const override;
+    void formatValue(uint8_t row, char *out, size_t cap) override;
+    void setValueText(uint8_t row, const char *s) override;
+    void onAdjust(uint8_t row, int dir) override;
+    void onBeginEdit(uint8_t row) override;
+    bool onEditEvent(const Event &e) override;
+    void refreshCustom(uint8_t row) override;
+
     void
     offsetAdjust(int dir); //< nudge the offset by the tuning step (knob/UP)
     void offsetApply();    //< commit tx = rx +/- the entered offset
-    uint32_t
-    offsetKhz() const;     //< the entered offset (filled slots as a decimal)
-
-    Screen screen_;
-    Flex root_;
-    TopBar topBar_;
-    List list_;
+    uint32_t offsetKhz() const; //< the entered offset (filled slots as decimal)
 
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][20] = {};
-    bool editing_ = false;
-    uint8_t editRow_ = 0;
 
     /* Offset keypad entry on the shared TextInput slot engine (6-digit kHz).
      * Pre-filled from the current offset magnitude so re-selecting preserves it;

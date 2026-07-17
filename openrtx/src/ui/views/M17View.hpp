@@ -8,10 +8,8 @@
 #define ORTX_UI_M17VIEW_HPP
 
 #include <cstdint>
-#include "core/View.hpp"
-#include "layout/Flex.hpp"
-#include "widgets/TopBar.hpp"
-#include "widgets/List.hpp"
+#include <cstddef>
+#include "core/SettingsListView.hpp"
 #include "widgets/TextInput.hpp"
 #include "core/state.h"
 
@@ -35,22 +33,16 @@ class TextInputView;
  * All fields live in state.settings (persisted at shutdown); none need an rtx
  * resync. The base View handles ESC/scroll when not editing.
  */
-class M17View : public View
+class M17View : public SettingsListView
 {
 public:
     void build();
     void syncFromState(const state_t &s) override;
-    NavIntent onEvent(const Event &e) override;
 
     /** Wire the shared modal text editor used for the (long) Meta Txt field. */
     void setTextEditor(TextInputView *e)
     {
         editor_ = e;
-    }
-
-    Screen &screen() override
-    {
-        return screen_;
     }
 
 private:
@@ -62,27 +54,27 @@ private:
         RowCount,
     };
 
-    void writeValueText(uint8_t row);
-    void beginEdit();
-    void endEdit();
-    void adjust(int dir);                    //< value rows (CAN)
-    void applyToggle(uint16_t row, bool on); //< flip the CAN-RX checkbox
-    void callsignCycle(int dir);             //< cycle the char under the cursor
-    void callsignMove(int dir); //< move the cursor (extend at the end)
-    void callsignConfirm();     //< strip + write to settings.callsign
-    void announceCursorChar();  //< speak the char under the cursor (voice)
+    /* SettingsListView hooks: Callsign is Custom (cursor-cycle editor), Meta is
+     * an Action (modal push), CAN is a Stepper, CAN RX is a Checkbox. */
+    RowKind rowKind(uint8_t row) const override;
+    void formatValue(uint8_t row, char *out, size_t cap) override;
+    void setValueText(uint8_t row, const char *s) override;
+    void onAdjust(uint8_t row, int dir) override;
+    void onToggle(uint8_t row, bool on) override;
+    NavIntent onActivate(uint8_t row) override;
+    void onBeginEdit(uint8_t row) override;
+    bool onEditEvent(const Event &e) override;
+    void refreshCustom(uint8_t row) override;
 
-    Screen screen_;
-    Flex root_;
-    TopBar topBar_;
-    List list_;
+    void callsignCycle(int dir); //< cycle the char under the cursor
+    void callsignMove(int dir);  //< move the cursor (extend at the end)
+    void callsignConfirm();      //< strip + write to settings.callsign
+    void announceCursorChar();   //< speak the char under the cursor (voice)
 
     TextInputView *editor_ = nullptr; //< shared modal, for Meta Txt
 
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][24] = {};
-    bool editing_ = false;
-    uint8_t editRow_ = 0;
 
     /* Callsign edit state: the buffer is edited through the shared TextInput
      * widget (inline bracket rendering), which owns the cursor. */

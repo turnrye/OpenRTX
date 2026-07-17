@@ -75,113 +75,96 @@ void setSlotsDecimal(TextInput &f, uint32_t val)
 
 void RadioView::build()
 {
-    const int16_t W = CONFIG_SCREEN_WIDTH;
-    const int16_t H = CONFIG_SCREEN_HEIGHT;
-
     static const char *const kLabels[RowCount] = {
         "Offset",
         "Direction",
         "Step",
     };
 
-    root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
-    root_.setAxis(Axis::Column);
-
-    topBar_.init("Radio");
-    setTopBar(&topBar_);
-
     for (uint8_t i = 0; i < RowCount; i++) {
         items_[i].label = kLabels[i];
         items_[i].value = bufs_[i];
-        writeValueText(i);
     }
-
-    list_.setItems(items_, RowCount);
-    list_.setContentPad(4);
-    list_.setFlag(FLAG_FOCUSABLE, true);
-    list_.setGrow(1);
-
-    root_.addChild(&topBar_);
-    root_.addChild(&list_);
-    screen_.addChild(&root_);
-    root_.onLayout();
-    screen_.focusFirst();
-
-    screen_.markAllDirty();
+    buildList("Radio", items_, RowCount);
+    refreshCustom(RowOffset);
+    refreshValue(RowDirection);
+    refreshValue(RowStep);
 
     lastRx_ = state.channel.rx_frequency;
     lastTx_ = state.channel.tx_frequency;
     lastStep_ = state.step_index;
 }
 
-void RadioView::writeValueText(uint8_t row)
+RadioView::RowKind RadioView::rowKind(uint8_t row) const
 {
-    const channel_t &ch = state.channel; /* live source of truth */
-    char inner[16];
+    return (row == RowOffset) ? RowKind::Custom : RowKind::Stepper;
+}
 
-    if (row == RowOffset) {
-        if (editing_ && (editRow_ == RowOffset)) {
-            const unsigned v = (unsigned)offsetKhz();
-            snprintf(bufs_[row], sizeof(bufs_[row]), "<%u kHz>", v);
-            char clean[16];
-            snprintf(clean, sizeof(clean), "%u kHz", v);
-            vpSay(clean);
-            return;
+void RadioView::formatValue(uint8_t row, char *out, size_t cap)
+{
+    /* Direction/Step are Steppers; Offset is Custom (see refreshCustom). */
+    const channel_t &ch = state.channel;
+    if (row == RowDirection) {
+        if (cap >= 2u) {
+            out[0] = (ch.tx_frequency >= ch.rx_frequency) ? '+' : '-';
+            out[1] = '\0';
         }
+    } else {
+        formatFreq(freq_steps[state.step_index], out, cap);
+    }
+}
+
+void RadioView::setValueText(uint8_t row, const char *s)
+{
+    snprintf(bufs_[row], sizeof(bufs_[row]), "%s", s);
+}
+
+void RadioView::refreshCustom(uint8_t row)
+{
+    if (row != RowOffset)
+        return;
+
+    if (editing_ && (editRow_ == RowOffset)) {
+        const unsigned v = (unsigned)offsetKhz();
+        snprintf(bufs_[RowOffset], sizeof(bufs_[RowOffset]), "<%u kHz>", v);
+        char clean[16];
+        snprintf(clean, sizeof(clean), "%u kHz", v);
+        vpSay(clean);
+    } else {
+        const channel_t &ch = state.channel;
         const uint32_t off = (ch.tx_frequency >= ch.rx_frequency) ?
                                  (ch.tx_frequency - ch.rx_frequency) :
                                  (ch.rx_frequency - ch.tx_frequency);
+        char inner[16];
         formatFreq(off, inner, sizeof(inner));
-    } else if (row == RowDirection) {
-        inner[0] = (ch.tx_frequency >= ch.rx_frequency) ? '+' : '-';
-        inner[1] = '\0';
-    } else {
-        formatFreq(freq_steps[state.step_index], inner, sizeof(inner));
+        snprintf(bufs_[RowOffset], sizeof(bufs_[RowOffset]), "%s", inner);
     }
-
-    if (editing_ && (row == editRow_)) {
-        snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-        vpSay(inner);
-    } else {
-        snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
-    }
-}
-
-void RadioView::beginEdit()
-{
-    editRow_ = (uint8_t)list_.selected();
-    editing_ = true;
-    if (editRow_ == RowOffset) {
-        /* Pre-fill the keypad with the current offset (magnitude + direction) so
-         * re-selecting and pressing ENTER preserves the split; the previous code
-         * reset it to 0, which wiped the offset on re-entry. */
-        const channel_t &ch = state.channel;
-        offsetNeg_ = (ch.tx_frequency < ch.rx_frequency);
-        const uint32_t mag = (offsetNeg_ ? ch.rx_frequency - ch.tx_frequency :
-                                           ch.tx_frequency - ch.rx_frequency)
-                           / 1000u;
-        offsetInput_.configureSlots(offsetBuf_, sizeof(offsetBuf_), "999999",
-                                    '-', TextInput::CursorStyle::Bracket,
-                                    FONT_SIZE_8PT);
-        setSlotsDecimal(offsetInput_, mag);
-        offsetPristine_ = true;
-    }
-    writeValueText(editRow_);
     list_.invalidate();
 }
 
-void RadioView::endEdit()
+void RadioView::onBeginEdit(uint8_t row)
 {
-    editing_ = false;
-    writeValueText(editRow_);
-    list_.invalidate();
+    if (row != RowOffset)
+        return;
+    /* Pre-fill the keypad with the current offset (magnitude + direction) so
+     * re-selecting and pressing ENTER preserves the split; the previous code
+     * reset it to 0, which wiped the offset on re-entry. */
+    const channel_t &ch = state.channel;
+    offsetNeg_ = (ch.tx_frequency < ch.rx_frequency);
+    const uint32_t mag = (offsetNeg_ ? ch.rx_frequency - ch.tx_frequency :
+                                       ch.tx_frequency - ch.rx_frequency)
+                       / 1000u;
+    offsetInput_.configureSlots(offsetBuf_, sizeof(offsetBuf_), "999999", '-',
+                                TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
+    setSlotsDecimal(offsetInput_, mag);
+    offsetPristine_ = true;
 }
 
-void RadioView::adjust(int dir)
+void RadioView::onAdjust(uint8_t row, int dir)
 {
     channel_t &ch = state.channel;
 
-    if (editRow_ == RowDirection) {
+    if (row == RowDirection) {
         /* Mirror the TX split about RX: tx' = 2*rx - tx. A simplex channel
          * (tx == rx) is unaffected. */
         const int64_t rx = ch.rx_frequency;
@@ -200,9 +183,6 @@ void RadioView::adjust(int dir)
         state.step_index = (uint8_t)s;
         lastStep_ = state.step_index;
     }
-
-    writeValueText(editRow_);
-    list_.invalidate();
 }
 
 uint32_t RadioView::offsetKhz() const
@@ -231,8 +211,7 @@ void RadioView::offsetAdjust(int dir)
 
     setSlotsDecimal(offsetInput_, v);
     offsetPristine_ = true; /* the nudged value becomes a fresh pre-fill */
-    writeValueText(RowOffset);
-    list_.invalidate();
+    refreshCustom(RowOffset);
 }
 
 void RadioView::offsetApply()
@@ -260,12 +239,12 @@ void RadioView::syncFromState(const state_t &s)
     /* Offset + Direction both derive from the TX/RX pair. */
     if (!(editing_ && editRow_ == RowOffset)
         && ((ch.tx_frequency != lastTx_) || (ch.rx_frequency != lastRx_))) {
-        writeValueText(RowOffset);
+        refreshCustom(RowOffset);
         changed = true;
     }
     if (!(editing_ && editRow_ == RowDirection)
         && ((ch.tx_frequency != lastTx_) || (ch.rx_frequency != lastRx_))) {
-        writeValueText(RowDirection);
+        refreshValue(RowDirection);
         changed = true;
     }
     if ((ch.tx_frequency != lastTx_) || (ch.rx_frequency != lastRx_)) {
@@ -274,7 +253,7 @@ void RadioView::syncFromState(const state_t &s)
     }
 
     if (!(editing_ && editRow_ == RowStep) && (s.step_index != lastStep_)) {
-        writeValueText(RowStep);
+        refreshValue(RowStep);
         lastStep_ = s.step_index;
         changed = true;
     }
@@ -283,81 +262,50 @@ void RadioView::syncFromState(const state_t &s)
         list_.invalidate();
 }
 
-NavIntent RadioView::onEvent(const Event &e)
+bool RadioView::onEditEvent(const Event &e)
 {
-    if (editing_) {
-        /* Offset uses keypad entry; the other rows cycle with up/down. */
-        if (editRow_ == RowOffset) {
-            int dir = 0;
-            if (e.kind == EvKind::Encoder) {
-                dir = e.encoder; /* knob nudges the offset by the tuning step */
-            } else if (e.kind == EvKind::Key) {
-                const uint32_t k = e.keys;
-                if ((k & KEY_ENTER) != 0u) {
-                    offsetApply();
-                    return NavIntent::none();
-                }
-                if ((k & KEY_ESC) != 0u) {
-                    endEdit();
-                    return NavIntent::none();
-                }
-                if ((k & (KEY_UP | KEY_RIGHT)) != 0u) {
-                    dir = +1; /* like the Step field */
-                } else if ((k & (KEY_DOWN | KEY_LEFT)) != 0u) {
-                    dir = -1;
-                } else {
-                    /* Digits retype the value, '*' backspaces -- through the
-                     * shared key contract, so delete is '*' here as everywhere.
-                     * The pre-filled value is pristine until the first digit
-                     * clears it. */
-                    const bool digit = ((k & kDigitMask) != 0u);
-                    if (digit || ((k & KEY_STAR) != 0u)) {
-                        if (offsetPristine_) {
-                            if (digit)
-                                offsetInput_.clearSlots();
-                            offsetPristine_ = false;
-                        }
-                        offsetInput_.handleKey(k, 0);
-                        writeValueText(RowOffset);
-                        list_.invalidate();
-                    }
-                    return NavIntent::none();
-                }
-            }
-            if (dir != 0)
-                offsetAdjust(dir);
-            return NavIntent::none();
-        }
+    /* Only the Offset (Custom) row owns its editing stream; Direction/Step fall
+     * through to the base's generic stepper handling. */
+    if (editRow_ != RowOffset)
+        return false;
 
-        int dir = 0;
-        if (e.kind == EvKind::Encoder) {
-            dir = e.encoder;
-        } else if (e.kind == EvKind::Key) {
-            if ((e.keys & (KEY_ENTER | KEY_ESC)) != 0u) {
-                endEdit();
-                return NavIntent::none();
-            }
-            if ((e.keys & (KEY_UP | KEY_RIGHT)) != 0u)
-                dir = +1;
-            else if ((e.keys & (KEY_DOWN | KEY_LEFT)) != 0u)
-                dir = -1;
+    int dir = 0;
+    if (e.kind == EvKind::Encoder) {
+        dir = e.encoder; /* knob nudges the offset by the tuning step */
+    } else if (e.kind == EvKind::Key) {
+        const uint32_t k = e.keys;
+        if ((k & KEY_ENTER) != 0u) {
+            offsetApply();
+            return true;
         }
-        if (dir != 0)
-            adjust(dir);
-        return NavIntent::none();
-    }
-
-    if (e.kind == EvKind::Key) {
-        if ((e.keys & KEY_ESC) != 0u)
-            return NavIntent::pop();
-        if ((e.keys & KEY_ENTER) != 0u) {
-            beginEdit();
-            return NavIntent::none();
+        if ((k & KEY_ESC) != 0u) {
+            endEdit();
+            return true;
+        }
+        if ((k & (KEY_UP | KEY_RIGHT)) != 0u) {
+            dir = +1; /* like the Step field */
+        } else if ((k & (KEY_DOWN | KEY_LEFT)) != 0u) {
+            dir = -1;
+        } else {
+            /* Digits retype the value, '*' backspaces -- through the shared key
+             * contract, so delete is '*' here as everywhere. The pre-filled
+             * value is pristine until the first digit clears it. */
+            const bool digit = ((k & kDigitMask) != 0u);
+            if (digit || ((k & KEY_STAR) != 0u)) {
+                if (offsetPristine_) {
+                    if (digit)
+                        offsetInput_.clearSlots();
+                    offsetPristine_ = false;
+                }
+                offsetInput_.handleKey(k, 0);
+                refreshCustom(RowOffset);
+            }
+            return true;
         }
     }
-
-    screen_.dispatch(e);
-    return NavIntent::none();
+    if (dir != 0)
+        offsetAdjust(dir);
+    return true;
 }
 
 } // namespace ortxui
