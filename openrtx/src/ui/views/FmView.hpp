@@ -8,10 +8,8 @@
 #define ORTX_UI_FMVIEW_HPP
 
 #include <cstdint>
-#include "core/View.hpp"
-#include "layout/Flex.hpp"
-#include "widgets/TopBar.hpp"
-#include "widgets/List.hpp"
+#include <cstddef>
+#include "core/SettingsListView.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -25,17 +23,11 @@ namespace ortxui
  * to the radio immediately, mirroring the classic FM settings menu. The base
  * View handles ESC/scroll when not editing.
  */
-class FmView : public View
+class FmView : public SettingsListView
 {
 public:
     void build();
     void syncFromState(const state_t &s) override;
-    NavIntent onEvent(const Event &e) override;
-
-    Screen &screen() override
-    {
-        return screen_;
-    }
 
 private:
     enum Row : uint8_t {
@@ -44,20 +36,12 @@ private:
         RowCount,
     };
 
-    void writeValueText(uint8_t row);
-    void beginEdit();
-    void endEdit();
-    void adjust(int dir);
-
-    Screen screen_;
-    Flex root_;
-    TopBar topBar_;
-    List list_;
+    void formatValue(uint8_t row, char *out, size_t cap) override;
+    void setValueText(uint8_t row, const char *s) override;
+    void onAdjust(uint8_t row, int dir) override;
 
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][12] = {};
-    bool editing_ = false;
-    uint8_t editRow_ = 0;
 
     /* Change-gate mirrors of the fields we render. */
     uint8_t lastTone_ = 0xFFu;
