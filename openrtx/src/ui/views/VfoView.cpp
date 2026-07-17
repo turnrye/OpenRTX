@@ -730,8 +730,13 @@ void VfoView::deriveTx()
 
 void VfoView::confirmInput()
 {
-    if (txPristine_)
-        deriveTx(); /* commit RX + the derived offset (simplex -> TX = RX) */
+    /* ENTER on the RX field advances to TX (deriving it from the offset) so the
+     * operator sees and confirms the TX frequency before anything is applied,
+     * instead of silently committing on the first ENTER. ENTER on TX commits. */
+    if (!inputTxSet_) {
+        switchField();
+        return;
+    }
 
     const freq_t rx = freqFromSlots(rxInput_);
     const freq_t tx = freqFromSlots(txInput_);
