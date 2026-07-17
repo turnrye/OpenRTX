@@ -57,6 +57,20 @@ void formatFreq(uint32_t hz, char *buf, size_t size)
     snprintf(buf, size, "%s %cHz", tmp, prefix);
 }
 
+/* Lay a decimal value into a slot field left-aligned, so it reads back as that
+ * integer via its filled prefix (filled slot count = number of digits). */
+void setSlotsDecimal(TextInput &f, uint32_t val)
+{
+    char tmp[12];
+    const int n = snprintf(tmp, sizeof(tmp), "%u", (unsigned)val);
+    f.clearSlots();
+    const uint16_t cap = f.slotCount();
+    uint16_t i = 0;
+    for (; (i < (uint16_t)n) && (i < cap); i++)
+        f.setSlotDigit(i, tmp[i] - '0');
+    f.setCursorSlot(i);
+}
+
 } // namespace
 
 void RadioView::build()
@@ -107,10 +121,10 @@ void RadioView::writeValueText(uint8_t row)
 
     if (row == RowOffset) {
         if (editing_ && (editRow_ == RowOffset)) {
-            snprintf(bufs_[row], sizeof(bufs_[row]), "<%u kHz>",
-                     (unsigned)offsetEntry_);
+            const unsigned v = (unsigned)offsetKhz();
+            snprintf(bufs_[row], sizeof(bufs_[row]), "<%u kHz>", v);
             char clean[16];
-            snprintf(clean, sizeof(clean), "%u kHz", (unsigned)offsetEntry_);
+            snprintf(clean, sizeof(clean), "%u kHz", v);
             vpSay(clean);
             return;
         }
@@ -137,8 +151,21 @@ void RadioView::beginEdit()
 {
     editRow_ = (uint8_t)list_.selected();
     editing_ = true;
-    if (editRow_ == RowOffset)
-        offsetEntry_ = 0;
+    if (editRow_ == RowOffset) {
+        /* Pre-fill the keypad with the current offset (magnitude + direction) so
+         * re-selecting and pressing ENTER preserves the split; the previous code
+         * reset it to 0, which wiped the offset on re-entry. */
+        const channel_t &ch = state.channel;
+        offsetNeg_ = (ch.tx_frequency < ch.rx_frequency);
+        const uint32_t mag = (offsetNeg_ ? ch.rx_frequency - ch.tx_frequency :
+                                           ch.tx_frequency - ch.rx_frequency)
+                           / 1000u;
+        offsetInput_.configureSlots(offsetBuf_, sizeof(offsetBuf_), "999999",
+                                    '-', TextInput::CursorStyle::Bracket,
+                                    FONT_SIZE_8PT);
+        setSlotsDecimal(offsetInput_, mag);
+        offsetPristine_ = true;
+    }
     writeValueText(editRow_);
     list_.invalidate();
 }
@@ -178,27 +205,24 @@ void RadioView::adjust(int dir)
     list_.invalidate();
 }
 
-void RadioView::offsetDigit(uint8_t d)
+uint32_t RadioView::offsetKhz() const
 {
-    /* Accumulate in kHz; cap so tx = rx + offset can't overflow a freq_t. */
-    if (offsetEntry_ < 1000000u)
-        offsetEntry_ = offsetEntry_ * 10u + d;
-    writeValueText(RowOffset);
-    list_.invalidate();
-}
-
-void RadioView::offsetBackspace()
-{
-    offsetEntry_ /= 10u;
-    writeValueText(RowOffset);
-    list_.invalidate();
+    /* The filled slots read left-to-right as a decimal kHz value. */
+    uint32_t v = 0;
+    const uint16_t n = offsetInput_.filledSlots();
+    for (uint16_t o = 0; o < n; o++)
+        v = v * 10u + (uint32_t)offsetInput_.slotDigit(o);
+    return v;
 }
 
 void RadioView::offsetApply()
 {
-    const uint64_t tx = (uint64_t)state.channel.rx_frequency
-                      + (uint64_t)offsetEntry_ * 1000u;
-    if (tx <= 0xFFFFFFFFu) {
+    /* Apply the entered magnitude in the current direction (keeping a '-' split
+     * negative), so re-selecting + ENTER round-trips the exact offset. */
+    const int64_t off = (int64_t)offsetKhz() * 1000;
+    const int64_t tx = (int64_t)state.channel.rx_frequency
+                     + (offsetNeg_ ? -off : off);
+    if ((tx >= 0) && (tx <= 0xFFFFFFFF)) {
         state.channel.tx_frequency = (uint32_t)tx;
         lastTx_ = state.channel.tx_frequency;
         requestSyncRtx();
@@ -245,15 +269,27 @@ NavIntent RadioView::onEvent(const Event &e)
         /* Offset uses keypad entry; the other rows cycle with up/down. */
         if (editRow_ == RowOffset) {
             if (e.kind == EvKind::Key) {
-                if ((e.keys & KEY_ENTER) != 0u) {
+                const uint32_t k = e.keys;
+                if ((k & KEY_ENTER) != 0u) {
                     offsetApply();
-                } else if ((e.keys & KEY_ESC) != 0u) {
+                } else if ((k & KEY_ESC) != 0u) {
                     endEdit();
-                } else if ((e.keys & kDigitMask) != 0u) {
-                    offsetDigit((uint8_t)__builtin_ctz(e.keys & kDigitMask));
-                } else if ((e.keys & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT))
-                           != 0u) {
-                    offsetBackspace();
+                } else {
+                    /* Digits retype the value, '*' backspaces -- through the
+                     * shared key contract, so delete is '*' here as everywhere
+                     * (arrows no longer delete). The pre-filled value is pristine
+                     * until the first digit clears it. */
+                    const bool digit = ((k & kDigitMask) != 0u);
+                    if (digit || ((k & KEY_STAR) != 0u)) {
+                        if (offsetPristine_) {
+                            if (digit)
+                                offsetInput_.clearSlots();
+                            offsetPristine_ = false;
+                        }
+                        offsetInput_.handleKey(k, 0);
+                        writeValueText(RowOffset);
+                        list_.invalidate();
+                    }
                 }
             }
             return NavIntent::none();
