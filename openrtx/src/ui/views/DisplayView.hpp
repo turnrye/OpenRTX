@@ -8,10 +8,8 @@
 #define ORTX_UI_DISPLAYVIEW_HPP
 
 #include <cstdint>
-#include "core/View.hpp"
-#include "layout/Flex.hpp"
-#include "widgets/TopBar.hpp"
-#include "widgets/List.hpp"
+#include <cstddef>
+#include "core/SettingsListView.hpp"
 #include "core/state.h"
 
 namespace ortxui
@@ -27,17 +25,11 @@ namespace ortxui
  * persisted to flash at shutdown, mirroring the classic UI. The base View
  * handles ESC/scroll when not editing.
  */
-class DisplayView : public View
+class DisplayView : public SettingsListView
 {
 public:
     void build();
     void syncFromState(const state_t &s) override;
-    NavIntent onEvent(const Event &e) override;
-
-    Screen &screen() override
-    {
-        return screen_;
-    }
 
 private:
     enum Row : uint8_t {
@@ -63,23 +55,17 @@ private:
 
     uint8_t curValue(uint8_t row) const;
     void applyValue(uint8_t row, uint8_t v); //< write settings + side-effect
-    void writeValueText(uint8_t row, uint8_t v);
-    void beginEdit();
-    void endEdit();
-    void adjust(int dir);
 
-    Screen screen_;
-    Flex root_;
-    TopBar topBar_;
-    List list_;
+    /* SettingsListView hooks. */
+    void formatValue(uint8_t row, char *out, size_t cap) override;
+    void setValueText(uint8_t row, const char *s) override;
+    void onAdjust(uint8_t row, int dir) override;
 
     ListItem items_[RowCount] = {};
     char bufs_[RowCount][20] = {};
     /* build() seeds last_ with the live value of every row before any sync, so a
      * zero start never aliases a real value into a skipped first paint. */
     uint8_t last_[RowCount] = {};
-    bool editing_ = false;
-    uint8_t editRow_ = 0;
 };
 
 } // namespace ortxui

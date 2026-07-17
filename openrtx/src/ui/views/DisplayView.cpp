@@ -18,9 +18,6 @@ namespace ortxui
 
 void DisplayView::build()
 {
-    const int16_t W = CONFIG_SCREEN_WIDTH;
-    const int16_t H = CONFIG_SCREEN_HEIGHT;
-
     static const char *const kLabels[RowCount] = {
         "Brightness", "Contrast", "Squelch", "Vox", "Timer", "Battery",
 #ifdef CONFIG_PIX_FMT_RGB565
@@ -28,34 +25,19 @@ void DisplayView::build()
 #endif
     };
 
-    root_.setArea({ 0, 0, (uint16_t)W, (uint16_t)H });
-    root_.setAxis(Axis::Column);
-
-    topBar_.init("Display");
-    setTopBar(&topBar_);
-
     for (uint8_t i = 0; i < RowCount; i++) {
         items_[i].label = kLabels[i];
         items_[i].value = bufs_[i];
-        /* Seed from the live settings so no row starts blank (last_'s 0xFF
-         * sentinel would otherwise alias a real value like contrast = 255). */
-        const uint8_t v = curValue(i);
-        writeValueText(i, v);
-        last_[i] = v;
     }
+    buildList("Display", items_, RowCount);
 
-    list_.setItems(items_, RowCount);
-    list_.setContentPad(4);
-    list_.setFlag(FLAG_FOCUSABLE, true);
-    list_.setGrow(1);
-
-    root_.addChild(&topBar_);
-    root_.addChild(&list_);
-    screen_.addChild(&root_);
-    root_.onLayout();
-    screen_.focusFirst();
-
-    screen_.markAllDirty();
+    /* Seed the value strings and the change-gate from the live settings so no
+     * row starts blank (last_'s 0xFF sentinel would otherwise alias a real value
+     * like contrast = 255). */
+    for (uint8_t i = 0; i < RowCount; i++) {
+        refreshValue(i);
+        last_[i] = curValue(i);
+    }
 }
 
 uint8_t DisplayView::curValue(uint8_t row) const
@@ -129,7 +111,7 @@ void DisplayView::applyValue(uint8_t row, uint8_t v)
     }
 }
 
-void DisplayView::writeValueText(uint8_t row, uint8_t v)
+void DisplayView::formatValue(uint8_t row, char *out, size_t cap)
 {
     /* Standby-timer labels, mirroring the classic display_timer_values table. */
     static const char *const kTimerLabels[] = {
@@ -138,50 +120,31 @@ void DisplayView::writeValueText(uint8_t row, uint8_t v)
         "15 min", "30 min", "45 min", "1 hour",
     };
 
-    char inner[16];
+    const uint8_t v = curValue(row);
     if ((row == RowVox) && (v == 0u))
-        snprintf(inner, sizeof(inner), "Off");
+        snprintf(out, cap, "Off");
     else if (row == RowSquelch)
-        snprintf(inner, sizeof(inner), "S%u", v);
+        snprintf(out, cap, "S%u", v);
     else if (row == RowTimer)
-        snprintf(inner, sizeof(inner), "%s", kTimerLabels[(v < 16u) ? v : 0u]);
+        snprintf(out, cap, "%s", kTimerLabels[(v < 16u) ? v : 0u]);
     else if (row == RowBattery)
-        snprintf(inner, sizeof(inner), "%s", v ? "Icon" : "Percent");
+        snprintf(out, cap, "%s", v ? "Icon" : "Percent");
 #ifdef CONFIG_PIX_FMT_RGB565
     else if (row == RowTheme)
-        snprintf(inner, sizeof(inner), "%s", v ? "High Contrast" : "Standard");
+        snprintf(out, cap, "%s", v ? "High Contrast" : "Standard");
     else if (row == RowText)
-        snprintf(inner, sizeof(inner), "%s", v ? "Crisp" : "Smooth");
+        snprintf(out, cap, "%s", v ? "Crisp" : "Smooth");
 #endif
     else
-        snprintf(inner, sizeof(inner), "%u", v);
-
-    /* In edit mode the active row's value is bracketed to signal it is live, and
-     * spoken so the change is heard per step (label was announced on nav). */
-    if (editing_ && (row == editRow_)) {
-        snprintf(bufs_[row], sizeof(bufs_[row]), "<%s>", inner);
-        vpSay(inner);
-    } else {
-        snprintf(bufs_[row], sizeof(bufs_[row]), "%s", inner);
-    }
+        snprintf(out, cap, "%u", v);
 }
 
-void DisplayView::beginEdit()
+void DisplayView::setValueText(uint8_t row, const char *s)
 {
-    editRow_ = (uint8_t)list_.selected();
-    editing_ = true;
-    writeValueText(editRow_, curValue(editRow_));
-    list_.invalidate();
+    snprintf(bufs_[row], sizeof(bufs_[row]), "%s", s);
 }
 
-void DisplayView::endEdit()
-{
-    editing_ = false;
-    writeValueText(editRow_, curValue(editRow_));
-    list_.invalidate();
-}
-
-void DisplayView::adjust(int dir)
+void DisplayView::onAdjust(uint8_t row, int dir)
 {
     static const Range kRanges[RowCount] = {
         { 5u, 100u, 5u }, //< Brightness
@@ -195,18 +158,16 @@ void DisplayView::adjust(int dir)
         { 0u, 1u, 1u },   //< Text (Smooth / Crisp)
 #endif
     };
-    const Range &r = kRanges[editRow_];
+    const Range &r = kRanges[row];
 
-    int v = (int)curValue(editRow_) + dir * (int)r.step;
+    int v = (int)curValue(row) + dir * (int)r.step;
     if (v < (int)r.min)
         v = r.min;
     if (v > (int)r.max)
         v = r.max;
 
-    applyValue(editRow_, (uint8_t)v);
-    last_[editRow_] = (uint8_t)v; /* keep syncFromState from reformatting */
-    writeValueText(editRow_, (uint8_t)v);
-    list_.invalidate();
+    applyValue(row, (uint8_t)v);
+    last_[row] = (uint8_t)v; /* keep syncFromState from reformatting */
 }
 
 void DisplayView::syncFromState(const state_t &s)
@@ -235,47 +196,13 @@ void DisplayView::syncFromState(const state_t &s)
         if (vals[i] == last_[i])
             continue;
 
-        writeValueText(i, vals[i]);
+        refreshValue(i);
         last_[i] = vals[i];
         changed = true;
     }
 
     if (changed)
         list_.invalidate();
-}
-
-NavIntent DisplayView::onEvent(const Event &e)
-{
-    if (editing_) {
-        int dir = 0;
-        if (e.kind == EvKind::Encoder) {
-            dir = e.encoder;
-        } else if (e.kind == EvKind::Key) {
-            if ((e.keys & (KEY_ENTER | KEY_ESC)) != 0u) {
-                endEdit();
-                return NavIntent::none();
-            }
-            if ((e.keys & (KEY_UP | KEY_RIGHT)) != 0u)
-                dir = +1;
-            else if ((e.keys & (KEY_DOWN | KEY_LEFT)) != 0u)
-                dir = -1;
-        }
-        if (dir != 0)
-            adjust(dir);
-        return NavIntent::none(); /* swallow all input while editing */
-    }
-
-    if (e.kind == EvKind::Key) {
-        if ((e.keys & KEY_ESC) != 0u)
-            return NavIntent::pop();
-        if ((e.keys & KEY_ENTER) != 0u) {
-            beginEdit();
-            return NavIntent::none();
-        }
-    }
-
-    screen_.dispatch(e);
-    return NavIntent::none();
 }
 
 } // namespace ortxui
