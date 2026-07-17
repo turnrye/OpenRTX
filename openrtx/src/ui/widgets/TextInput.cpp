@@ -545,8 +545,8 @@ TextInput::KeyResult TextInput::handleKey(uint32_t keys, long long nowTick)
     }
     if ((keys & KEY_HASH) != 0u) {
         if (slotMode_)
-            return KeyResult::NotHandled; /* no insert mode for fixed slots */
-        toggleEditMode();
+            return KeyResult::NotHandled; /* '#' is not a slot command */
+        clear();
         return KeyResult::Editing;
     }
     const uint32_t digits = keys & KBD_NUM_MASK;

@@ -220,6 +220,11 @@ bool M17View::onEditEvent(const Event &e)
             callsignConfirm();
         } else if ((k & KEY_ESC) != 0u) {
             endEdit();
+        } else if (!kbdSpaceOnHash() && ((k & KEY_HASH) != 0u)) {
+            /* # clears the field (unified across the text editors). */
+            callsign_.clear();
+            refreshCustom(RowCallsign);
+            announceCursorChar();
         } else if ((k & KBD_CHAR_MASK) != 0u) {
             /* Numeric-keypad multi-tap; '*' backspaces. */
             const uint8_t ki =

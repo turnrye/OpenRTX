@@ -79,9 +79,7 @@ void TextInputView::open(const char *title, char *dst, uint16_t cap,
                      TextInput::CursorStyle::Block, f);
     field_.setMultiTap(tap);
     field_.begin();
-    /* Every session starts in the familiar overtype model; the user opts into
-     * insert with '#'. */
-    field_.setEditMode(TextInput::EditMode::Overtype);
+    field_.setEditMode(TextInput::EditMode::Overtype); /* the only model now */
     refreshHint();
 
     screen_.markAllDirty();
@@ -112,18 +110,13 @@ void TextInputView::afterEdit()
 void TextInputView::refreshHint()
 {
     const bool regular = (sizeClass() == SizeClass::Regular);
-    const bool ins = (field_.editMode() == TextInput::EditMode::Insert);
-    /* '#' toggles insert/overtype, but only where it isn't the space key. The
-     * hint's mode label names the mode the toggle switches *to*; the cursor
-     * shape (block vs caret) shows the mode you are in now. */
-    const bool canToggle = kbdHasNumeric() && !kbdSpaceOnHash();
+    /* Where '#' is a command key (not the space key) it clears the field. */
+    const bool canClear = kbdHasNumeric() && !kbdSpaceOnHash();
 
     if (kbdHasNumeric()) {
-        if (canToggle)
-            hint_.setText(regular ?
-                              (ins ? "2-9 *:del 0:sp   #:Overtype" :
-                                     "2-9 *:del 0:sp   #:Insert") :
-                              (ins ? "2-9 *:del  #:Ovr" : "2-9 *:del  #:Ins"));
+        if (canClear)
+            hint_.setText(regular ? "2-9 *:del 0:sp   #:clear" :
+                                    "2-9 *:del  #:clr");
         else
             hint_.setText(regular ? "2-9:type  *:del  #:space" :
                                     "2-9 *:del #sp");
@@ -180,13 +173,12 @@ NavIntent TextInputView::onEvent(const Event &e)
     if ((k & KEY_ESC) != 0u)
         return NavIntent::pop();
 
-    /* '#' toggles insert / overtype, but only where it isn't the space key
-     * (otherwise it stays space and falls through to multi-tap below). This is
-     * checked before the multi-tap block, which would otherwise consume '#'. */
+    /* '#' clears the field, but only where it isn't the space key (otherwise it
+     * stays space and falls through to multi-tap below). Checked before the
+     * multi-tap block, which would otherwise consume '#'. */
     if (!kbdSpaceOnHash() && ((k & KEY_HASH) != 0u)) {
         field_.commitPending();
-        field_.toggleEditMode();
-        refreshHint();
+        field_.clear();
         afterEdit();
         return NavIntent::none();
     }

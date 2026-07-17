@@ -152,8 +152,8 @@ public:
 
     /**
      * Centralized key contract so every editor behaves identically: '*' =
-     * backspace, '#' = insert/overtype toggle (text mode only), ENTER = validate
-     * + commit, ESC = cancel, digits = type (multi-tap in text mode, slot fill in
+     * backspace, '#' = clear the field (text mode only), ENTER = validate +
+     * commit, ESC = cancel, digits = type (multi-tap in text mode, slot fill in
      * slot mode), LEFT/RIGHT = move cursor, UP/DOWN = cycle the char (text mode).
      * Keys the widget does not own (UP/DOWN in slot mode, e.g. an RX/TX field
      * switch) return NotHandled so the host view can act on them.

@@ -924,10 +924,12 @@ NavIntent VfoView::onDstEditEvent(const Event &e)
             endDstEdit(true);
         else if ((k & KEY_ESC) != 0u)
             endDstEdit(false);
-        else if ((k & KEY_HASH) != 0u) {
-            /* # clears the destination and exits (classic parity). */
+        else if (!kbdSpaceOnHash() && ((k & KEY_HASH) != 0u)) {
+            /* # clears the field (unified across the text editors); ENTER then
+             * commits an empty destination as @ALL. */
             dst_.clear();
-            endDstEdit(true);
+            renderDstEdit();
+            announceDstChar();
         } else if ((k & KBD_CHAR_MASK) != 0u) {
             /* Numeric-keypad multi-tap (# handled above); '*' backspaces. */
             const uint8_t ki =
