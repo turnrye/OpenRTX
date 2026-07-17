@@ -23,9 +23,6 @@ namespace ortxui
 
 namespace
 {
-/* dd/mm/yy hh:mm — seconds are fixed at 00, matching the classic editor. */
-constexpr uint8_t kDigits = 10;
-
 /* KEY_0..KEY_9 occupy bits 0..9, so a set digit bit's position is its value. */
 constexpr uint32_t kDigitMask = 0x03FFu;
 } // namespace
@@ -127,79 +124,27 @@ void TimeDateView::announce()
 void TimeDateView::beginEdit()
 {
     editing_ = true;
-    pos_ = 0;
-    memset(&edit_, 0, sizeof(edit_));
-    /* Placeholders; seconds are not editable (fixed 00). */
-    strcpy(dateBuf_, "__/__/__");
-    strcpy(timeBuf_, "__:__:00");
+    /* 10 blank digit slots (dd mm yy hh mm); '*' backspaces, digits fill left to
+     * right. Seconds are not editable (fixed 00). */
+    input_.configureSlots(inputBuf_, sizeof(inputBuf_), "9999999999", '_',
+                          TextInput::CursorStyle::Bracket, FONT_SIZE_8PT);
     hint_.setText("dd/mm/yy hh:mm");
     hint_.invalidate();
     refreshEdit();
 }
 
-void TimeDateView::addDigit(uint8_t digit)
-{
-    if (pos_ >= kDigits)
-        return;
-    pos_++;
-
-    /* Place the typed character into the display buffer, skipping the fixed
-     * separators (classic _ui_drawSettingsTimeDateSet layout). */
-    const char c = static_cast<char>('0' + digit);
-    if (pos_ <= 6) {
-        uint8_t idx = static_cast<uint8_t>(pos_ - 1);
-        if (pos_ > 2)
-            idx++; /* skip the first '/' */
-        if (pos_ > 4)
-            idx++; /* skip the second '/' */
-        dateBuf_[idx] = c;
-    } else {
-        uint8_t idx = static_cast<uint8_t>(pos_ - 7);
-        if (pos_ > 8)
-            idx++; /* skip the ':' */
-        timeBuf_[idx] = c;
-    }
-
-    /* Accumulate into the datetime (tens then ones per field). */
-    switch (pos_) {
-        case 1:
-            edit_.date = static_cast<int8_t>(digit * 10);
-            break;
-        case 2:
-            edit_.date = static_cast<int8_t>(edit_.date + digit);
-            break;
-        case 3:
-            edit_.month = static_cast<int8_t>(digit * 10);
-            break;
-        case 4:
-            edit_.month = static_cast<int8_t>(edit_.month + digit);
-            break;
-        case 5:
-            edit_.year = static_cast<uint8_t>(digit * 10);
-            break;
-        case 6:
-            edit_.year = static_cast<uint8_t>(edit_.year + digit);
-            break;
-        case 7:
-            edit_.hour = static_cast<int8_t>(digit * 10);
-            break;
-        case 8:
-            edit_.hour = static_cast<int8_t>(edit_.hour + digit);
-            break;
-        case 9:
-            edit_.minute = static_cast<int8_t>(digit * 10);
-            break;
-        case 10:
-            edit_.minute = static_cast<int8_t>(edit_.minute + digit);
-            break;
-        default:
-            break;
-    }
-    refreshEdit();
-}
-
 void TimeDateView::refreshEdit()
 {
+    /* Compose the two labels from the slots, skipping the fixed separators and
+     * showing '_' for an un-entered slot. */
+    auto d = [&](uint8_t o) -> char {
+        const int v = input_.slotDigit(o);
+        return (v >= 0) ? static_cast<char>('0' + v) : '_';
+    };
+    snprintf(dateBuf_, sizeof(dateBuf_), "%c%c/%c%c/%c%c", d(0), d(1), d(2),
+             d(3), d(4), d(5));
+    snprintf(timeBuf_, sizeof(timeBuf_), "%c%c:%c%c:00", d(6), d(7), d(8),
+             d(9));
     dateLabel_.setText(dateBuf_);
     timeLabel_.setText(timeBuf_);
     dateLabel_.invalidate();
@@ -209,7 +154,15 @@ void TimeDateView::refreshEdit()
 void TimeDateView::commit()
 {
     /* The user entered a LOCAL time; store the equivalent UTC. */
-    const datetime_t utc = localTimeToUtc(edit_, state.settings.utc_timezone);
+    auto d = [&](uint8_t o) { return input_.slotDigit(o); };
+    datetime_t local = {};
+    local.date = static_cast<int8_t>(d(0) * 10 + d(1));
+    local.month = static_cast<int8_t>(d(2) * 10 + d(3));
+    local.year = static_cast<uint8_t>(d(4) * 10 + d(5));
+    local.hour = static_cast<int8_t>(d(6) * 10 + d(7));
+    local.minute = static_cast<int8_t>(d(8) * 10 + d(9));
+    local.second = 0;
+    const datetime_t utc = localTimeToUtc(local, state.settings.utc_timezone);
     platform_setTime(utc);
     state.time = utc;
     editing_ = false;
@@ -223,16 +176,19 @@ NavIntent TimeDateView::onEvent(const Event &e)
     if (editing_) {
         if (e.kind != EvKind::Key)
             return NavIntent::none();
-        if ((e.keys & KEY_ESC) != 0u) {
+        const uint32_t k = e.keys;
+        if ((k & KEY_ESC) != 0u) {
             editing_ = false;
             hint_.setText("ENTER=set");
             hint_.invalidate();
             showDisplay(state, true);
-        } else if ((e.keys & KEY_ENTER) != 0u) {
-            if (pos_ >= kDigits)
+        } else if ((k & KEY_ENTER) != 0u) {
+            if (input_.filledSlots() == input_.slotCount())
                 commit(); /* only a complete entry is applied */
-        } else if ((e.keys & kDigitMask) != 0u) {
-            addDigit(static_cast<uint8_t>(__builtin_ctz(e.keys & kDigitMask)));
+        } else if (((k & kDigitMask) != 0u) || ((k & KEY_STAR) != 0u)) {
+            /* Digit fills the next slot, '*' backspaces -- the shared contract. */
+            input_.handleKey(k, 0);
+            refreshEdit();
         }
         return NavIntent::none();
     }

@@ -11,6 +11,7 @@
 #include "layout/Flex.hpp"
 #include "widgets/Widgets.hpp"
 #include "widgets/TopBar.hpp"
+#include "widgets/TextInput.hpp"
 #include "core/state.h"
 #include "core/datetime.h"
 
@@ -43,7 +44,6 @@ public:
 private:
     void showDisplay(const state_t &s, bool force);
     void beginEdit();
-    void addDigit(uint8_t digit);
     void commit();
     void refreshEdit();
 
@@ -56,8 +56,10 @@ private:
     Label hint_;
 
     bool editing_ = false;
-    uint8_t pos_ = 0;            //< digits entered so far (0..kDigits)
-    datetime_t edit_ = {};       //< accumulated local time under edit
+    /* Digit entry on the shared TextInput slot engine: 10 slots (dd mm yy hh mm),
+     * seconds fixed at 00. Gains '*' backspace over the old positional filler. */
+    TextInput input_;
+    char inputBuf_[12] = { 0 };
     char dateBuf_[16] = { 0 };   //< "dd/mm/yy" with '_' placeholders
     char timeBuf_[16] = { 0 };   //< "hh:mm:00" with '_' placeholders
     char dispCache_[32] = { 1 }; //< change-gate for the display-mode strings
