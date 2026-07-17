@@ -23,8 +23,9 @@ namespace ortxui
  * menu for the current channel:
  *  - Offset: the TX/RX split. ENTER opens a keypad entry (value shown as
  *    <N kHz>), pre-filled with the current offset so re-selecting preserves it;
- *    digit keys retype it, '*' backspaces, ENTER applies it as tx = rx +/-
- *    offset (keeping the current direction), ESC cancels.
+ *    digit keys retype it, '*' backspaces, UP/DOWN or the knob nudge it by the
+ *    tuning step (like Step), ENTER applies it as tx = rx +/- offset (keeping the
+ *    current direction), ESC cancels.
  *  - Direction: '+' or '-'. ENTER opens edit; UP/DOWN flips the split sign.
  *  - Step: the tuning step; ENTER opens edit; UP/DOWN cycles freq_steps.
  *
@@ -54,10 +55,12 @@ private:
     void writeValueText(uint8_t row);
     void beginEdit();
     void endEdit();
-    void adjust(int dir); //< cycle edit (Direction/Step)
-    void offsetApply();   //< commit tx = rx +/- the entered offset
+    void adjust(int dir);  //< cycle edit (Direction/Step)
+    void
+    offsetAdjust(int dir); //< nudge the offset by the tuning step (knob/UP)
+    void offsetApply();    //< commit tx = rx +/- the entered offset
     uint32_t
-    offsetKhz() const;    //< the entered offset (filled slots as a decimal)
+    offsetKhz() const;     //< the entered offset (filled slots as a decimal)
 
     Screen screen_;
     Flex root_;

@@ -215,6 +215,26 @@ uint32_t RadioView::offsetKhz() const
     return v;
 }
 
+void RadioView::offsetAdjust(int dir)
+{
+    /* Nudge the offset magnitude by the current tuning step (integer kHz, min 1),
+     * matching the Step field's knob behaviour; the keypad and '*' still work. */
+    uint32_t stepKhz = freq_steps[state.step_index] / 1000u;
+    if (stepKhz == 0u)
+        stepKhz = 1u;
+
+    uint32_t v = offsetKhz();
+    if (dir > 0)
+        v = (v + stepKhz > 999999u) ? 999999u : (v + stepKhz);
+    else
+        v = (v > stepKhz) ? (v - stepKhz) : 0u;
+
+    setSlotsDecimal(offsetInput_, v);
+    offsetPristine_ = true; /* the nudged value becomes a fresh pre-fill */
+    writeValueText(RowOffset);
+    list_.invalidate();
+}
+
 void RadioView::offsetApply()
 {
     /* Apply the entered magnitude in the current direction (keeping a '-' split
@@ -268,17 +288,28 @@ NavIntent RadioView::onEvent(const Event &e)
     if (editing_) {
         /* Offset uses keypad entry; the other rows cycle with up/down. */
         if (editRow_ == RowOffset) {
-            if (e.kind == EvKind::Key) {
+            int dir = 0;
+            if (e.kind == EvKind::Encoder) {
+                dir = e.encoder; /* knob nudges the offset by the tuning step */
+            } else if (e.kind == EvKind::Key) {
                 const uint32_t k = e.keys;
                 if ((k & KEY_ENTER) != 0u) {
                     offsetApply();
-                } else if ((k & KEY_ESC) != 0u) {
+                    return NavIntent::none();
+                }
+                if ((k & KEY_ESC) != 0u) {
                     endEdit();
+                    return NavIntent::none();
+                }
+                if ((k & (KEY_UP | KEY_RIGHT)) != 0u) {
+                    dir = +1; /* like the Step field */
+                } else if ((k & (KEY_DOWN | KEY_LEFT)) != 0u) {
+                    dir = -1;
                 } else {
                     /* Digits retype the value, '*' backspaces -- through the
-                     * shared key contract, so delete is '*' here as everywhere
-                     * (arrows no longer delete). The pre-filled value is pristine
-                     * until the first digit clears it. */
+                     * shared key contract, so delete is '*' here as everywhere.
+                     * The pre-filled value is pristine until the first digit
+                     * clears it. */
                     const bool digit = ((k & kDigitMask) != 0u);
                     if (digit || ((k & KEY_STAR) != 0u)) {
                         if (offsetPristine_) {
@@ -290,8 +321,11 @@ NavIntent RadioView::onEvent(const Event &e)
                         writeValueText(RowOffset);
                         list_.invalidate();
                     }
+                    return NavIntent::none();
                 }
             }
+            if (dir != 0)
+                offsetAdjust(dir);
             return NavIntent::none();
         }
 
