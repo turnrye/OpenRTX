@@ -53,6 +53,9 @@ extern const struct Adc adc1;
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/* Device supports DMR mode */
+#define CONFIG_DMR
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
