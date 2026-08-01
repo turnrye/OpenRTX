@@ -90,6 +90,13 @@ void *ui_threadFunc(void *arg)
             strncpy(rtx_cfg.source_address,      state.settings.callsign, 10);
             strncpy(rtx_cfg.destination_address, state.settings.m17_dest, 10);
 
+            // Copy new DMR configuration
+            rtx_cfg.dmrId        = state.settings.dmr_id;
+            rtx_cfg.dmrTalkgroup = state.settings.dmr_talkgroup;
+            rtx_cfg.dmrColorCode = state.settings.dmr_colorcode;
+            rtx_cfg.dmrTimeslot  = state.settings.dmr_timeslot;
+            rtx_cfg.dmrRxPromisc = state.settings.dmr_rx_promisc;
+
             pthread_mutex_unlock(&rtx_mutex);
 
             rtx_configure(&rtx_cfg);
