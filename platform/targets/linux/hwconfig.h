@@ -27,6 +27,9 @@ enum Mod17Flags {
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/* Device supports DMR mode */
+#define CONFIG_DMR
+
 #ifdef __cplusplus
 }
 #endif
