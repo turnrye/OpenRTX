@@ -120,11 +120,44 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             }
             break;
 
+        #ifdef CONFIG_DMR
         case OPMODE_DMR:
-            // Print talkgroup
-            gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                    color_white, "DMR TG%s", "");
+        {
+            rtxStatus_t rtxStatus = rtx_getCurrentStatus();
+
+            if(rtxStatus.dmrLcValid)
+            {
+                // Destination talkgroup of the call being received
+                gfx_drawSymbol(layout.line2_pos, layout.line2_symbol_size,
+                               TEXT_ALIGN_LEFT, color_white,
+                               SYMBOL_CALL_RECEIVED);
+
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "%s%lu",
+                          (rtxStatus.dmrRxGroupCall) ? "TG" : "",
+                          (unsigned long) rtxStatus.dmrRxDstId);
+
+                // Source DMR ID of the station being received
+                gfx_drawSymbol(layout.line1_pos, layout.line1_symbol_size,
+                               TEXT_ALIGN_LEFT, color_white, SYMBOL_CALL_MADE);
+
+                gfx_print(layout.line1_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "%lu",
+                          (unsigned long) rtxStatus.dmrRxSrcId);
+            }
+            else
+            {
+                // Idle: show the configured talkgroup and color code. Lines 3
+                // and 4 are taken by the frequency, so everything has to fit
+                // on line 2.
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "DMR TG%lu CC%d",
+                          (unsigned long) rtxStatus.dmrTalkgroup,
+                          rtxStatus.dmrColorCode);
+            }
             break;
+        }
+        #endif
 
         #ifdef CONFIG_M17
         case OPMODE_M17:
