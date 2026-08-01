@@ -95,5 +95,6 @@ const stringsTable_t spanishStrings =
     .radio             = "Radio",
     .CAN               = "CAN",
     .canRxCheck        = "CAN RX Check",
+    .dmrsettings       = "Ajustes de DMR",
 };
 #endif  // SPANISHSTRINGS_H

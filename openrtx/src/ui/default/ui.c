@@ -98,6 +98,7 @@ extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
 #endif
 extern void _ui_drawSettingsDisplay(ui_state_t* ui_state);
 extern void _ui_drawSettingsM17(ui_state_t* ui_state);
+extern void _ui_drawSettingsDMR(ui_state_t* ui_state);
 extern void _ui_drawSettingsFM(ui_state_t* ui_state);
 extern void _ui_drawSettingsVoicePrompts(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
@@ -130,6 +131,9 @@ const char *settings_items[] =
     "Radio",
 #ifdef CONFIG_M17
     "M17",
+#endif
+#ifdef CONFIG_DMR
+    "DMR",
 #endif
     "FM",
     "Accessibility",
@@ -173,6 +177,16 @@ const char * settings_m17_items[] =
     "CAN",
     "CAN RX Check"
 };
+
+#ifdef CONFIG_DMR
+const char * settings_dmr_items[] =
+{
+    "DMR ID",
+    "Talkgroup",
+    "Color Code",
+    "Timeslot"
+};
+#endif
 
 const char* settings_fm_items[] =
 {
@@ -263,6 +277,9 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 const uint8_t settings_radio_num = sizeof(settings_radio_items)/sizeof(settings_radio_items[0]);
 #ifdef CONFIG_M17
 const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_items[0]);
+#endif
+#ifdef CONFIG_DMR
+const uint8_t settings_dmr_num = sizeof(settings_dmr_items)/sizeof(settings_dmr_items[0]);
 #endif
 const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_items[0]);
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
@@ -792,6 +809,14 @@ static inline void _ui_changeM17Can(int variation)
 }
 #endif
 
+#ifdef CONFIG_DMR
+static inline void _ui_changeDmrColorCode(int variation)
+{
+    uint8_t cc = state.settings.dmr_colorcode;
+    state.settings.dmr_colorcode = (cc + variation + 16) % 16;
+}
+#endif
+
 static void _ui_changeVoiceLevel(int variation)
 {
     if ((state.settings.vpLevel == vpNone && variation < 0) ||
@@ -993,14 +1018,30 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
             break;
         case 5:
             // Cycle through radio modes
-            #ifdef CONFIG_M17
-            if(state.channel.mode == OPMODE_FM)
-                state.channel.mode = OPMODE_M17;
-            else if(state.channel.mode == OPMODE_M17)
-                state.channel.mode = OPMODE_FM;
-            else //catch any invalid states so they don't get locked out
-            #endif
-                state.channel.mode = OPMODE_FM;
+            switch(state.channel.mode)
+            {
+                case OPMODE_FM:
+                    #if defined(CONFIG_M17)
+                    state.channel.mode = OPMODE_M17;
+                    #elif defined(CONFIG_DMR)
+                    state.channel.mode = OPMODE_DMR;
+                    #endif
+                    break;
+
+                #ifdef CONFIG_M17
+                case OPMODE_M17:
+                    #ifdef CONFIG_DMR
+                    state.channel.mode = OPMODE_DMR;
+                    #else
+                    state.channel.mode = OPMODE_FM;
+                    #endif
+                    break;
+                #endif
+
+                default:
+                    // Catch any invalid state so it does not get locked out
+                    state.channel.mode = OPMODE_FM;
+            }
             *sync_rtx = true;
             vp_announceRadioMode(state.channel.mode, queueFlags);
             break;
@@ -1970,6 +2011,11 @@ void ui_updateFSM(bool *sync_rtx)
                             state.ui_screen = SETTINGS_M17;
                             break;
 #endif
+#ifdef CONFIG_DMR
+                        case S_DMR:
+                            state.ui_screen = SETTINGS_DMR;
+                            break;
+#endif
                         case S_FM:
                             state.ui_screen = SETTINGS_FM;
                             break;
@@ -2450,6 +2496,111 @@ void ui_updateFSM(bool *sync_rtx)
                 }
                 break;
 #endif
+#ifdef CONFIG_DMR
+            // DMR Settings
+            case SETTINGS_DMR:
+                if(ui_state.edit_mode)
+                {
+                    switch(ui_state.menu_selected)
+                    {
+                        case DMR_ID:
+                        case DMR_TALKGROUP:
+                            // Handle numeric input for DMR ID and talkgroup
+#if defined(CONFIG_UI_NO_KEYBOARD)
+                            if(msg.long_press && msg.keys & KEY_ENTER)
+                            {
+                                // Long press on CONFIG_UI_NO_KEYBOARD causes
+                                // digits to advance by one
+                                ui_state.new_dmr_value /= 10;
+#else
+                            if(msg.keys & KEY_ENTER)
+                            {
+#endif
+                                if(ui_state.menu_selected == DMR_ID)
+                                    state.settings.dmr_id = ui_state.new_dmr_value;
+                                else
+                                    state.settings.dmr_talkgroup = ui_state.new_dmr_value;
+
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                            }
+                            else if(msg.keys & KEY_ESC)
+                            {
+                                // Discard the value being typed
+                                ui_state.edit_mode = false;
+                            }
+                            else if(msg.keys & KEY_UP   || msg.keys & KEY_DOWN ||
+                                    msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                            {
+                                _ui_numberInputDel(&ui_state.new_dmr_value);
+                            }
+#if defined(CONFIG_UI_NO_KEYBOARD)
+                            else if(msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT ||
+                                    msg.keys & KEY_ENTER)
+#else
+                            else if(input_isNumberPressed(msg))
+#endif
+                            {
+                                _ui_numberInputKeypad(&ui_state.new_dmr_value, msg);
+                                ui_state.input_position += 1;
+                            }
+                            break;
+
+                        case DMR_COLORCODE:
+                            if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT ||
+                               msg.keys & KEY_LEFT)
+                                _ui_changeDmrColorCode(-1);
+                            else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT ||
+                                    msg.keys & KEY_RIGHT)
+                                _ui_changeDmrColorCode(+1);
+                            else if(msg.keys & KEY_ENTER)
+                            {
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                            }
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
+
+                        case DMR_TIMESLOT:
+                            if(msg.keys & KEY_UP   || msg.keys & KEY_DOWN  ||
+                               msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                               msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
+                            {
+                                state.settings.dmr_timeslot =
+                                    !state.settings.dmr_timeslot;
+                            }
+                            else if(msg.keys & KEY_ENTER)
+                            {
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                            }
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
+                    }
+                }
+                else
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        // Enable edit mode, starting numeric entry from scratch
+                        ui_state.edit_mode      = true;
+                        ui_state.new_dmr_value  = 0;
+                        ui_state.input_position = 0;
+                    }
+                    else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                        _ui_menuUp(settings_dmr_num);
+                    else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                        _ui_menuDown(settings_dmr_num);
+                    else if(msg.keys & KEY_ESC)
+                    {
+                        *sync_rtx = true;
+                        _ui_menuBack(MENU_SETTINGS);
+                    }
+                }
+                break;
+#endif
             case SETTINGS_FM:
                 if (ui_state.edit_mode)
                 {
@@ -2733,6 +2884,12 @@ bool ui_updateGUI()
         // M17 settings screen
         case SETTINGS_M17:
             _ui_drawSettingsM17(&ui_state);
+            break;
+#endif
+#ifdef CONFIG_DMR
+        // DMR settings screen
+        case SETTINGS_DMR:
+            _ui_drawSettingsDMR(&ui_state);
             break;
 #endif
         // FM settings screen
