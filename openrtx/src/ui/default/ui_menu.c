@@ -450,6 +450,45 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
 }
 #endif
 
+#ifdef CONFIG_DMR
+int _ui_getDMREntryName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= settings_dmr_num) return -1;
+    sniprintf(buf, max_len, "%s", settings_dmr_items[index]);
+    return 0;
+}
+
+int _ui_getDMRValueName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= settings_dmr_num)
+        return -1;
+
+    switch(index)
+    {
+        case DMR_ID:
+            sniprintf(buf, max_len, "%lu",
+                      (unsigned long) last_state.settings.dmr_id);
+            break;
+
+        case DMR_TALKGROUP:
+            sniprintf(buf, max_len, "%lu",
+                      (unsigned long) last_state.settings.dmr_talkgroup);
+            break;
+
+        case DMR_COLORCODE:
+            sniprintf(buf, max_len, "%d", last_state.settings.dmr_colorcode);
+            break;
+
+        case DMR_TIMESLOT:
+            sniprintf(buf, max_len, "TS%d",
+                      last_state.settings.dmr_timeslot + 1);
+            break;
+    }
+
+    return 0;
+}
+#endif
+
 int _ui_getFMEntryName(char* buf, uint8_t max_len, uint8_t index)
 {
     if (index >= settings_fm_num)
@@ -1041,6 +1080,46 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
     {
         _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getM17EntryName,
                               _ui_getM17ValueName);
+    }
+}
+#endif
+
+#ifdef CONFIG_DMR
+void _ui_drawSettingsDMR(ui_state_t* ui_state)
+{
+    gfx_clearScreen();
+
+    // Print "DMR Settings" on top bar
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+              color_white, currentLanguage->dmrsettings);
+
+    // Handle the special case where a DMR ID or talkgroup is being input
+    bool numberInput = (ui_state->menu_selected == DMR_ID) ||
+                       (ui_state->menu_selected == DMR_TALKGROUP);
+
+    if(numberInput && ui_state->edit_mode)
+    {
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+                               (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.menu_font,
+                      TEXT_ALIGN_LEFT, color_white,
+                      settings_dmr_items[ui_state->menu_selected]);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+
+        // Print the number being typed
+        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.input_font,
+                      TEXT_ALIGN_CENTER, color_white, "%u",
+                      (unsigned int) ui_state->new_dmr_value);
+    }
+    else
+    {
+        _ui_drawMenuListValue(ui_state, ui_state->menu_selected,
+                              _ui_getDMREntryName, _ui_getDMRValueName);
     }
 }
 #endif

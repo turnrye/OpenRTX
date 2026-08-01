@@ -49,6 +49,7 @@ enum uiScreen
     SETTINGS_GPS,
     SETTINGS_RADIO,
     SETTINGS_M17,
+    SETTINGS_DMR,
     SETTINGS_FM,
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
@@ -88,6 +89,9 @@ enum settingsItems
     S_RADIO,
 #ifdef CONFIG_M17
     S_M17,
+#endif
+#ifdef CONFIG_DMR
+    S_DMR,
 #endif
     S_FM,
     S_ACCESSIBILITY,
@@ -143,6 +147,14 @@ enum settingsM17Items
     M17_METATEXT,
     M17_CAN,
     M17_CAN_RX
+};
+
+enum settingsDMRItems
+{
+    DMR_ID = 0,
+    DMR_TALKGROUP,
+    DMR_COLORCODE,
+    DMR_TIMESLOT
 };
 
 enum settingsFMItems
@@ -229,6 +241,8 @@ typedef struct ui_state_t
 #endif
     char new_callsign[10];
     freq_t new_offset;
+    // Scratch value for DMR numeric entry (ID and talkgroup)
+    uint32_t new_dmr_value;
     // Which state to return to when we exit menu
     uint8_t last_main_state;
 #if defined(CONFIG_UI_NO_KEYBOARD)
@@ -246,6 +260,7 @@ extern const char *display_items[];
 extern const char *settings_gps_items[];
 extern const char *settings_radio_items[];
 extern const char *settings_m17_items[];
+extern const char *settings_dmr_items[];
 extern const char *settings_fm_items[];
 extern const char * settings_accessibility_items[];
 extern const char *backup_restore_items[];
@@ -257,6 +272,7 @@ extern const uint8_t display_num;
 extern const uint8_t settings_gps_num;
 extern const uint8_t settings_radio_num;
 extern const uint8_t settings_m17_num;
+extern const uint8_t settings_dmr_num;
 extern const uint8_t settings_fm_num;
 extern const uint8_t settings_accessibility_num;
 extern const uint8_t backup_restore_num;

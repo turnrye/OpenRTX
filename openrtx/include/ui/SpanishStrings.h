@@ -95,5 +95,6 @@ const stringsTable_t spanishStrings =
     .CAN               = "CAN",
     .canRxCheck        = "CAN RX Check",
     .metaText          = "Meta Txt",
+    .dmrsettings       = "Ajustes de DMR",
 };
 #endif  // SPANISHSTRINGS_H
