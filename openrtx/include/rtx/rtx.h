@@ -53,6 +53,22 @@ typedef struct
     char     M17_link[10];             /**  M17 LSF traffic originator */
     char     M17_refl[10];             /**  M17 LSF reflector module   */
     char     M17_meta_text[53];        /**< M17 Meta Text              */
+
+    uint32_t dmrId;                    /**< DMR radio ID               */
+    uint32_t dmrTalkgroup;             /**< DMR TX talkgroup           */
+
+    uint8_t  dmrColorCode  : 4,        /**< DMR color code             */
+             dmrTimeslot   : 1,        /**< DMR timeslot, 0=TS1 1=TS2  */
+             dmrRxPromisc  : 1,        /**< Accept any TG on RX        */
+             _dmrUnused    : 2;
+
+    uint32_t dmrRxSrcId;               /**< DMR last heard source ID   */
+    uint32_t dmrRxDstId;               /**< DMR last heard destination */
+
+    uint8_t  dmrRxColorCode : 4,       /**< DMR color code of last LC  */
+             dmrRxGroupCall : 1,       /**< Last LC is a group call    */
+             dmrLcValid     : 1,       /**< DMR link control is valid  */
+             _dmrRxUnused   : 2;
 }
 rtxStatus_t;
 
