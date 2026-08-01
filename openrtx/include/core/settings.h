@@ -51,6 +51,12 @@ typedef struct
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage
     bool    gpsSetTime;           // Use GPS to ajust RTC time
     char    M17_meta_text[53];    // M17 Meta Text to send
+    uint32_t dmr_id;              // Radio DMR ID, 0 when unset
+    uint32_t dmr_talkgroup;       // Default DMR TX talkgroup
+    uint8_t dmr_colorcode   : 4,  // DMR color code, 0 to 15
+            dmr_timeslot    : 1,  // DMR timeslot, 0 = TS1, 1 = TS2
+            dmr_rx_promisc  : 1,  // Accept any talkgroup on RX
+            _dmr_reserved   : 2;
 }
 __attribute__((packed)) settings_t;
 
@@ -79,6 +85,12 @@ static const settings_t default_settings =
     false,                        // Display battery icon
     false,                        // Update RTC with GPS
     "OpenRTX",                    // Default M17 meta text
+    0,                            // DMR ID unset
+    9,                            // DMR talkgroup, 9 = local
+    1,                            // DMR color code
+    1,                            // DMR timeslot, TS2
+    1,                            // Accept any talkgroup on RX
+    0,                            // not used
 };
 
 #endif /* SETTINGS_H */
