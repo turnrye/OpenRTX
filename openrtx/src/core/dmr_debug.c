@@ -27,6 +27,12 @@
 #define TAP_MAX_RECORD    48    /* Maximum payload of a binary record       */
 
 static char    buf[TAP_BUF_SIZE];
+/*
+ * Messages are formatted here rather than on the stack of whoever is logging:
+ * the rtx thread has little of it to spare. Guarded by the same mutex as the
+ * ring buffer below.
+ */
+static char    fmtBuf[TAP_LINE_SIZE];
 static size_t  head;            /* Index of the first free byte             */
 static size_t  tail;            /* Index of the first byte to be sent       */
 static size_t  used;            /* Amount of bytes waiting to be sent       */
@@ -72,10 +78,8 @@ static void tapWrite(const void *data, const size_t len)
  * Partial messages are never stored, so that the host always sees either a
  * complete line or nothing at all.
  */
-static void tapPush(const char *data, const size_t len)
+static void tapPushLocked(const char *data, const size_t len)
 {
-    pthread_mutex_lock(&mutex);
-
     if(len > (TAP_BUF_SIZE - used))
     {
         dropped += len;
@@ -90,7 +94,15 @@ static void tapPush(const char *data, const size_t len)
 
         used += len;
     }
+}
 
+/**
+ * Append a message to the buffer, taking the lock around it.
+ */
+static void tapPush(const char *data, const size_t len)
+{
+    pthread_mutex_lock(&mutex);
+    tapPushLocked(data, len);
     pthread_mutex_unlock(&mutex);
 }
 
@@ -182,26 +194,29 @@ void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
     if(dmrDebug_channelEnabled(channel) == false)
         return;
 
-    char line[TAP_LINE_SIZE];
-    int  pos = sniprintf(line, sizeof(line), "[%08lu] ", tapTimestamp());
+    pthread_mutex_lock(&mutex);
+
+    int pos = sniprintf(fmtBuf, sizeof(fmtBuf), "[%08lu] ", tapTimestamp());
 
     va_list args;
     va_start(args, fmt);
-    int num = vsniprintf(line + pos, sizeof(line) - pos - 3, fmt, args);
+    int num = vsniprintf(fmtBuf + pos, sizeof(fmtBuf) - pos - 3, fmt, args);
     va_end(args);
 
-    if(num < 0)
-        return;
+    if(num >= 0)
+    {
+        /* Account for the truncation performed by vsniprintf, if any */
+        if(num > (int)(sizeof(fmtBuf) - pos - 3))
+            num = sizeof(fmtBuf) - pos - 3;
 
-    /* Account for the truncation performed by vsniprintf, if any */
-    if(num > (int)(sizeof(line) - pos - 3))
-        num = sizeof(line) - pos - 3;
+        pos += num;
+        fmtBuf[pos++] = '\r';
+        fmtBuf[pos++] = '\n';
 
-    pos += num;
-    line[pos++] = '\r';
-    line[pos++] = '\n';
+        tapPushLocked(fmtBuf, pos);
+    }
 
-    tapPush(line, pos);
+    pthread_mutex_unlock(&mutex);
 }
 
 void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
@@ -218,26 +233,29 @@ void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
     }
 
     const uint8_t *bytes = (const uint8_t *) data;
-    char           line[TAP_LINE_SIZE];
-    uint8_t        sum = 0;
+    uint8_t        sum   = 0;
 
-    int pos = sniprintf(line, sizeof(line), "$%s %08lu ", tag,
+    pthread_mutex_lock(&mutex);
+
+    int pos = sniprintf(fmtBuf, sizeof(fmtBuf), "$%s %08lu ", tag,
                         tapTimestamp());
 
     for(size_t i = 0; i < len; i++)
     {
-        line[pos++] = hexDigits[bytes[i] >> 4];
-        line[pos++] = hexDigits[bytes[i] & 0x0F];
+        fmtBuf[pos++] = hexDigits[bytes[i] >> 4];
+        fmtBuf[pos++] = hexDigits[bytes[i] & 0x0F];
         sum += bytes[i];
     }
 
-    line[pos++] = ' ';
-    line[pos++] = hexDigits[sum >> 4];
-    line[pos++] = hexDigits[sum & 0x0F];
-    line[pos++] = '\r';
-    line[pos++] = '\n';
+    fmtBuf[pos++] = ' ';
+    fmtBuf[pos++] = hexDigits[sum >> 4];
+    fmtBuf[pos++] = hexDigits[sum & 0x0F];
+    fmtBuf[pos++] = '\r';
+    fmtBuf[pos++] = '\n';
 
-    tapPush(line, pos);
+    tapPushLocked(fmtBuf, pos);
+
+    pthread_mutex_unlock(&mutex);
 }
 
 void dmrDebug_task()
