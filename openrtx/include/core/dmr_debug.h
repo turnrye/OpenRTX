@@ -95,6 +95,19 @@ void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
                   __attribute__((format(printf, 2, 3)));
 
 /**
+ * Write a marker straight to the host link, bypassing the buffer.
+ *
+ * Ordinary messages are only handed over when the thread draining the buffer
+ * next runs, so nothing written from a step which then locks the radio up ever
+ * reaches the host. This blocks until the marker is out, which makes it usable
+ * to find out how far a bring-up got before it stopped, and unsuitable for
+ * anything else.
+ *
+ * @param msg: text of the marker.
+ */
+void dmrDebug_mark(const char *msg);
+
+/**
  * Emit a binary record, hex encoded and checksummed.
  *
  * @param channel: category the record belongs to.

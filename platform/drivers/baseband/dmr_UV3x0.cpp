@@ -181,7 +181,7 @@ void dmr_init(const uint8_t colorCode)
      * Logged in stages: if the radio does not come back, the last line which
      * made it out says which of the two halves is at fault.
      */
-    dmrDebug_log(DMR_DBG_INFO, "dmr: configuring baseband");
+    dmrDebug_mark("dmr: configuring baseband");
 
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);
@@ -195,11 +195,12 @@ void dmr_init(const uint8_t colorCode)
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
 
+    dmrDebug_mark("dmr: baseband configured");
     checkInitRegisters();
 
-    dmrDebug_log(DMR_DBG_INFO, "dmr: enabling interrupt lines");
+    dmrDebug_mark("dmr: enabling interrupt lines");
     dmrIrq_init();
-    dmrDebug_log(DMR_DBG_INFO, "dmr: receiver running");
+    dmrDebug_mark("dmr: receiver running");
 }
 
 void dmr_terminate()
