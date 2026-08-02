@@ -47,6 +47,7 @@ openrtx/include/core/chan.h
 openrtx/include/core/cps.h
 openrtx/include/core/ctcssDetector.hpp
 openrtx/include/core/datetime.h
+openrtx/include/core/dmr_debug.h
 openrtx/include/core/event.h
 openrtx/include/core/fir.hpp
 openrtx/include/core/goertzel.hpp
@@ -84,6 +85,7 @@ openrtx/include/protocols/M17/Synchronizer.hpp
 openrtx/include/protocols/M17/Utils.hpp
 openrtx/include/protocols/M17/Viterbi.hpp
 openrtx/include/rtx/OpMode.hpp
+openrtx/include/rtx/OpMode_DMR.hpp
 openrtx/include/rtx/OpMode_FM.hpp
 openrtx/include/rtx/OpMode_M17.hpp
 openrtx/include/rtx/rtx.h
@@ -100,6 +102,7 @@ openrtx/src/core/chan.c
 openrtx/src/core/cps.c
 openrtx/src/core/data_conversion.c
 openrtx/src/core/datetime.c
+openrtx/src/core/dmr_debug.c
 openrtx/src/core/gps.c
 openrtx/src/core/openrtx.c
 openrtx/src/core/queue.c
@@ -114,6 +117,7 @@ openrtx/src/protocols/M17/Golay.cpp
 openrtx/src/protocols/M17/LinkSetupFrame.cpp
 openrtx/src/protocols/M17/MetaText.cpp
 openrtx/src/protocols/M17/Modulator.cpp
+openrtx/src/rtx/OpMode_DMR.cpp
 openrtx/src/rtx/OpMode_FM.cpp
 openrtx/src/rtx/OpMode_M17.cpp
 openrtx/src/rtx/rtx.cpp
@@ -213,6 +217,11 @@ platform/drivers/baseband/HR_Cx000.cpp
 platform/drivers/baseband/HR_Cx000.h
 platform/drivers/baseband/MCP4551.c
 platform/drivers/baseband/SA8x8.c
+platform/drivers/baseband/dmr.h
+platform/drivers/baseband/dmrIrq.h
+platform/drivers/baseband/dmrIrq_UV3x0.cpp
+platform/drivers/baseband/dmr_UV3x0.cpp
+platform/drivers/baseband/dmr_linux.c
 platform/drivers/baseband/radioUtils.h
 platform/drivers/baseband/radio_CS7000.cpp
 platform/drivers/baseband/radio_GDx.cpp
