@@ -10,6 +10,7 @@
 #include "peripherals/gpio.h"
 #include "calibration/calibInfo_MDx.h"
 #include "hwconfig.h"
+#include "core/dmr_debug.h"
 #include <algorithm>
 #include "core/utils.h"
 #include "radioUtils.h"
@@ -101,9 +102,18 @@ void radio_setOpmode(const enum opmode mode)
             break;
 
         case OPMODE_DMR:
+            #if defined(CONFIG_DMR)
+            dmrDebug_mark("radio: configuring AT1846S for DMR");
+            #endif
             at1846s.setOpMode(AT1846S_OpMode::DMR);
             at1846s.setBandwidth(AT1846S_BW::_12P5);
+            #if defined(CONFIG_DMR)
+            dmrDebug_mark("radio: entering HR_C6000 dmrMode");
+            #endif
             C6000.dmrMode();                        // HR_C6000 in DMR mode
+            #if defined(CONFIG_DMR)
+            dmrDebug_mark("radio: HR_C6000 dmrMode done");
+            #endif
             break;
 
         case OPMODE_M17:

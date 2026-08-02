@@ -258,6 +258,28 @@ void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
     pthread_mutex_unlock(&mutex);
 }
 
+void dmrDebug_mark(const char *msg)
+{
+    static char mark[TAP_LINE_SIZE];
+    size_t      pos = 0;
+    size_t      i   = 0;
+
+    mark[pos++] = '<';
+    mark[pos++] = '<';
+    mark[pos++] = ' ';
+
+    while((msg[i] != '\0') && (pos < (sizeof(mark) - 2)))
+    {
+        mark[pos++] = msg[i];
+        i += 1;
+    }
+
+    mark[pos++] = '\r';
+    mark[pos++] = '\n';
+
+    tapWrite(mark, pos);
+}
+
 void dmrDebug_task()
 {
     if(initialised == false)
