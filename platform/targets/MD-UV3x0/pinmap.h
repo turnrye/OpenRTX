@@ -99,4 +99,12 @@
 #define DMR_MOSI  GPIOE,4
 #define DMR_MISO  GPIOE,5
 
+/*
+ * HR_C6000 interrupt lines, all active on the falling edge. This radio has no
+ * RF RX interrupt line, only the three below are brought out to the MCU.
+ */
+#define DMR_TS_INT  GPIOC,0
+#define DMR_SYS_INT GPIOC,1
+#define DMR_TX_INT  GPIOC,2
+
 #endif /* PINMAP_H */
