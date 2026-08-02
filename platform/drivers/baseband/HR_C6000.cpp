@@ -77,3 +77,16 @@ void HR_C6000::sendTone(const uint32_t freq, const uint8_t deviation)
     writeCfgRegister(0x60, 0x00);         // Disable FM transmission
     writeCfgRegister(0x60, 0x80);         // Enable FM transmission, start sending the tone
 }
+
+void HR_C6000::readDmrStatus(struct C6000_DmrStatus *status)
+{
+    status->intFlags   = readCfgRegister(0x82);
+    status->rxStatus   = readCfgRegister(0x51);
+    status->cach       = readCfgRegister(0x52);
+    status->syncStatus = readCfgRegister(0x5F);
+}
+
+void HR_C6000::readDmrLinkControl(uint8_t *lc)
+{
+    readPage(C6000_SpiOpModes::DATA, 0x00, lc, C6000_LC_LENGTH);
+}
