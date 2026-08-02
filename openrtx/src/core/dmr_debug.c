@@ -49,6 +49,14 @@ static long long baseTick;
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+ * Writes towards the host are serialized on their own lock: the buffer flush
+ * and the synchronous markers run on different threads, while the USB driver
+ * keeps its transfer state in a single set of variables. Two writes running
+ * at once corrupt the endpoint state and can wedge the whole device.
+ */
+static pthread_mutex_t wireMutex = PTHREAD_MUTEX_INITIALIZER;
+
 static const char hexDigits[] = "0123456789ABCDEF";
 
 /**
@@ -65,12 +73,16 @@ static unsigned long tapTimestamp()
  */
 static void tapWrite(const void *data, const size_t len)
 {
+    pthread_mutex_lock(&wireMutex);
+
 #if defined(PLATFORM_LINUX)
     ssize_t ret = write(STDOUT_FILENO, data, len);
     (void) ret;
 #else
     vcom_writeBlock(data, len);
 #endif
+
+    pthread_mutex_unlock(&wireMutex);
 }
 
 /**
