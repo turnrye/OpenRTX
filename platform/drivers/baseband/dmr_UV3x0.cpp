@@ -66,9 +66,9 @@ static void checkInitRegisters()
 
 /**
  * Report how often each interrupt line fired since the last report. With the
- * chip in active timing the timeslot line runs at about 33Hz, a count of zero
- * means the chip is not generating its slot timing or the interrupt path is
- * not working.
+ * receiver idling in passive timing the lines are expected to be quiet until
+ * a signal comes in; system events staying at zero during a transmission on
+ * frequency is the failure signature.
  */
 static void reportIrqActivity()
 {
@@ -131,6 +131,13 @@ static void handleBurst()
         return;
     }
 
+    /*
+     * A burst which passed the filters means someone is talking to us: ask
+     * for a receive in the upcoming slot as well, the same request OpenGD77
+     * issues when it accepts a transmission.
+     */
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
     dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
@@ -183,8 +190,14 @@ void dmr_init(const uint8_t colorCode)
      */
     dmrDebug_mark("dmr: configuring baseband");
 
+    /*
+     * The receiver idles in passive timing so the chip can lock to the slot
+     * clock of whoever transmits. Active timing made it free run instead:
+     * the timeslot line ticked at a steady 33Hz while a transmission on
+     * frequency produced no system events at all.
+     */
     C6000.setDmrColorCode(configuredCc);
-    C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);
+    C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
     /*
      * Restarting the slot state machine takes the reset twice before asking

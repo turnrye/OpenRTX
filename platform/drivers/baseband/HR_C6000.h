@@ -23,12 +23,15 @@ enum class C6000_SpiOpModes : uint8_t
 
 /**
  * Timing source for the DMR slots, written to configuration register 0x40.
- * In active timing the chip free runs its own slot clock, which is what a
- * direct mode contact needs, in passive timing it locks to the slots of a
- * received base station.
+ * A receiver has to lock to the slot clock of the far station and therefore
+ * idles in passive timing; active timing, where the chip free runs its own
+ * slot clock, is only for transmitting in direct mode. OpenGD77 initialises
+ * the register to 0x43 and keeps it there whenever the radio is not
+ * transmitting.
  */
 enum class C6000_DmrTiming : uint8_t
 {
+    RX_IDLE = 0x43,     ///< RX enabled, slots locked to the received signal.
     PASSIVE = 0xC3,     ///< TX and RX enabled, slots locked to a base station.
     ACTIVE  = 0xE3      ///< TX and RX enabled, chip generates its own timing.
 };
@@ -36,9 +39,11 @@ enum class C6000_DmrTiming : uint8_t
 /**
  * Bits of the slot timing register which describe the receiver. The transmit
  * enable is deliberately left out: the chip only holds it while the
- * transmitter is keyed, so it does not read back after being written.
+ * transmitter is keyed, so it does not read back after being written. The
+ * timing select bit is not part of the mask either, as it encodes the chosen
+ * timing mode rather than whether the receiver is running.
  */
-#define C6000_TIMING_RX_MASK    0x60    ///< RX enabled and timing generated.
+#define C6000_TIMING_RX_MASK    0x40    ///< RX enabled.
 
 /**
  * What the chip has to do in the upcoming slot, written to configuration
