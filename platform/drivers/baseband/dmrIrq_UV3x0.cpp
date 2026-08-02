@@ -10,9 +10,35 @@
 
 #if defined(CONFIG_DMR)
 
+/*
+ * Events tolerated between two watchdog feeds before the lines are considered
+ * stuck. A slot boundary comes every 30ms, so even the busiest run is around
+ * one hundred events per feed: anything approaching this limit is a line
+ * firing on noise rather than on the chip.
+ */
+#define IRQ_STORM_LIMIT 3000
+
 static volatile uint32_t tsCount;    /* Timeslot interrupt counter  */
 static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
+static volatile uint32_t stormCount; /* Events since the last feed  */
+static volatile bool     stormSeen;  /* Lines shut down by the guard */
+
+/**
+ * Shut the interrupt lines down when they fire far too often to be real. A
+ * line stuck low would otherwise keep re-entering the handler and no thread
+ * would ever run again, which looks exactly like the radio locking up.
+ */
+static inline void stormGuard()
+{
+    stormCount += 1;
+
+    if(stormCount > IRQ_STORM_LIMIT)
+    {
+        EXTI->IMR &= ~(EXTI_IMR_MR0 | EXTI_IMR_MR1 | EXTI_IMR_MR2);
+        stormSeen  = true;
+    }
+}
 
 /*
  * The three interrupt lines have one EXTI line each, so the handlers do not
@@ -25,27 +51,34 @@ void __attribute__((used)) EXTI0_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR0;
     tsCount += 1;
+    stormGuard();
 }
 
 void __attribute__((used)) EXTI1_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR1;
     sysCount += 1;
+    stormGuard();
 }
 
 void __attribute__((used)) EXTI2_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR2;
     txCount += 1;
+    stormGuard();
 }
 
 void dmrIrq_init()
 {
     dmrIrq_clearCounters();
 
-    gpio_setMode(DMR_TS_INT,  INPUT);
-    gpio_setMode(DMR_SYS_INT, INPUT);
-    gpio_setMode(DMR_TX_INT,  INPUT);
+    /*
+     * The lines are active on the falling edge, so they idle high: pulling
+     * them up keeps a line the chip is not driving from tripping on noise.
+     */
+    gpio_setMode(DMR_TS_INT,  INPUT_PULL_UP);
+    gpio_setMode(DMR_SYS_INT, INPUT_PULL_UP);
+    gpio_setMode(DMR_TX_INT,  INPUT_PULL_UP);
 
     /*
      * The SYSCFG clock is already enabled by the USB stack during boot, but
@@ -104,6 +137,16 @@ void dmrIrq_clearCounters()
     tsCount  = 0;
     sysCount = 0;
     txCount  = 0;
+}
+
+void dmrIrq_feedWatchdog()
+{
+    stormCount = 0;
+}
+
+bool dmrIrq_stormDetected()
+{
+    return stormSeen;
 }
 
 #endif /* CONFIG_DMR */
