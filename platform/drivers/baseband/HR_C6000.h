@@ -34,6 +34,13 @@ enum class C6000_DmrTiming : uint8_t
 };
 
 /**
+ * Bits of the slot timing register which describe the receiver. The transmit
+ * enable is deliberately left out: the chip only holds it while the
+ * transmitter is keyed, so it does not read back after being written.
+ */
+#define C6000_TIMING_RX_MASK    0x60    ///< RX enabled and timing generated.
+
+/**
  * What the chip has to do in the upcoming slot, written to configuration
  * register 0x41 before the slot begins.
  */
@@ -130,13 +137,18 @@ public:
     }
 
     /**
-     * Get the color code currently programmed in the receiver.
+     * Get the color code of the last received burst, which the chip reports
+     * together with the channel access information.
      *
-     * @return the configured color code.
+     * NOTE: this is what was received, not what was configured. Register 0x1F
+     * holds the color code the receiver filters on but does not read back as
+     * written, so there is no way to ask the chip what it was set to.
+     *
+     * @return the color code of the last received burst.
      */
-    inline uint8_t getDmrColorCode()
+    inline uint8_t getDmrRxColorCode()
     {
-        return (readCfgRegister(0x1F) >> 4) & 0x0F;
+        return (readCfgRegister(0x52) >> 4) & 0x0F;
     }
 
     /**
