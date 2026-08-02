@@ -77,6 +77,11 @@ static void reportIrqActivity()
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
 
+    if(dmrIrq_stormDetected())
+        dmrDebug_log(DMR_DBG_INFO, "irq: lines shut down, firing continuously");
+
+    dmrIrq_feedWatchdog();
+
     dmrDebug_log(DMR_DBG_IRQ, "irq: timeslot %lu system %lu transmit %lu in %lums",
                  (unsigned long) (counters.timeslot - reportedTs),
                  (unsigned long) (counters.system   - reportedSys),
@@ -169,13 +174,21 @@ void dmr_init(const uint8_t colorCode)
     reportedTx   = 0;
     reportTick   = getTick();
 
-    dmrIrq_init();
+    /*
+     * Logged in stages: if the radio does not come back, the last line which
+     * made it out says which of the two halves is at fault.
+     */
+    dmrDebug_log(DMR_DBG_INFO, "dmr: configuring baseband");
 
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
 
     checkInitRegisters();
+
+    dmrDebug_log(DMR_DBG_INFO, "dmr: enabling interrupt lines");
+    dmrIrq_init();
+    dmrDebug_log(DMR_DBG_INFO, "dmr: receiver running");
 }
 
 void dmr_terminate()

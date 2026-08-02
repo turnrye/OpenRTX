@@ -55,6 +55,22 @@ void dmrIrq_getCounters(struct dmrIrqCounters *counters);
  */
 void dmrIrq_clearCounters();
 
+/**
+ * Tell the interrupt handlers that the thread consuming the events is still
+ * running. Has to be called regularly: the handlers shut the interrupt lines
+ * down when too many events pile up between two calls, which keeps a line
+ * firing continuously from starving every thread in the radio.
+ */
+void dmrIrq_feedWatchdog();
+
+/**
+ * Check whether the interrupt lines have been shut down because they were
+ * firing far more often than a slot boundary ever could.
+ *
+ * @return true if the lines have been shut down.
+ */
+bool dmrIrq_stormDetected();
+
 #ifdef __cplusplus
 }
 #endif
