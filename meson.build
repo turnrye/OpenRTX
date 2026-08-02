@@ -60,6 +60,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
+               'openrtx/src/rtx/OpMode_DMR.cpp',
                'openrtx/src/protocols/M17/DSP.cpp',
                'openrtx/src/protocols/M17/Golay.cpp',
                'openrtx/src/protocols/M17/MetaText.cpp',
@@ -353,6 +354,7 @@ linux_src = ['platform/targets/linux/emulator/emulator.c',
              'platform/mcu/x86_64/drivers/delays.c',
              'platform/mcu/x86_64/drivers/rng.cpp',
              'platform/drivers/baseband/radio_linux.cpp',
+             'platform/drivers/baseband/dmr_linux.c',
              'platform/drivers/audio/audio_linux.c',
              'platform/drivers/audio/file_source.c',
              'platform/drivers/audio/audio_sdl.cpp',
@@ -454,7 +456,8 @@ mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/drivers/baseband/radio_UV3x0.cpp',
                'platform/drivers/baseband/AT1846S_UV3x0.cpp',
                'platform/drivers/baseband/HR_C6000_UV3x0.cpp',
-               'platform/drivers/baseband/dmrIrq_UV3x0.cpp']
+               'platform/drivers/baseband/dmrIrq_UV3x0.cpp',
+               'platform/drivers/baseband/dmr_UV3x0.cpp']
 
 mduv3x0_inc = ['platform/targets/MD-UV3x0']
 mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'timegm': 'mktime'}
