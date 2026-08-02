@@ -21,6 +21,48 @@ enum class C6000_SpiOpModes : uint8_t
     AMBE1K = 7      ///< AMBE1000 configuration register.
 };
 
+/**
+ * Timing source for the DMR slots, written to configuration register 0x40.
+ * In active timing the chip free runs its own slot clock, which is what a
+ * direct mode contact needs, in passive timing it locks to the slots of a
+ * received base station.
+ */
+enum class C6000_DmrTiming : uint8_t
+{
+    PASSIVE = 0xC3,     ///< TX and RX enabled, slots locked to a base station.
+    ACTIVE  = 0xE3      ///< TX and RX enabled, chip generates its own timing.
+};
+
+/**
+ * What the chip has to do in the upcoming slot, written to configuration
+ * register 0x41 before the slot begins.
+ */
+enum class C6000_DmrSlotAction : uint8_t
+{
+    IDLE     = 0x00,    ///< Neither transmit nor receive.
+    RESET    = 0x20,    ///< Sync fail, used to restart the slot state.
+    RECEIVE  = 0x50,    ///< Receive, with the layer 2 access bit set.
+    TRANSMIT = 0x80     ///< Transmit.
+};
+
+/**
+ * Status of the DMR receiver, sampled from the chip in one go so that the
+ * bits describing a given burst are consistent with each other.
+ */
+struct C6000_DmrStatus
+{
+    uint8_t intFlags;   ///< Interrupt flags, register 0x82.
+    uint8_t rxStatus;   ///< Data type, sync class and CRC result, register 0x51.
+    uint8_t cach;       ///< Received color code and timecode, register 0x52.
+    uint8_t syncStatus; ///< Type of the detected sync pattern, register 0x5F.
+};
+
+/**
+ * Length of the link control data the chip hands over once it has decoded and
+ * error corrected a burst.
+ */
+static constexpr size_t C6000_LC_LENGTH = 12;
+
 class HR_C6000 : public HR_Cx000 < C6000_SpiOpModes >
 {
 public:
@@ -76,6 +118,88 @@ public:
      */
     void sendTone(const uint32_t freq, const uint8_t deviation);
 
+    /**
+     * Set the color code the receiver accepts, the chip drops every burst
+     * carrying a different one.
+     *
+     * @param code: color code, from 0 to 15.
+     */
+    inline void setDmrColorCode(const uint8_t code)
+    {
+        writeCfgRegister(0x1F, (code & 0x0F) << 4);
+    }
+
+    /**
+     * Get the color code currently programmed in the receiver.
+     *
+     * @return the configured color code.
+     */
+    inline uint8_t getDmrColorCode()
+    {
+        return (readCfgRegister(0x1F) >> 4) & 0x0F;
+    }
+
+    /**
+     * Select the timing source for the DMR slots.
+     *
+     * @param timing: timing source to be used.
+     */
+    inline void setDmrTiming(const C6000_DmrTiming timing)
+    {
+        writeCfgRegister(0x40, static_cast< uint8_t >(timing));
+    }
+
+    /**
+     * Get the raw content of the slot timing register.
+     *
+     * @return the value of the timing register.
+     */
+    inline uint8_t getDmrTiming()
+    {
+        return readCfgRegister(0x40);
+    }
+
+    /**
+     * Tell the chip what to do in the upcoming slot. Has to be called before
+     * the slot begins, that is from the handling of a timeslot interrupt.
+     *
+     * @param action: action to be performed in the next slot.
+     */
+    inline void setDmrSlotAction(const C6000_DmrSlotAction action)
+    {
+        writeCfgRegister(0x41, static_cast< uint8_t >(action));
+    }
+
+    /**
+     * Sample the status of the DMR receiver.
+     *
+     * @param status: destination for the status registers.
+     */
+    void readDmrStatus(struct C6000_DmrStatus *status);
+
+    /**
+     * Acknowledge the interrupt sources which have been served, leaving the
+     * ones raised in the meantime untouched.
+     *
+     * @param flags: interrupt flags to be cleared, as read from register 0x82.
+     */
+    inline void clearDmrInterrupts(const uint8_t flags)
+    {
+        writeCfgRegister(0x83, flags);
+    }
+
+    /**
+     * Fetch the link control data of the last decoded burst. The chip performs
+     * the error correction itself, so the bytes read here are already clean.
+     *
+     * NOTE: the chip keeps returning the link control of the previous
+     * transmission until the current one has been decoded, callers have to
+     * confirm it over more than one burst before trusting it.
+     *
+     * @param lc: destination buffer, C6000_LC_LENGTH bytes long.
+     */
+    void readDmrLinkControl(uint8_t *lc);
+
 private:
 
     /**
@@ -120,6 +244,28 @@ private:
         spi_receive(uSpi, value, 1);
 
         return value[0];
+    }
+
+    /**
+     * Read a block of consecutive registers, the chip increments the address
+     * on its own after every byte.
+     *
+     * @param opMode: "operating mode" specifier, selects the register page.
+     * @param addr: address of the first register to be read.
+     * @param data: destination buffer.
+     * @param len: amount of bytes to be read.
+     */
+    void readPage(const C6000_SpiOpModes opMode, const uint8_t addr,
+                  uint8_t *data, const size_t len)
+    {
+        uint8_t cmd[2];
+
+        cmd[0] = SPI_FLAGS_READ | static_cast< uint8_t >(opMode);
+        cmd[1] = addr;
+
+        ScopedChipSelect cs(uSpi, uCs);
+        spi_send(uSpi, cmd, sizeof(cmd));
+        spi_receive(uSpi, data, len);
     }
 };
 
