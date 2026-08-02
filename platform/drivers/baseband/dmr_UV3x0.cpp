@@ -51,14 +51,17 @@ static long long reportTick;
  */
 static void checkInitRegisters()
 {
-    uint8_t code   = C6000.getDmrColorCode();
     uint8_t timing = C6000.getDmrTiming();
-    uint8_t wanted = static_cast< uint8_t >(C6000_DmrTiming::ACTIVE);
-    bool    ok     = (code == configuredCc) && (timing == wanted);
+    bool    ok     = (timing & C6000_TIMING_RX_MASK) == C6000_TIMING_RX_MASK;
 
-    dmrDebug_log(DMR_DBG_INFO,
-                 "init: color code %u want %u, timing %02X want %02X: %s",
-                 code, configuredCc, timing, wanted, ok ? "PASS" : "FAIL");
+    /*
+     * Only the receiver bits are checked. The transmit enable does not read
+     * back while the transmitter is idle, and the color code register does not
+     * read back at all, so neither can be confirmed here.
+     */
+    dmrDebug_log(DMR_DBG_INFO, "init: timing %02X, receiver bits %s, "
+                 "color code set to %u", timing, ok ? "PASS" : "FAIL",
+                 configuredCc);
 }
 
 /**
@@ -182,6 +185,14 @@ void dmr_init(const uint8_t colorCode)
 
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);
+
+    /*
+     * Restarting the slot state machine takes the reset twice before asking
+     * for a receive, anything less leaves the chip ignoring the next slot.
+     */
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
 
     checkInitRegisters();
