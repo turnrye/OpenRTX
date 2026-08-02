@@ -11,6 +11,7 @@
 #include "core/event.h"
 #include "core/state.h"
 #include "core/battery.h"
+#include "core/dmr_debug.h"
 #include "hwconfig.h"
 #include "interfaces/platform.h"
 #include "interfaces/nvmem.h"
@@ -76,7 +77,20 @@ void state_terminate()
         state.settings.brightness = 5;
     }
 
+/*
+ * Traced synchronously: the tap buffer is no longer flushed once the
+ * device thread has returned, so a buffered message would be lost here.
+ */
+#if defined(CONFIG_DMR)
+    dmrDebug_mark("nvm: saving settings and vfo");
+#endif
+
     nvm_writeSettingsAndVfo(&state.settings, &state.channel);
+
+#if defined(CONFIG_DMR)
+    dmrDebug_mark("nvm: settings saved");
+#endif
+
     pthread_mutex_destroy(&state_mutex);
 }
 
