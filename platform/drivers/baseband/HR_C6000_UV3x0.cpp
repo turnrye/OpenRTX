@@ -125,7 +125,7 @@ void HR_Cx000< M >::setModOffset(const uint16_t offset)
 template< class M >
 void HR_Cx000< M >::dmrMode()
 {
-    writeReg(M::CONFIG, 0x10, 0x4F);    // DMR mode, Tier I, TimeSlot, 2nd layer mode, relay, aligned (?)
+    writeReg(M::CONFIG, 0x10, 0x6E);    // DMR mode, Tier II, timeslot mode, 2nd layer mode, relay, aligned
     writeReg(M::CONFIG, 0x81, 0x19);    // Interrupt mask
     writeReg(M::CONFIG, 0x01, 0xF0);    // Swap TX IQ, swap RX IQ, two point mode for TX, IF mode for RX
     writeReg(M::CONFIG, 0xE4, 0x27);    // Lineout gain, first and second stage mic gain
@@ -142,7 +142,7 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::CONFIG, 0x56, 0x00);    // Undocumented register
     writeReg(M::CONFIG, 0x41, 0x40);    // Start RX for upcoming time slot interrupt
     writeReg(M::CONFIG, 0x5C, 0x09);    // Undocumented register
-    writeReg(M::CONFIG, 0x5F, 0xC0);    // Detect BS and MS frame sequences in 2 layer mode
+    writeReg(M::CONFIG, 0x5F, 0xF0);    // Detect MS, BS, TDMA1 and TDMA2 frame sequences
     sendSequence(initSeq7, sizeof(initSeq7));
     writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
 }
@@ -165,7 +165,7 @@ void HR_Cx000< M >::fmMode()
     writeReg(M::CONFIG, 0x56, 0x00);    // Undocumented register
     writeReg(M::CONFIG, 0x41, 0x40);    // Start RX for upcoming time slot interrupt
     writeReg(M::CONFIG, 0x5C, 0x09);    // Undocumented register
-    writeReg(M::CONFIG, 0x5F, 0xC0);    // Detect BS and MS frame sequences in 2 layer mode
+    writeReg(M::CONFIG, 0x5F, 0xF0);    // Detect MS, BS, TDMA1 and TDMA2 frame sequences
     sendSequence(initSeq7, sizeof(initSeq7));
     writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
     writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
