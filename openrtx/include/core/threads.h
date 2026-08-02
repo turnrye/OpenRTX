@@ -13,7 +13,13 @@
  * Threads' stack sizes
  */
 #define UI_THREAD_STKSIZE     2048
-#define RTX_THREAD_STKSIZE    512
+/*
+ * The rtx thread formats diagnostic messages, and the integer only printf of
+ * the C library alone takes some 200 bytes of stack to do so. 512 bytes were
+ * enough as long as no operating mode did it, but they overflow as soon as one
+ * does.
+ */
+#define RTX_THREAD_STKSIZE    1024
 #define CODEC2_THREAD_STKSIZE 16384
 #define AUDIO_THREAD_STKSIZE  512
 
