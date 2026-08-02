@@ -138,6 +138,16 @@ void *main_thread(void *arg)
 
     #if defined(CONFIG_DMR)
     dmrDebug_init();
+
+    /*
+     * What came out of the settings store, to tell a failed load (values back
+     * at their defaults) from values which were loaded and clobbered later.
+     */
+    dmrDebug_log(DMR_DBG_INFO, "boot: dmr id %lu tg %lu cc %u ts %u",
+                 (unsigned long) state.settings.dmr_id,
+                 (unsigned long) state.settings.dmr_talkgroup,
+                 (unsigned int) state.settings.dmr_colorcode,
+                 (unsigned int) state.settings.dmr_timeslot + 1);
     #endif
 
     while(state.devStatus != SHUTDOWN)
