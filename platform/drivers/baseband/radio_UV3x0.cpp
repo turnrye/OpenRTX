@@ -103,7 +103,7 @@ void radio_setOpmode(const enum opmode mode)
         case OPMODE_DMR:
             at1846s.setOpMode(AT1846S_OpMode::DMR);
             at1846s.setBandwidth(AT1846S_BW::_12P5);
-//             C6000.dmrMode();
+            C6000.dmrMode();                        // HR_C6000 in DMR mode
             break;
 
         case OPMODE_M17:
