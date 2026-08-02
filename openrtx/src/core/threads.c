@@ -21,6 +21,7 @@
 #include "core/backup.h"
 #include "core/gps.h"
 #include "core/voicePrompts.h"
+#include "core/dmr_debug.h"
 
 #if defined(PLATFORM_TTWRPLUS)
 #include "pmu.h"
@@ -135,6 +136,10 @@ void *main_thread(void *arg)
         state.gpsDetected = true;
     #endif
 
+    #if defined(CONFIG_DMR)
+    dmrDebug_init();
+    #endif
+
     while(state.devStatus != SHUTDOWN)
     {
         time = getTick();
@@ -156,6 +161,11 @@ void *main_thread(void *arg)
 
         // Run state update task
         state_task();
+
+        // Flush the DMR debug tap towards the host
+        #if defined(CONFIG_DMR)
+        dmrDebug_task();
+        #endif
 
         // Run this loop once every 5ms
         time += 5;
