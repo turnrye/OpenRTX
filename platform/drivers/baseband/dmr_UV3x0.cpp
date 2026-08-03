@@ -126,6 +126,7 @@ static long long reportTick;
 static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
+static volatile bool    rxRestoreNeeded;// Receiver bring-up owed after a TX
 static uint8_t          txLc[DMR_LC_LENGTH]; // Link control sent in the bursts
 static uint32_t  txReportedTs;          // Timeslot count at the last tx report
 static uint32_t  txReportedTx;          // Transmit count at the last tx report
@@ -472,12 +473,15 @@ void dmr_txTimeslotIsr()
         /*
          * One slot later the terminator has been sent, so put the slot timing
          * back to reception and stop driving the slot. Going idle here is what
-         * the transmitting thread waits on to hand back to the receiver.
+         * the transmitting thread waits on to hand back to the receiver; the
+         * full receive bring-up, which needs more than an idle slot action, is
+         * left to the thread and flagged here.
          */
         case TX_END_2:
             C6000.writeCfgRegisterFromIsr(0x40,
                 static_cast< uint8_t >(C6000_DmrTiming::RX_IDLE));
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
+            rxRestoreNeeded = true;
             txState = TX_IDLE;
             break;
 
@@ -585,6 +589,7 @@ void dmr_init(const uint8_t colorCode)
 
     txState         = TX_IDLE;
     txStopRequested = false;
+    rxRestoreNeeded = false;
 
     configuredCc  = colorCode & 0x0F;
     lcMatches     = 0;
@@ -637,6 +642,7 @@ void dmr_terminate()
 
     txState         = TX_IDLE;
     txStopRequested = false;
+    rxRestoreNeeded = false;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
     payloadBusTerminate();
@@ -681,6 +687,29 @@ void dmr_task(struct dmrRxState *rx)
      * stand off the bus for the duration so the two never drive it at once.
      */
     dmrIrq_setBusBusy(true);
+
+    /*
+     * After a transmission the slot state machine is left idle and does not
+     * come back on a lone receive request: the receiver needs the same reset
+     * dance the initial bring-up does. Done here, from the thread, once the
+     * transmit state machine has flagged that it is finished.
+     */
+    if(rxRestoreNeeded)
+    {
+        rxRestoreNeeded = false;
+
+        C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+
+        memset(prevLc, 0, sizeof(prevLc));
+        lcMatches     = 0;
+        lastBurstTick = getTick();
+
+        dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx");
+    }
 
     if(lastTsCount != counters.timeslot)
     {
