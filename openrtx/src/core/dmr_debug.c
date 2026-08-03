@@ -25,7 +25,6 @@
 #define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
 #define TAP_LINE_SIZE    128    /* Maximum length of a single message       */
 #define TAP_MAX_RECORD    48    /* Maximum payload of a binary record       */
-#define TAP_PROBE_MS    2000    /* Probe interval towards a dead host, in ms */
 
 static char    buf[TAP_BUF_SIZE];
 /*
@@ -80,30 +79,7 @@ static void tapWrite(const void *data, const size_t len)
     ssize_t ret = write(STDOUT_FILENO, data, len);
     (void) ret;
 #else
-    /*
-     * Every write towards a host which stopped reading eats its full USB
-     * timeout and freezes whoever is logging for that long. Once a write has
-     * failed, only a probe once in a while goes out and the rest is dropped,
-     * so a radio in use without a terminal stays responsive.
-     */
-    static long long lastFailTick;
-    static bool      hostDead;
-
-    if(hostDead && ((getTick() - lastFailTick) < TAP_PROBE_MS))
-    {
-        pthread_mutex_unlock(&wireMutex);
-        return;
-    }
-
-    if(vcom_writeBlock(data, len) < 0)
-    {
-        hostDead     = true;
-        lastFailTick = getTick();
-    }
-    else
-    {
-        hostDead = false;
-    }
+    vcom_writeBlock(data, len);
 #endif
 
     pthread_mutex_unlock(&wireMutex);
@@ -187,7 +163,7 @@ void dmrDebug_init()
     used        = 0;
     dropped     = 0;
     baseTick    = getTick();
-    channels    = DMR_DBG_INFO | DMR_DBG_LC;
+    channels    = DMR_DBG_INFO;
     initialised = true;
     pthread_mutex_unlock(&mutex);
 
