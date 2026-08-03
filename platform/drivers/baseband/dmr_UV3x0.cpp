@@ -39,15 +39,6 @@
 #define VP_REGISTER             0x00
 
 /*
- * Sync class of a burst, in the low two bits of the status register: a value
- * of one marks a voice burst, the only kind carrying an AMBE payload worth
- * capturing. Header, terminator and idle bursts leave stale bytes on page
- * 0x03 and only muddy the capture.
- */
-#define C6000_SYNC_CLASS_MASK   0x03
-#define C6000_SYNC_CLASS_VOICE  0x01
-
-/*
  * The chip hands back the link control of the previous transmission until it
  * has decoded the current one, so the same content has to show up in more than
  * one burst before it can be trusted.
@@ -206,7 +197,6 @@ static void handleBurst()
      * register sampled at the event.
      */
     uint8_t burstStatus = dmrIrq_getRxBurstStatus();
-    bool    voice = (burstStatus & C6000_SYNC_CLASS_MASK) == C6000_SYNC_CLASS_VOICE;
 
     dmrDebug_log(DMR_DBG_LC,
                  "burst: flags %02X status %02X isrbs %02X cach %02X sync %02X "
@@ -215,15 +205,16 @@ static void handleBurst()
                  dmrIrq_getRxColorCode(), crcOk ? "ok" : "bad");
 
     /*
-     * Stream the raw voice payload for the host-side capture harness, gated on
-     * the interrupt-sampled sync class so only voice bursts are recorded: the
-     * header, terminator and idle bursts carry no AMBE and read stale bytes off
-     * page 0x03. The gate cannot use the CRC check, which every voice burst
-     * fails for lack of fresh link control. The sampled status byte is
-     * prepended so the host keeps the true voice sequence number with each
-     * record.
+     * Stream every burst's payload for the host-side capture harness, tagged
+     * with the interrupt-sampled status byte so the host can pick out the voice
+     * frames from it: the data type or voice sequence number is in the high
+     * nibble, the sync class in the low bits. The capture cannot be gated on
+     * the CRC check, which every voice burst fails for lack of fresh link
+     * control. Classifying voice on the radio is deferred until the exact rule
+     * is confirmed against a full capture; gating on the sync class alone
+     * wrongly dropped almost every burst.
      */
-    if(voice && dmrDebug_channelEnabled(DMR_DBG_VP))
+    if(dmrDebug_channelEnabled(DMR_DBG_VP))
     {
         uint8_t record[1 + VP_LENGTH];
 
