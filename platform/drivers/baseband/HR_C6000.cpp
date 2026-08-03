@@ -9,6 +9,7 @@
 #include "peripherals/spi.h"
 #include "interfaces/delays.h"
 #include "drivers/baseband/HR_C6000.h"
+#include <string.h>
 
 /*
  * Table of HR_C6000 CTCSS tones, used for reverse lookup of tone index to be
@@ -111,6 +112,46 @@ uint8_t HR_C6000::readCfgRegisterFromIsr(const uint8_t addr)
     delayUs(2);
 
     return ret[2];
+}
+
+void HR_C6000::writeCfgRegisterFromIsr(const uint8_t addr, const uint8_t value)
+{
+    uint8_t cmd[3];
+
+    cmd[0] = static_cast< uint8_t >(C6000_SpiOpModes::CONFIG);
+    cmd[1] = addr;
+    cmd[2] = value;
+
+    /*
+     * Same transaction as writeReg but with the chip select driven directly
+     * rather than through ScopedChipSelect, whose mutex cannot be locked from
+     * interrupt context. The settling delays match readCfgRegisterFromIsr.
+     */
+    gpioPin_clear(&uCs);
+    spi_send(uSpi, cmd, sizeof(cmd));
+    delayUs(2);
+    gpioPin_set(&uCs);
+    delayUs(2);
+}
+
+void HR_C6000::writeDmrLinkControlFromIsr(const uint8_t *lc)
+{
+    uint8_t cmd[2 + C6000_LC_LENGTH];
+
+    /*
+     * Page write towards the transmit data register: the command byte selects
+     * the DATA page with neither the read nor the extended addressing flag, the
+     * register offset follows, then the twelve link control bytes in one go.
+     */
+    cmd[0] = static_cast< uint8_t >(C6000_SpiOpModes::DATA);
+    cmd[1] = 0x00;
+    memcpy(&cmd[2], lc, C6000_LC_LENGTH);
+
+    gpioPin_clear(&uCs);
+    spi_send(uSpi, cmd, sizeof(cmd));
+    delayUs(2);
+    gpioPin_set(&uCs);
+    delayUs(2);
 }
 
 void HR_C6000::readDmrLinkControl(uint8_t *lc)
