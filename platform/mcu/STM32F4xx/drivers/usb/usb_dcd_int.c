@@ -680,6 +680,18 @@ static uint32_t DCD_WriteEmptyTxFifo(USB_OTG_CORE_HANDLE *pdev, uint32_t epnum)
     txstatus.d32 = USB_OTG_READ_REG32(&pdev->regs.INEP_REGS[epnum]->DTXFSTS);
   }
 
+  /* Whole transfer written to the FIFO: mask the FIFO empty interrupt. The
+     TXFE flag follows the FIFO state and cannot be cleared while the FIFO is
+     empty, so leaving it unmasked here re-enters this interrupt continuously
+     until the host drains the last packet and the transfer completes. A host
+     which has stopped reading then locks the device up in interrupt context
+     forever. Same fix as STM32CubeF4's PCD_WriteEmptyTxFifo. */
+  if (ep->xfer_count >= ep->xfer_len)
+  {
+    uint32_t fifoemptymsk = 0x1 << epnum;
+    USB_OTG_MODIFY_REG32(&pdev->regs.DREGS->DIEPEMPMSK, fifoemptymsk, 0);
+  }
+
   return 1;
 }
 
