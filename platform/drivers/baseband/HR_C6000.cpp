@@ -5,6 +5,9 @@
  */
 
 #include "core/utils.h"
+#include "peripherals/gpio.h"
+#include "peripherals/spi.h"
+#include "interfaces/delays.h"
 #include "drivers/baseband/HR_C6000.h"
 
 /*
@@ -84,6 +87,30 @@ void HR_C6000::readDmrStatus(struct C6000_DmrStatus *status)
     status->rxStatus   = readCfgRegister(0x51);
     status->cach       = readCfgRegister(0x52);
     status->syncStatus = readCfgRegister(0x5F);
+}
+
+uint8_t HR_C6000::readCfgRegisterFromIsr(const uint8_t addr)
+{
+    uint8_t cmd[3];
+    uint8_t ret[3];
+
+    cmd[0] = SPI_FLAGS_READ | static_cast< uint8_t >(C6000_SpiOpModes::CONFIG);
+    cmd[1] = addr;
+    cmd[2] = 0x00;
+
+    /*
+     * Same transaction as readReg but with the chip select driven directly
+     * instead of through ScopedChipSelect, which takes a mutex that cannot be
+     * locked from interrupt context. The short settling delays around the
+     * deassertion are the ones the RT3s was found to need.
+     */
+    gpioPin_clear(&uCs);
+    spi_transfer(uSpi, cmd, ret, 3);
+    delayUs(2);
+    gpioPin_set(&uCs);
+    delayUs(2);
+
+    return ret[2];
 }
 
 void HR_C6000::readDmrLinkControl(uint8_t *lc)
