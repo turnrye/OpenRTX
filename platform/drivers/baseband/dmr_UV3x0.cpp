@@ -141,14 +141,6 @@ static void handleBurst()
         return;
     }
 
-    /*
-     * A burst which passed the filters means someone is talking to us:
-     * refresh the hold timer keeping the receive state alive. Re-arming the
-     * receiver for the next slot is done from the slot boundary in dmr_task,
-     * not here.
-     */
-    lastBurstTick = getTick();
-
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
     dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
@@ -314,6 +306,16 @@ void dmr_task(struct dmrRxState *rx)
         if(missed > 0)
             dmrDebug_log(DMR_DBG_IRQ, "dmr: %lu bursts not read in time",
                          (unsigned long) missed);
+
+        /*
+         * A frame event means a DMR carrier is present. This keeps an
+         * established call alive across the voice bursts that sit between the
+         * link control updates: those bursts carry no fresh CRC-valid link
+         * control, so gating the call on link control alone drops it every
+         * few hundred milliseconds during a steady transmission. The identity
+         * of the call still comes from handleBurst; this only holds it up.
+         */
+        lastBurstTick = getTick();
 
         handleBurst();
     }
