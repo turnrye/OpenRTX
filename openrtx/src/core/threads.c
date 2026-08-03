@@ -102,6 +102,17 @@ void *ui_threadFunc(void *arg)
 
             rtx_configure(&rtx_cfg);
             sync_rtx = false;
+
+            /*
+             * Mark only the switch into DMR, not every configuration update
+             * pushed while the mode is already DMR.
+             */
+            #if defined(CONFIG_DMR)
+            static uint8_t lastPushedMode = OPMODE_NONE;
+            if((rtx_cfg.opMode == OPMODE_DMR) && (lastPushedMode != OPMODE_DMR))
+                dmrDebug_mark("ui: dmr configuration pushed");
+            lastPushedMode = rtx_cfg.opMode;
+            #endif
         }
 
         // Update UI and render on screen, if necessary
