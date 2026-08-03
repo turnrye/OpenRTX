@@ -135,14 +135,23 @@ static void handleBurst()
     }
 
     /*
-     * The colour code is NOT filtered here. Register 0x52 only carries it in
-     * the CACH, which exists in repeater traffic but not in direct mode, and
-     * it is only valid at the instant of the frame event; read a few
-     * milliseconds late from this polled task it is meaningless (it read 0 for
-     * a CC1 direct-mode signal on the bench). The chip gates the colour code
-     * in hardware through register 0x1F instead, set from the configured code
-     * in setDmrColorCode, so any burst delivered here already matches.
+     * The colour code comes from the system interrupt handler, which reads it
+     * at the instant of the frame event; register 0x52 is only meaningful then
+     * and a read from this polled task arrives too late to see it. Only bursts
+     * carrying the configured colour code establish a call; a mismatch is left
+     * to time out. The receive state is still held up across bursts by the
+     * frame-event liveness in dmr_task, so an occasional stale read here does
+     * not drop an established call.
      */
+    uint8_t rxCc = dmrIrq_getRxColorCode();
+
+    if(rxCc != configuredCc)
+    {
+        dmrDebug_log(DMR_DBG_LC, "burst: rejected, color code %u want %u",
+                     rxCc, configuredCc);
+        return;
+    }
+
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
     dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
@@ -187,14 +196,14 @@ static void handleBurst()
 
     rxState.dstId     = dstId;
     rxState.srcId     = srcId;
-    rxState.colorCode = configuredCc;
+    rxState.colorCode = rxCc;
     rxState.groupCall = group;
     rxState.valid     = true;
 
     if(newCall)
         dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
                      (unsigned long) srcId, group ? "TG" : "ID",
-                     (unsigned long) dstId, configuredCc);
+                     (unsigned long) dstId, rxCc);
 }
 
 void dmr_init(const uint8_t colorCode)
@@ -284,6 +293,13 @@ void dmr_task(struct dmrRxState *rx)
      * colour code and CRC filters, so it costs an ignored burst rather than a
      * false decode.
      */
+    /*
+     * The chip is reached over the bitbanged SPI here, which the system
+     * interrupt handler also uses to read the colour code. Tell the handler to
+     * stand off the bus for the duration so the two never drive it at once.
+     */
+    dmrIrq_setBusBusy(true);
+
     if(lastTsCount != counters.timeslot)
     {
         lastTsCount = counters.timeslot;
@@ -292,8 +308,8 @@ void dmr_task(struct dmrRxState *rx)
 
     /*
      * The chip signals a frame event on the system interrupt line, but reading
-     * it out has to happen here: the interrupt handlers cannot use the SPI
-     * interface towards the baseband.
+     * the burst out has to happen here: only the colour code is read from the
+     * handler, the rest of the chip access cannot be done from an interrupt.
      */
     if(lastSysCount != counters.system)
     {
@@ -321,6 +337,8 @@ void dmr_task(struct dmrRxState *rx)
 
         handleBurst();
     }
+
+    dmrIrq_setBusBusy(false);
 
     /*
      * The chip does not say when a call is over: a terminator burst is not
