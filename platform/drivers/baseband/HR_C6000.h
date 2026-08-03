@@ -195,6 +195,19 @@ public:
     void readDmrStatus(struct C6000_DmrStatus *status);
 
     /**
+     * Read a configuration register from an interrupt handler.
+     *
+     * Unlike readCfgRegister this does NOT take the SPI mutex, so it can run in
+     * interrupt context. The caller must guarantee that no thread is part way
+     * through a transaction on the same bus, otherwise the two accesses corrupt
+     * each other; see dmrIrq_setBusBusy.
+     *
+     * @param addr: register number.
+     * @return current value of the addressed register.
+     */
+    uint8_t readCfgRegisterFromIsr(const uint8_t addr);
+
+    /**
      * Acknowledge the interrupt sources which have been served, leaving the
      * ones raised in the meantime untouched.
      *
