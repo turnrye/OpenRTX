@@ -71,6 +71,27 @@ void dmrIrq_feedWatchdog();
  */
 bool dmrIrq_stormDetected();
 
+/**
+ * Get the colour code of the most recent frame event, as read by the system
+ * interrupt handler straight from the chip. Reading it there catches the value
+ * at the instant of the event: the colour code register is only meaningful for
+ * a moment and a read from the consuming thread arrives too late to see it.
+ *
+ * @return the last received colour code, or 0xFF before any has been read.
+ */
+uint8_t dmrIrq_getRxColorCode();
+
+/**
+ * Tell the interrupt handlers whether a thread is currently accessing the chip
+ * over the SPI bus. While it is, the system interrupt handler skips its own
+ * register read rather than driving the bus at the same time; it picks the
+ * colour code up again on the next event. Must bracket every thread-side chip
+ * access made while the interrupts are live.
+ *
+ * @param busy: true around a thread-side transaction, false otherwise.
+ */
+void dmrIrq_setBusBusy(bool busy);
+
 #ifdef __cplusplus
 }
 #endif

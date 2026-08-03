@@ -10,6 +10,12 @@
 
 #if defined(CONFIG_DMR)
 
+/* Register holding the received colour code in its upper nibble. */
+#define C6000_REG_CACH  0x52
+
+/* Colour code value standing for "nothing received yet". */
+#define CC_NONE         0xFF
+
 /*
  * Events tolerated between two watchdog feeds before the lines are considered
  * stuck. A slot boundary comes every 30ms, so even the busiest run is around
@@ -23,6 +29,8 @@ static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool     stormSeen;  /* Lines shut down by the guard */
+static volatile uint8_t  rxColorCode = CC_NONE; /* CC of the last frame event */
+static volatile bool     busBusy;    /* A thread is on the SPI bus  */
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -58,6 +66,16 @@ void __attribute__((used)) EXTI1_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR1;
     sysCount += 1;
+
+    /*
+     * The colour code register is only valid at the instant of the frame
+     * event, so it is read here rather than from the consuming thread. The
+     * read is skipped while a thread holds the bus, to avoid two contexts
+     * driving the bitbanged SPI at once; the next event picks it up.
+     */
+    if(busBusy == false)
+        rxColorCode = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
+
     stormGuard();
 }
 
@@ -134,9 +152,10 @@ void dmrIrq_getCounters(struct dmrIrqCounters *counters)
 
 void dmrIrq_clearCounters()
 {
-    tsCount  = 0;
-    sysCount = 0;
-    txCount  = 0;
+    tsCount     = 0;
+    sysCount    = 0;
+    txCount     = 0;
+    rxColorCode = CC_NONE;
 }
 
 void dmrIrq_feedWatchdog()
@@ -147,6 +166,16 @@ void dmrIrq_feedWatchdog()
 bool dmrIrq_stormDetected()
 {
     return stormSeen;
+}
+
+uint8_t dmrIrq_getRxColorCode()
+{
+    return rxColorCode;
+}
+
+void dmrIrq_setBusBusy(bool busy)
+{
+    busBusy = busy;
 }
 
 #endif /* CONFIG_DMR */
