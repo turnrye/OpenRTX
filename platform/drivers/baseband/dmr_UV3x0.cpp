@@ -515,6 +515,18 @@ void dmr_stopTx()
     dmrDebug_log(DMR_DBG_INFO, "tx: unkey requested");
 }
 
+void dmr_txTask()
+{
+    /*
+     * The storm guard shuts the interrupt lines down when too many events pile
+     * up between two feeds. During a transmission the timeslot interrupt runs
+     * the slot clock at its normal rate, which is well within the limit, but
+     * the receive poll that usually feeds the guard is not running, so it is
+     * fed from here instead.
+     */
+    dmrIrq_feedWatchdog();
+}
+
 void dmr_init(const uint8_t colorCode)
 {
     memset(&rxState, 0, sizeof(rxState));

@@ -12,9 +12,10 @@
 /**
  * Operating mode for DMR.
  *
- * At the moment this only brings the baseband up as a receiver and surfaces
- * the link control of the calls it decodes, which is what the user interface
- * shows as "last heard". There is no voice path yet.
+ * Receiving surfaces the link control of the decoded calls, which is what the
+ * user interface shows as "last heard". Transmitting keys a direct mode group
+ * call carrying a constant silence payload: it exercises the whole outbound air
+ * interface with no vocoder, the actual voice path is a later step.
  */
 class OpMode_DMR : public OpMode
 {
@@ -42,7 +43,27 @@ public:
 
 private:
 
-    bool enabled = false;
+    /**
+     * Idle handling: move on to reception once the baseband is up, or into
+     * transmission when the PTT is pressed.
+     */
+    void offState(rtxStatus_t *const status);
+
+    /**
+     * Receive handling: run the receiver update and surface the decoded call,
+     * handing over to transmission when the PTT is pressed.
+     */
+    void rxState(rtxStatus_t *const status);
+
+    /**
+     * Transmit handling: key the call, hold it while the PTT is down, and let
+     * the terminator play out before returning to reception on release.
+     */
+    void txState(rtxStatus_t *const status);
+
+    bool enabled = false;   ///< Baseband brought up.
+    bool startRx = false;   ///< Reception has still to be armed.
+    bool startTx = false;   ///< A transmission has still to be keyed.
 };
 
 #endif /* OPMODE_DMR_H */
