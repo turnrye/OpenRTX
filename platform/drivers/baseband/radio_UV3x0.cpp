@@ -164,6 +164,7 @@ void radio_enableRx()
 
     C6000.setModOffset(rxModBias);
     at1846s.setFrequency(config->rxFrequency);
+    at1846s.setDigitalModulation(false);    // Analog source, receiving
     at1846s.setFuncMode(AT1846S_FuncMode::RX);
 
     if(currRxBand == BND_VHF)
@@ -228,6 +229,12 @@ void radio_enableTx()
     //
     sleepFor(0, 50);
 
+    /*
+     * DMR is modulated by the HR_C6000 injecting its 4FSK straight into the
+     * synthesizer, so the transmitter has to take that external digital source.
+     * The analog modes keep the internal modulator.
+     */
+    at1846s.setDigitalModulation(config->opMode == OPMODE_DMR);
     at1846s.setFuncMode(AT1846S_FuncMode::TX);
 
 
