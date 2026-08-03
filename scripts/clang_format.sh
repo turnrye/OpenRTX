@@ -63,6 +63,7 @@ openrtx/include/peripherals/adc.h
 openrtx/include/peripherals/gpio.h
 openrtx/include/peripherals/i2c.h
 openrtx/include/peripherals/spi.h
+openrtx/include/protocols/DMR/LinkControl.h
 openrtx/include/protocols/M17/ClockRecovery.hpp
 openrtx/include/protocols/M17/CodePuncturing.hpp
 openrtx/include/protocols/M17/Constants.hpp
@@ -110,6 +111,7 @@ openrtx/src/core/threads.c
 openrtx/src/core/utils.c
 openrtx/src/core/xmodem.c
 openrtx/src/main.c
+openrtx/src/protocols/DMR/LinkControl.c
 openrtx/src/protocols/M17/DSP.cpp
 openrtx/src/protocols/M17/Demodulator.cpp
 openrtx/src/protocols/M17/FrameEncoder.cpp
