@@ -127,6 +127,12 @@ static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
 static uint8_t          txLc[DMR_LC_LENGTH]; // Link control sent in the bursts
+static uint32_t  txReportedTs;          // Timeslot count at the last tx report
+static uint32_t  txReportedTx;          // Transmit count at the last tx report
+static long long txReportTick;          // Tick of the last transmit report
+
+/* Interval between two transmit progress reports, in milliseconds */
+#define TX_REPORT_INTERVAL      500
 
 /**
  * Bring up the second SPI bus that carries the voice payload. Unlike the
@@ -498,6 +504,12 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
     txStopRequested = false;
     txState         = TX_START_1;
 
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+    txReportedTs = counters.timeslot;
+    txReportedTx = counters.transmit;
+    txReportTick = getTick();
+
     C6000.writeCfgRegister(0x21, 0xA2);     // Polite to color code, reset vocoder
     C6000.writeCfgRegister(0x22, 0x86);     // Start vocoder encode, I2S mode
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);    // 0x40 = 0xE3, active timing
@@ -525,6 +537,30 @@ void dmr_txTask()
      * fed from here instead.
      */
     dmrIrq_feedWatchdog();
+
+    long long now = getTick();
+
+    if((now - txReportTick) < TX_REPORT_INTERVAL)
+        return;
+
+    /*
+     * Report the slot clock and the state machine's progress while sending. A
+     * timeslot rate around 33Hz says the chip is driving the slots and the
+     * state cycling through the gap and voice steps says the bursts are being
+     * set up; either sitting still is the failure signature.
+     */
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+
+    dmrDebug_log(DMR_DBG_IRQ, "tx: state %u seq %u, timeslot %lu transmit %lu "
+                 "in %lums", txState, txSequence,
+                 (unsigned long) (counters.timeslot - txReportedTs),
+                 (unsigned long) (counters.transmit - txReportedTx),
+                 (unsigned long) (now - txReportTick));
+
+    txReportedTs = counters.timeslot;
+    txReportedTx = counters.transmit;
+    txReportTick = now;
 }
 
 void dmr_init(const uint8_t colorCode)
