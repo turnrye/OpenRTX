@@ -11,6 +11,7 @@
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
 #include "rtx/OpMode_DMR.hpp"
+#include "core/dmr_debug.h"
 
 static pthread_mutex_t   *cfgMutex;     // Mutex for incoming config messages
 static const rtxStatus_t *newCnf;       // Pointer for incoming config messages
@@ -136,11 +137,34 @@ void rtx_task()
          */
         if(currMode->getID() != rtxStatus.opMode)
         {
+            /*
+             * Every step of a mode change involving DMR is traced with a
+             * synchronous marker: a freeze along this path loses whatever sat
+             * in the tap buffer, so only markers survive to tell which step
+             * never completed.
+             */
+            #ifdef CONFIG_DMR
+            bool traceSwitch = (rtxStatus.opMode == OPMODE_DMR) ||
+                               (currMode->getID() == OPMODE_DMR);
+            if(traceSwitch)
+                dmrDebug_mark("rtx: mode change taken");
+            #endif
+
             // Forward opMode change also to radio driver
             radio_setOpmode(static_cast< enum opmode >(rtxStatus.opMode));
 
+            #ifdef CONFIG_DMR
+            if(traceSwitch)
+                dmrDebug_mark("rtx: disabling previous mode");
+            #endif
+
             currMode->disable();
             rtxStatus.opStatus = OFF;
+
+            #ifdef CONFIG_DMR
+            if(traceSwitch)
+                dmrDebug_mark("rtx: previous mode disabled");
+            #endif
 
             switch(rtxStatus.opMode)
             {
@@ -156,6 +180,11 @@ void rtx_task()
             }
 
             currMode->enable();
+
+            #ifdef CONFIG_DMR
+            if(traceSwitch)
+                dmrDebug_mark("rtx: mode change done");
+            #endif
         }
 
         // Tell radio driver that there was a change in its configuration.

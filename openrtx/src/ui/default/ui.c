@@ -65,6 +65,7 @@
 #include "hwconfig.h"
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
+#include "core/dmr_debug.h"
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -1043,7 +1044,23 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                     state.channel.mode = OPMODE_FM;
             }
             *sync_rtx = true;
+
+            /*
+             * The road into DMR mode is traced synchronously step by step, as
+             * a freeze along it takes the whole device down and only the last
+             * marker which made it out says where things stopped.
+             */
+            #ifdef CONFIG_DMR
+            if(state.channel.mode == OPMODE_DMR)
+                dmrDebug_mark("ui: dmr mode selected");
+            #endif
+
             vp_announceRadioMode(state.channel.mode, queueFlags);
+
+            #ifdef CONFIG_DMR
+            if(state.channel.mode == OPMODE_DMR)
+                dmrDebug_mark("ui: mode announced");
+            #endif
             break;
         case 6:
 
