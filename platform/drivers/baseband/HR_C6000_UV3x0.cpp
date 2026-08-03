@@ -132,6 +132,9 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Undocumented register
     writeReg(M::CONFIG, 0x25, 0x0E);    // Undocumented register
     writeReg(M::CONFIG, 0x26, 0xFD);    // Undocumented register
+    writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec under MCU control, LineOut2, Mic_p, I2S slave
+    writeReg(M::CONFIG, 0x49, 0xFF);    // Modulation limit, maximum
+    writeReg(M::CONFIG, 0x4A, 0xFF);    // Modulation limit, maximum
     writeReg(M::AUX,    0x54, 0x78);
     writeReg(M::CONFIG, 0x1F, 0x10);    // Color code, encryption disabled
     writeReg(M::AUX,    0x24, 0x00);
