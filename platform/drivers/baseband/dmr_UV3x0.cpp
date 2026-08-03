@@ -135,22 +135,16 @@ static void handleBurst()
     }
 
     /*
-     * The colour code comes from the system interrupt handler, which reads it
-     * at the instant of the frame event; register 0x52 is only meaningful then
-     * and a read from this polled task arrives too late to see it. Only bursts
-     * carrying the configured colour code establish a call; a mismatch is left
-     * to time out. The receive state is still held up across bursts by the
-     * frame-event liveness in dmr_task, so an occasional stale read here does
-     * not drop an established call.
+     * Colour code is not filtered: on the bench register 0x52 read back the
+     * same value whether read here or in the interrupt (0 for a signal that
+     * should have been CC1, with occasional 8 and 2), so it does not carry a
+     * usable colour code in direct mode - it is the CACH register, and direct
+     * mode has no CACH. The interrupt-sampled value is still read and shown
+     * for diagnosis, but filtering on it would reject every call. Getting a
+     * real direct-mode colour code needs the embedded signalling decoded,
+     * which is a separate task.
      */
     uint8_t rxCc = dmrIrq_getRxColorCode();
-
-    if(rxCc != configuredCc)
-    {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, color code %u want %u",
-                     rxCc, configuredCc);
-        return;
-    }
 
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
