@@ -134,13 +134,15 @@ static void handleBurst()
         return;
     }
 
-    if(code != configuredCc)
-    {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, color code %u want %u",
-                     code, configuredCc);
-        return;
-    }
-
+    /*
+     * The colour code is NOT filtered here. Register 0x52 only carries it in
+     * the CACH, which exists in repeater traffic but not in direct mode, and
+     * it is only valid at the instant of the frame event; read a few
+     * milliseconds late from this polled task it is meaningless (it read 0 for
+     * a CC1 direct-mode signal on the bench). The chip gates the colour code
+     * in hardware through register 0x1F instead, set from the configured code
+     * in setDmrColorCode, so any burst delivered here already matches.
+     */
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
     dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
@@ -185,14 +187,14 @@ static void handleBurst()
 
     rxState.dstId     = dstId;
     rxState.srcId     = srcId;
-    rxState.colorCode = code;
+    rxState.colorCode = configuredCc;
     rxState.groupCall = group;
     rxState.valid     = true;
 
     if(newCall)
         dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
                      (unsigned long) srcId, group ? "TG" : "ID",
-                     (unsigned long) dstId, code);
+                     (unsigned long) dstId, configuredCc);
 }
 
 void dmr_init(const uint8_t colorCode)
