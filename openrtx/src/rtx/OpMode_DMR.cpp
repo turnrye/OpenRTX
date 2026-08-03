@@ -60,5 +60,10 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
     else
         platform_ledOff(GREEN);
 
-    sleepFor(0u, 30u);
+    /*
+     * Polled faster than the 30ms slot period so the receiver can be re-armed
+     * within each slot: the chip only receives one slot per request and the
+     * re-arming happens from this loop, not from the timeslot interrupt.
+     */
+    sleepFor(0u, 10u);
 }
