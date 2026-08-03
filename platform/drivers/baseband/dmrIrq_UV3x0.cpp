@@ -13,6 +13,14 @@
 /* Register holding the received colour code in its upper nibble. */
 #define C6000_REG_CACH  0x52
 
+/*
+ * Register holding the status of the burst just decoded: bits 7..4 the data
+ * type or voice frame sequence number, bit 2 the CRC result, bits 1..0 the
+ * sync class (1 = voice). Like the colour code it is only valid at the frame
+ * event, so it is sampled here rather than from the consuming thread.
+ */
+#define C6000_REG_RX_STATUS 0x51
+
 /* Colour code value standing for "nothing received yet". */
 #define CC_NONE         0xFF
 
@@ -30,6 +38,7 @@ static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool     stormSeen;  /* Lines shut down by the guard */
 static volatile uint8_t  rxColorCode = CC_NONE; /* CC of the last frame event */
+static volatile uint8_t  rxBurstStatus;         /* 0x51 of the last frame event */
 static volatile bool     busBusy;    /* A thread is on the SPI bus  */
 
 /**
@@ -68,13 +77,16 @@ void __attribute__((used)) EXTI1_IRQHandler()
     sysCount += 1;
 
     /*
-     * The colour code register is only valid at the instant of the frame
-     * event, so it is read here rather than from the consuming thread. The
-     * read is skipped while a thread holds the bus, to avoid two contexts
-     * driving the bitbanged SPI at once; the next event picks it up.
+     * The burst status and colour code registers are only valid at the instant
+     * of the frame event, so they are read here rather than from the consuming
+     * thread. The reads are skipped while a thread holds the bus, to avoid two
+     * contexts driving the bitbanged SPI at once; the next event picks them up.
      */
     if(busBusy == false)
-        rxColorCode = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
+    {
+        rxBurstStatus = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
+        rxColorCode   = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
+    }
 
     stormGuard();
 }
@@ -152,10 +164,11 @@ void dmrIrq_getCounters(struct dmrIrqCounters *counters)
 
 void dmrIrq_clearCounters()
 {
-    tsCount     = 0;
-    sysCount    = 0;
-    txCount     = 0;
-    rxColorCode = CC_NONE;
+    tsCount       = 0;
+    sysCount      = 0;
+    txCount       = 0;
+    rxColorCode   = CC_NONE;
+    rxBurstStatus = 0;
 }
 
 void dmrIrq_feedWatchdog()
@@ -171,6 +184,11 @@ bool dmrIrq_stormDetected()
 uint8_t dmrIrq_getRxColorCode()
 {
     return rxColorCode;
+}
+
+uint8_t dmrIrq_getRxBurstStatus()
+{
+    return rxBurstStatus;
 }
 
 void dmrIrq_setBusBusy(bool busy)

@@ -82,6 +82,18 @@ bool dmrIrq_stormDetected();
 uint8_t dmrIrq_getRxColorCode();
 
 /**
+ * Get the status register of the most recent frame event, as read by the
+ * system interrupt handler straight from the chip. Like the colour code this
+ * catches the value at the instant of the event, which a read from the
+ * consuming thread arrives too late to see. Bits 7..4 hold the data type or
+ * voice frame sequence number, bit 2 the CRC result, bits 1..0 the sync class
+ * (1 = voice).
+ *
+ * @return the last received burst status, or 0 before any has been read.
+ */
+uint8_t dmrIrq_getRxBurstStatus();
+
+/**
  * Tell the interrupt handlers whether a thread is currently accessing the chip
  * over the SPI bus. While it is, the system interrupt handler skips its own
  * register read rather than driving the bus at the same time; it picks the
