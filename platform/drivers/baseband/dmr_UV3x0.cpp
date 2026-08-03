@@ -703,15 +703,21 @@ void dmr_task(struct dmrRxState *rx)
     dmrIrq_setBusBusy(true);
 
     /*
-     * After a transmission the slot state machine is left idle and does not
-     * come back on a lone receive request: the receiver needs the same reset
-     * dance the initial bring-up does. Done here, from the thread, once the
-     * transmit state machine has flagged that it is finished.
+     * After a transmission the receiver does not come back on the reset dance
+     * alone: the transmission leaves the chip's receive path, its frame sync
+     * detection above all, needing the whole DMR mode configuration written
+     * again. Re-running that configuration by hand - by leaving DMR mode and
+     * coming back - was the workaround found on the bench; doing the chip half
+     * of it here has the same effect without dropping out of the mode. The
+     * colour code, which the mode configuration sets to a fixed value, is put
+     * back afterwards, then the usual receive bring-up follows.
      */
     if(rxRestoreNeeded)
     {
         rxRestoreNeeded = false;
 
+        C6000.dmrMode();
+        C6000.setDmrColorCode(configuredCc);
         C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
