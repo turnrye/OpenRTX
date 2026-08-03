@@ -133,6 +133,20 @@ public:
     }
 
     /**
+     * Select the transmitter modulation source. DMR is modulated by the
+     * external HR_C6000, which injects its 4FSK straight into the synthesizer,
+     * and needs bit 7 of register 0x30 set so the transmitter takes that
+     * digital source instead of the internal analog modulator the other modes
+     * use. Must be cleared again for reception and for the analog modes.
+     *
+     * @param digital: true to take the external digital modulation.
+     */
+    inline void setDigitalModulation(const bool digital)
+    {
+        maskSetRegister(0x30, 0x0080, digital ? 0x0080 : 0x0000);
+    }
+
+    /**
      * Setup and enable tone output
      * @param freq frequency in 1/10 Hz
      */
