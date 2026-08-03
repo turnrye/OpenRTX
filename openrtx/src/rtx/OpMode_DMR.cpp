@@ -7,6 +7,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include "drivers/baseband/dmr.h"
+#include "core/dmr_debug.h"
 #include "rtx/OpMode_DMR.hpp"
 
 void OpMode_DMR::enable()
@@ -133,10 +134,13 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
 
         /*
          * Refuse to key up without a DMR ID: transmitting as ID zero would put
-         * an unidentified call on the air. Fall back to reception instead.
+         * an unidentified call on the air. Say so on the tap, as an unexplained
+         * dead PTT is otherwise a puzzle, and fall back to reception.
          */
         if(status->dmrId == 0)
         {
+            dmrDebug_log(DMR_DBG_INFO,
+                         "tx: refused, no DMR ID set (Settings > DMR > DMR ID)");
             startRx = true;
             status->opStatus = OFF;
             return;
