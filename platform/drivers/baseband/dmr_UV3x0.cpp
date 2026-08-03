@@ -166,20 +166,41 @@ static void handleBurst()
         return;
     }
 
-    lcMatches += 1;
+    /*
+     * Confirmed once the same link control has been seen enough times. The
+     * counter is held at the threshold afterwards: it used to grow with every
+     * burst and, being a byte, wrapped back through zero during a long call,
+     * dropping the receive state for a burst or two each time round.
+     */
     if(lcMatches < LC_CONFIRM_COUNT)
-        return;
+    {
+        lcMatches += 1;
+        if(lcMatches < LC_CONFIRM_COUNT)
+            return;
+    }
 
-    rxState.dstId     = (lc[3] << 16) | (lc[4] << 8) | lc[5];
-    rxState.srcId     = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+    uint32_t dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
+    uint32_t srcId = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+    bool     group = (lc[0] == LC_FLCO_GROUP);
+
+    /*
+     * Only the start of a call is announced, not every burst of it: the tap
+     * link is far slower than the burst rate and logging each one floods it,
+     * which stalls the thread doing the logging.
+     */
+    bool newCall = (rxState.valid == false) || (rxState.srcId != srcId) ||
+                   (rxState.dstId != dstId);
+
+    rxState.dstId     = dstId;
+    rxState.srcId     = srcId;
     rxState.colorCode = code;
-    rxState.groupCall = (lc[0] == LC_FLCO_GROUP);
+    rxState.groupCall = group;
     rxState.valid     = true;
 
-    dmrDebug_log(DMR_DBG_LC, "call: from %lu to %s %lu, color code %u",
-                 (unsigned long) rxState.srcId,
-                 rxState.groupCall ? "TG" : "ID",
-                 (unsigned long) rxState.dstId, code);
+    if(newCall)
+        dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
+                     (unsigned long) srcId, group ? "TG" : "ID",
+                     (unsigned long) dstId, code);
 }
 
 void dmr_init(const uint8_t colorCode)
@@ -290,7 +311,7 @@ void dmr_task(struct dmrRxState *rx)
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches = 0;
 
-        dmrDebug_log(DMR_DBG_LC, "call: ended");
+        dmrDebug_log(DMR_DBG_INFO, "call: ended");
     }
 
     reportIrqActivity();
