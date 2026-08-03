@@ -36,6 +36,7 @@
  */
 #define VP_LENGTH               27
 #define VP_PAGE_READ            0x83
+#define VP_PAGE_WRITE           0x03
 #define VP_REGISTER             0x00
 
 /*
@@ -120,6 +121,29 @@ static void payloadRead(uint8_t *payload)
     gpio_setPin(DMR_V_CS);
 
     memcpy(payload, &rx[2], VP_LENGTH);
+}
+
+/**
+ * Load the voice payload the chip transmits in the upcoming slot. The two
+ * command bytes select the payload page and its first register, the payload
+ * follows in the same transfer. This runs from the timeslot interrupt: the
+ * payload rides on the second SPI bus, a hardware peripheral separate from the
+ * bitbanged control bus, so it is safe to drive from an interrupt with no bus
+ * coordination.
+ *
+ * @param payload: source buffer, VP_LENGTH bytes long.
+ */
+static void payloadWrite(const uint8_t *payload)
+{
+    uint8_t tx[2 + VP_LENGTH];
+
+    tx[0] = VP_PAGE_WRITE;
+    tx[1] = VP_REGISTER;
+    memcpy(&tx[2], payload, VP_LENGTH);
+
+    gpio_clearPin(DMR_V_CS);
+    spi_transfer(&payload_spi, tx, NULL, sizeof(tx));
+    gpio_setPin(DMR_V_CS);
 }
 
 /**
