@@ -39,6 +39,15 @@
 #define VP_REGISTER             0x00
 
 /*
+ * Sync class of a burst, in the low two bits of the status register: a value
+ * of one marks a voice burst, the only kind carrying an AMBE payload worth
+ * capturing. Header, terminator and idle bursts leave stale bytes on page
+ * 0x03 and only muddy the capture.
+ */
+#define C6000_SYNC_CLASS_MASK   0x03
+#define C6000_SYNC_CLASS_VOICE  0x01
+
+/*
  * The chip hands back the link control of the previous transmission until it
  * has decoded the current one, so the same content has to show up in more than
  * one burst before it can be trusted.
@@ -189,30 +198,36 @@ static void handleBurst()
     uint8_t code  = (status.cach >> 4) & 0x0F;
 
     /*
-     * Both colour code sources are logged side by side: "cc" is register 0x52
-     * read here, "isrcc" is the same register sampled in the system interrupt.
-     * Watching the two against a known transmitted colour code says whether
-     * either one can be trusted for filtering.
+     * The burst status read here from the thread arrives too late to describe
+     * the burst that raised the frame event, so a copy sampled in the system
+     * interrupt is used to classify it. Both are logged side by side, together
+     * with the two colour code reads, so the bench can confirm the sampled one
+     * is trustworthy: "status" is the thread read of 0x51, "isrbs" the same
+     * register sampled at the event.
      */
+    uint8_t burstStatus = dmrIrq_getRxBurstStatus();
+    bool    voice = (burstStatus & C6000_SYNC_CLASS_MASK) == C6000_SYNC_CLASS_VOICE;
+
     dmrDebug_log(DMR_DBG_LC,
-                 "burst: flags %02X status %02X cach %02X sync %02X cc %u "
-                 "isrcc %u crc %s", status.intFlags, status.rxStatus,
-                 status.cach, status.syncStatus, code,
+                 "burst: flags %02X status %02X isrbs %02X cach %02X sync %02X "
+                 "cc %u isrcc %u crc %s", status.intFlags, status.rxStatus,
+                 burstStatus, status.cach, status.syncStatus, code,
                  dmrIrq_getRxColorCode(), crcOk ? "ok" : "bad");
 
     /*
-     * Stream the raw voice payload for the host-side capture harness. This is
-     * done before any of the filters below and independently of the CRC check:
-     * a voice burst carries no fresh link control and fails that check, so
-     * gating the capture on it would drop exactly the bursts worth recording.
-     * The receive status byte is prepended so the host can tell voice frames
-     * apart from the sync headers and terminators that share the stream.
+     * Stream the raw voice payload for the host-side capture harness, gated on
+     * the interrupt-sampled sync class so only voice bursts are recorded: the
+     * header, terminator and idle bursts carry no AMBE and read stale bytes off
+     * page 0x03. The gate cannot use the CRC check, which every voice burst
+     * fails for lack of fresh link control. The sampled status byte is
+     * prepended so the host keeps the true voice sequence number with each
+     * record.
      */
-    if(dmrDebug_channelEnabled(DMR_DBG_VP))
+    if(voice && dmrDebug_channelEnabled(DMR_DBG_VP))
     {
         uint8_t record[1 + VP_LENGTH];
 
-        record[0] = status.rxStatus;
+        record[0] = burstStatus;
         payloadRead(&record[1]);
         dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
     }
