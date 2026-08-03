@@ -41,4 +41,27 @@ void dmr_task(struct dmrRxState *rx)
     memset(rx, 0, sizeof(struct dmrRxState));
 }
 
+void dmr_startTx(const bool groupCall, const uint32_t dstId,
+                 const uint32_t srcId)
+{
+    (void) groupCall;
+    (void) dstId;
+    (void) srcId;
+
+    dmrDebug_log(DMR_DBG_INFO, "dmr: emulated transmitter has no baseband");
+}
+
+void dmr_stopTx()
+{
+}
+
+bool dmr_txActive()
+{
+    return false;
+}
+
+void dmr_txTimeslotIsr()
+{
+}
+
 #endif /* CONFIG_DMR */

@@ -54,6 +54,39 @@ void dmr_setColorCode(const uint8_t colorCode);
  */
 void dmr_task(struct dmrRxState *rx);
 
+/**
+ * Key a direct mode group or private call and start sending the constant
+ * silence payload. The transmission runs from the timeslot interrupt until
+ * dmr_stopTx is called; this only sets it up.
+ *
+ * @param groupCall: true for a group call, false for a private one.
+ * @param dstId: destination address, a talkgroup for a group call.
+ * @param srcId: source address, that is the radio's own DMR ID.
+ */
+void dmr_startTx(const bool groupCall, const uint32_t dstId,
+                 const uint32_t srcId);
+
+/**
+ * Ask the current transmission to end. The terminator is sent at the next
+ * superframe boundary, after which dmr_txActive returns false.
+ */
+void dmr_stopTx();
+
+/**
+ * Check whether a transmission is still in progress.
+ *
+ * @return true until the terminator has been sent and the chip handed back to
+ * reception.
+ */
+bool dmr_txActive();
+
+/**
+ * Advance the transmit slot state machine by one slot. Called from the
+ * timeslot interrupt handler while a transmission is active, it must not be
+ * used from a thread as it drives the chip without taking the SPI mutex.
+ */
+void dmr_txTimeslotIsr();
+
 #ifdef __cplusplus
 }
 #endif

@@ -7,6 +7,7 @@
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
+#include "dmr.h"
 
 #if defined(CONFIG_DMR)
 
@@ -68,6 +69,16 @@ void __attribute__((used)) EXTI0_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR0;
     tsCount += 1;
+
+    /*
+     * The timeslot interrupt is the slot clock the transmit state machine runs
+     * on: while a transmission is active it sets up the next burst here, within
+     * the slot deadline the thread cannot meet. It is fenced off while a thread
+     * holds the control bus, exactly as the system interrupt's read below is.
+     */
+    if(dmr_txActive() && (busBusy == false))
+        dmr_txTimeslotIsr();
+
     stormGuard();
 }
 
@@ -81,8 +92,10 @@ void __attribute__((used)) EXTI1_IRQHandler()
      * of the frame event, so they are read here rather than from the consuming
      * thread. The reads are skipped while a thread holds the bus, to avoid two
      * contexts driving the bitbanged SPI at once; the next event picks them up.
+     * They are also skipped while transmitting, when the timeslot interrupt is
+     * the one driving the bus and a receive read would have nothing to say.
      */
-    if(busBusy == false)
+    if((busBusy == false) && (dmr_txActive() == false))
     {
         rxBurstStatus = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
         rxColorCode   = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
