@@ -34,11 +34,20 @@
 /* Interval between two interrupt activity reports, in milliseconds */
 #define IRQ_REPORT_INTERVAL     1000
 
+/*
+ * How long the receive state is held after the last good burst before the
+ * call is considered over, in milliseconds. Voice bursts on the received
+ * slot are 60ms apart, so this rides out a few corrupted bursts without
+ * keeping the call on screen after the carrier is gone.
+ */
+#define RX_HOLD_TIMEOUT         500
+
 static struct dmrRxState rxState;
 static uint8_t   configuredCc;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
 static uint32_t  lastSysCount;
+static long long lastBurstTick;
 static uint32_t  reportedTs;
 static uint32_t  reportedSys;
 static uint32_t  reportedTx;
@@ -134,9 +143,11 @@ static void handleBurst()
     /*
      * A burst which passed the filters means someone is talking to us: ask
      * for a receive in the upcoming slot as well, the same request OpenGD77
-     * issues when it accepts a transmission.
+     * issues when it accepts a transmission, and refresh the hold timer
+     * keeping the receive state alive.
      */
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+    lastBurstTick = getTick();
 
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
@@ -176,9 +187,10 @@ void dmr_init(const uint8_t colorCode)
     memset(&rxState, 0, sizeof(rxState));
     memset(prevLc, 0, sizeof(prevLc));
 
-    configuredCc = colorCode & 0x0F;
-    lcMatches    = 0;
-    lastSysCount = 0;
+    configuredCc  = colorCode & 0x0F;
+    lcMatches     = 0;
+    lastSysCount  = 0;
+    lastBurstTick = 0;
     reportedTs   = 0;
     reportedSys  = 0;
     reportedTx   = 0;
@@ -265,6 +277,20 @@ void dmr_task(struct dmrRxState *rx)
                          (unsigned long) missed);
 
         handleBurst();
+    }
+
+    /*
+     * The chip does not say when a call is over: a terminator burst is not
+     * guaranteed to arrive, so the receive state is dropped once no burst
+     * has passed the filters for a while.
+     */
+    if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
+    {
+        rxState.valid = false;
+        memset(prevLc, 0, sizeof(prevLc));
+        lcMatches = 0;
+
+        dmrDebug_log(DMR_DBG_LC, "call: ended");
     }
 
     reportIrqActivity();
