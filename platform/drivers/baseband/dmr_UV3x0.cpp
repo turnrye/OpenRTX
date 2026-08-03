@@ -514,6 +514,21 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
     C6000.writeCfgRegister(0x22, 0x86);     // Start vocoder encode, I2S mode
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);    // 0x40 = 0xE3, active timing
 
+    /*
+     * Read back the registers that shape the transmit modulation, so a signal
+     * that goes out as bare carrier can be told apart from wrong deviation or a
+     * misrouted modulator. Done while the bus is still fenced off the interrupt.
+     * Some of these may be write-only and read back as zero regardless.
+     */
+    dmrDebug_log(DMR_DBG_INFO,
+                 "tx regs: 01=%02X 10=%02X 40=%02X 45=%02X 46=%02X 49=%02X "
+                 "4A=%02X 60=%02X E0=%02X",
+                 C6000.readCfgRegister(0x01), C6000.readCfgRegister(0x10),
+                 C6000.readCfgRegister(0x40), C6000.readCfgRegister(0x45),
+                 C6000.readCfgRegister(0x46), C6000.readCfgRegister(0x49),
+                 C6000.readCfgRegister(0x4A), C6000.readCfgRegister(0x60),
+                 C6000.readCfgRegister(0xE0));
+
     dmrIrq_setBusBusy(false);
 
     dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to %s %lu from %lu",

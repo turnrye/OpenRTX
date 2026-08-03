@@ -337,6 +337,11 @@ void radio_updateConfiguration()
 
     C6000.setModAmplitude(I, Q);
 
+    #if defined(CONFIG_DMR)
+    if(config->opMode == OPMODE_DMR)
+        dmrDebug_log(DMR_DBG_INFO, "dmr: mod amplitude I %u Q %u (cal)", I, Q);
+    #endif
+
     // Set bandwidth, only for analog FM mode
     if(config->opMode == OPMODE_FM)
     {
