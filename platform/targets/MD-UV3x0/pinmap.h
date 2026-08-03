@@ -107,4 +107,16 @@
 #define DMR_SYS_INT GPIOC,1
 #define DMR_TX_INT  GPIOC,2
 
+/*
+ * HR_C6000 voice payload interface, the chip's second SPI bus on SPI2. The
+ * 27-byte page 0x03 AMBE payload crosses here, separate from the bitbanged
+ * control interface above which carries the configuration registers and the
+ * link control. The bus runs in SPI mode 2 (clock idle high, sampled on the
+ * falling edge).
+ */
+#define DMR_V_CS    GPIOB,12
+#define DMR_V_CLK   GPIOB,13
+#define DMR_V_MISO  GPIOB,14
+#define DMR_V_MOSI  GPIOB,15
+
 #endif /* PINMAP_H */
