@@ -296,6 +296,7 @@ void radio_updateConfiguration()
     freq_t  *txCalPoints = calData.vhfCal.txFreq;
     uint8_t *loPwrCal    = calData.vhfCal.txLowPower;
     uint8_t *hiPwrCal    = calData.vhfCal.txHighPower;
+    uint8_t *iRangeCal   = calData.vhfCal.sendIrange;
     uint8_t *qRangeCal   = (config->opMode == OPMODE_FM)
                          ? calData.vhfCal.analogSendQrange
                          : calData.vhfCal.sendQrange;
@@ -306,6 +307,7 @@ void radio_updateConfiguration()
         txCalPoints = calData.uhfCal.txFreq;
         loPwrCal    = calData.uhfCal.txLowPower;
         hiPwrCal    = calData.uhfCal.txHighPower;
+        iRangeCal   = calData.uhfCal.sendIrange;
         qRangeCal   = (config->opMode == OPMODE_FM)
                     ? calData.uhfCal.analogSendQrange
                     : calData.uhfCal.sendQrange;
@@ -320,7 +322,20 @@ void radio_updateConfiguration()
     // HR_C6000 modulation amplitude
     uint8_t Q = interpCalParameter(config->txFrequency, txCalPoints, qRangeCal,
                                                                      calPoints);
-    C6000.setModAmplitude(0, Q);
+
+    /*
+     * DMR is modulated by the chip's own two-point injection, which needs both
+     * modulation points driven: leaving MOD2 (the I gain) at zero, as the other
+     * modes do, cripples the deviation and no 4FSK survives. FM and M17 reach
+     * the modulator through the analog audio path, where the I gain is not
+     * used, so they keep MOD2 at zero.
+     */
+    uint8_t I = 0;
+    if(config->opMode == OPMODE_DMR)
+        I = interpCalParameter(config->txFrequency, txCalPoints, iRangeCal,
+                                                                  calPoints);
+
+    C6000.setModAmplitude(I, Q);
 
     // Set bandwidth, only for analog FM mode
     if(config->opMode == OPMODE_FM)
