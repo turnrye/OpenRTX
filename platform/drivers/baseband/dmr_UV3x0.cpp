@@ -47,6 +47,7 @@ static uint8_t   configuredCc;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
 static uint32_t  lastSysCount;
+static uint32_t  lastTsCount;
 static long long lastBurstTick;
 static uint32_t  reportedTs;
 static uint32_t  reportedSys;
@@ -141,12 +142,11 @@ static void handleBurst()
     }
 
     /*
-     * A burst which passed the filters means someone is talking to us: ask
-     * for a receive in the upcoming slot as well, the same request OpenGD77
-     * issues when it accepts a transmission, and refresh the hold timer
-     * keeping the receive state alive.
+     * A burst which passed the filters means someone is talking to us:
+     * refresh the hold timer keeping the receive state alive. Re-arming the
+     * receiver for the next slot is done from the slot boundary in dmr_task,
+     * not here.
      */
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
     lastBurstTick = getTick();
 
     uint8_t lc[C6000_LC_LENGTH];
@@ -211,6 +211,7 @@ void dmr_init(const uint8_t colorCode)
     configuredCc  = colorCode & 0x0F;
     lcMatches     = 0;
     lastSysCount  = 0;
+    lastTsCount   = 0;
     lastBurstTick = 0;
     reportedTs   = 0;
     reportedSys  = 0;
@@ -277,6 +278,23 @@ void dmr_task(struct dmrRxState *rx)
 {
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
+
+    /*
+     * A RECEIVE request only covers a single slot: the chip receives one and
+     * falls idle unless a fresh request is queued before the next boundary.
+     * OpenGD77 rewrites the slot action from the timeslot interrupt every
+     * 30ms; the interrupt cannot touch the bitbanged SPI here, so it is done
+     * on the slot boundary detected through the timeslot counter instead. The
+     * caller polls fast enough (see OpMode_DMR) to hit the window. Receiving
+     * on both slots picks up noise on the unused one, but that noise fails the
+     * colour code and CRC filters, so it costs an ignored burst rather than a
+     * false decode.
+     */
+    if(lastTsCount != counters.timeslot)
+    {
+        lastTsCount = counters.timeslot;
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+    }
 
     /*
      * The chip signals a frame event on the system interrupt line, but reading
