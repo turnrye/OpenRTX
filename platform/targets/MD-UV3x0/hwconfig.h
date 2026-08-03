@@ -29,6 +29,7 @@ enum AdcChannel {
 extern const struct gpsDevice gps;
 extern const struct spiCustomDevice c6000_spi;
 extern const struct spiDevice nvm_spi;
+extern const struct spiDevice payload_spi;
 extern const struct Adc adc1;
 
 /* Device has a working real time clock */
