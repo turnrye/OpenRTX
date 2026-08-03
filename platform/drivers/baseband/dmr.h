@@ -73,6 +73,13 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
 void dmr_stopTx();
 
 /**
+ * Periodic transmit-side housekeeping, called from a thread while a
+ * transmission is in progress. It keeps the interrupt watchdog fed, which the
+ * receive poll normally does but cannot while transmitting.
+ */
+void dmr_txTask();
+
+/**
  * Check whether a transmission is still in progress.
  *
  * @return true until the terminator has been sent and the chip handed back to
