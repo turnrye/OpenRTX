@@ -97,7 +97,8 @@ enum dmrTxState
     TX_GAP,             ///< Idle slot between voice frames.
     TX_VOICE,           ///< Voice frame carrying the silence payload.
     TX_END_1,           ///< Terminator burst.
-    TX_END_2            ///< Return to reception.
+    TX_END_2,           ///< Terminator going out on air.
+    TX_END_3            ///< Return to reception.
 };
 
 /* Interval between two interrupt activity reports, in milliseconds */
@@ -471,13 +472,26 @@ void dmr_txTimeslotIsr()
             break;
 
         /*
-         * One slot later the terminator has been sent, so put the slot timing
-         * back to reception and stop driving the slot. Going idle here is what
-         * the transmitting thread waits on to hand back to the receiver; the
-         * full receive bring-up, which needs more than an idle slot action, is
-         * left to the thread and flagged here.
+         * This interrupt marks the start of the slot carrying the terminator,
+         * which must play out untouched: rewriting the timing register here
+         * cut the burst short - the far end never saw the call end - and left
+         * the chip wedged mid-transmission. Only queue an idle slot and wait
+         * out the burst; the reference firmware holds off the teardown for a
+         * slot time at this exact point for the same reason.
          */
         case TX_END_2:
+            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
+            txState = TX_END_3;
+            break;
+
+        /*
+         * The terminator has been sent, so put the slot timing back to
+         * reception and stop driving the slot. Going idle here is what the
+         * transmitting thread waits on to hand back to the receiver; the full
+         * receive bring-up, which needs more than an idle slot action, is left
+         * to the thread and flagged here.
+         */
+        case TX_END_3:
             C6000.writeCfgRegisterFromIsr(0x40,
                 static_cast< uint8_t >(C6000_DmrTiming::RX_IDLE));
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
@@ -708,7 +722,13 @@ void dmr_task(struct dmrRxState *rx)
         lcMatches     = 0;
         lastBurstTick = getTick();
 
-        dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx");
+        /*
+         * The timing register is read back so the log says whether the chip
+         * actually took the receive configuration: 43 here is a receiver in
+         * passive timing, anything else means the restore did not stick.
+         */
+        dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx, "
+                     "timing %02X", C6000.getDmrTiming());
     }
 
     if(lastTsCount != counters.timeslot)
