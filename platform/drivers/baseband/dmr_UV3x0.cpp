@@ -6,6 +6,9 @@
 
 #include "interfaces/delays.h"
 #include "core/dmr_debug.h"
+#include "drivers/SPI/spi_stm32.h"
+#include "peripherals/gpio.h"
+#include "peripherals/spi.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
@@ -23,6 +26,17 @@
 /* Full link control frames of a group and of a private call */
 #define LC_FLCO_GROUP           0x00
 #define LC_FLCO_PRIVATE         0x03
+
+/*
+ * The voice payload of a burst: three 9-byte AMBE frames the chip hands over
+ * on page 0x03 of its second SPI bus, separate from the bitbanged control bus
+ * the rest of the driver uses. The read command is the page number with the
+ * read flag set, followed by the register offset; the payload comes back after
+ * those two command bytes, so the transfer is two bytes longer than the data.
+ */
+#define VP_LENGTH               27
+#define VP_PAGE_READ            0x83
+#define VP_REGISTER             0x00
 
 /*
  * The chip hands back the link control of the previous transmission until it
@@ -53,6 +67,60 @@ static uint32_t  reportedTs;
 static uint32_t  reportedSys;
 static uint32_t  reportedTx;
 static long long reportTick;
+
+/**
+ * Bring up the second SPI bus that carries the voice payload. Unlike the
+ * bitbanged control interface this is a hardware peripheral, so it does not
+ * contend with the control bus and can be driven straight from the driver.
+ * The chip wants clock idle high and data sampled on the falling edge; the
+ * bus clock is the APB1 clock divided by eight, well within the chip's limit.
+ */
+static void payloadBusInit()
+{
+    gpio_setMode(DMR_V_CLK,  ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(DMR_V_MISO, ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(DMR_V_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(DMR_V_CS,   OUTPUT);
+    gpio_setPin(DMR_V_CS);      // Chip select idle high
+
+    spiStm32_init(&payload_spi, 6000000, SPI_FLAG_CPOL);
+}
+
+/**
+ * Shut the voice payload bus back down and park its lines.
+ */
+static void payloadBusTerminate()
+{
+    spiStm32_terminate(&payload_spi);
+
+    gpio_setMode(DMR_V_CLK,  INPUT);
+    gpio_setMode(DMR_V_MISO, INPUT);
+    gpio_setMode(DMR_V_MOSI, INPUT);
+    gpio_setMode(DMR_V_CS,   INPUT);
+}
+
+/**
+ * Read the raw voice payload of the burst the chip has just decoded. The two
+ * command bytes are clocked out first and their returned bytes discarded, the
+ * payload follows.
+ *
+ * @param payload: destination buffer, VP_LENGTH bytes long.
+ */
+static void payloadRead(uint8_t *payload)
+{
+    uint8_t tx[2 + VP_LENGTH];
+    uint8_t rx[2 + VP_LENGTH];
+
+    memset(tx, 0, sizeof(tx));
+    tx[0] = VP_PAGE_READ;
+    tx[1] = VP_REGISTER;
+
+    gpio_clearPin(DMR_V_CS);
+    spi_transfer(&payload_spi, tx, rx, sizeof(tx));
+    gpio_setPin(DMR_V_CS);
+
+    memcpy(payload, &rx[2], VP_LENGTH);
+}
 
 /**
  * Read back what was written during the initialisation. A mismatch here means
@@ -131,6 +199,23 @@ static void handleBurst()
                  "isrcc %u crc %s", status.intFlags, status.rxStatus,
                  status.cach, status.syncStatus, code,
                  dmrIrq_getRxColorCode(), crcOk ? "ok" : "bad");
+
+    /*
+     * Stream the raw voice payload for the host-side capture harness. This is
+     * done before any of the filters below and independently of the CRC check:
+     * a voice burst carries no fresh link control and fails that check, so
+     * gating the capture on it would drop exactly the bursts worth recording.
+     * The receive status byte is prepended so the host can tell voice frames
+     * apart from the sync headers and terminators that share the stream.
+     */
+    if(dmrDebug_channelEnabled(DMR_DBG_VP))
+    {
+        uint8_t record[1 + VP_LENGTH];
+
+        record[0] = status.rxStatus;
+        payloadRead(&record[1]);
+        dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
+    }
 
     if(crcOk == false)
         return;
@@ -228,6 +313,9 @@ void dmr_init(const uint8_t colorCode)
      */
     dmrDebug_mark("dmr: configuring baseband");
 
+    /* The voice payload rides on its own SPI bus, brought up here. */
+    payloadBusInit();
+
     /*
      * The receiver idles in passive timing so the chip can lock to the slot
      * clock of whoever transmits. Active timing made it free run instead:
@@ -259,6 +347,7 @@ void dmr_terminate()
     dmrIrq_terminate();
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    payloadBusTerminate();
     memset(&rxState, 0, sizeof(rxState));
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
