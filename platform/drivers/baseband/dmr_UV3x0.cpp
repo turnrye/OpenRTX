@@ -120,10 +120,17 @@ static void handleBurst()
     bool    crcOk = (status.rxStatus & RX_STATUS_CRC_ERROR) == 0;
     uint8_t code  = (status.cach >> 4) & 0x0F;
 
+    /*
+     * Both colour code sources are logged side by side: "cc" is register 0x52
+     * read here, "isrcc" is the same register sampled in the system interrupt.
+     * Watching the two against a known transmitted colour code says whether
+     * either one can be trusted for filtering.
+     */
     dmrDebug_log(DMR_DBG_LC,
-                 "burst: flags %02X status %02X cach %02X sync %02X cc %u crc %s",
-                 status.intFlags, status.rxStatus, status.cach,
-                 status.syncStatus, code, crcOk ? "ok" : "bad");
+                 "burst: flags %02X status %02X cach %02X sync %02X cc %u "
+                 "isrcc %u crc %s", status.intFlags, status.rxStatus,
+                 status.cach, status.syncStatus, code,
+                 dmrIrq_getRxColorCode(), crcOk ? "ok" : "bad");
 
     if(crcOk == false)
         return;
