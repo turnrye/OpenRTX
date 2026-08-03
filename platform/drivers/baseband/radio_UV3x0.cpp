@@ -237,6 +237,12 @@ void radio_enableTx()
     at1846s.setDigitalModulation(config->opMode == OPMODE_DMR);
     at1846s.setFuncMode(AT1846S_FuncMode::TX);
 
+    #if defined(CONFIG_DMR)
+    if(config->opMode == OPMODE_DMR)
+        dmrDebug_log(DMR_DBG_INFO, "dmr: AT1846S reg 30 = %04X (want 60C6)",
+                     at1846s.getRegister(0x30));
+    #endif
+
 
     if(currTxBand == BND_VHF)
     {

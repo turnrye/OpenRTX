@@ -137,13 +137,27 @@ public:
      * external HR_C6000, which injects its 4FSK straight into the synthesizer,
      * and needs bit 7 of register 0x30 set so the transmitter takes that
      * digital source instead of the internal analog modulator the other modes
-     * use. Must be cleared again for reception and for the analog modes.
+     * use. It also needs the band mode bit (13) that the 12.5kHz bandwidth
+     * setting wrongly leaves clear: the reference firmware keeps that bit set
+     * for both bandwidths and only toggles bit 12 for the wide setting. Both
+     * are cleared again for reception and the analog modes.
      *
      * @param digital: true to take the external digital modulation.
      */
     inline void setDigitalModulation(const bool digital)
     {
-        maskSetRegister(0x30, 0x0080, digital ? 0x0080 : 0x0000);
+        maskSetRegister(0x30, 0x2080, digital ? 0x2080 : 0x0000);
+    }
+
+    /**
+     * Read back a register, for bring-up diagnostics.
+     *
+     * @param reg: register number.
+     * @return the register value.
+     */
+    inline uint16_t getRegister(const uint8_t reg)
+    {
+        return i2c_readReg16(reg);
     }
 
     /**
