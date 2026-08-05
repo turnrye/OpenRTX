@@ -45,9 +45,25 @@
 #define DEC_STATE_SIZE      0x07EC
 #define ECC_STATE_SIZE      0x0100
 
-/* Half-frame selector values passed to the encoder for the two 80-sample halves */
-#define ENC_MODE_HALF0      0x1840
-#define ENC_MODE_HALF1      0x0800
+/*
+ * Half-frame mode words passed to the encoder for the two 80-sample halves,
+ * recovered from the donor's own encode driver: the first half is the literal
+ * 0x800, the second half takes the value the setup leaves in the context (0).
+ */
+#define ENC_MODE_HALF0      0x0800
+#define ENC_MODE_HALF1      0x0000
+
+/*
+ * The TX/encode path is not yet validated on real hardware. Two obstacles: the
+ * donor's setup writes a handful of context fields that our init sequence does
+ * not yet reproduce, and the encoder's pitch-analysis loop cannot be faithfully
+ * emulated off-radio (a unicorn IT-block limitation), so the encode ABI cannot
+ * be golden-vector checked before flashing. Calling the vocoder with an
+ * unverified ABI faults the radio, so until encode is brought up on the bench it
+ * emits a valid AMBE silence frame instead. Decode/RX is fully working and does
+ * not depend on this.
+ */
+#define DMR_CODEC_TX_ENABLED  0
 
 /* Function-pointer views of the blob entries. */
 typedef void (*ambe_init_enc_fn)(void *st, int a, int b);
@@ -105,10 +121,30 @@ void dmr_codec_terminate(void)
     ready = false;
 }
 
+/*
+ * A single 9-byte AMBE silence frame (the standard public pattern). Emitted on
+ * TX while the encode path is gated off, and used by the decode self-test.
+ */
+static const uint8_t ambeSilenceFrame[DMR_CODEC_FRAME_BYTES] =
+{
+    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
+};
+
 void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
                       const int16_t pcm[DMR_CODEC_PCM_SAMPLES])
 {
     uint8_t bits[72];
+
+    /*
+     * Until the encoder is validated on the bench, transmit valid silence rather
+     * than driving the vocoder with an unverified ABI (see DMR_CODEC_TX_ENABLED).
+     */
+    if(DMR_CODEC_TX_ENABLED == 0)
+    {
+        memcpy(frame, ambeSilenceFrame, DMR_CODEC_FRAME_BYTES);
+        (void) pcm;
+        return;
+    }
 
     memset(frame, 0, DMR_CODEC_FRAME_BYTES);
     if(ready == false)
@@ -310,16 +346,6 @@ void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
     ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, 0, 1, decState);
 }
 
-/*
- * A single 9-byte AMBE silence frame, the standard public pattern. Decoding it
- * must return near silence, which is a safe end-to-end check of the decode path
- * that needs no captured audio.
- */
-static const uint8_t selfTestSilence[DMR_CODEC_FRAME_BYTES] =
-{
-    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
-};
-
 /* One cycle of a 1 kHz tone sampled at 8 kHz, the encode test input. */
 static const int16_t selfTestTone[8] =
 {
@@ -364,9 +390,16 @@ void dmr_codec_selfTest(void)
     dmrDebug_log(DMR_DBG_INFO, "codec: init ok");
 
     /* Decode path: decoding the silence frame must come back as near silence. */
-    dmr_codec_decode(selfTestPcm, selfTestSilence);
+    dmr_codec_decode(selfTestPcm, ambeSilenceFrame);
     dmrDebug_log(DMR_DBG_INFO, "codec: decode silence peak %d (expect ~0)",
                  pcmPeak(selfTestPcm));
+
+    if(DMR_CODEC_TX_ENABLED == 0)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "codec: encode gated off (TX ABI unverified), "
+                     "decode-only self-test done");
+        return;
+    }
 
     /*
      * Encode path: encode a few frames of the tone so the encoder's inter-frame
