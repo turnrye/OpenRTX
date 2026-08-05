@@ -164,6 +164,17 @@ SECTIONS
     } > smallram AT > flash
     _etext = LOADADDR(.data);
 
+    /*
+     * The DMR AMBE vocoder occupies a fixed region high in flash. It is a
+     * proprietary codec, never part of the OpenRTX image: the user installs it
+     * from their own donor firmware at flash time with the separate DMR
+     * installer, which places it at this address. Only the address is pinned
+     * here; no bytes are emitted. The guard fails the link should the firmware
+     * ever grow up into the codec region.
+     */
+    _ambe_blob_start = 0x0807537C;
+    _ambe_blob_end   = 0x080BDF2C;      /* start + 0x48BB0 */
+
     /* Secondary bss section, placed in the 128kB RAM and not initialized: here
        go the display framebuffer and, immediately after it, the heap area. */
     .bss2 (NOLOAD) :
@@ -186,3 +197,11 @@ SECTIONS
     } > smallram
     _bss_end = .;
 }
+
+/*
+ * Fail the link if the firmware image grows up into the reserved DMR AMBE codec
+ * region (see _ambe_blob_start above). The image ends at the top of the .data
+ * copy stored in flash.
+ */
+ASSERT(_etext + SIZEOF(.data) <= _ambe_blob_start,
+       "OpenRTX image overlaps the reserved DMR AMBE codec region")
