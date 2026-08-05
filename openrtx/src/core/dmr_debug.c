@@ -21,6 +21,13 @@
 #include "drivers/usb_vcom.h"
 #endif
 
+/*
+ * The DMR voice codec self-test, provided only by targets that build the
+ * vocoder driver (dmr_codec). A weak reference so the tap links everywhere;
+ * the 'c' command reports it unavailable where the symbol is absent.
+ */
+void dmr_codec_selfTest(void) __attribute__((weak));
+
 #define TAP_BUF_SIZE    2048    /* Message buffer size, in bytes            */
 #define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
 #define TAP_LINE_SIZE    128    /* Maximum length of a single message       */
@@ -143,6 +150,19 @@ static void tapPollCommands()
             case '?':
                 dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X "
                              "(1 info, 2 irq, 3 lc, 4 payload)", channels);
+                continue;
+
+            case 'c':
+                /*
+                 * Run the DMR voice codec self-test, if this target builds the
+                 * vocoder driver. The reference is weak so targets without it
+                 * still link.
+                 */
+                if(dmr_codec_selfTest != NULL)
+                    dmr_codec_selfTest();
+                else
+                    dmrDebug_log(DMR_DBG_INFO,
+                                 "codec: not available on this build");
                 continue;
 
             default:

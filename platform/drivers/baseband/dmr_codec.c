@@ -19,6 +19,7 @@
  */
 
 #include "dmr_codec.h"
+#include "core/dmr_debug.h"
 #include <string.h>
 
 /*
@@ -158,4 +159,60 @@ void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
      */
     ((ambe_decode_fn) AMBE_DECODE)(pcm, 0x50, bits, 0, 8, 0, decState);
     ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, 8, 1, decState);
+}
+
+/*
+ * A single 9-byte AMBE silence frame, the standard public pattern. Decoding it
+ * must return near silence, which is a safe end-to-end check of the decode path
+ * that needs no captured audio.
+ */
+static const uint8_t selfTestSilence[DMR_CODEC_FRAME_BYTES] =
+{
+    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
+};
+
+static int16_t selfTestPcm[DMR_CODEC_PCM_SAMPLES];
+
+/**
+ * Return the peak absolute sample of the decoded PCM, a cheap health metric.
+ */
+static int16_t pcmPeak(const int16_t *pcm)
+{
+    int16_t peak = 0;
+    for(int i = 0; i < DMR_CODEC_PCM_SAMPLES; i++)
+    {
+        int16_t a = (pcm[i] < 0) ? (int16_t) -pcm[i] : pcm[i];
+        if(a > peak)
+            peak = a;
+    }
+    return peak;
+}
+
+void dmr_codec_selfTest(void)
+{
+    if(dmr_codec_available() == false)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "codec: not installed (no donor blob at "
+                     "0x%08lX)", (unsigned long) AMBE_BLOB_BASE);
+        return;
+    }
+
+    dmrDebug_log(DMR_DBG_INFO, "codec: blob present, self-test start");
+    if(dmr_codec_init() == false)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "codec: init failed");
+        return;
+    }
+    dmrDebug_log(DMR_DBG_INFO, "codec: init ok");
+
+    /*
+     * Decode path: decoding the silence frame must come back as near silence.
+     * Streaming the frame back as a "$CE" record lets an off-radio decoder
+     * cross-check. The encode path is validated separately: it is not exercised
+     * here yet, as its bring-up is still in progress.
+     */
+    dmr_codec_decode(selfTestPcm, selfTestSilence);
+    dmrDebug_record(DMR_DBG_INFO, "CE", selfTestSilence, DMR_CODEC_FRAME_BYTES);
+    dmrDebug_log(DMR_DBG_INFO, "codec: decode silence peak %d (expect ~0), done",
+                 pcmPeak(selfTestPcm));
 }

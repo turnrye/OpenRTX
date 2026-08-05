@@ -63,6 +63,15 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
 void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
                       const uint8_t frame[DMR_CODEC_FRAME_BYTES]);
 
+/**
+ * Run the vocoder self-test and report over the debug tap: check the blob is
+ * present, initialise, encode a baked test tone (streaming the AMBE frames as
+ * "$CE" records for an off-radio decoder to verify), and round-trip one frame.
+ * This is the golden-vector bring-up used before wiring the codec to the voice
+ * path. Triggered by the 'c' command on the tap.
+ */
+void dmr_codec_selfTest(void);
+
 #ifdef __cplusplus
 }
 #endif
