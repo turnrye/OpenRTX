@@ -206,6 +206,94 @@ static void ambeInitFrame(const uint8_t *frame, uint16_t bits[49])
     for(int i = 12; i < 24; i++) bits[o--] = c0[i];
 }
 
+/*
+ * Golay(23,12) syndrome of a 23-bit codeword, generator 0xC75. Zero for a valid
+ * codeword.
+ */
+static uint32_t golaySyndrome(uint32_t cw)
+{
+    for(int i = 22; i >= 11; i--)
+    {
+        if(cw & (1u << i))
+            cw ^= (uint32_t) 0xC75 << (i - 11);
+    }
+    return cw & 0x7FF;
+}
+
+static int popcount11(uint32_t x)
+{
+    int n = 0;
+    while(x)
+    {
+        n += x & 1;
+        x >>= 1;
+    }
+    return n;
+}
+
+/**
+ * Estimate the number of bit errors in a 23-bit Golay codeword (capped at 4).
+ * Used only to tell a real voice burst from noise on the idle timeslot.
+ *
+ * @param bits: 23 codeword bits, most significant first.
+ */
+static int golayErrors(const uint8_t *bits)
+{
+    uint32_t cw = 0;
+    for(int i = 0; i < 23; i++)
+        cw = (cw << 1) | bits[i];
+
+    int s = popcount11(golaySyndrome(cw));
+    if(s <= 3)
+        return s;
+
+    for(int i = 0; i < 23; i++)
+    {
+        int s2 = popcount11(golaySyndrome(cw ^ (1u << i)));
+        if(s2 <= 2)
+            return 1 + s2;
+    }
+    return 4;
+}
+
+bool dmr_codec_frameIsVoice(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
+{
+    /*
+     * An all-ones frame is the chip's idle payload; its codeword happens to be a
+     * valid Golay word, so reject it before the error-count check below.
+     */
+    int ones = 0;
+    for(int i = 0; i < DMR_CODEC_FRAME_BYTES; i++)
+    {
+        if(frame[i] == 0xFF)
+            ones++;
+    }
+    if(ones >= DMR_CODEC_FRAME_BYTES - 1)
+        return false;
+
+    uint8_t cw[96];
+    memset(cw, 0, sizeof(cw));
+
+    int pos = 0;
+    for(int i = 0; i < 9; i++)
+    {
+        for(int j = 7; j > 0; j -= 2)
+        {
+            cw[ambeDeintA[pos]] = (frame[i] >> j)       & 1;
+            cw[ambeDeintB[pos]] = (frame[i] >> (j - 1)) & 1;
+            pos++;
+        }
+    }
+
+    /* Codeword 0 is Golay-protected; on the voice slot it decodes almost error
+     * free, on the empty slot it is noise. Keep frames with at most one error. */
+    uint8_t c0[23];
+    for(int i = 0; i < 23; i++)
+        c0[i] = cw[23 - i];        /* codeword-0 bits 23..1, MSB first */
+
+    return golayErrors(c0) <= 1;
+}
+
 void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
                       const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 {
