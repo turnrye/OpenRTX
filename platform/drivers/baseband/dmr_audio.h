@@ -47,6 +47,34 @@ bool dmrAudio_running(void);
  */
 void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES]);
 
+/**
+ * Open the microphone audio path and start the capture/encode thread. Needs the
+ * vocoder blob installed.
+ *
+ * @return true if capture started, false if the codec is unavailable or the
+ *         audio path could not be opened.
+ */
+bool dmrAudio_startTx(void);
+
+/**
+ * Stop capture and release the microphone path. Idempotent.
+ */
+void dmrAudio_stopTx(void);
+
+/**
+ * @return true while the capture thread is running.
+ */
+bool dmrAudio_txRunning(void);
+
+/**
+ * Take the next encoded AMBE frame for transmission. Safe to call from the
+ * timeslot interrupt (lock-free single-consumer).
+ *
+ * @param frame: destination, DMR_CODEC_FRAME_BYTES (9) bytes.
+ * @return true if a frame was returned, false if none is ready.
+ */
+bool dmrAudio_popFrame(uint8_t frame[DMR_CODEC_FRAME_BYTES]);
+
 #ifdef __cplusplus
 }
 #endif
