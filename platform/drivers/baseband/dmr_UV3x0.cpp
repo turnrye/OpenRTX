@@ -483,18 +483,30 @@ void dmr_txTimeslotIsr()
             break;
 
         /*
-         * A voice frame: load the silence payload on the second bus, then set
-         * the slot to transmit it with the current sequence number in the burst
-         * type high nibble, and advance the sequence.
+         * A voice frame: load the payload on the second bus, then set the slot
+         * to transmit it with the current sequence number in the burst type high
+         * nibble, and advance the sequence. The payload is three encoded AMBE
+         * frames from the microphone; any not yet available (start-up, underrun,
+         * or no vocoder installed) fall back to silence, so the call is always
+         * on-air even before audio flows.
          */
         case TX_VOICE:
-            payloadWrite(TX_SILENCE_AUDIO);
+        {
+            uint8_t payload[VP_LENGTH];
+            for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
+            {
+                uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
+                if(dmrAudio_popFrame(slot) == false)
+                    memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
+            }
+            payloadWrite(payload);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
                                           TX_BURST_VOICE | (txSequence << 4));
             txSequence = (txSequence + 1) % TX_SUPERFRAME_FRAMES;
             txState = TX_GAP;
             break;
+        }
 
         /*
          * The terminator carries the link control again so a late listener can
@@ -585,6 +597,16 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
                  C6000.readCfgRegister(0xE0));
 
     dmrIrq_setBusBusy(false);
+
+    /*
+     * Start capturing and encoding the microphone. Stop any receive playback
+     * first: the two share the vocoder state and the radio is never receiving
+     * and transmitting at once. Without a vocoder installed this does nothing
+     * and the transmit slot machine sends silence, as before.
+     */
+    dmrAudio_stopRx();
+    if(dmrAudio_startTx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
 
     dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to %s %lu from %lu",
                  groupCall ? "TG" : "ID", (unsigned long) dstId,
@@ -690,6 +712,7 @@ void dmr_init(const uint8_t colorCode)
 void dmr_terminate()
 {
     dmrAudio_stopRx();
+    dmrAudio_stopTx();
     dmrIrq_terminate();
 
     txState         = TX_IDLE;
@@ -753,6 +776,9 @@ void dmr_task(struct dmrRxState *rx)
     if(rxRestoreNeeded)
     {
         rxRestoreNeeded = false;
+
+        /* The transmission is over; stop capturing the microphone. */
+        dmrAudio_stopTx();
 
         C6000.dmrMode();
         C6000.setDmrColorCode(configuredCc);
