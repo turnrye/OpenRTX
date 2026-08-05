@@ -12,6 +12,7 @@
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
+#include "dmr_audio.h"
 #include "protocols/DMR/LinkControl.h"
 #include <string.h>
 
@@ -305,13 +306,43 @@ static void handleBurst()
      * is confirmed against a full capture; gating on the sync class alone
      * wrongly dropped almost every burst.
      */
-    if(dmrDebug_channelEnabled(DMR_DBG_VP))
+    if(dmrDebug_channelEnabled(DMR_DBG_VP) || dmrAudio_running())
     {
-        uint8_t record[1 + VP_LENGTH];
+        uint8_t payload[VP_LENGTH];
+        payloadRead(payload);
 
-        record[0] = burstStatus;
-        payloadRead(&record[1]);
-        dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
+        if(dmrDebug_channelEnabled(DMR_DBG_VP))
+        {
+            uint8_t record[1 + VP_LENGTH];
+            record[0] = burstStatus;
+            memcpy(&record[1], payload, VP_LENGTH);
+            dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
+        }
+
+        /*
+         * Feed the three AMBE frames of a voice burst to playback. Idle bursts
+         * (all 0xFF) are skipped; the received slot still alternates voice and
+         * idle, so some non-voice bursts get through and add noise until the
+         * voice slot is locked - good enough to hear the call.
+         */
+        if(dmrAudio_running())
+        {
+            bool idle = true;
+            for(int i = 0; i < VP_LENGTH; i++)
+            {
+                if(payload[i] != 0xFF)
+                {
+                    idle = false;
+                    break;
+                }
+            }
+
+            if(idle == false)
+            {
+                for(int f = 0; f < 3; f++)
+                    dmrAudio_pushFrame(&payload[f * DMR_CODEC_FRAME_BYTES]);
+            }
+        }
     }
 
     if(crcOk == false)
@@ -384,9 +415,15 @@ static void handleBurst()
     rxState.valid     = true;
 
     if(newCall)
+    {
         dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
                      (unsigned long) srcId, group ? "TG" : "ID",
                      (unsigned long) dstId, rxCc);
+
+        /* Start voice playback, if the vocoder is installed. */
+        if(dmrAudio_startRx())
+            dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
+    }
 }
 
 bool dmr_txActive()
@@ -652,6 +689,7 @@ void dmr_init(const uint8_t colorCode)
 
 void dmr_terminate()
 {
+    dmrAudio_stopRx();
     dmrIrq_terminate();
 
     txState         = TX_IDLE;
@@ -788,6 +826,7 @@ void dmr_task(struct dmrRxState *rx)
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches = 0;
 
+        dmrAudio_stopRx();
         dmrDebug_log(DMR_DBG_INFO, "call: ended");
     }
 
