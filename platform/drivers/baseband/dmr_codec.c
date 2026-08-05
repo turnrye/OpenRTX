@@ -171,7 +171,16 @@ static const uint8_t selfTestSilence[DMR_CODEC_FRAME_BYTES] =
     0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
 };
 
+/* One cycle of a 1 kHz tone sampled at 8 kHz, the encode test input. */
+static const int16_t selfTestTone[8] =
+{
+    0, 5657, 8000, 5657, 0, -5657, -8000, -5657
+};
+
+#define SELFTEST_FRAMES     4
+
 static int16_t selfTestPcm[DMR_CODEC_PCM_SAMPLES];
+static int16_t selfTestOut[DMR_CODEC_PCM_SAMPLES];
 
 /**
  * Return the peak absolute sample of the decoded PCM, a cheap health metric.
@@ -205,14 +214,32 @@ void dmr_codec_selfTest(void)
     }
     dmrDebug_log(DMR_DBG_INFO, "codec: init ok");
 
-    /*
-     * Decode path: decoding the silence frame must come back as near silence.
-     * Streaming the frame back as a "$CE" record lets an off-radio decoder
-     * cross-check. The encode path is validated separately: it is not exercised
-     * here yet, as its bring-up is still in progress.
-     */
+    /* Decode path: decoding the silence frame must come back as near silence. */
     dmr_codec_decode(selfTestPcm, selfTestSilence);
-    dmrDebug_record(DMR_DBG_INFO, "CE", selfTestSilence, DMR_CODEC_FRAME_BYTES);
-    dmrDebug_log(DMR_DBG_INFO, "codec: decode silence peak %d (expect ~0), done",
+    dmrDebug_log(DMR_DBG_INFO, "codec: decode silence peak %d (expect ~0)",
                  pcmPeak(selfTestPcm));
+
+    /*
+     * Encode path: encode a few frames of the tone so the encoder's inter-frame
+     * state settles, streaming each 9-byte AMBE frame as a "$CE" record. An
+     * off-radio decoder (mbelib) turns these back into audio to confirm the
+     * encode is producing valid AMBE.
+     */
+    uint8_t frame[DMR_CODEC_FRAME_BYTES];
+    for(int i = 0; i < DMR_CODEC_PCM_SAMPLES; i++)
+        selfTestPcm[i] = selfTestTone[i & 7];
+
+    for(int f = 0; f < SELFTEST_FRAMES; f++)
+    {
+        dmr_codec_encode(frame, selfTestPcm);
+        dmrDebug_record(DMR_DBG_INFO, "CE", frame, sizeof(frame));
+    }
+    dmrDebug_log(DMR_DBG_INFO, "codec: encoded %d tone frames", SELFTEST_FRAMES);
+
+    /* Round-trip one frame through encode then decode; a tone in should give a
+     * loud, tone-like output. */
+    dmr_codec_encode(frame, selfTestPcm);
+    dmr_codec_decode(selfTestOut, frame);
+    dmrDebug_log(DMR_DBG_INFO, "codec: self-test done, round-trip peak %d",
+                 pcmPeak(selfTestOut));
 }
