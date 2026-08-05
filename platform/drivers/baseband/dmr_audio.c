@@ -9,7 +9,9 @@
 #include "core/audio_stream.h"
 #include "core/audio_path.h"
 #include "core/threads.h"
+#include "core/dsp.h"
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -17,6 +19,13 @@
 #define FRAME_SAMPLES    160                    /* 20 ms at 8 kHz, one AMBE frame */
 #define DMA_BUF_SAMPLES  (FRAME_SAMPLES * 2)    /* Double-buffered DMA            */
 #define QUEUE_FRAMES     8                      /* Playback queue depth           */
+
+#ifndef CONFIG_MIC_GAIN
+#define CONFIG_MIC_GAIN 1
+#endif
+#ifndef CONFIG_MIC_OVERSAMPLE
+#define CONFIG_MIC_OVERSAMPLE 1
+#endif
 
 static pathId  rxPath;
 static bool    running  = false;
@@ -171,6 +180,161 @@ void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
         numFrames += 1;
     }
     pthread_mutex_unlock(&mutex);
+}
+
+/*
+ * Transmit side: capture the microphone, encode it and hand the AMBE frames to
+ * the transmit slot state machine. The state machine reads them from the
+ * timeslot interrupt, so this queue is a single-producer/single-consumer ring
+ * with no lock - the interrupt cannot take a mutex. head is written only by the
+ * encode thread, tail only by the interrupt; both are word-aligned reads/writes.
+ */
+#define TX_QUEUE_FRAMES  8
+
+static uint8_t          txQueue[TX_QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
+static volatile uint32_t txHead;
+static volatile uint32_t txTail;
+static pathId    txPath;
+static bool      txRunning = false;
+static bool      txReqStop = false;
+static pthread_t txThread;
+
+/**
+ * Capture/encode thread: pull one 20 ms chunk of microphone audio at a time,
+ * decimate it to 8 kHz mono, encode it to a 9-byte AMBE frame and queue it.
+ */
+static void *captureFunc(void *arg)
+{
+    pathId path = *((pathId *) arg);
+    struct dcBlock        dcBlock;
+    struct decimatorState decimator;
+
+    /* Oversampled ADC buffer is too big for the stack. */
+    stream_sample_t *adcBuf = malloc(DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE
+                                     * sizeof(stream_sample_t));
+    if(adcBuf == NULL)
+        goto detach;
+
+    if(dmr_codec_init() == false)
+        goto freebuf;
+
+    streamId is = audioStream_start(path, adcBuf,
+                                    DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE,
+                                    8000 * CONFIG_MIC_OVERSAMPLE,
+                                    STREAM_INPUT | BUF_CIRC_DOUBLE);
+    if(is < 0)
+        goto freebuf;
+
+    dsp_resetState(dcBlock);
+    dsp_resetState(decimator);
+
+    while(txReqStop == false)
+    {
+        if(audioPath_getStatus(path) != PATH_OPEN)
+            break;
+
+        dataBlock_t audio = inputStream_getData(is);
+        if((audio.data == NULL) || (audio.len == 0))
+            break;
+
+        /* One buffer is FRAME_SAMPLES*oversample raw samples; decimate to 160. */
+        size_t outIdx = 0;
+        for(size_t i = 0; i < audio.len; i++)
+        {
+            int16_t sample = audio.data[i];
+#if CONFIG_MIC_OVERSAMPLE > 1
+            if(dsp_decimator(&decimator, &sample, CONFIG_MIC_OVERSAMPLE) == false)
+                continue;
+#endif
+            sample = dsp_dcBlockFilter(&dcBlock, sample);
+            audio.data[outIdx++] = sample * CONFIG_MIC_GAIN;
+        }
+
+        uint8_t frame[DMR_CODEC_FRAME_BYTES];
+        dmr_codec_encode(frame, audio.data);
+
+        if((txHead - txTail) < TX_QUEUE_FRAMES)
+        {
+            memcpy(txQueue[txHead % TX_QUEUE_FRAMES], frame, DMR_CODEC_FRAME_BYTES);
+            __sync_synchronize();
+            txHead += 1;
+        }
+    }
+
+    audioStream_terminate(is);
+
+freebuf:
+    free(adcBuf);
+detach:
+    if(txReqStop == false)
+        pthread_detach(pthread_self());
+    txRunning = false;
+    return NULL;
+}
+
+bool dmrAudio_startTx(void)
+{
+    if(txRunning)
+        return true;
+
+    if(dmr_codec_available() == false)
+        return false;
+
+    txPath = audioPath_request(SOURCE_MIC, SINK_MCU, PRIO_TX);
+    if(audioPath_getStatus(txPath) != PATH_OPEN)
+    {
+        audioPath_release(txPath);
+        return false;
+    }
+
+    txHead    = 0;
+    txTail    = 0;
+    txReqStop = false;
+    txRunning = true;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+#if defined(_MIOSIX)
+    pthread_attr_setstacksize(&attr, CODEC2_THREAD_STKSIZE);
+    struct sched_param param;
+    param.sched_priority = THREAD_PRIO_HIGH;
+    pthread_attr_setschedparam(&attr, &param);
+#endif
+
+    if(pthread_create(&txThread, &attr, captureFunc, &txPath) != 0)
+    {
+        txRunning = false;
+        audioPath_release(txPath);
+    }
+
+    return txRunning;
+}
+
+void dmrAudio_stopTx(void)
+{
+    if(txRunning == false)
+        return;
+
+    txReqStop = true;
+    pthread_join(txThread, NULL);
+    audioPath_release(txPath);
+    txRunning = false;
+}
+
+bool dmrAudio_txRunning(void)
+{
+    return txRunning;
+}
+
+bool dmrAudio_popFrame(uint8_t frame[DMR_CODEC_FRAME_BYTES])
+{
+    if(txHead == txTail)
+        return false;
+
+    memcpy(frame, txQueue[txTail % TX_QUEUE_FRAMES], DMR_CODEC_FRAME_BYTES);
+    __sync_synchronize();
+    txTail += 1;
+    return true;
 }
 
 #endif /* CONFIG_DMR */
