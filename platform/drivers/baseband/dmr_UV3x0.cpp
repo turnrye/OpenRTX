@@ -320,27 +320,18 @@ static void handleBurst()
         }
 
         /*
-         * Feed the three AMBE frames of a voice burst to playback. Idle bursts
-         * (all 0xFF) are skipped; the received slot still alternates voice and
-         * idle, so some non-voice bursts get through and add noise until the
-         * voice slot is locked - good enough to hear the call.
+         * Feed the three AMBE frames of a voice burst to playback, but only the
+         * ones that pass the voice check: in direct mode the receiver hears both
+         * timeslots, and the empty one decodes to noise. Gating on each frame's
+         * Golay error count keeps the call's slot and drops the other.
          */
         if(dmrAudio_running())
         {
-            bool idle = true;
-            for(int i = 0; i < VP_LENGTH; i++)
+            for(int f = 0; f < 3; f++)
             {
-                if(payload[i] != 0xFF)
-                {
-                    idle = false;
-                    break;
-                }
-            }
-
-            if(idle == false)
-            {
-                for(int f = 0; f < 3; f++)
-                    dmrAudio_pushFrame(&payload[f * DMR_CODEC_FRAME_BYTES]);
+                const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
+                if(dmr_codec_frameIsVoice(frame))
+                    dmrAudio_pushFrame(frame);
             }
         }
     }
