@@ -137,28 +137,89 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
     }
 }
 
+/*
+ * The DMR AMBE de-interleave. The 72 on-air bits of a frame are scattered into
+ * the four codewords (a flat [4][24] buffer) by these fixed position tables,
+ * then the second codeword is de-scrambled and the frame is repacked into the
+ * 49 parameter bits the vocoder decodes. This is the standard DMR AMBE frame
+ * layout; the decoder cannot use the raw frame directly.
+ */
+static const uint8_t ambeDeintA[36] =
+{
+    23, 34, 22, 33, 21, 32, 20, 31, 19, 30, 18, 29, 17, 28, 16, 27, 15, 26,
+    14, 25, 13, 24, 12, 58, 11, 57, 10, 56,  9, 55,  8, 54,  7, 53,  6, 52
+};
+static const uint8_t ambeDeintB[36] =
+{
+     5, 51,  4, 50,  3, 49,  2, 48,  1, 85,  0, 84, 45, 83, 45, 82, 44, 81,
+    43, 80, 42, 79, 41, 78, 40, 77, 39, 76, 38, 75, 37, 74, 36, 73, 35, 72
+};
+
+/**
+ * Turn a 9-byte on-air AMBE frame into the 49-bit parameter buffer the vocoder
+ * decodes. De-interleave into four codewords, de-scramble the second one with a
+ * PRNG seeded from the first, then repack. Error correction on the two protected
+ * codewords is not applied here; a clean frame needs none.
+ */
+static void ambeInitFrame(const uint8_t *frame, uint16_t bits[49])
+{
+    uint8_t cw[96];
+    memset(cw, 0, sizeof(cw));
+
+    int pos = 0;
+    for(int i = 0; i < 9; i++)
+    {
+        for(int j = 7; j > 0; j -= 2)
+        {
+            cw[ambeDeintA[pos]] = (frame[i] >> j)       & 1;
+            cw[ambeDeintB[pos]] = (frame[i] >> (j - 1)) & 1;
+            pos++;
+        }
+    }
+
+    uint8_t *c0 = cw;         /* codeword 0 */
+    uint8_t *c1 = cw + 24;    /* codeword 1, scrambled */
+    uint8_t *c2 = cw + 48;    /* codeword 2 */
+    uint8_t *c3 = cw + 72;    /* codeword 3 */
+
+    /* De-scramble c1 with a PRNG seeded from c0's high bits. */
+    uint32_t seed = 0;
+    for(int i = 23; i >= 12; i--)
+        seed = (seed << 1) | c0[i];
+
+    uint16_t prng[24];
+    uint32_t p = (seed << 4) & 0xFFFF;
+    prng[0] = (uint16_t) p;
+    for(int i = 0; i < 23; i++)
+    {
+        p = (0xAD * p + 0x3619) & 0xFFFF;
+        prng[i + 1] = (uint16_t) p;
+    }
+    for(int i = 0; i < 23; i++)
+        c1[i] ^= (prng[23 - i] >> 15) & 1;
+
+    /* Repack into the 49 parameter bits (c3, c2, c1, c0 order). */
+    int o = 48;
+    for(int i = 0;  i < 14; i++) bits[o--] = c3[i];
+    for(int i = 0;  i < 11; i++) bits[o--] = c2[i];
+    for(int i = 11; i < 23; i++) bits[o--] = c1[i];
+    for(int i = 12; i < 24; i++) bits[o--] = c0[i];
+}
+
 void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
                       const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 {
-    uint8_t bits[72];
+    uint16_t bits[49];
 
     memset(pcm, 0, DMR_CODEC_PCM_SAMPLES * sizeof(int16_t));
     if(ready == false)
         return;
 
-    /* Unpack the 9-byte AMBE frame into 72 bits, MSB first. */
-    for(int i = 0; i < 72; i++)
-        bits[i] = (frame[i >> 3] >> (7 - (i & 7))) & 1;
+    ambeInitFrame(frame, bits);
 
-    /*
-     * Two 80-sample halves per frame, decoder state carried across. NOTE: the
-     * DMR bit ordering the decoder expects (the donor applies a Golay-protected
-     * de-interleave to the on-air frame first) is confirmed on-radio by the
-     * golden-vector loopback before any voice test; this straight unpack is the
-     * starting point for that bring-up.
-     */
-    ((ambe_decode_fn) AMBE_DECODE)(pcm, 0x50, bits, 0, 8, 0, decState);
-    ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, 8, 1, decState);
+    /* Two 80-sample halves per frame, decoder state carried across the pair. */
+    ((ambe_decode_fn) AMBE_DECODE)(pcm, 0x50, bits, 0, 0, 0, decState);
+    ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, 0, 1, decState);
 }
 
 /*
