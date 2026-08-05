@@ -225,6 +225,8 @@ platform/drivers/baseband/dmrIrq_UV3x0.cpp
 platform/drivers/baseband/dmr_UV3x0.cpp
 platform/drivers/baseband/dmr_codec.c
 platform/drivers/baseband/dmr_codec.h
+platform/drivers/baseband/dmr_audio.c
+platform/drivers/baseband/dmr_audio.h
 platform/drivers/baseband/dmr_linux.c
 platform/drivers/baseband/radioUtils.h
 platform/drivers/baseband/radio_CS7000.cpp
