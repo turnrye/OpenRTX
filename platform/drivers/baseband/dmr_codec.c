@@ -46,24 +46,30 @@
 #define ECC_STATE_SIZE      0x0100
 
 /*
- * Half-frame mode words passed to the encoder for the two 80-sample halves,
- * recovered from the donor's own encode driver: the first half is the literal
- * 0x800, the second half takes the value the setup leaves in the context (0).
+ * The mode word passed to the encoder. It is the same for both 80-sample halves
+ * of a frame -- only the half flag distinguishes them -- and it is also the value
+ * the donor's setup leaves in the encoder context.
  */
-#define ENC_MODE_HALF0      0x0800
-#define ENC_MODE_HALF1      0x0000
+#define ENC_MODE            0x1840
+
+/* AMBE frame geometry: on-air bits, parameter bits, Golay codeword length. */
+#define AMBE_FRAME_BITS     72
+#define AMBE_PARAM_BITS     49
+#define AMBE_GOLAY_BITS     23
 
 /*
- * The TX/encode path is not yet validated on real hardware. Two obstacles: the
- * donor's setup writes a handful of context fields that our init sequence does
- * not yet reproduce, and the encoder's pitch-analysis loop cannot be faithfully
- * emulated off-radio (a unicorn IT-block limitation), so the encode ABI cannot
- * be golden-vector checked before flashing. Calling the vocoder with an
- * unverified ABI faults the radio, so until encode is brought up on the bench it
- * emits a valid AMBE silence frame instead. Decode/RX is fully working and does
- * not depend on this.
+ * The encode path faulted the radio because dmr_codec_init() left a block of
+ * encoder-context fields zero, the state size among them. Those stores are
+ * reproduced below and the resulting context is now byte-identical to the one
+ * the donor's own setup produces, checked off-radio over the whole state.
+ *
+ * That is not the same as having encoded a frame: the encoder's pitch-analysis
+ * loop still cannot be emulated faithfully off-radio, so the path has never
+ * actually run end to end. Set this to 0 to fall back to transmitting a valid
+ * AMBE silence frame if it turns out to still misbehave on the bench. Decode/RX
+ * is fully working and does not depend on any of this.
  */
-#define DMR_CODEC_TX_ENABLED  0
+#define DMR_CODEC_TX_ENABLED  1
 
 /* Function-pointer views of the blob entries. */
 typedef void (*ambe_init_enc_fn)(void *st, int a, int b);
@@ -82,10 +88,50 @@ static uint8_t decState[DEC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t eccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
 static bool    ready = false;
 
+/*
+ * Set at init, cleared once one frame has been encoded. While set, each blob
+ * call is bracketed by a synchronous debug mark, so a fault on the first encode
+ * after a fresh init names the step it died in instead of just hanging the
+ * radio. Only the first frame is traced: at 20 ms per frame, marking every one
+ * would swamp the tap.
+ */
+static bool traceFirst = false;
+
+#define ENC_MARK(m)  do { if(traceFirst) dmrDebug_mark(m); } while(0)
+
 bool dmr_codec_available(void)
 {
     return *(const volatile uint32_t *)AMBE_BLOB_BASE == AMBE_BLOB_MAGIC;
 }
+
+/*
+ * Encoder-context fields the donor's setup stores directly. No blob entry point
+ * writes them: the config entries apply their arguments elsewhere in the state
+ * and leave this block untouched, so without these stores the encoder starts
+ * with a zeroed frame geometry and, worse, a zero state size. Offsets are byte
+ * offsets into the encoder state. Every value is either an AMBE frame constant
+ * or one of the configuration parameters already passed to the config entries
+ * below -- the donor keeps its own copy of them here.
+ */
+static const struct
+{
+    uint16_t offset;
+    int16_t  value;
+}
+encContextFields[] =
+{
+    { 0x1718, AMBE_FRAME_BITS }, { 0x171A, AMBE_PARAM_BITS },
+    { 0x171C, AMBE_GOLAY_BITS }, { 0x171E, 1               },
+    { 0x1720, 1               }, { 0x1726, 1               },
+    { 0x1730, ENC_MODE        }, { 0x173C, ENC_STATE_SIZE  },
+    /* The AMBE_CFG_A arguments, then the ten AMBE_CFG_ENC arguments. */
+    { 0x173E, 0x80            }, { 0x1740, -20             },
+    { 0x1742, -22             }, { 0x1744, 20              },
+    { 0x1746, -10             }, { 0x1748, -40             },
+    { 0x174A, 0x4000          }, { 0x174C, 0xCCC           },
+    { 0x174E, 0xCCC           }, { 0x1750, 0x51E           },
+    { 0x1752, 10              }, { 0x1754, 20              }
+};
 
 bool dmr_codec_init(void)
 {
@@ -112,7 +158,19 @@ bool dmr_codec_init(void)
     ((ambe_cfg_fn)      AMBE_CFG_A   )(encState, 0x80, -20);
     ((ambe_cfg_fn)      AMBE_CFG_B   )(decState, 0x80, -20);
 
-    ready = true;
+    /*
+     * Reproduce the setup's direct stores. An encoder started with a zero state
+     * size is the most likely cause of the hard fault seen on every transmit.
+     */
+    for(size_t i = 0; i < sizeof(encContextFields) / sizeof(encContextFields[0]);
+        i++)
+    {
+        *(int16_t *)(encState + encContextFields[i].offset) =
+            encContextFields[i].value;
+    }
+
+    ready      = true;
+    traceFirst = true;
     return true;
 }
 
@@ -133,12 +191,9 @@ static const uint8_t ambeSilenceFrame[DMR_CODEC_FRAME_BYTES] =
 void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
                       const int16_t pcm[DMR_CODEC_PCM_SAMPLES])
 {
-    uint8_t bits[72];
+    uint8_t bits[AMBE_FRAME_BITS];
 
-    /*
-     * Until the encoder is validated on the bench, transmit valid silence rather
-     * than driving the vocoder with an unverified ABI (see DMR_CODEC_TX_ENABLED).
-     */
+    /* The fallback: transmit valid silence instead of running the vocoder. */
     if(DMR_CODEC_TX_ENABLED == 0)
     {
         memcpy(frame, ambeSilenceFrame, DMR_CODEC_FRAME_BYTES);
@@ -154,19 +209,22 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
 
     /*
      * A 20 ms frame is encoded in two 80-sample halves, then protected. The
-     * encoder keeps the pitch history in its state across the two calls; the
-     * mode word and the half flag distinguish them. NOTE: the exact wave
-     * pointer handling for the two halves is confirmed on-radio by the
-     * golden-vector loopback before any voice test.
+     * encoder keeps the pitch history in its state across the two calls; only
+     * the half flag distinguishes them, the mode word is the same for both.
      */
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE_HALF0, 0,
-                                   0x2000, encState);
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80,
-                                   ENC_MODE_HALF1, 1, 0x2000, encState);
+    ENC_MARK("enc half0 in");
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE, 0,
+                                   ENC_STATE_SIZE, encState);
+    ENC_MARK("enc half1 in");
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80, ENC_MODE, 1,
+                                   ENC_STATE_SIZE, encState);
+    ENC_MARK("enc ecc in");
     ((ambe_ecc_fn) AMBE_ENCODE_ECC)(bits, bits, 0, eccState);
+    ENC_MARK("enc done");
+    traceFirst = false;
 
     /* Pack the 72 protected bits MSB first into the 9-byte AMBE frame. */
-    for(int i = 0; i < 72; i++)
+    for(int i = 0; i < AMBE_FRAME_BITS; i++)
     {
         if(bits[i] & 1)
             frame[i >> 3] |= 0x80 >> (i & 7);
