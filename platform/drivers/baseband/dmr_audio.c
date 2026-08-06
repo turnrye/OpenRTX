@@ -247,7 +247,20 @@ static void *captureFunc(void *arg)
                 continue;
 #endif
             sample = dsp_dcBlockFilter(&dcBlock, sample);
-            audio.data[outIdx++] = sample * CONFIG_MIC_GAIN;
+
+            /*
+             * Saturate rather than let the product wrap. The gain is large
+             * enough that anything but a quiet talker overflows a sample, and a
+             * wrapped waveform is not loud speech, it is noise -- which the
+             * vocoder then faithfully encodes.
+             */
+            int32_t scaled = (int32_t) sample * CONFIG_MIC_GAIN;
+            if(scaled > 32767)
+                scaled = 32767;
+            else if(scaled < -32768)
+                scaled = -32768;
+
+            audio.data[outIdx++] = (int16_t) scaled;
         }
 
         uint8_t frame[DMR_CODEC_FRAME_BYTES];

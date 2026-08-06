@@ -127,6 +127,15 @@ static long long reportTick;
 
 static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
+
+/*
+ * How many payload slots carried encoded audio and how many fell back to
+ * silence. A perfectly framed but silent call looks identical on the air to one
+ * carrying speech, so without these there is no way to tell whether the encoder
+ * is keeping up with the fifty frames a second the slot timing demands.
+ */
+static volatile uint32_t txVoiceFrames;
+static volatile uint32_t txStarvedFrames;
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
 static volatile bool    rxRestoreNeeded;// Receiver bring-up owed after a TX
 static uint8_t          txLc[DMR_LC_LENGTH]; // Link control sent in the bursts
@@ -488,7 +497,14 @@ void dmr_txTimeslotIsr()
             {
                 uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
                 if(dmrAudio_popFrame(slot) == false)
+                {
                     memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
+                    txStarvedFrames += 1;
+                }
+                else
+                {
+                    txVoiceFrames += 1;
+                }
             }
             payloadWrite(payload);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
@@ -561,6 +577,8 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
     txSequence      = 0;
     txStopRequested = false;
     txState         = TX_START_1;
+    txVoiceFrames   = 0;
+    txStarvedFrames = 0;
 
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
@@ -790,6 +808,10 @@ void dmr_task(struct dmrRxState *rx)
          */
         dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx, "
                      "timing %02X", C6000.getDmrTiming());
+        dmrDebug_log(DMR_DBG_INFO, "tx: %lu payload slots carried audio, "
+                     "%lu fell back to silence",
+                     (unsigned long) txVoiceFrames,
+                     (unsigned long) txStarvedFrames);
     }
 
     if(lastTsCount != counters.timeslot)
