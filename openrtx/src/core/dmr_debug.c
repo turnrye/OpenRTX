@@ -78,6 +78,16 @@ static unsigned long tapTimestamp()
  * Send a block of data towards the host. On radio targets this goes to the USB
  * CDC device brought up at boot, on the linux target to standard output.
  */
+/*
+ * Whether a host is listening. With nothing draining the CDC endpoint every
+ * write spins for half a second before giving up, and a message costs that much
+ * on whichever thread emitted it. On the transmit path that thread runs at high
+ * priority, so the radio freezes outright for as long as it takes to log. Stop
+ * writing after the first send that times out, and resume only once the host
+ * says something, which proves it is there to listen.
+ */
+static bool hostListening = true;
+
 static void tapWrite(const void *data, const size_t len)
 {
     pthread_mutex_lock(&wireMutex);
@@ -86,7 +96,11 @@ static void tapWrite(const void *data, const size_t len)
     ssize_t ret = write(STDOUT_FILENO, data, len);
     (void) ret;
 #else
-    vcom_writeBlock(data, len);
+    if(hostListening)
+    {
+        if(vcom_writeBlock(data, len) < 0)
+            hostListening = false;
+    }
 #endif
 
     pthread_mutex_unlock(&wireMutex);
@@ -116,16 +130,6 @@ static void tapPushLocked(const char *data, const size_t len)
 }
 
 /**
- * Append a message to the buffer, taking the lock around it.
- */
-static void tapPush(const char *data, const size_t len)
-{
-    pthread_mutex_lock(&mutex);
-    tapPushLocked(data, len);
-    pthread_mutex_unlock(&mutex);
-}
-
-/**
  * Handle the single character commands sent by the host, allowing the message
  * categories to be turned on and off from a plain terminal emulator. The linux
  * target has no command channel, as its standard input is used elsewhere.
@@ -135,6 +139,10 @@ static void tapPollCommands()
 #if !defined(PLATFORM_LINUX)
     uint8_t cmd[8];
     ssize_t num = vcom_readBlock(cmd, sizeof(cmd));
+
+    /* Anything arriving from the host means it is attached and reading. */
+    if(num > 0)
+        hostListening = true;
 
     for(ssize_t i = 0; i < num; i++)
     {

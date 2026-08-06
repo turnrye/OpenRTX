@@ -94,17 +94,6 @@ static bool    ready = false;
 static void ambeApplyFec(uint8_t frame[DMR_CODEC_FRAME_BYTES],
                          const int16_t bits[AMBE_PARAM_BITS]);
 
-/*
- * Set at init, cleared once one frame has been encoded. While set, each blob
- * call is bracketed by a synchronous debug mark, so a fault on the first encode
- * after a fresh init names the step it died in instead of just hanging the
- * radio. Only the first frame is traced: at 20 ms per frame, marking every one
- * would swamp the tap.
- */
-static bool traceFirst = false;
-
-#define ENC_MARK(m)  do { if(traceFirst) dmrDebug_mark(m); } while(0)
-
 bool dmr_codec_available(void)
 {
     return *(const volatile uint32_t *)AMBE_BLOB_BASE == AMBE_BLOB_MAGIC;
@@ -174,8 +163,7 @@ bool dmr_codec_init(void)
             encContextFields[i].value;
     }
 
-    ready      = true;
-    traceFirst = true;
+    ready = true;
     return true;
 }
 
@@ -223,16 +211,11 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
      * encoder keeps the pitch history in its state across the two calls; only
      * the half flag distinguishes them, the mode word is the same for both.
      */
-    ENC_MARK("enc half0 in");
     ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE_HALF0, 0,
                                    ENC_STATE_SIZE, encState);
-    ENC_MARK("enc half1 in");
     ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80,
                                    ENC_MODE_HALF1, 1, ENC_STATE_SIZE, encState);
-    ENC_MARK("enc fec in");
     ambeApplyFec(frame, bits);
-    ENC_MARK("enc done");
-    traceFirst = false;
 }
 
 /*
