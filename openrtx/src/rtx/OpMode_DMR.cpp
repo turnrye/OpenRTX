@@ -170,6 +170,18 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
     if(dmr_txActive() == false)
     {
         platform_ledOff(RED);
+
+        /*
+         * Shut the radio down on the way back to reception. Going straight from
+         * transmitting to receiving leaves the transmitter chip in its transmit
+         * function mode and the receiver never returns until the operating mode
+         * is cycled by hand. The FM and M17 modes get this from shutting down on
+         * every transition, but doing that here would also shut the radio down
+         * immediately before keying up, which leaves the synthesiser unsettled
+         * for the first bursts and costs the far end the call header.
+         */
+        radio_disableRtx();
+
         startRx = true;
         status->opStatus = OFF;
         return;
