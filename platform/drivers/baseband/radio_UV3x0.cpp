@@ -10,7 +10,6 @@
 #include "peripherals/gpio.h"
 #include "calibration/calibInfo_MDx.h"
 #include "hwconfig.h"
-#include "core/dmr_debug.h"
 #include <algorithm>
 #include "core/utils.h"
 #include "radioUtils.h"
@@ -102,18 +101,9 @@ void radio_setOpmode(const enum opmode mode)
             break;
 
         case OPMODE_DMR:
-            #if defined(CONFIG_DMR)
-            dmrDebug_mark("radio: configuring AT1846S for DMR");
-            #endif
             at1846s.setOpMode(AT1846S_OpMode::DMR);
             at1846s.setBandwidth(AT1846S_BW::_12P5);
-            #if defined(CONFIG_DMR)
-            dmrDebug_mark("radio: entering HR_C6000 dmrMode");
-            #endif
             C6000.dmrMode();                        // HR_C6000 in DMR mode
-            #if defined(CONFIG_DMR)
-            dmrDebug_mark("radio: HR_C6000 dmrMode done");
-            #endif
             break;
 
         case OPMODE_M17:
@@ -251,13 +241,6 @@ void radio_enableTx()
     at1846s.setDigitalModulation(config->opMode == OPMODE_DMR);
     at1846s.setFuncMode(AT1846S_FuncMode::TX);
 
-    #if defined(CONFIG_DMR)
-    if(config->opMode == OPMODE_DMR)
-        dmrDebug_log(DMR_DBG_INFO, "dmr: AT1846S reg 30 = %04X (want 60C6)",
-                     at1846s.getRegister(0x30));
-    #endif
-
-
     if(currTxBand == BND_VHF)
     {
         gpio_clearPin(PA_SEL_SW);
@@ -363,11 +346,6 @@ void radio_updateConfiguration()
                                                                   calPoints);
 
     C6000.setModAmplitude(I, Q);
-
-    #if defined(CONFIG_DMR)
-    if(config->opMode == OPMODE_DMR)
-        dmrDebug_log(DMR_DBG_INFO, "dmr: mod amplitude I %u Q %u (cal)", I, Q);
-    #endif
 
     // Set bandwidth, only for analog FM mode
     if(config->opMode == OPMODE_FM)
