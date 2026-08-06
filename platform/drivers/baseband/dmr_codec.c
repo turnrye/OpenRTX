@@ -20,6 +20,8 @@
 
 #include "dmr_codec.h"
 #include "core/dmr_debug.h"
+#include "core/threads.h"
+#include <pthread.h>
 #include <string.h>
 
 /*
@@ -46,11 +48,13 @@
 #define ECC_STATE_SIZE      0x0100
 
 /*
- * The mode word passed to the encoder. It is the same for both 80-sample halves
- * of a frame -- only the half flag distinguishes them -- and it is also the value
- * the donor's setup leaves in the encoder context.
+ * Mode words for the two 80-sample halves of a frame. They differ: the first
+ * half takes the value the donor's setup leaves in the encoder context, the
+ * second a smaller one. Passing the same word for both halves produces frames
+ * that no longer decode.
  */
-#define ENC_MODE            0x1840
+#define ENC_MODE_HALF0      0x1840
+#define ENC_MODE_HALF1      0x0800
 
 /* AMBE frame geometry: on-air bits, parameter bits, Golay codeword length. */
 #define AMBE_FRAME_BITS     72
@@ -63,11 +67,12 @@
  * reproduced below and the resulting context is now byte-identical to the one
  * the donor's own setup produces, checked off-radio over the whole state.
  *
- * That is not the same as having encoded a frame: the encoder's pitch-analysis
- * loop still cannot be emulated faithfully off-radio, so the path has never
- * actually run end to end. Set this to 0 to fall back to transmitting a valid
- * AMBE silence frame if it turns out to still misbehave on the bench. Decode/RX
- * is fully working and does not depend on any of this.
+ * With the context complete the encoder also runs to completion off-radio -- the
+ * runaway that made it look unemulatable was the same missing initialisation --
+ * but an encode/decode round trip there still comes back near silent, so the
+ * frames it produces are not yet known to be good. Set this to 0 to fall back to
+ * transmitting a valid AMBE silence frame. Decode/RX is fully working and does
+ * not depend on any of this.
  */
 #define DMR_CODEC_TX_ENABLED  1
 
@@ -123,7 +128,7 @@ encContextFields[] =
     { 0x1718, AMBE_FRAME_BITS }, { 0x171A, AMBE_PARAM_BITS },
     { 0x171C, AMBE_GOLAY_BITS }, { 0x171E, 1               },
     { 0x1720, 1               }, { 0x1726, 1               },
-    { 0x1730, ENC_MODE        }, { 0x173C, ENC_STATE_SIZE  },
+    { 0x1730, ENC_MODE_HALF0  }, { 0x173C, ENC_STATE_SIZE  },
     /* The AMBE_CFG_A arguments, then the ten AMBE_CFG_ENC arguments. */
     { 0x173E, 0x80            }, { 0x1740, -20             },
     { 0x1742, -22             }, { 0x1744, 20              },
@@ -219,11 +224,11 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
      * the half flag distinguishes them, the mode word is the same for both.
      */
     ENC_MARK("enc half0 in");
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE, 0,
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE_HALF0, 0,
                                    ENC_STATE_SIZE, encState);
     ENC_MARK("enc half1 in");
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80, ENC_MODE, 1,
-                                   ENC_STATE_SIZE, encState);
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80,
+                                   ENC_MODE_HALF1, 1, ENC_STATE_SIZE, encState);
     ENC_MARK("enc ecc in");
     ((ambe_ecc_fn) AMBE_ENCODE_ECC)(bits, bits, 0, eccState);
     ENC_MARK("enc done");
@@ -436,20 +441,33 @@ static int16_t pcmPeak(const int16_t *pcm)
     return peak;
 }
 
-void dmr_codec_selfTest(void)
+/*
+ * The self-test body. It runs on its own thread rather than on the caller's:
+ * the vocoder needs the best part of 4 kB of stack for a single encode, and the
+ * debug tap is serviced from the main thread, whose stack is 4 kB in total.
+ * Running the encoder there overflows it and faults the radio. Transmit is
+ * unaffected -- it already runs on the 16 kB codec thread.
+ */
+static void *selfTestFunc(void *arg)
 {
+    (void) arg;
+
+    #ifdef _MIOSIX
+    pthread_detach(pthread_self());
+    #endif
+
     if(dmr_codec_available() == false)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: not installed (no donor blob at "
                      "0x%08lX)", (unsigned long) AMBE_BLOB_BASE);
-        return;
+        return NULL;
     }
 
     dmrDebug_log(DMR_DBG_INFO, "codec: blob present, self-test start");
     if(dmr_codec_init() == false)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: init failed");
-        return;
+        return NULL;
     }
     dmrDebug_log(DMR_DBG_INFO, "codec: init ok");
 
@@ -462,7 +480,7 @@ void dmr_codec_selfTest(void)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: encode gated off (TX ABI unverified), "
                      "decode-only self-test done");
-        return;
+        return NULL;
     }
 
     /*
@@ -488,4 +506,20 @@ void dmr_codec_selfTest(void)
     dmr_codec_decode(selfTestOut, frame);
     dmrDebug_log(DMR_DBG_INFO, "codec: self-test done, round-trip peak %d",
                  pcmPeak(selfTestOut));
+
+    return NULL;
+}
+
+void dmr_codec_selfTest(void)
+{
+    pthread_t      thread;
+    pthread_attr_t attr;
+
+    pthread_attr_init(&attr);
+    #ifdef _MIOSIX
+    pthread_attr_setstacksize(&attr, CODEC2_THREAD_STKSIZE);
+    #endif
+
+    if(pthread_create(&thread, &attr, selfTestFunc, NULL) != 0)
+        dmrDebug_log(DMR_DBG_INFO, "codec: could not start the self-test thread");
 }
