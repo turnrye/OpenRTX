@@ -39,13 +39,19 @@
 #define AMBE_CFG_A          THUMB(0x0807553Cu)  /* (buf, 0x80, -20)                */
 #define AMBE_CFG_B          THUMB(0x08075A04u)  /* (buf, 0x80, -20)                */
 #define AMBE_ENCODE         THUMB(0x080754ACu)  /* one 80-sample encode half       */
-#define AMBE_ENCODE_ECC     THUMB(0x08075864u)  /* add FEC to the 72-bit frame     */
 #define AMBE_DECODE         THUMB(0x08075954u)  /* one 80-sample decode half       */
+
+/*
+ * The blob also exports an FEC entry, but it needs a state buffer that nothing
+ * in the donor's setup ever builds -- it is static data in the donor image, so
+ * reproducing it would mean shipping donor bytes. The FEC is standard, public
+ * DMR AMBE, so ambeApplyFec() below does it instead. Byte-for-byte the frames
+ * come out the same as the blob's entry produces with its own state.
+ */
 
 /* State buffer sizes, from the donor init routines' clear/write extents. */
 #define ENC_STATE_SIZE      0x2000
 #define DEC_STATE_SIZE      0x07EC
-#define ECC_STATE_SIZE      0x0100
 
 /*
  * Mode words for the two 80-sample halves of a frame. They differ: the first
@@ -62,17 +68,11 @@
 #define AMBE_GOLAY_BITS     23
 
 /*
- * The encode path faulted the radio because dmr_codec_init() left a block of
- * encoder-context fields zero, the state size among them. Those stores are
- * reproduced below and the resulting context is now byte-identical to the one
- * the donor's own setup produces, checked off-radio over the whole state.
- *
- * With the context complete the encoder also runs to completion off-radio -- the
- * runaway that made it look unemulatable was the same missing initialisation --
- * but an encode/decode round trip there still comes back near silent, so the
- * frames it produces are not yet known to be good. Set this to 0 to fall back to
- * transmitting a valid AMBE silence frame. Decode/RX is fully working and does
- * not depend on any of this.
+ * Set to 0 to transmit a valid AMBE silence frame instead of running the
+ * vocoder, as a fallback if the encode path misbehaves on air. Off-radio an
+ * encode/decode round trip of a 1 kHz tone comes back at full amplitude, and
+ * the frames match the ones the blob's own FEC entry produces, but the encoder
+ * has not yet been confirmed against a real DMR receiver.
  */
 #define DMR_CODEC_TX_ENABLED  1
 
@@ -84,14 +84,15 @@ typedef void (*ambe_cfg_enc_fn)(void *st, int, int, int, int, int, int, int, int
 typedef void (*ambe_cfg_fn)(void *st, int a, int b);
 typedef void (*ambe_encode_fn)(void *bits, int, void *wave, int count, int mode,
                                int half, int, void *st);
-typedef void (*ambe_ecc_fn)(void *bits, void *bits2, int zero, void *ecc);
 typedef void (*ambe_decode_fn)(void *wave, int count, void *bits, int, int,
                                int half, void *st);
 
 static uint8_t encState[ENC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t decState[DEC_STATE_SIZE] __attribute__((aligned(4)));
-static uint8_t eccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
 static bool    ready = false;
+
+static void ambeApplyFec(uint8_t frame[DMR_CODEC_FRAME_BYTES],
+                         const int16_t bits[AMBE_PARAM_BITS]);
 
 /*
  * Set at init, cleared once one frame has been encoded. While set, each blob
@@ -148,7 +149,6 @@ bool dmr_codec_init(void)
 
     memset(encState, 0, sizeof(encState));
     memset(decState, 0, sizeof(decState));
-    memset(eccState, 0, sizeof(eccState));
 
     /*
      * The donor firmware's setup runs this exact sequence before the first
@@ -229,17 +229,10 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
     ENC_MARK("enc half1 in");
     ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80,
                                    ENC_MODE_HALF1, 1, ENC_STATE_SIZE, encState);
-    ENC_MARK("enc ecc in");
-    ((ambe_ecc_fn) AMBE_ENCODE_ECC)(bits, bits, 0, eccState);
+    ENC_MARK("enc fec in");
+    ambeApplyFec(frame, bits);
     ENC_MARK("enc done");
     traceFirst = false;
-
-    /* Pack the 72 protected bits MSB first into the 9-byte AMBE frame. */
-    for(int i = 0; i < AMBE_FRAME_BITS; i++)
-    {
-        if(bits[i] & 1)
-            frame[i >> 3] |= 0x80 >> (i & 7);
-    }
 }
 
 /*
@@ -266,6 +259,23 @@ static const uint8_t ambeDeintB[36] =
  * PRNG seeded from the first, then repack. Error correction on the two protected
  * codewords is not applied here; a clean frame needs none.
  */
+/*
+ * The scramble sequence applied to the frame's second codeword, generated from
+ * the first codeword's data. Encode and decode both go through here so the two
+ * cannot drift apart.
+ */
+static void ambePrngSeq(uint16_t seed, uint16_t seq[24])
+{
+    uint32_t p = ((uint32_t) seed << 4) & 0xFFFF;
+
+    seq[0] = (uint16_t) p;
+    for(int i = 0; i < 23; i++)
+    {
+        p = (0xAD * p + 0x3619) & 0xFFFF;
+        seq[i + 1] = (uint16_t) p;
+    }
+}
+
 static void ambeInitFrame(const uint8_t *frame, uint16_t bits[49])
 {
     uint8_t cw[96];
@@ -293,13 +303,7 @@ static void ambeInitFrame(const uint8_t *frame, uint16_t bits[49])
         seed = (seed << 1) | c0[i];
 
     uint16_t prng[24];
-    uint32_t p = (seed << 4) & 0xFFFF;
-    prng[0] = (uint16_t) p;
-    for(int i = 0; i < 23; i++)
-    {
-        p = (0xAD * p + 0x3619) & 0xFFFF;
-        prng[i + 1] = (uint16_t) p;
-    }
+    ambePrngSeq((uint16_t) seed, prng);
     for(int i = 0; i < 23; i++)
         c1[i] ^= (prng[23 - i] >> 15) & 1;
 
@@ -334,6 +338,95 @@ static int popcount11(uint32_t x)
         x >>= 1;
     }
     return n;
+}
+
+/* Golay(23,12): the 12 data bits followed by the 11 parity bits. */
+static uint32_t golay23Encode(uint16_t data)
+{
+    uint32_t cw = ((uint32_t) (data & 0x0FFF)) << 11;
+    return cw | golaySyndrome(cw);
+}
+
+/* Extended Golay(24,12): the same, plus an overall even parity bit. */
+static uint32_t golay24Encode(uint16_t data)
+{
+    uint32_t cw = golay23Encode(data);
+    return (cw << 1) | (uint32_t) (popcount11(cw) & 1);
+}
+
+/*
+ * Where each protected codeword's bits sit in the 72-bit on-air frame. The
+ * first codeword carries 12 bits under extended Golay(24,12), the second 12
+ * under Golay(23,12) plus the PRNG scramble, and the last 25 bits ride
+ * unprotected.
+ */
+static const uint8_t ambeFecA[24] =
+{
+     0,  4,  8, 12, 16, 20, 24, 28, 32, 36, 40, 44,
+    48, 52, 56, 60, 64, 68,  1,  5,  9, 13, 17, 21
+};
+static const uint8_t ambeFecB[23] =
+{
+    25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69,
+     2,  6, 10, 14, 18, 22, 26, 30, 34, 38, 42
+};
+static const uint8_t ambeFecC[25] =
+{
+    46, 50, 54, 58, 62, 66, 70,  3,  7, 11, 15, 19, 23,
+    27, 31, 35, 39, 43, 47, 51, 55, 59, 63, 67, 71
+};
+
+/**
+ * Protect and interleave the vocoder's 49 parameter bits into a 9-byte on-air
+ * AMBE frame -- the inverse of ambeInitFrame(). This is the standard DMR AMBE
+ * FEC, done here rather than through the blob's own entry point, which would
+ * need donor state we cannot ship.
+ */
+static void ambeApplyFec(uint8_t frame[DMR_CODEC_FRAME_BYTES],
+                         const int16_t bits[AMBE_PARAM_BITS])
+{
+    uint16_t a = 0;
+    uint16_t b = 0;
+    uint32_t c = 0;
+
+    for(int i = 0; i < 12; i++)
+        a = (uint16_t) ((a << 1) | (bits[i] & 1));
+    for(int i = 0; i < 12; i++)
+        b = (uint16_t) ((b << 1) | (bits[12 + i] & 1));
+    for(int i = 0; i < 25; i++)
+        c = (c << 1) | (uint32_t) (bits[24 + i] & 1);
+
+    /* The second codeword is scrambled with the sequence the first seeds. */
+    uint16_t prng[24];
+    ambePrngSeq(a, prng);
+
+    uint32_t mask = 0;
+    for(int i = 0; i < AMBE_GOLAY_BITS; i++)
+    {
+        if((prng[23 - i] >> 15) & 1)
+            mask |= 1u << i;
+    }
+
+    uint32_t cwA = golay24Encode(a);
+    uint32_t cwB = golay23Encode(b) ^ mask;
+
+    memset(frame, 0, DMR_CODEC_FRAME_BYTES);
+
+    for(int i = 0; i < 24; i++)
+    {
+        if(cwA & (1u << (23 - i)))
+            frame[ambeFecA[i] >> 3] |= 0x80 >> (ambeFecA[i] & 7);
+    }
+    for(int i = 0; i < 23; i++)
+    {
+        if(cwB & (1u << (22 - i)))
+            frame[ambeFecB[i] >> 3] |= 0x80 >> (ambeFecB[i] & 7);
+    }
+    for(int i = 0; i < 25; i++)
+    {
+        if(c & (1u << (24 - i)))
+            frame[ambeFecC[i] >> 3] |= 0x80 >> (ambeFecC[i] & 7);
+    }
 }
 
 /**
