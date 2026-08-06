@@ -191,7 +191,13 @@ static const uint8_t ambeSilenceFrame[DMR_CODEC_FRAME_BYTES] =
 void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
                       const int16_t pcm[DMR_CODEC_PCM_SAMPLES])
 {
-    uint8_t bits[AMBE_FRAME_BITS];
+    /*
+     * One 16-bit entry per bit, not one byte: the encoder and the ECC entry both
+     * write this buffer as halfwords, the same way the decoder reads its input
+     * as halfwords. Declaring it as bytes leaves the vocoder writing twice the
+     * space it was given, which smashed the stack and faulted the radio.
+     */
+    int16_t bits[AMBE_FRAME_BITS];
 
     /* The fallback: transmit valid silence instead of running the vocoder. */
     if(DMR_CODEC_TX_ENABLED == 0)
