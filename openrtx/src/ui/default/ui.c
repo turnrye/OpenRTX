@@ -2049,7 +2049,17 @@ void ui_updateFSM(bool *sync_rtx)
                     ui_state.menu_selected = 0;
                 }
                 else if(msg.keys & KEY_ESC)
+                {
+                    /*
+                     * Persist the settings as soon as the user leaves the
+                     * settings menu: the shutdown-time save is reached only
+                     * through a clean knob power-off, and edits would be lost
+                     * on any other kind of restart. The write is skipped
+                     * internally when nothing changed.
+                     */
+                    nvm_writeSettingsAndVfo(&state.settings, &state.channel);
                     _ui_menuBack(MENU_TOP);
+                }
                 break;
             // Flash backup and restore menu screen
             case MENU_BACKUP_RESTORE:
