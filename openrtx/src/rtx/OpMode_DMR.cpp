@@ -111,9 +111,15 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
 
     status->dmrRxSrcId     = rx.srcId;
     status->dmrRxDstId     = rx.dstId;
-    status->dmrRxColorCode = rx.colorCode;
     status->dmrRxGroupCall = (rx.groupCall) ? 1 : 0;
     status->dmrLcValid     = (rx.valid) ? 1 : 0;
+
+    /*
+     * The colour code of the call is deliberately not passed on: direct mode
+     * does not carry one the chip will part with, so the receiver reports it as
+     * unknown, and the status field is four bits wide and has no way to say so.
+     * Repeater mode, where the CACH carries a real one, is where this returns.
+     */
 
     /*
      * A call being received counts as an open squelch, which is what keeps the

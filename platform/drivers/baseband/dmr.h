@@ -15,6 +15,13 @@ extern "C" {
 #endif
 
 /**
+ * Colour code standing for "not known". Direct mode carries the colour code
+ * only in signalling the chip consumes without exposing, so a received call
+ * reports this; a real value needs the CACH, that is repeater mode.
+ */
+#define DMR_CC_UNKNOWN  0xFF
+
+/**
  * Information carried by the link control of the last accepted burst, which is
  * what the user interface shows as "last heard".
  */
@@ -22,7 +29,7 @@ struct dmrRxState
 {
     uint32_t srcId;         ///< DMR ID of the station being received.
     uint32_t dstId;         ///< Talkgroup or destination the call is sent to.
-    uint8_t  colorCode;     ///< Color code the burst was received with.
+    uint8_t  colorCode;     ///< Color code received, DMR_CC_UNKNOWN in DMO.
     bool     groupCall;     ///< True for a group call, false for a private one.
     bool     valid;         ///< True once the link control has been confirmed.
 };

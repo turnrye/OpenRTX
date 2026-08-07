@@ -44,9 +44,12 @@
 /*
  * The chip hands back the link control of the previous transmission until it
  * has decoded the current one, so the same content has to show up in more than
- * one burst before it can be trusted.
+ * one burst before it can be trusted. Only the bytes naming the call are
+ * compared: the last three carry error correction the chip fills in, and it
+ * differs between the burst types which repeat one and the same call.
  */
 #define LC_CONFIRM_COUNT        2
+#define LC_ID_LENGTH            9
 
 /*
  * Registers and values driving the transmit slot, written from the timeslot
@@ -288,20 +291,20 @@ static void reportIrqActivity()
                  (unsigned long) (now - reportTick));
 
     /*
-     * What the received bursts carried, reported only while something is being
-     * received. The colour code mask has one bit per value seen in the CACH
-     * register: with the far end on a known colour code, a mask of exactly that
-     * bit says the register carries it in direct mode after all, and a mask of
-     * bit zero says it does not. The sync counts say which timeslot, if any, a
-     * direct mode transmission calls itself, and whether the far end is a
-     * repeater. The unsampled count is the caveat on the whole line: those
-     * events left the snapshot describing an older burst.
+     * What the received bursts carried. The bench has already answered what
+     * this was built to ask - see the colour code note in handleBurst and the
+     * sync counts, which came back mobile station sourced throughout - so it
+     * stays on the interrupt channel as a diagnostic rather than in the default
+     * output. It is worth keeping for repeater mode, where the CACH this reads
+     * does carry a colour code and a timeslot. The unsampled count is the
+     * caveat on the line: those events left the snapshot describing an older
+     * burst.
      */
     if(rxSampled > 0)
     {
         uint32_t unsampled = dmrIrq_getRxUnsampled();
 
-        dmrDebug_log(DMR_DBG_INFO, "rx: %lu bursts, cc mask %04X, sync "
+        dmrDebug_log(DMR_DBG_IRQ, "rx: %lu bursts, cc mask %04X, sync "
                      "ms/bs/ts1/ts2 %lu/%lu/%lu/%lu, %lu unsampled",
                      (unsigned long) rxSampled, rxCcSeen,
                      (unsigned long) rxSyncSeen[DMR_SYNC_MS],
@@ -445,13 +448,25 @@ static void handleBurst()
     }
 
     /*
-     * Colour code is not filtered yet: on the bench register 0x52 read back 0
-     * for a signal which should have been colour code 1, with occasional 8 and
-     * 2, so filtering on it would have rejected every call. Whether that is the
-     * register being empty in direct mode or the reading being taken wrongly is
-     * exactly what the per-report summary below is there to settle.
+     * The receiver is colour code promiscuous, because neither register we have
+     * tried carries the colour code of the call. On the bench, against a
+     * station transmitting on colour code 1, register 0x52 held zero in its
+     * colour code field throughout, with bit 7 toggling burst by burst - the
+     * timecode, not a colour code - and the reading did not change when this
+     * radio was set to colour code 7 instead, so it is not echoing our own
+     * setting either. That register is the CACH, which direct mode does not
+     * have. Register 0x1F does not gate reception either: with the two colour
+     * codes mismatched the call still decoded, so it is the colour code this
+     * radio transmits rather than a receive filter.
+     *
+     * This is a gap in what we can read out of the chip, NOT an absence on air:
+     * direct mode carries the colour code in the slot type of every data burst
+     * and in the embedded signalling of voice bursts B to F, and commercial
+     * radios filter on it in direct mode perfectly well. Where the chip exposes
+     * it - another status register, a raw burst path, or a mode bit which makes
+     * its own matcher look at the burst instead of the CACH - is unfinished
+     * business, not a settled impossibility.
      */
-    uint8_t rxCc = code;
 
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
@@ -463,9 +478,16 @@ static void handleBurst()
         return;
     }
 
-    if(memcmp(lc, prevLc, sizeof(lc)) != 0)
+    /*
+     * Only the bytes carrying the identity are compared. The chip fills the
+     * last three with error correction which differs between the burst types
+     * repeating one and the same call, so comparing the whole frame made a
+     * steady call look like a new one every time round - announced again, and
+     * playback started again, several times a transmission.
+     */
+    if(memcmp(lc, prevLc, LC_ID_LENGTH) != 0)
     {
-        memcpy(prevLc, lc, sizeof(lc));
+        memcpy(prevLc, lc, LC_ID_LENGTH);
         lcMatches = 1;
         lcDecided = false;
         return;
@@ -494,8 +516,7 @@ static void handleBurst()
      * link is far slower than the burst rate, so logging each one floods it and
      * stalls the thread doing the logging.
      */
-    bool newCall = (lcDecided == false);
-    if(newCall == false)
+    if(lcDecided)
         return;
 
     lcDecided = true;
@@ -523,20 +544,17 @@ static void handleBurst()
 
     rxState.dstId     = dstId;
     rxState.srcId     = srcId;
-    rxState.colorCode = rxCc;
+    rxState.colorCode = DMR_CC_UNKNOWN;
     rxState.groupCall = group;
     rxState.valid     = true;
 
-    if(newCall)
-    {
-        dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
-                     (unsigned long) srcId, group ? "TG" : "ID",
-                     (unsigned long) dstId, rxCc);
+    dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu",
+                 (unsigned long) srcId, group ? "TG" : "ID",
+                 (unsigned long) dstId);
 
-        /* Start voice playback, if the vocoder is installed. */
-        if(dmrAudio_startRx())
-            dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
-    }
+    /* Start voice playback, if the vocoder is installed. */
+    if(dmrAudio_startRx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
 }
 
 bool dmr_txActive()
