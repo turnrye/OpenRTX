@@ -266,8 +266,12 @@ void dmrDebug_init()
     initialised = true;
     pthread_mutex_unlock(&mutex);
 
-    dmrDebug_log(DMR_DBG_INFO, "tap: DMR debug tap ready, "
-                 "send '?' for status, 1-4 to toggle channels");
+    /*
+     * The build stamp answers "is the flash I just did the one running" from
+     * the first line of the tap, which repeated bench turnarounds kept asking.
+     */
+    dmrDebug_log(DMR_DBG_INFO, "tap: DMR debug tap ready (built " __DATE__ " "
+                 __TIME__ "), send '?' for status, 1-4 to toggle channels");
 }
 
 void dmrDebug_terminate()
