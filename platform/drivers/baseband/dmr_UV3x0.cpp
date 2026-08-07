@@ -381,7 +381,15 @@ static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
     }
 
     if(ccHuntUsed >= CC_HUNT_SLOTS)
+    {
+        /* Said once per fill, or a full table reads as "nothing changed". */
+        if(ccHuntUsed == CC_HUNT_SLOTS)
+        {
+            ccHuntUsed += 1;
+            dmrDebug_log(DMR_DBG_INFO, "hunt: table full");
+        }
         return;
+    }
 
     ccHunt[ccHuntUsed] = entry;
     ccHuntUsed += 1;
@@ -1125,6 +1133,15 @@ void dmr_task(struct dmrRxState *rx)
 
         dmrAudio_stopRx();
         dmrDebug_log(DMR_DBG_INFO, "call: ended");
+
+        /*
+         * Start the register hunt afresh for the next call: the table exists
+         * to bound the log rate within a transmission, not to hide what a
+         * later call does differently - a register experiment between two
+         * keyups is judged by exactly that difference.
+         */
+        ccHuntUsed = 0;
+        memset(ccHunt, 0, sizeof(ccHunt));
     }
 
     reportIrqActivity();
