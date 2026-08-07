@@ -33,6 +33,27 @@ static const uint8_t initSeq5[] = { 0x01, 0x40, 0x00, 0x01, 0x01, 0x02, 0x01, 0x
 static const uint8_t initSeq6[] = { 0x01, 0x50, 0x00, 0x08, 0xEB, 0x78, 0x67 };
 static const uint8_t initSeq7[] = { 0x01, 0x04, 0xD5, 0xD7, 0xF7, 0x7F, 0xD7, 0x57 };
 
+/*
+ * Auxiliary configuration block at 0x60 on page 1, which the reference
+ * firmware writes during its baseband bring-up and this driver never did: a
+ * table of three-byte entries, register values taken from the GD-77 stock
+ * firmware. Undocumented, but it sits in the same page as the sync patterns
+ * and thresholds above, and it is part of the configuration under which the
+ * reference firmware's data link layer reports the received colour code.
+ */
+static const uint8_t initSeq8[] =
+{
+    0x01, 0x60, 0x32, 0xEF, 0x00, 0x31, 0xEF, 0x00, 0x12, 0xEF, 0x00, 0x13,
+    0xEF, 0x00, 0x14, 0xEF, 0x00, 0x15, 0xEF, 0x00, 0x16, 0xEF, 0x00, 0x17,
+    0xEF, 0x00, 0x18, 0xEF, 0x00, 0x19, 0xEF, 0x00, 0x1A, 0xEF, 0x00, 0x1B,
+    0xEF, 0x00, 0x1C, 0xEF, 0x00, 0x1D, 0xEF, 0x00, 0x1E, 0xEF, 0x00, 0x1F,
+    0xEF, 0x00, 0x20, 0xEF, 0x00, 0x21, 0xEF, 0x00, 0x22, 0xEF, 0x00, 0x23,
+    0xEF, 0x00, 0x24, 0xEF, 0x00, 0x25, 0xEF, 0x00, 0x26, 0xEF, 0x00, 0x27,
+    0xEF, 0x00, 0x28, 0xEF, 0x00, 0x29, 0xEF, 0x00, 0x2A, 0xEF, 0x00, 0x2B,
+    0xEF, 0x00, 0x2C, 0xEF, 0x00, 0x2D, 0xEF, 0x00, 0x2E, 0xEF, 0x00, 0x2F,
+    0xEF, 0x00
+};
+
 template class HR_Cx000 < C6000_SpiOpModes >;
 
 template< class M >
@@ -73,6 +94,7 @@ void HR_Cx000< M >::init()
     sendSequence(initSeq4, sizeof(initSeq4));
     sendSequence(initSeq5, sizeof(initSeq5));
     sendSequence(initSeq6, sizeof(initSeq6));
+    sendSequence(initSeq8, sizeof(initSeq8));
     writeReg(M::AUX,    0x52, 0x08);
     writeReg(M::AUX,    0x53, 0xEB);
     writeReg(M::AUX,    0x54, 0x78);
@@ -148,6 +170,23 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::CONFIG, 0x5F, 0xF0);    // Detect MS, BS, TDMA1 and TDMA2 frame sequences
     sendSequence(initSeq7, sizeof(initSeq7));
     writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
+
+    /*
+     * Data link layer configuration the reference firmware writes and this
+     * driver never did, all from its baseband bring-up table. The codec and
+     * modulator registers of that table are deliberately not taken over: the
+     * audio path here already works and is configured differently.
+     */
+    writeReg(M::CONFIG, 0x0D, 0x10);    // Voice superframe timeout
+    writeReg(M::CONFIG, 0x0E, 0x8E);    // Documented as reserved
+    writeReg(M::CONFIG, 0x0F, 0xB8);    // FSK error count
+    writeReg(M::CONFIG, 0x13, 0x00);    // Cend_Band timing advance, zeroed
+    writeReg(M::CONFIG, 0x20, 0x00);    // Local access policy, impolite
+    writeReg(M::CONFIG, 0x21, 0xA0);    // Access policy, polite to color code
+    writeReg(M::CONFIG, 0x2E, 0x04);    // tx_pre_on, 400us transmission advance
+    writeReg(M::CONFIG, 0x36, 0x00);    // Enable all clocks
+    writeReg(M::CONFIG, 0x4B, 0x1B);    // Data packet types, default
+    writeReg(M::CONFIG, 0x4C, 0x00);    // Data packet types, default
 
     /*
      * Restart the DMR protocol and physical layer modules, register 0x00 being
