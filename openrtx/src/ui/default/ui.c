@@ -185,7 +185,8 @@ const char * settings_dmr_items[] =
     "DMR ID",
     "Talkgroup",
     "Color Code",
-    "Timeslot"
+    "Timeslot",
+    "TG RX Check"
 };
 #endif
 
@@ -2596,6 +2597,23 @@ void ui_updateFSM(bool *sync_rtx)
                             {
                                 state.settings.dmr_timeslot =
                                     !state.settings.dmr_timeslot;
+                            }
+                            else if(msg.keys & KEY_ENTER)
+                            {
+                                ui_state.edit_mode = false;
+                                *sync_rtx = true;
+                            }
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
+
+                        case DMR_TG_RX:
+                            if(msg.keys & KEY_UP   || msg.keys & KEY_DOWN  ||
+                               msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                               msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
+                            {
+                                state.settings.dmr_rx_promisc =
+                                    !state.settings.dmr_rx_promisc;
                             }
                             else if(msg.keys & KEY_ENTER)
                             {

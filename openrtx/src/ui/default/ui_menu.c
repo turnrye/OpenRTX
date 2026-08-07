@@ -483,6 +483,13 @@ int _ui_getDMRValueName(char *buf, uint8_t max_len, uint8_t index)
             sniprintf(buf, max_len, "TS%d",
                       last_state.settings.dmr_timeslot + 1);
             break;
+
+        // Shown as the check being on, which is the promiscuous bit cleared
+        case DMR_TG_RX:
+            sniprintf(buf, max_len, "%s", (last_state.settings.dmr_rx_promisc) ?
+                                                           currentLanguage->off :
+                                                           currentLanguage->on);
+            break;
     }
 
     return 0;
