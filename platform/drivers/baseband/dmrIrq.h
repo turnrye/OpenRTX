@@ -72,26 +72,51 @@ void dmrIrq_feedWatchdog();
 bool dmrIrq_stormDetected();
 
 /**
- * Get the colour code of the most recent frame event, as read by the system
- * interrupt handler straight from the chip. Reading it there catches the value
- * at the instant of the event: the colour code register is only meaningful for
- * a moment and a read from the consuming thread arrives too late to see it.
- *
- * @return the last received colour code, or 0xFF before any has been read.
+ * The chip registers describing a received burst which are only meaningful at
+ * the instant of the frame event: read from the consuming thread they arrive
+ * too late and describe nothing. The system interrupt handler samples them
+ * together so that the values are consistent with each other and with the
+ * burst which raised the event.
  */
-uint8_t dmrIrq_getRxColorCode();
+struct dmrIrqRxSnapshot
+{
+    uint8_t intFlags;   ///< Interrupt flags, register 0x82.
+    uint8_t status;     ///< Data type, sync class and CRC result, register 0x51.
+    uint8_t cach;       ///< Colour code and timecode, register 0x52.
+    uint8_t sync;       ///< Detected sync pattern, register 0x5F.
+    bool    valid;      ///< False until a frame event has been sampled.
+};
 
 /**
- * Get the status register of the most recent frame event, as read by the
- * system interrupt handler straight from the chip. Like the colour code this
- * catches the value at the instant of the event, which a read from the
- * consuming thread arrives too late to see. Bits 7..4 hold the data type or
- * voice frame sequence number, bit 2 the CRC result, bits 1..0 the sync class
- * (1 = voice).
- *
- * @return the last received burst status, or 0 before any has been read.
+ * Sync pattern the chip detected, held in the low two bits of register 0x5F.
+ * A base station sync means the far end is a repeater; the two direct mode
+ * values name the timeslot the transmission calls itself, which is the only
+ * place a timeslot number appears on air in direct mode.
  */
-uint8_t dmrIrq_getRxBurstStatus();
+enum dmrRxSyncType
+{
+    DMR_SYNC_MS   = 0,  ///< Mobile station sourced.
+    DMR_SYNC_BS   = 1,  ///< Base station sourced.
+    DMR_SYNC_TS1  = 2,  ///< Direct mode, timeslot 1.
+    DMR_SYNC_TS2  = 3   ///< Direct mode, timeslot 2.
+};
+
+/**
+ * Get the registers sampled at the most recent frame event.
+ *
+ * @param snapshot: destination for the sampled values.
+ */
+void dmrIrq_getRxSnapshot(struct dmrIrqRxSnapshot *snapshot);
+
+/**
+ * Get the number of frame events whose registers could not be sampled because
+ * a thread held the SPI bus, or because the radio was transmitting. Those
+ * events leave the snapshot holding the values of an earlier burst, so a
+ * reading of it is only worth as much as this counter is small.
+ *
+ * @return the number of frame events which went unsampled.
+ */
+uint32_t dmrIrq_getRxUnsampled();
 
 /**
  * Tell the interrupt handlers whether a thread is currently accessing the chip

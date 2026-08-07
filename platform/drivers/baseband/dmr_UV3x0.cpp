@@ -125,6 +125,22 @@ static uint32_t  reportedSys;
 static uint32_t  reportedTx;
 static long long reportTick;
 
+/*
+ * What the frame events have looked like since the last report: one bit per
+ * colour code value seen in the CACH register, and a count per sync pattern.
+ * A single burst says little, as these registers are read at the very edge of
+ * the instant they are valid for, but the shape of a whole transmission is
+ * unambiguous - and unlike a line per burst it survives the tap dropping
+ * messages, which at the burst rate it certainly will.
+ */
+static uint16_t  rxCcSeen;
+static uint32_t  rxSyncSeen[4];
+static uint32_t  rxSampled;
+static uint32_t  reportedUnsampled;
+
+/* Names of the sync patterns, indexed by the low two bits of register 0x5F. */
+static const char *const SYNC_NAMES[4] = { "ms", "bs", "ts1", "ts2" };
+
 static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 
@@ -270,6 +286,35 @@ static void reportIrqActivity()
                  (unsigned long) (counters.transmit - reportedTx),
                  (unsigned long) (now - reportTick));
 
+    /*
+     * What the received bursts carried, reported only while something is being
+     * received. The colour code mask has one bit per value seen in the CACH
+     * register: with the far end on a known colour code, a mask of exactly that
+     * bit says the register carries it in direct mode after all, and a mask of
+     * bit zero says it does not. The sync counts say which timeslot, if any, a
+     * direct mode transmission calls itself, and whether the far end is a
+     * repeater. The unsampled count is the caveat on the whole line: those
+     * events left the snapshot describing an older burst.
+     */
+    if(rxSampled > 0)
+    {
+        uint32_t unsampled = dmrIrq_getRxUnsampled();
+
+        dmrDebug_log(DMR_DBG_INFO, "rx: %lu bursts, cc mask %04X, sync "
+                     "ms/bs/ts1/ts2 %lu/%lu/%lu/%lu, %lu unsampled",
+                     (unsigned long) rxSampled, rxCcSeen,
+                     (unsigned long) rxSyncSeen[DMR_SYNC_MS],
+                     (unsigned long) rxSyncSeen[DMR_SYNC_BS],
+                     (unsigned long) rxSyncSeen[DMR_SYNC_TS1],
+                     (unsigned long) rxSyncSeen[DMR_SYNC_TS2],
+                     (unsigned long) (unsampled - reportedUnsampled));
+
+        reportedUnsampled = unsampled;
+        rxCcSeen  = 0;
+        rxSampled = 0;
+        memset(rxSyncSeen, 0, sizeof(rxSyncSeen));
+    }
+
     reportedTs  = counters.timeslot;
     reportedSys = counters.system;
     reportedTx  = counters.transmit;
@@ -287,23 +332,35 @@ static void handleBurst()
     C6000.clearDmrInterrupts(status.intFlags);
 
     bool    crcOk = (status.rxStatus & RX_STATUS_CRC_ERROR) == 0;
-    uint8_t code  = (status.cach >> 4) & 0x0F;
 
     /*
-     * The burst status read here from the thread arrives too late to describe
-     * the burst that raised the frame event, so a copy sampled in the system
-     * interrupt is used to classify it. Both are logged side by side, together
-     * with the two colour code reads, so the bench can confirm the sampled one
-     * is trustworthy: "status" is the thread read of 0x51, "isrbs" the same
-     * register sampled at the event.
+     * The registers read here from the thread arrive too late to describe the
+     * burst which raised the frame event, so the copy the system interrupt
+     * sampled at the event is what gets used and accumulated. Both sets are
+     * logged side by side, in the order flags, status, CACH, sync, so the bench
+     * can see for itself how far apart the two readings are.
      */
-    uint8_t burstStatus = dmrIrq_getRxBurstStatus();
+    struct dmrIrqRxSnapshot isr;
+    dmrIrq_getRxSnapshot(&isr);
+
+    uint8_t burstStatus = isr.status;
+    uint8_t syncType    = isr.sync & 0x03;
+    uint8_t code        = (isr.cach >> 4) & 0x0F;
+
+    if(isr.valid)
+    {
+        rxCcSeen |= (uint16_t) (1u << code);
+        rxSyncSeen[syncType] += 1;
+        rxSampled += 1;
+    }
 
     dmrDebug_log(DMR_DBG_LC,
-                 "burst: flags %02X status %02X isrbs %02X cach %02X sync %02X "
-                 "cc %u isrcc %u crc %s", status.intFlags, status.rxStatus,
-                 burstStatus, status.cach, status.syncStatus, code,
-                 dmrIrq_getRxColorCode(), crcOk ? "ok" : "bad");
+                 "burst: isr %02X/%02X/%02X/%02X thr %02X/%02X/%02X/%02X "
+                 "cc %u sync %s crc %s",
+                 isr.intFlags, isr.status, isr.cach, isr.sync,
+                 status.intFlags, status.rxStatus, status.cach,
+                 status.syncStatus, code, SYNC_NAMES[syncType],
+                 crcOk ? "ok" : "bad");
 
     /*
      * Stream every burst's payload for the host-side capture harness, tagged
@@ -355,16 +412,13 @@ static void handleBurst()
     }
 
     /*
-     * Colour code is not filtered: on the bench register 0x52 read back the
-     * same value whether read here or in the interrupt (0 for a signal that
-     * should have been CC1, with occasional 8 and 2), so it does not carry a
-     * usable colour code in direct mode - it is the CACH register, and direct
-     * mode has no CACH. The interrupt-sampled value is still read and shown
-     * for diagnosis, but filtering on it would reject every call. Getting a
-     * real direct-mode colour code needs the embedded signalling decoded,
-     * which is a separate task.
+     * Colour code is not filtered yet: on the bench register 0x52 read back 0
+     * for a signal which should have been colour code 1, with occasional 8 and
+     * 2, so filtering on it would have rejected every call. Whether that is the
+     * register being empty in direct mode or the reading being taken wrongly is
+     * exactly what the per-report summary below is there to settle.
      */
-    uint8_t rxCc = dmrIrq_getRxColorCode();
+    uint8_t rxCc = code;
 
     uint8_t lc[C6000_LC_LENGTH];
     C6000.readDmrLinkControl(lc);
@@ -667,6 +721,11 @@ void dmr_init(const uint8_t colorCode)
     reportedSys  = 0;
     reportedTx   = 0;
     reportTick   = getTick();
+
+    rxCcSeen          = 0;
+    rxSampled         = 0;
+    reportedUnsampled = 0;
+    memset(rxSyncSeen, 0, sizeof(rxSyncSeen));
 
     /*
      * Logged in stages: if the radio does not come back, the last line which

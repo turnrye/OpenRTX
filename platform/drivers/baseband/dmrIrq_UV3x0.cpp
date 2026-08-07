@@ -22,8 +22,11 @@
  */
 #define C6000_REG_RX_STATUS 0x51
 
-/* Colour code value standing for "nothing received yet". */
-#define CC_NONE         0xFF
+/* Register naming the sync pattern the chip matched, in its low two bits. */
+#define C6000_REG_RX_SYNC   0x5F
+
+/* Register holding the interrupt flags, which say what raised the event. */
+#define C6000_REG_INT_FLAGS 0x82
 
 /*
  * Events tolerated between two watchdog feeds before the lines are considered
@@ -38,9 +41,11 @@ static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool     stormSeen;  /* Lines shut down by the guard */
-static volatile uint8_t  rxColorCode = CC_NONE; /* CC of the last frame event */
-static volatile uint8_t  rxBurstStatus;         /* 0x51 of the last frame event */
 static volatile bool     busBusy;    /* A thread is on the SPI bus  */
+
+/* Registers of the last frame event, and the events which went unsampled. */
+static volatile struct dmrIrqRxSnapshot rxSnapshot;
+static volatile uint32_t rxUnsampled;
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -88,17 +93,29 @@ void __attribute__((used)) EXTI1_IRQHandler()
     sysCount += 1;
 
     /*
-     * The burst status and colour code registers are only valid at the instant
-     * of the frame event, so they are read here rather than from the consuming
-     * thread. The reads are skipped while a thread holds the bus, to avoid two
-     * contexts driving the bitbanged SPI at once; the next event picks them up.
-     * They are also skipped while transmitting, when the timeslot interrupt is
-     * the one driving the bus and a receive read would have nothing to say.
+     * The registers describing the burst are only valid at the instant of the
+     * frame event, so they are read here rather than from the consuming thread.
+     * The reads are skipped while a thread holds the bus, to avoid two contexts
+     * driving the bitbanged SPI at once; the next event picks them up. They are
+     * also skipped while transmitting, when the timeslot interrupt is the one
+     * driving the bus and a receive read would have nothing to say. A skipped
+     * event leaves the snapshot describing an earlier burst, so it is counted:
+     * a reading of the snapshot is only trustworthy while that count stays low.
+     *
+     * The order of the reads is the order in which the values go stale. The
+     * interrupt flags are latched until they are cleared, so they come last.
      */
     if((busBusy == false) && (dmr_txActive() == false))
     {
-        rxBurstStatus = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
-        rxColorCode   = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
+        rxSnapshot.status   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
+        rxSnapshot.cach     = C6000.readCfgRegisterFromIsr(C6000_REG_CACH);
+        rxSnapshot.sync     = C6000.readCfgRegisterFromIsr(C6000_REG_RX_SYNC);
+        rxSnapshot.intFlags = C6000.readCfgRegisterFromIsr(C6000_REG_INT_FLAGS);
+        rxSnapshot.valid    = true;
+    }
+    else
+    {
+        rxUnsampled += 1;
     }
 
     stormGuard();
@@ -177,11 +194,16 @@ void dmrIrq_getCounters(struct dmrIrqCounters *counters)
 
 void dmrIrq_clearCounters()
 {
-    tsCount       = 0;
-    sysCount      = 0;
-    txCount       = 0;
-    rxColorCode   = CC_NONE;
-    rxBurstStatus = 0;
+    tsCount     = 0;
+    sysCount    = 0;
+    txCount     = 0;
+    rxUnsampled = 0;
+
+    rxSnapshot.intFlags = 0;
+    rxSnapshot.status   = 0;
+    rxSnapshot.cach     = 0;
+    rxSnapshot.sync     = 0;
+    rxSnapshot.valid    = false;
 }
 
 void dmrIrq_feedWatchdog()
@@ -194,14 +216,18 @@ bool dmrIrq_stormDetected()
     return stormSeen;
 }
 
-uint8_t dmrIrq_getRxColorCode()
+void dmrIrq_getRxSnapshot(struct dmrIrqRxSnapshot *snapshot)
 {
-    return rxColorCode;
+    snapshot->intFlags = rxSnapshot.intFlags;
+    snapshot->status   = rxSnapshot.status;
+    snapshot->cach     = rxSnapshot.cach;
+    snapshot->sync     = rxSnapshot.sync;
+    snapshot->valid    = rxSnapshot.valid;
 }
 
-uint8_t dmrIrq_getRxBurstStatus()
+uint32_t dmrIrq_getRxUnsampled()
 {
-    return rxBurstStatus;
+    return rxUnsampled;
 }
 
 void dmrIrq_setBusBusy(bool busy)
