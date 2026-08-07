@@ -38,7 +38,7 @@ public:
 
     virtual bool rxSquelchOpen() override
     {
-        return false;
+        return callActive;
     }
 
 private:
@@ -64,6 +64,7 @@ private:
     bool enabled = false;   ///< Baseband brought up.
     bool startRx = false;   ///< Reception has still to be armed.
     bool startTx = false;   ///< A transmission has still to be keyed.
+    bool callActive = false;    ///< A call is being received.
 };
 
 #endif /* OPMODE_DMR_H */

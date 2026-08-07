@@ -20,6 +20,7 @@ void OpMode_DMR::enable()
     enabled = false;
     startRx = false;
     startTx = false;
+    callActive = false;
 }
 
 void OpMode_DMR::disable()
@@ -29,6 +30,8 @@ void OpMode_DMR::disable()
         dmr_terminate();
         enabled = false;
     }
+
+    callActive = false;
 
     platform_ledOff(GREEN);
     platform_ledOff(RED);
@@ -112,6 +115,13 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
     status->dmrRxGroupCall = (rx.groupCall) ? 1 : 0;
     status->dmrLcValid     = (rx.valid) ? 1 : 0;
 
+    /*
+     * A call being received counts as an open squelch, which is what keeps the
+     * user interface out of standby: without it the screen dims part way
+     * through a call, exactly when it is being read.
+     */
+    callActive = rx.valid;
+
     if(rx.valid)
         platform_ledOn(GREEN);
     else
@@ -155,6 +165,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
             return;
         }
 
+        callActive = false;
         platform_ledOff(GREEN);
         platform_ledOn(RED);
 
