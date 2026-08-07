@@ -29,6 +29,19 @@
 #define LC_FLCO_GROUP           0x00
 #define LC_FLCO_PRIVATE         0x03
 
+/* Data type of a terminator burst, in the high nibble of register 0x51. */
+#define DATA_TYPE_TERMINATOR    0x02
+
+/*
+ * How long after a terminator burst the voice has to stay gone before the
+ * call is truly considered over, in milliseconds. A real terminator is the
+ * last burst of its transmission, but the sampled type nibble also misreads
+ * as one routinely in the middle of a call, so a terminator is only believed
+ * once the silence it promises actually follows; the next voice burst of a
+ * live call arrives within 60ms and cancels it.
+ */
+#define TERMINATOR_CONFIRM      150
+
 /*
  * The voice payload of a burst: three 9-byte AMBE frames the chip hands over
  * on page 0x03 of its second SPI bus, separate from the bitbanged control bus
@@ -130,6 +143,7 @@ static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
 static uint8_t   voiceStreak;   // Bursts in a row carrying decodable voice
 static long long lastVoiceTick; // Tick of the last decodable voice burst
+static long long termPendingTick; // Tick of an unconfirmed terminator burst
 static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
@@ -445,6 +459,29 @@ static void observeColorCode(const uint8_t cach)
 }
 
 /**
+ * Take down the call being received and say why. Everything the link control
+ * tracking holds is dropped with it, so the next transmission is treated as a
+ * fresh call from its first burst.
+ *
+ * @param reason: one word for the log, saying what ended the call.
+ */
+static void endCall(const char *reason)
+{
+    rxState.valid       = false;
+    rxState.voiceActive = false;
+    rxState.colorCode   = DMR_CC_UNKNOWN;
+
+    memset(prevLc, 0, sizeof(prevLc));
+    lcMatches       = 0;
+    lcDecided       = false;
+    voiceStreak     = 0;
+    termPendingTick = 0;
+
+    dmrAudio_stopRx();
+    dmrDebug_log(DMR_DBG_INFO, "call: ended (%s)", reason);
+}
+
+/**
  * Decide whether a call is meant for this radio. A group call has to be to the
  * talkgroup the radio is set to and a private call to its own DMR ID, which is
  * how a radio hears somebody calling it directly whatever talkgroup it sits on.
@@ -578,7 +615,8 @@ static void handleBurst()
                 if(voiceStreak < 2)
                     voiceStreak += 1;
 
-                lastVoiceTick = now;
+                lastVoiceTick   = now;
+                termPendingTick = 0;
             }
 
             if((passed > 0) && (voiceStreak >= 2))
@@ -593,6 +631,43 @@ static void handleBurst()
                     }
                 }
             }
+        }
+    }
+
+    /*
+     * A terminator burst ends the call it belongs to, but it is not believed
+     * on sight: the sampled type nibble misreads as a terminator routinely in
+     * the middle of a call, and acting on it immediately cut live calls into
+     * a stream of end-and-restart flaps. What separates a real terminator
+     * from a misread is what follows it - a transmission ends behind its
+     * terminator, so the call is torn down only once the promised silence
+     * holds, while a live call's next voice burst cancels the suspicion
+     * within a burst time. Checking the terminator's link control instead was
+     * no guard at all: the register always names the call in progress.
+     *
+     * This closes most of the carrier-loss window, where the voice gate stood
+     * open over squelch noise and the rare noise frame clearing the Golay
+     * check came out of the vocoder as chopping. The timeout stays behind it
+     * for transmissions which end rudely, with no terminator on the air.
+     */
+    if(rxState.valid && isr.valid)
+    {
+        if(((isr.status >> 4) & 0x0F) == DATA_TYPE_TERMINATOR)
+        {
+            if(termPendingTick == 0)
+                termPendingTick = getTick();
+        }
+        else
+        {
+            /*
+             * Any later burst which is not a terminator proves the
+             * transmission is still running, whatever its payload holds.
+             * Cancelling only on decodable voice was not enough: that
+             * depends on the payload being read in time, and under load the
+             * events collapse, so a misread survived long enough to cut a
+             * live call once or twice a keyup.
+             */
+            termPendingTick = 0;
         }
     }
 
@@ -1234,18 +1309,14 @@ void dmr_task(struct dmrRxState *rx)
     rxState.voiceActive = rxState.valid &&
                           ((getTick() - lastVoiceTick) < RX_HOLD_TIMEOUT);
 
-    if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
+    if(rxState.valid && (termPendingTick != 0) &&
+       ((getTick() - termPendingTick) > TERMINATOR_CONFIRM))
     {
-        rxState.valid = false;
-        memset(prevLc, 0, sizeof(prevLc));
-        lcMatches   = 0;
-        lcDecided   = false;
-        voiceStreak = 0;
-        rxState.colorCode   = DMR_CC_UNKNOWN;
-        rxState.voiceActive = false;
-
-        dmrAudio_stopRx();
-        dmrDebug_log(DMR_DBG_INFO, "call: ended");
+        endCall("terminator");
+    }
+    else if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
+    {
+        endCall("timeout");
 
         /*
          * Start the register hunt afresh for the next call: the table exists
