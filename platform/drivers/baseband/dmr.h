@@ -28,11 +28,25 @@ struct dmrRxState
 };
 
 /**
+ * Everything the DMR receiver and transmitter take from the radio settings.
+ * Passed as one block rather than through a setter each: the settings are
+ * applied together, whenever the rtx configuration changes, and this is where
+ * the receive filters which are still to come belong as well.
+ */
+struct dmrConfig
+{
+    uint32_t dmrId;         ///< Own DMR ID, zero when unset.
+    uint32_t talkgroup;     ///< Talkgroup transmitted to, and accepted on RX.
+    uint8_t  colorCode;     ///< Color code, from 0 to 15.
+    bool     rxPromiscuous; ///< Accept calls addressed to anyone.
+};
+
+/**
  * Bring the baseband up for DMR reception and start handling its interrupts.
  *
- * @param colorCode: color code the receiver has to accept.
+ * @param cfg: configuration the receiver has to start with.
  */
-void dmr_init(const uint8_t colorCode);
+void dmr_init(const struct dmrConfig *cfg);
 
 /**
  * Stop the DMR reception.
@@ -40,11 +54,12 @@ void dmr_init(const uint8_t colorCode);
 void dmr_terminate();
 
 /**
- * Change the color code the receiver accepts.
+ * Apply a new configuration. The parts of it the chip has to be told about are
+ * only written when they have actually changed.
  *
- * @param colorCode: color code the receiver has to accept.
+ * @param cfg: configuration to apply.
  */
-void dmr_setColorCode(const uint8_t colorCode);
+void dmr_setConfig(const struct dmrConfig *cfg);
 
 /**
  * Periodic update step, has to be called from a thread as it accesses the

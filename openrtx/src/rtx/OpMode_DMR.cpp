@@ -37,15 +37,24 @@ void OpMode_DMR::disable()
 
 void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 {
-    if(enabled == false)
+    if((enabled == false) || newCfg)
     {
-        dmr_init(status->dmrColorCode);
-        enabled = true;
-        startRx = true;
-    }
-    else if(newCfg)
-    {
-        dmr_setColorCode(status->dmrColorCode);
+        struct dmrConfig cfg;
+        cfg.dmrId         = status->dmrId;
+        cfg.talkgroup     = status->dmrTalkgroup;
+        cfg.colorCode     = status->dmrColorCode;
+        cfg.rxPromiscuous = (status->dmrRxPromisc != 0);
+
+        if(enabled == false)
+        {
+            dmr_init(&cfg);
+            enabled = true;
+            startRx = true;
+        }
+        else
+        {
+            dmr_setConfig(&cfg);
+        }
     }
 
     switch(status->opStatus)

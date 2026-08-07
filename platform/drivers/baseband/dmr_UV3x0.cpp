@@ -114,7 +114,7 @@ enum dmrTxState
 #define RX_HOLD_TIMEOUT         500
 
 static struct dmrRxState rxState;
-static uint8_t   configuredCc;
+static struct dmrConfig  dmrCfg;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
 static uint32_t  lastSysCount;
@@ -256,7 +256,7 @@ static void checkInitRegisters()
      */
     dmrDebug_log(DMR_DBG_INFO, "init: timing %02X, receiver bits %s, "
                  "color code set to %u", timing, ok ? "PASS" : "FAIL",
-                 configuredCc);
+                 dmrCfg.colorCode);
 }
 
 /**
@@ -703,7 +703,7 @@ void dmr_txTask()
     txReportTick = now;
 }
 
-void dmr_init(const uint8_t colorCode)
+void dmr_init(const struct dmrConfig *cfg)
 {
     memset(&rxState, 0, sizeof(rxState));
     memset(prevLc, 0, sizeof(prevLc));
@@ -712,7 +712,8 @@ void dmr_init(const uint8_t colorCode)
     txStopRequested = false;
     rxRestoreNeeded = false;
 
-    configuredCc  = colorCode & 0x0F;
+    dmrCfg           = *cfg;
+    dmrCfg.colorCode = cfg->colorCode & 0x0F;
     lcMatches     = 0;
     lastSysCount  = 0;
     lastTsCount   = 0;
@@ -742,7 +743,7 @@ void dmr_init(const uint8_t colorCode)
      * the timeslot line ticked at a steady 33Hz while a transmission on
      * frequency produced no system events at all.
      */
-    C6000.setDmrColorCode(configuredCc);
+    C6000.setDmrColorCode(dmrCfg.colorCode);
     C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
     /*
@@ -779,18 +780,29 @@ void dmr_terminate()
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
 
-void dmr_setColorCode(const uint8_t colorCode)
+void dmr_setConfig(const struct dmrConfig *cfg)
 {
-    if((colorCode & 0x0F) == configuredCc)
+    uint8_t colorCode = cfg->colorCode & 0x0F;
+    bool    ccChanged = (colorCode != dmrCfg.colorCode);
+
+    dmrCfg           = *cfg;
+    dmrCfg.colorCode = colorCode;
+
+    /*
+     * Only the colour code reaches the chip, and only when it has changed: the
+     * write costs a bus transaction and drops the link control being tracked,
+     * which would restart every call in progress each time any unrelated
+     * setting is touched.
+     */
+    if(ccChanged == false)
         return;
 
-    configuredCc = colorCode & 0x0F;
-    C6000.setDmrColorCode(configuredCc);
+    C6000.setDmrColorCode(dmrCfg.colorCode);
 
     memset(prevLc, 0, sizeof(prevLc));
     lcMatches = 0;
 
-    dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", configuredCc);
+    dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.colorCode);
 }
 
 void dmr_task(struct dmrRxState *rx)
@@ -834,7 +846,7 @@ void dmr_task(struct dmrRxState *rx)
         dmrAudio_stopTx();
 
         C6000.dmrMode();
-        C6000.setDmrColorCode(configuredCc);
+        C6000.setDmrColorCode(dmrCfg.colorCode);
         C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
