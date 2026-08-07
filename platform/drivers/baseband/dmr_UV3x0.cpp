@@ -120,6 +120,8 @@ static struct dmrRxState rxState;
 static struct dmrConfig  dmrCfg;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
+static uint8_t   ccCandidate;   // Colour code last observed in the CACH
+static uint8_t   ccMatches;     // Consecutive identical observations
 static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
@@ -400,6 +402,54 @@ static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
 }
 
 /**
+ * Watch the CACH register for the colour code of the station being received.
+ *
+ * The chip delivers a colour code only for transmissions carrying a CACH -
+ * hotspots and repeaters - as sparse frame events reading (CC << 4) | 0xF;
+ * a mobile station transmitting direct carries its colour code only in
+ * signalling the chip consumes without exposing, so from such a station no
+ * observation ever arrives and the code stays unknown. Bench-established
+ * against an openSPOT: the register tracked its colour code from 5 to 3,
+ * while a subscriber radio on colour code 1 never produced a reading.
+ *
+ * Observations are sparse and occasionally wrong - a zero-code reading
+ * appeared amid a colour code 3 call - so a code is taken only when seen
+ * twice running, and a zero code, indistinguishable from that noise, is
+ * never taken at all.
+ *
+ * @param cach: CACH register sampled at the frame event.
+ */
+static void observeColorCode(const uint8_t cach)
+{
+    if((cach & 0x0F) != 0x0F)
+        return;
+
+    uint8_t code = (cach >> 4) & 0x0F;
+    if(code == 0)
+        return;
+
+    if(code != ccCandidate)
+    {
+        ccCandidate = code;
+        ccMatches   = 1;
+        return;
+    }
+
+    if(ccMatches < 2)
+    {
+        ccMatches += 1;
+        if(ccMatches < 2)
+            return;
+    }
+
+    if(rxState.colorCode != code)
+    {
+        rxState.colorCode = code;
+        dmrDebug_log(DMR_DBG_INFO, "call: colour code %u observed", code);
+    }
+}
+
+/**
  * Decide whether a call is meant for this radio. A group call has to be to the
  * talkgroup the radio is set to and a private call to its own DMR ID, which is
  * how a radio hears somebody calling it directly whatever talkgroup it sits on.
@@ -453,6 +503,7 @@ static void handleBurst()
         rxSyncSeen[syncType] += 1;
         rxSampled += 1;
         ccHuntRecord(&isr);
+        observeColorCode(isr.cach);
     }
 
     dmrDebug_log(DMR_DBG_LC,
@@ -618,7 +669,6 @@ static void handleBurst()
 
     rxState.dstId     = dstId;
     rxState.srcId     = srcId;
-    rxState.colorCode = DMR_CC_UNKNOWN;
     rxState.groupCall = group;
     rxState.valid     = true;
 
@@ -858,6 +908,7 @@ void dmr_init(const struct dmrConfig *cfg)
 {
     memset(&rxState, 0, sizeof(rxState));
     memset(prevLc, 0, sizeof(prevLc));
+    rxState.colorCode = DMR_CC_UNKNOWN;
 
     txState         = TX_IDLE;
     txStopRequested = false;
@@ -1071,6 +1122,9 @@ void dmr_task(struct dmrRxState *rx)
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches     = 0;
         lcDecided     = false;
+        ccCandidate   = 0;
+        ccMatches     = 0;
+        rxState.colorCode = DMR_CC_UNKNOWN;
         lastBurstTick = getTick();
 
         dmrDebug_log(DMR_DBG_INFO, "tx: %lu payload slots carried audio, "
@@ -1128,8 +1182,11 @@ void dmr_task(struct dmrRxState *rx)
     {
         rxState.valid = false;
         memset(prevLc, 0, sizeof(prevLc));
-        lcMatches = 0;
-        lcDecided = false;
+        lcMatches   = 0;
+        lcDecided   = false;
+        ccCandidate = 0;
+        ccMatches   = 0;
+        rxState.colorCode = DMR_CC_UNKNOWN;
 
         dmrAudio_stopRx();
         dmrDebug_log(DMR_DBG_INFO, "call: ended");

@@ -39,6 +39,7 @@ void dmr_setConfig(const struct dmrConfig *cfg)
 void dmr_task(struct dmrRxState *rx)
 {
     memset(rx, 0, sizeof(struct dmrRxState));
+    rx->colorCode = DMR_CC_UNKNOWN;
 }
 
 void dmr_startTx(const bool groupCall, const uint32_t dstId,
