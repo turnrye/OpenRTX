@@ -117,6 +117,7 @@ static struct dmrRxState rxState;
 static struct dmrConfig  dmrCfg;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
+static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
 static long long lastBurstTick;
@@ -322,6 +323,29 @@ static void reportIrqActivity()
 }
 
 /**
+ * Decide whether a call is meant for this radio. A group call has to be to the
+ * talkgroup the radio is set to and a private call to its own DMR ID, which is
+ * how a radio hears somebody calling it directly whatever talkgroup it sits on.
+ * The promiscuous setting takes everything the channel carries instead, which
+ * is what a monitoring receiver wants and what the radio does by default while
+ * DMR is being brought up.
+ *
+ * @param groupCall: true for a group call, false for a private one.
+ * @param dstId: destination the call is addressed to.
+ * @return true if the call is to be received.
+ */
+static bool callAccepted(const bool groupCall, const uint32_t dstId)
+{
+    if(dmrCfg.rxPromiscuous)
+        return true;
+
+    if(groupCall)
+        return dstId == dmrCfg.talkgroup;
+
+    return (dmrCfg.dmrId != 0) && (dstId == dmrCfg.dmrId);
+}
+
+/**
  * Read out a burst the chip has signalled and, if it passes the filters,
  * extract the identities it carries.
  */
@@ -372,7 +396,9 @@ static void handleBurst()
      * is confirmed against a full capture; gating on the sync class alone
      * wrongly dropped almost every burst.
      */
-    if(dmrDebug_channelEnabled(DMR_DBG_VP) || dmrAudio_running())
+    bool wantAudio = dmrAudio_running() && rxState.valid;
+
+    if(dmrDebug_channelEnabled(DMR_DBG_VP) || wantAudio)
     {
         uint8_t payload[VP_LENGTH];
         payloadRead(payload);
@@ -390,8 +416,15 @@ static void handleBurst()
          * ones that pass the voice check: in direct mode the receiver hears both
          * timeslots, and the empty one decodes to noise. Gating on each frame's
          * Golay error count keeps the call's slot and drops the other.
+         *
+         * Voice bursts carry no link control of their own, so they can only be
+         * attributed to the call the link control last identified: playback
+         * therefore follows the receive state, which is set only for a call
+         * which has passed the filters below and cleared as soon as one is
+         * turned away. Without that a rejected call would still be heard, since
+         * playback is already running from whichever call was accepted before.
          */
-        if(dmrAudio_running())
+        if(wantAudio)
         {
             for(int f = 0; f < 3; f++)
             {
@@ -434,6 +467,7 @@ static void handleBurst()
     {
         memcpy(prevLc, lc, sizeof(lc));
         lcMatches = 1;
+        lcDecided = false;
         return;
     }
 
@@ -455,12 +489,37 @@ static void handleBurst()
     bool     group = (lc[0] == LC_FLCO_GROUP);
 
     /*
-     * Only the start of a call is announced, not every burst of it: the tap
-     * link is far slower than the burst rate and logging each one floods it,
-     * which stalls the thread doing the logging.
+     * Only the start of a call is acted on, not every burst of it: the same
+     * link control keeps coming back for as long as the call lasts, and the tap
+     * link is far slower than the burst rate, so logging each one floods it and
+     * stalls the thread doing the logging.
      */
-    bool newCall = (rxState.valid == false) || (rxState.srcId != srcId) ||
-                   (rxState.dstId != dstId);
+    bool newCall = (lcDecided == false);
+    if(newCall == false)
+        return;
+
+    lcDecided = true;
+
+    /*
+     * Turn away a call which is not addressed to us. A call in progress is
+     * dropped along with it: playback follows the receive state, so leaving it
+     * up would let the rejected call be heard through the tail of the one it
+     * interrupted.
+     */
+    if(callAccepted(group, dstId) == false)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "call: ignored, from %lu to %s %lu",
+                     (unsigned long) srcId, group ? "TG" : "ID",
+                     (unsigned long) dstId);
+
+        if(rxState.valid)
+        {
+            rxState.valid = false;
+            dmrAudio_stopRx();
+        }
+
+        return;
+    }
 
     rxState.dstId     = dstId;
     rxState.srcId     = srcId;
@@ -715,6 +774,7 @@ void dmr_init(const struct dmrConfig *cfg)
     dmrCfg           = *cfg;
     dmrCfg.colorCode = cfg->colorCode & 0x0F;
     lcMatches     = 0;
+    lcDecided     = false;
     lastSysCount  = 0;
     lastTsCount   = 0;
     lastBurstTick = 0;
@@ -801,6 +861,7 @@ void dmr_setConfig(const struct dmrConfig *cfg)
 
     memset(prevLc, 0, sizeof(prevLc));
     lcMatches = 0;
+    lcDecided = false;
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.colorCode);
 }
@@ -855,6 +916,7 @@ void dmr_task(struct dmrRxState *rx)
 
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches     = 0;
+        lcDecided     = false;
         lastBurstTick = getTick();
 
         dmrDebug_log(DMR_DBG_INFO, "tx: %lu payload slots carried audio, "
@@ -913,6 +975,7 @@ void dmr_task(struct dmrRxState *rx)
         rxState.valid = false;
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches = 0;
+        lcDecided = false;
 
         dmrAudio_stopRx();
         dmrDebug_log(DMR_DBG_INFO, "call: ended");
