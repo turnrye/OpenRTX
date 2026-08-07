@@ -112,17 +112,20 @@ void __attribute__((used)) EXTI1_IRQHandler()
      * event leaves the snapshot describing an earlier burst, so it is counted:
      * a reading of the snapshot is only trustworthy while that count stays low.
      *
-     * The order of the reads is the order in which the values go stale. The
-     * interrupt flags are latched until they are cleared, so they come last.
+     * The interrupt flags are read first: reading a sub-status register
+     * consumes the master flag which announced it, so sampling the flags after
+     * the others reported them empty - a burst of received data showed no
+     * received-data bit. The reference firmware reads them in this same order,
+     * flags, then colour code, then the burst status.
      */
     if((busBusy == false) && (dmr_txActive() == false))
     {
-        rxSnapshot.status   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
+        rxSnapshot.intFlags = C6000.readCfgRegisterFromIsr(C6000_REG_INT_FLAGS);
         rxSnapshot.cach     = C6000.readCfgRegisterFromIsr(C6000_REG_CACH);
+        rxSnapshot.status   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
+        rxSnapshot.sync     = C6000.readCfgRegisterFromIsr(C6000_REG_RX_SYNC);
         rxSnapshot.timecode = C6000.readCfgRegisterFromIsr(C6000_REG_TIMECODE);
         rxSnapshot.rxInfo   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_INFO);
-        rxSnapshot.sync     = C6000.readCfgRegisterFromIsr(C6000_REG_RX_SYNC);
-        rxSnapshot.intFlags = C6000.readCfgRegisterFromIsr(C6000_REG_INT_FLAGS);
         rxSnapshot.valid    = true;
     }
     else
