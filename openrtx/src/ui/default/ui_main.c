@@ -145,6 +145,14 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
                           color_white, "%lu",
                           (unsigned long) rtxStatus.dmrRxSrcId);
             }
+            else if(rtxStatus.dmrId == 0)
+            {
+                // Transmission is refused without a DMR ID, which is how the
+                // radio leaves the factory: say so rather than leaving the
+                // press of a PTT to go unexplained.
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "SET DMR ID");
+            }
             else
             {
                 // Idle: show the configured talkgroup and color code. Lines 3
