@@ -120,8 +120,6 @@ static struct dmrRxState rxState;
 static struct dmrConfig  dmrCfg;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
-static uint8_t   ccCandidate;   // Colour code last observed in the CACH
-static uint8_t   ccMatches;     // Consecutive identical observations
 static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
@@ -412,10 +410,11 @@ static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
  * against an openSPOT: the register tracked its colour code from 5 to 3,
  * while a subscriber radio on colour code 1 never produced a reading.
  *
- * Observations are sparse and occasionally wrong - a zero-code reading
- * appeared amid a colour code 3 call - so a code is taken only when seen
- * twice running, and a zero code, indistinguishable from that noise, is
- * never taken at all.
+ * Observations are rare - the bench saw about one per call - so the first
+ * nonzero one is taken as it stands: demanding a second reading which may
+ * never come held the code back entirely. The only wrong readings ever
+ * seen carried a zero code, which is never taken at all; every nonzero
+ * reading so far has matched the far end.
  *
  * @param cach: CACH register sampled at the frame event.
  */
@@ -427,20 +426,6 @@ static void observeColorCode(const uint8_t cach)
     uint8_t code = (cach >> 4) & 0x0F;
     if(code == 0)
         return;
-
-    if(code != ccCandidate)
-    {
-        ccCandidate = code;
-        ccMatches   = 1;
-        return;
-    }
-
-    if(ccMatches < 2)
-    {
-        ccMatches += 1;
-        if(ccMatches < 2)
-            return;
-    }
 
     if(rxState.colorCode != code)
     {
@@ -1122,8 +1107,6 @@ void dmr_task(struct dmrRxState *rx)
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches     = 0;
         lcDecided     = false;
-        ccCandidate   = 0;
-        ccMatches     = 0;
         rxState.colorCode = DMR_CC_UNKNOWN;
         lastBurstTick = getTick();
 
@@ -1182,10 +1165,8 @@ void dmr_task(struct dmrRxState *rx)
     {
         rxState.valid = false;
         memset(prevLc, 0, sizeof(prevLc));
-        lcMatches   = 0;
-        lcDecided   = false;
-        ccCandidate = 0;
-        ccMatches   = 0;
+        lcMatches = 0;
+        lcDecided = false;
         rxState.colorCode = DMR_CC_UNKNOWN;
 
         dmrAudio_stopRx();
