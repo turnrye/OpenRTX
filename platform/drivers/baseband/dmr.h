@@ -110,6 +110,21 @@ void dmr_txTask();
 bool dmr_txActive();
 
 /**
+ * Perform a configuration register access asked for over the debug tap. The
+ * access is deferred to the next dmr_task, where the bus is already fenced off
+ * from the interrupt handlers, and its result is logged there.
+ *
+ * This is a bench instrument for finding out what the chip exposes, and it will
+ * happily write a register which stops the radio working; the way back is a
+ * mode change, which rewrites the configuration.
+ *
+ * @param op: 'r' to read one register, 'w' to write one, 'd' to dump a range.
+ * @param addr: register address, or the first of the range.
+ * @param value: value to write, or the last register of the range.
+ */
+void dmr_debugRegisterOp(char op, uint8_t addr, uint8_t value);
+
+/**
  * Advance the transmit slot state machine by one slot. Called from the
  * timeslot interrupt handler while a transmission is active, it must not be
  * used from a thread as it drives the chip without taking the SPI mutex.

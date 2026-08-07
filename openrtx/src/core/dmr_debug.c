@@ -27,6 +27,8 @@
  * the 'c' command reports it unavailable where the symbol is absent.
  */
 void dmr_codec_selfTest(void) __attribute__((weak));
+void dmr_debugRegisterOp(char op, uint8_t addr, uint8_t value)
+     __attribute__((weak));
 
 #define TAP_BUF_SIZE    2048    /* Message buffer size, in bytes            */
 #define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
@@ -134,9 +136,53 @@ static void tapPushLocked(const char *data, const size_t len)
  * categories to be turned on and off from a plain terminal emulator. The linux
  * target has no command channel, as its standard input is used elsewhere.
  */
+/**
+ * Parse a completed register command line and hand it to the baseband. The
+ * forms are "r AA" to read a configuration register, "w AA VV" to write one and
+ * "d AA BB" to dump a range, all in hex. The baseband performs the access from
+ * its own thread, where the bus is already fenced off from the interrupts, and
+ * logs what it found.
+ *
+ * @param line: command line, zero terminated, without its newline.
+ */
+static void tapRegisterCommand(const char *line)
+{
+    if(dmr_debugRegisterOp == NULL)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "tap: no baseband to address");
+        return;
+    }
+
+    unsigned int first = 0;
+    unsigned int second = 0;
+    int          parsed = sscanf(line + 1, "%x %x", &first, &second);
+
+    if((parsed < 1) || (first > 0xFF) || (second > 0xFF))
+    {
+        dmrDebug_log(DMR_DBG_INFO, "tap: bad register command '%s'", line);
+        return;
+    }
+
+    if((line[0] != 'r') && (parsed < 2))
+    {
+        dmrDebug_log(DMR_DBG_INFO, "tap: '%c' needs two values", line[0]);
+        return;
+    }
+
+    dmr_debugRegisterOp(line[0], (uint8_t) first, (uint8_t) second);
+}
+
 static void tapPollCommands()
 {
 #if !defined(PLATFORM_LINUX)
+    /*
+     * Register commands carry arguments, so they are gathered until the host
+     * sends a newline; everything else acts on the single character as it
+     * arrives, which is what a plain terminal emulator is good for.
+     */
+    static char    line[16];
+    static uint8_t lineLen;
+
     uint8_t cmd[8];
     ssize_t num = vcom_readBlock(cmd, sizeof(cmd));
 
@@ -148,6 +194,30 @@ static void tapPollCommands()
     {
         uint8_t ch = 0;
 
+        if(lineLen > 0)
+        {
+            if((cmd[i] == '\r') || (cmd[i] == '\n'))
+            {
+                line[lineLen] = '\0';
+                lineLen = 0;
+                tapRegisterCommand(line);
+            }
+            else if(lineLen < (sizeof(line) - 1))
+            {
+                line[lineLen] = (char) cmd[i];
+                lineLen += 1;
+            }
+
+            continue;
+        }
+
+        if((cmd[i] == 'r') || (cmd[i] == 'w') || (cmd[i] == 'd'))
+        {
+            line[0] = (char) cmd[i];
+            lineLen = 1;
+            continue;
+        }
+
         switch(cmd[i])
         {
             case '1': ch = DMR_DBG_INFO; break;
@@ -157,7 +227,8 @@ static void tapPollCommands()
 
             case '?':
                 dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X "
-                             "(1 info, 2 irq, 3 lc, 4 payload)", channels);
+                             "(1 info, 2 irq, 3 lc, 4 payload), "
+                             "rAA / wAA VV / dAA BB for registers", channels);
                 continue;
 
             case 'c':

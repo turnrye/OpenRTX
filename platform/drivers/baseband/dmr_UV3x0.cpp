@@ -165,6 +165,19 @@ struct ccHuntEntry
 static struct ccHuntEntry ccHunt[CC_HUNT_SLOTS];
 static uint8_t ccHuntUsed;
 
+/*
+ * A configuration register access asked for over the debug tap, carried out on
+ * the next pass of dmr_task, where the bus is already fenced off from the
+ * interrupt handlers. Only one is held at a time, which is all somebody typing
+ * at a terminal can ask for. A dump is bounded so that a slip of the fingers
+ * cannot ask for hundreds of lines down a link this slow.
+ */
+#define REG_DUMP_MAX    64
+
+static volatile char    regOp;
+static volatile uint8_t regAddr;
+static volatile uint8_t regValue;
+
 /* Names of the sync patterns, indexed by the low two bits of register 0x5F. */
 static const char *const SYNC_NAMES[4] = { "ms", "bs", "ts1", "ts2" };
 
@@ -938,6 +951,65 @@ void dmr_setConfig(const struct dmrConfig *cfg)
     dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.colorCode);
 }
 
+/**
+ * Carry out a register access asked for over the debug tap. Called from
+ * dmr_task with the bus already held.
+ */
+static void servicePendingRegisterOp()
+{
+    char    op    = regOp;
+    uint8_t addr  = regAddr;
+    uint8_t value = regValue;
+
+    if(op == 0)
+        return;
+
+    regOp = 0;
+
+    switch(op)
+    {
+        case 'r':
+            dmrDebug_log(DMR_DBG_INFO, "reg: %02X = %02X", addr,
+                         C6000.readCfgRegister(addr));
+            break;
+
+        case 'w':
+            C6000.writeCfgRegister(addr, value);
+            dmrDebug_log(DMR_DBG_INFO, "reg: %02X <- %02X, reads back %02X",
+                         addr, value, C6000.readCfgRegister(addr));
+            break;
+
+        case 'd':
+        {
+            unsigned int last = value;
+
+            if(last < addr)
+                last = addr;
+
+            if((last - addr) >= REG_DUMP_MAX)
+                last = addr + REG_DUMP_MAX - 1;
+
+            for(unsigned int a = addr; a <= last; a++)
+            {
+                dmrDebug_log(DMR_DBG_INFO, "reg: %02X = %02X",
+                             a, C6000.readCfgRegister((uint8_t) a));
+            }
+            break;
+        }
+
+        default:
+            dmrDebug_log(DMR_DBG_INFO, "reg: unknown operation '%c'", op);
+            break;
+    }
+}
+
+void dmr_debugRegisterOp(char op, uint8_t addr, uint8_t value)
+{
+    regAddr  = addr;
+    regValue = value;
+    regOp    = op;
+}
+
 void dmr_task(struct dmrRxState *rx)
 {
     struct dmrIrqCounters counters;
@@ -960,6 +1032,8 @@ void dmr_task(struct dmrRxState *rx)
      * stand off the bus for the duration so the two never drive it at once.
      */
     dmrIrq_setBusBusy(true);
+
+    servicePendingRegisterOp();
 
     /*
      * After a transmission the receiver does not come back on the reset dance
