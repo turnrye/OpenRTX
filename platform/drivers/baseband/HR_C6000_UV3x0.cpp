@@ -148,6 +148,17 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::CONFIG, 0x5F, 0xF0);    // Detect MS, BS, TDMA1 and TDMA2 frame sequences
     sendSequence(initSeq7, sizeof(initSeq7));
     writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
+
+    /*
+     * Restart the DMR protocol and physical layer modules, register 0x00 being
+     * the module reset register with active low bits, so they come up running
+     * the configuration written above. The boot init pulses this only before
+     * any DMR configuration exists; without a pulse here the data link layer
+     * keeps running from that state, and it decodes voice and link control but
+     * never fills in the received colour code. The reference firmware ends its
+     * DMR configuration with this exact write.
+     */
+    writeReg(M::CONFIG, 0x00, 0x3F);    // Reset DMR protocol and physical layer
 }
 
 template< class M >
