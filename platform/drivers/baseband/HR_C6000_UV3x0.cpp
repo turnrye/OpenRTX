@@ -126,7 +126,7 @@ template< class M >
 void HR_Cx000< M >::dmrMode()
 {
     writeReg(M::CONFIG, 0x10, 0x6E);    // DMR mode, Tier II, timeslot mode, 2nd layer mode, relay, aligned
-    writeReg(M::CONFIG, 0x81, 0x19);    // Interrupt mask
+    writeReg(M::CONFIG, 0x81, 0xFF);    // Interrupt mask, all sources enabled
     writeReg(M::CONFIG, 0x01, 0xF0);    // Swap TX IQ, swap RX IQ, two point mode for TX, IF mode for RX
     writeReg(M::CONFIG, 0xE4, 0x27);    // Lineout gain, first and second stage mic gain
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Undocumented register

@@ -83,6 +83,8 @@ struct dmrIrqRxSnapshot
     uint8_t intFlags;   ///< Interrupt flags, register 0x82.
     uint8_t status;     ///< Data type, sync class and CRC result, register 0x51.
     uint8_t cach;       ///< Colour code and timecode, register 0x52.
+    uint8_t timecode;   ///< Timecode as the stock firmware reads it, 0x57.
+    uint8_t rxInfo;     ///< Received information sub-status, register 0x90.
     uint8_t sync;       ///< Detected sync pattern, register 0x5F.
     bool    valid;      ///< False until a frame event has been sampled.
 };

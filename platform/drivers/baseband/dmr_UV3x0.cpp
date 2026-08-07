@@ -130,17 +130,40 @@ static uint32_t  reportedTx;
 static long long reportTick;
 
 /*
- * What the frame events have looked like since the last report: one bit per
- * colour code value seen in the CACH register, and a count per sync pattern.
- * A single burst says little, as these registers are read at the very edge of
- * the instant they are valid for, but the shape of a whole transmission is
- * unambiguous - and unlike a line per burst it survives the tap dropping
- * messages, which at the burst rate it certainly will.
+ * A count per sync pattern seen since the last report, which says whether the
+ * far end is a repeater and whether a direct mode transmission names a
+ * timeslot. A single burst says little, as these registers are read at the very
+ * edge of the instant they are valid for, but the shape of a whole transmission
+ * is unambiguous.
  */
-static uint16_t  rxCcSeen;
 static uint32_t  rxSyncSeen[4];
 static uint32_t  rxSampled;
 static uint32_t  reportedUnsampled;
+
+/*
+ * The hunt for a direct mode colour code. Neither register which should hold
+ * one does - see the note in handleBurst - but the colour code is certainly on
+ * air, in the slot type of every data burst and the embedded signalling of the
+ * voice bursts, and commercial radios filter on it. So every distinct
+ * combination of the status registers is logged once, and only once: keying a
+ * far end on one colour code fills the table, and keying it on another then
+ * prints exactly the combinations which differ. Any byte tracking the colour
+ * code shows up in that difference and nothing else does.
+ */
+#define CC_HUNT_SLOTS   16
+
+struct ccHuntEntry
+{
+    uint8_t flags;
+    uint8_t status;
+    uint8_t cach;
+    uint8_t timecode;
+    uint8_t rxInfo;
+    uint8_t sync;
+};
+
+static struct ccHuntEntry ccHunt[CC_HUNT_SLOTS];
+static uint8_t ccHuntUsed;
 
 /* Names of the sync patterns, indexed by the low two bits of register 0x5F. */
 static const char *const SYNC_NAMES[4] = { "ms", "bs", "ts1", "ts2" };
@@ -291,22 +314,20 @@ static void reportIrqActivity()
                  (unsigned long) (now - reportTick));
 
     /*
-     * What the received bursts carried. The bench has already answered what
-     * this was built to ask - see the colour code note in handleBurst and the
-     * sync counts, which came back mobile station sourced throughout - so it
-     * stays on the interrupt channel as a diagnostic rather than in the default
-     * output. It is worth keeping for repeater mode, where the CACH this reads
-     * does carry a colour code and a timeslot. The unsampled count is the
-     * caveat on the line: those events left the snapshot describing an older
-     * burst.
+     * What the received bursts carried, on the interrupt channel as a
+     * diagnostic rather than in the default output. The sync counts came back
+     * mobile station sourced throughout on the bench, which is what says a
+     * direct mode transmission does not name its timeslot. The unsampled count
+     * is the caveat on the line: those events left the snapshot describing an
+     * older burst.
      */
     if(rxSampled > 0)
     {
         uint32_t unsampled = dmrIrq_getRxUnsampled();
 
-        dmrDebug_log(DMR_DBG_IRQ, "rx: %lu bursts, cc mask %04X, sync "
+        dmrDebug_log(DMR_DBG_IRQ, "rx: %lu bursts, sync "
                      "ms/bs/ts1/ts2 %lu/%lu/%lu/%lu, %lu unsampled",
-                     (unsigned long) rxSampled, rxCcSeen,
+                     (unsigned long) rxSampled,
                      (unsigned long) rxSyncSeen[DMR_SYNC_MS],
                      (unsigned long) rxSyncSeen[DMR_SYNC_BS],
                      (unsigned long) rxSyncSeen[DMR_SYNC_TS1],
@@ -314,7 +335,6 @@ static void reportIrqActivity()
                      (unsigned long) (unsampled - reportedUnsampled));
 
         reportedUnsampled = unsampled;
-        rxCcSeen  = 0;
         rxSampled = 0;
         memset(rxSyncSeen, 0, sizeof(rxSyncSeen));
     }
@@ -323,6 +343,39 @@ static void reportIrqActivity()
     reportedSys = counters.system;
     reportedTx  = counters.transmit;
     reportTick  = now;
+}
+
+/**
+ * Note the register combination a burst arrived with, and say so the first time
+ * each one appears. Bounded by the table, so a long call cannot flood the tap.
+ *
+ * @param isr: registers sampled at the frame event.
+ */
+static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
+{
+    struct ccHuntEntry entry;
+    entry.flags    = isr->intFlags;
+    entry.status   = isr->status;
+    entry.cach     = isr->cach;
+    entry.timecode = isr->timecode;
+    entry.rxInfo   = isr->rxInfo;
+    entry.sync     = isr->sync;
+
+    for(uint8_t i = 0; i < ccHuntUsed; i++)
+    {
+        if(memcmp(&ccHunt[i], &entry, sizeof(entry)) == 0)
+            return;
+    }
+
+    if(ccHuntUsed >= CC_HUNT_SLOTS)
+        return;
+
+    ccHunt[ccHuntUsed] = entry;
+    ccHuntUsed += 1;
+
+    dmrDebug_log(DMR_DBG_INFO, "hunt: flags %02X status %02X cach %02X "
+                 "t57 %02X r90 %02X sync %02X", entry.flags, entry.status,
+                 entry.cach, entry.timecode, entry.rxInfo, entry.sync);
 }
 
 /**
@@ -376,9 +429,9 @@ static void handleBurst()
 
     if(isr.valid)
     {
-        rxCcSeen |= (uint16_t) (1u << code);
         rxSyncSeen[syncType] += 1;
         rxSampled += 1;
+        ccHuntRecord(&isr);
     }
 
     dmrDebug_log(DMR_DBG_LC,
@@ -801,10 +854,11 @@ void dmr_init(const struct dmrConfig *cfg)
     reportedTx   = 0;
     reportTick   = getTick();
 
-    rxCcSeen          = 0;
     rxSampled         = 0;
     reportedUnsampled = 0;
+    ccHuntUsed        = 0;
     memset(rxSyncSeen, 0, sizeof(rxSyncSeen));
+    memset(ccHunt, 0, sizeof(ccHunt));
 
     /*
      * Logged in stages: if the radio does not come back, the last line which

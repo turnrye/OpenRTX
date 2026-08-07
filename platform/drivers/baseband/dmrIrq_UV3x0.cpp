@@ -25,6 +25,16 @@
 /* Register naming the sync pattern the chip matched, in its low two bits. */
 #define C6000_REG_RX_SYNC   0x5F
 
+/*
+ * Two registers being hunted for a direct mode colour code, which neither of
+ * the obvious ones carries. 0x57 is where the stock firmware is said to read
+ * the timecode, rather than from 0x52, so its neighbourhood is worth watching.
+ * 0x90 is the sub-status of the received-information interrupt, which was
+ * masked off until the interrupt mask was opened up.
+ */
+#define C6000_REG_TIMECODE  0x57
+#define C6000_REG_RX_INFO   0x90
+
 /* Register holding the interrupt flags, which say what raised the event. */
 #define C6000_REG_INT_FLAGS 0x82
 
@@ -109,6 +119,8 @@ void __attribute__((used)) EXTI1_IRQHandler()
     {
         rxSnapshot.status   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
         rxSnapshot.cach     = C6000.readCfgRegisterFromIsr(C6000_REG_CACH);
+        rxSnapshot.timecode = C6000.readCfgRegisterFromIsr(C6000_REG_TIMECODE);
+        rxSnapshot.rxInfo   = C6000.readCfgRegisterFromIsr(C6000_REG_RX_INFO);
         rxSnapshot.sync     = C6000.readCfgRegisterFromIsr(C6000_REG_RX_SYNC);
         rxSnapshot.intFlags = C6000.readCfgRegisterFromIsr(C6000_REG_INT_FLAGS);
         rxSnapshot.valid    = true;
@@ -202,6 +214,8 @@ void dmrIrq_clearCounters()
     rxSnapshot.intFlags = 0;
     rxSnapshot.status   = 0;
     rxSnapshot.cach     = 0;
+    rxSnapshot.timecode = 0;
+    rxSnapshot.rxInfo   = 0;
     rxSnapshot.sync     = 0;
     rxSnapshot.valid    = false;
 }
@@ -221,6 +235,8 @@ void dmrIrq_getRxSnapshot(struct dmrIrqRxSnapshot *snapshot)
     snapshot->intFlags = rxSnapshot.intFlags;
     snapshot->status   = rxSnapshot.status;
     snapshot->cach     = rxSnapshot.cach;
+    snapshot->timecode = rxSnapshot.timecode;
+    snapshot->rxInfo   = rxSnapshot.rxInfo;
     snapshot->sync     = rxSnapshot.sync;
     snapshot->valid    = rxSnapshot.valid;
 }
