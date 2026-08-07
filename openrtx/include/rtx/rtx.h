@@ -65,10 +65,11 @@ typedef struct
     uint32_t dmrRxSrcId;               /**< DMR last heard source ID   */
     uint32_t dmrRxDstId;               /**< DMR last heard destination */
 
-    uint8_t  dmrRxColorCode : 4,       /**< DMR color code of last LC  */
+    uint8_t  dmrRxColorCode : 4,       /**< Observed DMR color code    */
              dmrRxGroupCall : 1,       /**< Last LC is a group call    */
              dmrLcValid     : 1,       /**< DMR link control is valid  */
-             _dmrRxUnused   : 2;
+             dmrRxCcValid   : 1,       /**< An observed CC is at hand  */
+             _dmrRxUnused   : 1;
 }
 rtxStatus_t;
 

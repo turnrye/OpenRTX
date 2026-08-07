@@ -132,10 +132,19 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
                                TEXT_ALIGN_LEFT, color_white,
                                SYMBOL_CALL_RECEIVED);
 
-                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                          color_white, "%s%lu",
-                          (rtxStatus.dmrRxGroupCall) ? "TG" : "",
-                          (unsigned long) rtxStatus.dmrRxDstId);
+                // The colour code appears once observed; only calls through a
+                // hotspot or repeater carry one the baseband will report.
+                if(rtxStatus.dmrRxCcValid)
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "%s%lu CC%d",
+                              (rtxStatus.dmrRxGroupCall) ? "TG" : "",
+                              (unsigned long) rtxStatus.dmrRxDstId,
+                              rtxStatus.dmrRxColorCode);
+                else
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "%s%lu",
+                              (rtxStatus.dmrRxGroupCall) ? "TG" : "",
+                              (unsigned long) rtxStatus.dmrRxDstId);
 
                 // Source DMR ID of the station being received
                 gfx_drawSymbol(layout.line1_pos, layout.line1_symbol_size,

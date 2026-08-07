@@ -115,11 +115,22 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
     status->dmrLcValid     = (rx.valid) ? 1 : 0;
 
     /*
-     * The colour code of the call is deliberately not passed on: direct mode
-     * does not carry one the chip will part with, so the receiver reports it as
-     * unknown, and the status field is four bits wide and has no way to say so.
-     * Repeater mode, where the CACH carries a real one, is where this returns.
+     * The observed colour code travels with its own validity bit: the chip
+     * only delivers one for transmissions carrying a CACH, so a call from a
+     * hotspot or repeater reports its code while one from a mobile station
+     * transmitting direct never does, and the four bit status field cannot
+     * say "unknown" on its own.
      */
+    if(rx.colorCode <= 0x0F)
+    {
+        status->dmrRxColorCode = rx.colorCode;
+        status->dmrRxCcValid   = 1;
+    }
+    else
+    {
+        status->dmrRxColorCode = 0;
+        status->dmrRxCcValid   = 0;
+    }
 
     /*
      * A call being received counts as an open squelch, which is what keeps the
