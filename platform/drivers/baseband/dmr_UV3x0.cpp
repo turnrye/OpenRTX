@@ -986,7 +986,22 @@ void dmr_setConfig(const struct dmrConfig *cfg)
     if(ccChanged == false)
         return;
 
+    /*
+     * The data link layer latches the local colour code when its modules are
+     * reset, so writing the register alone leaves the old code in force: on
+     * the bench a changed code behaved differently before and after a mode
+     * cycle, whose configuration path ends with this same reset. Pulse the
+     * reset here too, and re-arm the slot state machine afterwards exactly as
+     * the bring-up does.
+     */
+    dmrIrq_setBusBusy(true);
     C6000.setDmrColorCode(dmrCfg.colorCode);
+    C6000.writeCfgRegister(0x00, 0x3F);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+    dmrIrq_setBusBusy(false);
 
     memset(prevLc, 0, sizeof(prevLc));
     lcMatches = 0;
