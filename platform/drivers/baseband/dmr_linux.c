@@ -40,6 +40,7 @@ void dmr_task(struct dmrRxState *rx)
 {
     memset(rx, 0, sizeof(struct dmrRxState));
     rx->colorCode = DMR_CC_UNKNOWN;
+    rx->voiceActive = false;
 }
 
 void dmr_startTx(const bool groupCall, const uint32_t dstId,

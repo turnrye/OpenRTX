@@ -32,6 +32,7 @@ struct dmrRxState
     uint8_t  colorCode;     ///< Color code received, DMR_CC_UNKNOWN in DMO.
     bool     groupCall;     ///< True for a group call, false for a private one.
     bool     valid;         ///< True once the link control has been confirmed.
+    bool     voiceActive;   ///< Decodable voice is arriving for this call.
 };
 
 /**

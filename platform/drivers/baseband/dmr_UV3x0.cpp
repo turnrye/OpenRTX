@@ -109,6 +109,14 @@ enum dmrTxState
 #define IRQ_REPORT_INTERVAL     1000
 
 /*
+ * Window within which two bursts carrying decodable voice must fall for the
+ * voice to be believed, in milliseconds. Real voice bursts arrive every 60ms,
+ * so the second one opens the gate; the noise bursts which rarely clear the
+ * per-frame check land much further apart than this and never pair up.
+ */
+#define VOICE_CONFIRM_WINDOW    250
+
+/*
  * How long the receive state is held after the last good burst before the
  * call is considered over, in milliseconds. Voice bursts on the received
  * slot are 60ms apart, so this rides out a few corrupted bursts without
@@ -120,6 +128,8 @@ static struct dmrRxState rxState;
 static struct dmrConfig  dmrCfg;
 static uint8_t   prevLc[C6000_LC_LENGTH];
 static uint8_t   lcMatches;
+static uint8_t   voiceStreak;   // Bursts in a row carrying decodable voice
+static long long lastVoiceTick; // Tick of the last decodable voice burst
 static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
@@ -509,9 +519,7 @@ static void handleBurst()
      * is confirmed against a full capture; gating on the sync class alone
      * wrongly dropped almost every burst.
      */
-    bool wantAudio = dmrAudio_running() && rxState.valid;
-
-    if(dmrDebug_channelEnabled(DMR_DBG_VP) || wantAudio)
+    if(dmrDebug_channelEnabled(DMR_DBG_VP) || rxState.valid)
     {
         uint8_t payload[VP_LENGTH];
         payloadRead(payload);
@@ -525,25 +533,65 @@ static void handleBurst()
         }
 
         /*
-         * Feed the three AMBE frames of a voice burst to playback, but only the
-         * ones that pass the voice check: in direct mode the receiver hears both
-         * timeslots, and the empty one decodes to noise. Gating on each frame's
-         * Golay error count keeps the call's slot and drops the other.
+         * Classify the payload of every burst of an accepted call by the
+         * Golay error count of its frames. This drives two things: the empty
+         * slot of a direct mode call decodes to noise and is dropped frame by
+         * frame, and the chip refuses to hand over the voice of a call on the
+         * wrong colour code while still delivering its link control - so
+         * decodable voice arriving is what separates a call being received
+         * from one the chip is rejecting, and the receive state records it.
          *
-         * Voice bursts carry no link control of their own, so they can only be
-         * attributed to the call the link control last identified: playback
-         * therefore follows the receive state, which is set only for a call
-         * which has passed the filters below and cleared as soon as one is
-         * turned away. Without that a rejected call would still be heard, since
-         * playback is already running from whichever call was accepted before.
+         * A single passing burst is not believed: the noise slot's garbage
+         * clears the per-frame check just often enough that a rejected call
+         * would blip through, which on the bench was heard as a moment of
+         * leaked audio. Two passing bursts within a short window are needed:
+         * real voice arrives every 60ms so the second burst opens the gate,
+         * while the stray passes land too far apart to ever pair up.
+         *
+         * A burst with nothing decodable leaves the gate alone. The receiver
+         * hears both timeslots and the empty one's noise falls between the
+         * real voice bursts, so closing the gate on it cut the audio into
+         * rhythmic holes with a pop at each edge; the gate only closes once
+         * decodable voice stops arriving altogether.
+         *
+         * Voice bursts carry no link control of their own, so they can only
+         * be attributed to the call the link control last identified:
+         * playback therefore follows the receive state, set only for a call
+         * which passed the filters below and cleared when one is turned away.
          */
-        if(wantAudio)
+        if(rxState.valid)
         {
+            int passed = 0;
             for(int f = 0; f < 3; f++)
             {
-                const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-                if(dmr_codec_frameIsVoice(frame))
-                    dmrAudio_pushFrame(frame);
+                if(dmr_codec_frameIsVoice(&payload[f * DMR_CODEC_FRAME_BYTES]))
+                    passed += 1;
+            }
+
+            if(passed > 0)
+            {
+                long long now = getTick();
+
+                if((now - lastVoiceTick) > VOICE_CONFIRM_WINDOW)
+                    voiceStreak = 0;
+
+                if(voiceStreak < 2)
+                    voiceStreak += 1;
+
+                lastVoiceTick = now;
+            }
+
+            if((passed > 0) && (voiceStreak >= 2))
+            {
+                if(dmrAudio_running())
+                {
+                    for(int f = 0; f < 3; f++)
+                    {
+                        const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
+                        if(dmr_codec_frameIsVoice(frame))
+                            dmrAudio_pushFrame(frame);
+                    }
+                }
             }
         }
     }
@@ -1122,7 +1170,9 @@ void dmr_task(struct dmrRxState *rx)
         memset(prevLc, 0, sizeof(prevLc));
         lcMatches     = 0;
         lcDecided     = false;
-        rxState.colorCode = DMR_CC_UNKNOWN;
+        voiceStreak   = 0;
+        rxState.colorCode   = DMR_CC_UNKNOWN;
+        rxState.voiceActive = false;
         lastBurstTick = getTick();
 
         dmrDebug_log(DMR_DBG_INFO, "tx: %lu payload slots carried audio, "
@@ -1176,13 +1226,23 @@ void dmr_task(struct dmrRxState *rx)
      * guaranteed to arrive, so the receive state is dropped once no burst
      * has passed the filters for a while.
      */
+    /*
+     * Voice is considered flowing while decodable bursts keep arriving; the
+     * window rides out the link control bursts interleaved with the voice,
+     * which carry no frames of their own.
+     */
+    rxState.voiceActive = rxState.valid &&
+                          ((getTick() - lastVoiceTick) < RX_HOLD_TIMEOUT);
+
     if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
     {
         rxState.valid = false;
         memset(prevLc, 0, sizeof(prevLc));
-        lcMatches = 0;
-        lcDecided = false;
-        rxState.colorCode = DMR_CC_UNKNOWN;
+        lcMatches   = 0;
+        lcDecided   = false;
+        voiceStreak = 0;
+        rxState.colorCode   = DMR_CC_UNKNOWN;
+        rxState.voiceActive = false;
 
         dmrAudio_stopRx();
         dmrDebug_log(DMR_DBG_INFO, "call: ended");

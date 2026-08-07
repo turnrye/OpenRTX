@@ -109,10 +109,19 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
     struct dmrRxState rx;
     dmr_task(&rx);
 
+    /*
+     * A call is surfaced only while its voice decodes. The chip refuses the
+     * voice of a call on the wrong colour code but still hands over the link
+     * control, so going by the link control alone put a silent ghost call on
+     * screen for every rejected transmission; decodable voice is the one
+     * signal that tracks what the chip actually accepted.
+     */
+    bool callShown = rx.valid && rx.voiceActive;
+
     status->dmrRxSrcId     = rx.srcId;
     status->dmrRxDstId     = rx.dstId;
     status->dmrRxGroupCall = (rx.groupCall) ? 1 : 0;
-    status->dmrLcValid     = (rx.valid) ? 1 : 0;
+    status->dmrLcValid     = (callShown) ? 1 : 0;
 
     /*
      * The observed colour code travels with its own validity bit: the chip
@@ -137,9 +146,9 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * user interface out of standby: without it the screen dims part way
      * through a call, exactly when it is being read.
      */
-    callActive = rx.valid;
+    callActive = callShown;
 
-    if(rx.valid)
+    if(callShown)
         platform_ledOn(GREEN);
     else
         platform_ledOff(GREEN);
