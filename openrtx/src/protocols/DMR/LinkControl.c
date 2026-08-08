@@ -5,6 +5,7 @@
  */
 
 #include "protocols/DMR/LinkControl.h"
+#include <string.h>
 
 void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
                       const uint32_t srcId)
@@ -20,8 +21,16 @@ void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
     lc[6] = (srcId >> 16) & 0xFF;
     lc[7] = (srcId >>  8) & 0xFF;
     lc[8] =  srcId        & 0xFF;
+}
 
-    lc[9]  = 0x00;                      // The chip fills in the error correction
-    lc[10] = 0x00;
-    lc[11] = 0x00;
+void dmr_parseLc(struct dmrLinkControl *out, const uint8_t *lc)
+{
+    out->flco           = lc[0];
+    out->featureSet     = lc[1];
+    out->serviceOptions = lc[2];
+
+    out->dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
+    out->srcId = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+
+    memcpy(out->payload, &lc[2], DMR_LC_LENGTH - 2);
 }

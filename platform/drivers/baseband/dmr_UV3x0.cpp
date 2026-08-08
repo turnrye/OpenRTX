@@ -13,6 +13,7 @@
 #include "dmrIrq.h"
 #include "dmr.h"
 #include "dmr_audio.h"
+#include "protocols/DMR/Datatypes.h"
 #include "protocols/DMR/LinkControl.h"
 #include <string.h>
 
@@ -218,7 +219,11 @@ static volatile uint32_t txVoiceFrames;
 static volatile uint32_t txStarvedFrames;
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
 static volatile bool    rxRestoreNeeded;// Receiver bring-up owed after a TX
-static uint8_t          txLc[DMR_LC_LENGTH]; // Link control sent in the bursts
+/*
+ * Link control sent in the bursts, held as the chip's register image: the
+ * nine information octets first, then the parity bytes the chip fills in.
+ */
+static uint8_t          txLc[C6000_LC_LENGTH];
 static uint32_t  txReportedTs;          // Timeslot count at the last tx report
 static uint32_t  txReportedTx;          // Transmit count at the last tx report
 static long long txReportTick;          // Tick of the last transmit report
@@ -936,6 +941,7 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
      */
     dmrIrq_setBusBusy(true);
 
+    memset(txLc, 0, sizeof(txLc));
     dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
     txSequence      = 0;
     txStopRequested = false;

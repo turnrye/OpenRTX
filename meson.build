@@ -1192,6 +1192,10 @@ gfx_text_test = executable('gfx_text_test',
                             sources : unit_test_src + ['tests/unit/gfx_text.cpp'],
                             kwargs  : unit_test_opts)
 
+dmr_linkControl_test = executable('dmr_linkControl_test',
+                                  sources : unit_test_src + ['tests/unit/DMR_linkControl.cpp'],
+                                  kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1205,3 +1209,4 @@ test('UI Check Standby Test', ui_check_standby_test)
 test('M17 Packet Frame Test', m17_packet_test)
 test('DSP Oversampling Test', dsp_oversampling_test)
 test('GFX Text Test',        gfx_text_test)
+test('DMR Link Control Test', dmr_linkControl_test)

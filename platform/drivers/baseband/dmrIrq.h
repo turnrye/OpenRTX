@@ -90,20 +90,6 @@ struct dmrIrqRxSnapshot
 };
 
 /**
- * Sync pattern the chip detected, held in the low two bits of register 0x5F.
- * A base station sync means the far end is a repeater; the two direct mode
- * values name the timeslot the transmission calls itself, which is the only
- * place a timeslot number appears on air in direct mode.
- */
-enum dmrRxSyncType
-{
-    DMR_SYNC_MS   = 0,  ///< Mobile station sourced.
-    DMR_SYNC_BS   = 1,  ///< Base station sourced.
-    DMR_SYNC_TS1  = 2,  ///< Direct mode, timeslot 1.
-    DMR_SYNC_TS2  = 3   ///< Direct mode, timeslot 2.
-};
-
-/**
  * Get the registers sampled at the most recent frame event.
  *
  * @param snapshot: destination for the sampled values.
