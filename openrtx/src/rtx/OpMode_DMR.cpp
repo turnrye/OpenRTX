@@ -80,13 +80,17 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 {
     if((enabled == false) || newCfg)
     {
-        struct dmrConfig cfg;
-        cfg.dmrId         = status->dmrId;
-        cfg.talkgroup     = status->dmrTalkgroup;
-        cfg.colorCode     = status->dmrColorCode;
-        cfg.rxPromiscuous = (status->dmrRxPromisc != 0);
-
         uint8_t colorCode = status->dmrColorCode & 0x0F;
+
+        /*
+         * The modem takes only what its hardware enforces. Both colour
+         * codes come from the one setting today; they are distinct fields
+         * because the air interface and the codeplug treat them as
+         * distinct, so channel wiring later is a data source change.
+         */
+        struct dmrModemConfig cfg;
+        cfg.ccRx = colorCode;
+        cfg.ccTx = colorCode;
 
         if(enabled == false)
         {

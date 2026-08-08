@@ -24,17 +24,19 @@ extern "C" {
  */
 
 /**
- * Everything the DMR receiver and transmitter take from the radio settings.
- * Passed as one block rather than through a setter each: the settings are
- * applied together, whenever the rtx configuration changes, and this is where
- * the receive filters which are still to come belong as well.
+ * What the modem is configured with: only what the hardware itself enforces.
+ * The colour codes are separate for each direction because the air interface
+ * treats them separately and the codeplug already stores them separately; a
+ * modem whose silicon has a single colour code register serves both from one
+ * value and says so in its own documentation.
+ *
+ * Who a call is for - IDs, talkgroups, promiscuity - is policy, evaluated
+ * above the modem; nothing of it belongs here.
  */
-struct dmrConfig
+struct dmrModemConfig
 {
-    uint32_t dmrId;         ///< Own DMR ID, zero when unset.
-    uint32_t talkgroup;     ///< Talkgroup transmitted to, and accepted on RX.
-    uint8_t  colorCode;     ///< Color code, from 0 to 15.
-    bool     rxPromiscuous; ///< Accept calls addressed to anyone.
+    uint8_t ccRx;   ///< Colour code accepted on receive, from 0 to 15.
+    uint8_t ccTx;   ///< Colour code transmitted, from 0 to 15.
 };
 
 /**
@@ -42,7 +44,7 @@ struct dmrConfig
  *
  * @param cfg: configuration the receiver has to start with.
  */
-void dmr_init(const struct dmrConfig *cfg);
+void dmr_init(const struct dmrModemConfig *cfg);
 
 /**
  * Stop the DMR reception.
@@ -55,7 +57,7 @@ void dmr_terminate();
  *
  * @param cfg: configuration to apply.
  */
-void dmr_setConfig(const struct dmrConfig *cfg);
+void dmr_setConfig(const struct dmrModemConfig *cfg);
 
 /**
  * Poll the modem for reception. This is the periodic housekeeping step - it

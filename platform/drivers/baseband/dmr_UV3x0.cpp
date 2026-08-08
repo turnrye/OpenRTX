@@ -69,7 +69,16 @@ static const uint8_t TX_SILENCE_AUDIO[VP_LENGTH] =
 /* Interval between two interrupt activity reports, in milliseconds */
 #define IRQ_REPORT_INTERVAL     1000
 
-static struct dmrConfig  dmrCfg;
+/*
+ * The modem configuration in force. The chip has a single colour code
+ * register, 0x1F, serving both directions: it is the code the chip
+ * transmits, and - with the data link layer fully configured - it also
+ * gates the received voice. This driver writes ccTx to it, so when the two
+ * codes differ the receive gate follows the transmit code; the codes come
+ * from one setting today and never differ.
+ */
+static struct dmrModemConfig dmrCfg;
+
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
 static uint32_t  reportedTs;
@@ -227,7 +236,7 @@ static void checkInitRegisters()
      */
     dmrDebug_log(DMR_DBG_INFO, "init: timing %02X, receiver bits %s, "
                  "color code set to %u", timing, ok ? "PASS" : "FAIL",
-                 dmrCfg.colorCode);
+                 dmrCfg.ccTx);
 }
 
 /**
@@ -617,13 +626,13 @@ void dmr_txTask()
     txReportTick = now;
 }
 
-void dmr_init(const struct dmrConfig *cfg)
+void dmr_init(const struct dmrModemConfig *cfg)
 {
     dmr_txSchedule_init(&txSchedule);
     rxRestoreNeeded = false;
 
-    dmrCfg           = *cfg;
-    dmrCfg.colorCode = cfg->colorCode & 0x0F;
+    dmrCfg.ccRx = cfg->ccRx & 0x0F;
+    dmrCfg.ccTx = cfg->ccTx & 0x0F;
     lastSysCount  = 0;
     lastTsCount   = 0;
     reportedTs   = 0;
@@ -650,7 +659,7 @@ void dmr_init(const struct dmrConfig *cfg)
      * the timeslot line ticked at a steady 33Hz while a transmission on
      * frequency produced no system events at all.
      */
-    C6000.setDmrColorCode(dmrCfg.colorCode);
+    C6000.setDmrColorCode(dmrCfg.ccTx);
     C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
     /*
@@ -685,19 +694,19 @@ void dmr_terminate()
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
 
-void dmr_setConfig(const struct dmrConfig *cfg)
+void dmr_setConfig(const struct dmrModemConfig *cfg)
 {
-    uint8_t colorCode = cfg->colorCode & 0x0F;
-    bool    ccChanged = (colorCode != dmrCfg.colorCode);
+    uint8_t ccRx = cfg->ccRx & 0x0F;
+    uint8_t ccTx = cfg->ccTx & 0x0F;
+    bool    ccChanged = (ccRx != dmrCfg.ccRx) || (ccTx != dmrCfg.ccTx);
 
-    dmrCfg           = *cfg;
-    dmrCfg.colorCode = colorCode;
+    dmrCfg.ccRx = ccRx;
+    dmrCfg.ccTx = ccTx;
 
     /*
-     * Only the colour code reaches the chip, and only when it has changed: the
-     * write costs a bus transaction and drops the link control being tracked,
-     * which would restart every call in progress each time any unrelated
-     * setting is touched.
+     * The chip is only written when the configuration has actually changed:
+     * the write restarts the protocol modules below, which drops every call
+     * in progress each time it runs.
      */
     if(ccChanged == false)
         return;
@@ -711,7 +720,7 @@ void dmr_setConfig(const struct dmrConfig *cfg)
      * the bring-up does.
      */
     dmrIrq_setBusBusy(true);
-    C6000.setDmrColorCode(dmrCfg.colorCode);
+    C6000.setDmrColorCode(dmrCfg.ccTx);
     C6000.writeCfgRegister(0x00, 0x3F);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
@@ -719,7 +728,7 @@ void dmr_setConfig(const struct dmrConfig *cfg)
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
     dmrIrq_setBusBusy(false);
 
-    dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.colorCode);
+    dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.ccTx);
 }
 
 /**
@@ -821,7 +830,7 @@ bool dmr_rxPoll(struct dmrBurst *burst)
         rxRestoreNeeded = false;
 
         C6000.dmrMode();
-        C6000.setDmrColorCode(dmrCfg.colorCode);
+        C6000.setDmrColorCode(dmrCfg.ccTx);
         C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);

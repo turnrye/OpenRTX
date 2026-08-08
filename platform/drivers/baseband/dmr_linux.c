@@ -17,13 +17,13 @@
  * exercised on the host.
  */
 
-static struct dmrConfig dmrCfg;
+static struct dmrModemConfig dmrCfg;
 
-void dmr_init(const struct dmrConfig *cfg)
+void dmr_init(const struct dmrModemConfig *cfg)
 {
     dmrCfg = *cfg;
     dmrDebug_log(DMR_DBG_INFO, "dmr: emulated receiver, color code %u",
-                 dmrCfg.colorCode & 0x0F);
+                 dmrCfg.ccRx & 0x0F);
 }
 
 void dmr_terminate()
@@ -31,7 +31,7 @@ void dmr_terminate()
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
 
-void dmr_setConfig(const struct dmrConfig *cfg)
+void dmr_setConfig(const struct dmrModemConfig *cfg)
 {
     dmrCfg = *cfg;
 }
