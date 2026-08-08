@@ -123,31 +123,6 @@ static uint32_t  rxSampled;
 static uint32_t  reportedUnsampled;
 
 /*
- * The hunt for a direct mode colour code. Neither register which should hold
- * one does - see the note in handleBurst - but the colour code is certainly on
- * air, in the slot type of every data burst and the embedded signalling of the
- * voice bursts, and commercial radios filter on it. So every distinct
- * combination of the status registers is logged once, and only once: keying a
- * far end on one colour code fills the table, and keying it on another then
- * prints exactly the combinations which differ. Any byte tracking the colour
- * code shows up in that difference and nothing else does.
- */
-#define CC_HUNT_SLOTS   16
-
-struct ccHuntEntry
-{
-    uint8_t flags;
-    uint8_t status;
-    uint8_t cach;
-    uint8_t timecode;
-    uint8_t rxInfo;
-    uint8_t sync;
-};
-
-static struct ccHuntEntry ccHunt[CC_HUNT_SLOTS];
-static uint8_t ccHuntUsed;
-
-/*
  * A configuration register access asked for over the debug tap, carried out on
  * the next pass of dmr_task, where the bus is already fenced off from the
  * interrupt handlers. Only one is held at a time, which is all somebody typing
@@ -345,47 +320,6 @@ static void reportIrqActivity()
 }
 
 /**
- * Note the register combination a burst arrived with, and say so the first time
- * each one appears. Bounded by the table, so a long call cannot flood the tap.
- *
- * @param isr: registers sampled at the frame event.
- */
-static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
-{
-    struct ccHuntEntry entry;
-    entry.flags    = isr->intFlags;
-    entry.status   = isr->status;
-    entry.cach     = isr->cach;
-    entry.timecode = isr->timecode;
-    entry.rxInfo   = isr->rxInfo;
-    entry.sync     = isr->sync;
-
-    for(uint8_t i = 0; i < ccHuntUsed; i++)
-    {
-        if(memcmp(&ccHunt[i], &entry, sizeof(entry)) == 0)
-            return;
-    }
-
-    if(ccHuntUsed >= CC_HUNT_SLOTS)
-    {
-        /* Said once per fill, or a full table reads as "nothing changed". */
-        if(ccHuntUsed == CC_HUNT_SLOTS)
-        {
-            ccHuntUsed += 1;
-            dmrDebug_log(DMR_DBG_INFO, "hunt: table full");
-        }
-        return;
-    }
-
-    ccHunt[ccHuntUsed] = entry;
-    ccHuntUsed += 1;
-
-    dmrDebug_log(DMR_DBG_INFO, "hunt: flags %02X status %02X cach %02X "
-                 "t57 %02X r90 %02X sync %02X", entry.flags, entry.status,
-                 entry.cach, entry.timecode, entry.rxInfo, entry.sync);
-}
-
-/**
  * Watch the CACH register for the colour code of the station being received.
  *
  * The chip delivers a colour code only for transmissions carrying a CACH -
@@ -495,7 +429,6 @@ static void handleBurst()
 
         rxSyncSeen[syncType] += 1;
         rxSampled += 1;
-        ccHuntRecord(&isr);
 
         if((burst.colourCode != DMR_CC_UNKNOWN)
            && (burst.colourCode != cs->call.colourCode))
@@ -884,9 +817,7 @@ void dmr_init(const struct dmrConfig *cfg)
 
     rxSampled         = 0;
     reportedUnsampled = 0;
-    ccHuntUsed        = 0;
     memset(rxSyncSeen, 0, sizeof(rxSyncSeen));
-    memset(ccHunt, 0, sizeof(ccHunt));
 
     /*
      * Logged in stages: if the radio does not come back, the last line which
@@ -1143,19 +1074,6 @@ void dmr_task(struct dmrRxState *rx)
         dmrDebug_log(DMR_DBG_INFO, "call: ended (%s)",
                      (endReason == DMR_CALL_END_TERMINATOR) ? "terminator"
                                                             : "timeout");
-
-        if(endReason == DMR_CALL_END_TIMEOUT)
-        {
-            /*
-             * Start the register hunt afresh for the next call: the table
-             * exists to bound the log rate within a transmission, not to
-             * hide what a later call does differently - a register
-             * experiment between two keyups is judged by exactly that
-             * difference.
-             */
-            ccHuntUsed = 0;
-            memset(ccHunt, 0, sizeof(ccHunt));
-        }
     }
 
     reportIrqActivity();
