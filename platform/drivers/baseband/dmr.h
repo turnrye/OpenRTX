@@ -9,31 +9,19 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "protocols/DMR/Datatypes.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Colour code standing for "not known". Direct mode carries the colour code
- * only in signalling the chip consumes without exposing, so a received call
- * reports this; a real value needs the CACH, that is repeater mode.
+/*
+ * The DMR modem contract: what every platform's DMR baseband driver
+ * implements, in the protocol layer's own vocabulary. A modem takes in and
+ * gives out bursts - that is the boundary the hardware draws - and knows
+ * nothing about calls: the call state lives above, in protocols/DMR, driven
+ * by the operating mode.
  */
-#define DMR_CC_UNKNOWN  0xFF
-
-/**
- * Information carried by the link control of the last accepted burst, which is
- * what the user interface shows as "last heard".
- */
-struct dmrRxState
-{
-    uint32_t srcId;         ///< DMR ID of the station being received.
-    uint32_t dstId;         ///< Talkgroup or destination the call is sent to.
-    uint8_t  colorCode;     ///< Color code received, DMR_CC_UNKNOWN in DMO.
-    bool     groupCall;     ///< True for a group call, false for a private one.
-    bool     valid;         ///< True once the link control has been confirmed.
-    bool     voiceActive;   ///< Decodable voice is arriving for this call.
-};
 
 /**
  * Everything the DMR receiver and transmitter take from the radio settings.
@@ -70,12 +58,17 @@ void dmr_terminate();
 void dmr_setConfig(const struct dmrConfig *cfg);
 
 /**
- * Periodic update step, has to be called from a thread as it accesses the
- * baseband over SPI.
+ * Poll the modem for reception. This is the periodic housekeeping step - it
+ * has to be called from a thread, faster than the 30ms slot time, as it
+ * accesses the baseband over SPI - and it reports the burst of the most
+ * recent frame event. Every frame event yields a burst, including corrupted
+ * and unclassified ones: the call state's liveness and terminator rules
+ * feed on events which fail their checks.
  *
- * @param rx: destination for the current receive state.
+ * @param burst: destination for the received burst.
+ * @return true if a frame event occurred and the burst describes it.
  */
-void dmr_task(struct dmrRxState *rx);
+bool dmr_rxPoll(struct dmrBurst *burst);
 
 /**
  * Key a direct mode group or private call and start sending the constant
@@ -112,8 +105,8 @@ bool dmr_txActive();
 
 /**
  * Perform a configuration register access asked for over the debug tap. The
- * access is deferred to the next dmr_task, where the bus is already fenced off
- * from the interrupt handlers, and its result is logged there.
+ * access is deferred to the next receive poll, where the bus is already fenced
+ * off from the interrupt handlers, and its result is logged there.
  *
  * This is a bench instrument for finding out what the chip exposes, and it will
  * happily write a register which stops the radio working; the way back is a

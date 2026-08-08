@@ -34,6 +34,9 @@ extern "C" {
 /** Voice payload of one burst: three 9-byte AMBE+2 frames. */
 #define DMR_PAYLOAD_LENGTH 27
 
+/** One AMBE+2 voice frame of the payload: 72 bits, 20ms of speech. */
+#define DMR_VOICE_FRAME_LENGTH 9
+
 /** Voice frames in a voice superframe; the burst sequence cycles 0 to 5. */
 #define DMR_SUPERFRAME_FRAMES 6
 
@@ -133,7 +136,8 @@ struct dmrBurst {
     uint8_t colourCode;  ///< Observed colour code, or DMR_CC_UNKNOWN.
     bool crcOk;          ///< The burst's own error check passed.
     bool privacy;        ///< The payload is encrypted.
-    uint8_t voiceFrames; ///< Payload frames holding decodable voice, 0 to 3.
+    uint8_t voiceFrames; ///< Payload frames holding decodable voice, as a
+                         ///  bitmask over bits 0 to 2; zero for none.
     bool lcValid;        ///< A link control was decoded for this burst.
     uint8_t lc[DMR_LC_LENGTH];           ///< Link control, when lcValid.
     uint8_t payload[DMR_PAYLOAD_LENGTH]; ///< Voice payload of the burst.

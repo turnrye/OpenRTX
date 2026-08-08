@@ -64,8 +64,10 @@ extern "C" {
 
 /** Flags returned by dmr_callState_feedBurst, combined by OR. */
 enum dmrCallStateFlags {
-    DMR_CALLSTATE_NEW_CALL = 0x01, ///< A call has been confirmed; the caller
-                                   ///  decides whether to accept it.
+    DMR_CALLSTATE_NEW_CALL = 0x01,    ///< A call has been confirmed; the
+                                      ///  caller decides whether to accept it.
+    DMR_CALLSTATE_CC_OBSERVED = 0x02, ///< The burst carried a colour code
+                                      ///  observation new to this call.
 };
 
 /** Why dmr_callState_update considered the call over. */

@@ -8,14 +8,17 @@
 #define OPMODE_DMR_H
 
 #include "rtx/OpMode.hpp"
+#include "protocols/DMR/CallState.h"
 
 /**
  * Operating mode for DMR.
  *
- * Receiving surfaces the link control of the decoded calls, which is what the
- * user interface shows as "last heard". Transmitting keys a direct mode group
- * call carrying a constant silence payload: it exercises the whole outbound air
- * interface with no vocoder, the actual voice path is a later step.
+ * The mode owns the call control: it polls the modem for bursts, runs the
+ * per-slot call state of protocols/DMR on them, and takes the decisions the
+ * state machine leaves to it - whether a confirmed call is accepted, when
+ * the audio runs, what reaches the rtx status for the user interface. This
+ * mirrors how the M17 mode owns its accept checks and codec handling; the
+ * baseband driver below knows nothing about calls.
  */
 class OpMode_DMR : public OpMode
 {
@@ -65,6 +68,14 @@ private:
     bool startRx = false;   ///< Reception has still to be armed.
     bool startTx = false;   ///< A transmission has still to be keyed.
     bool callActive = false;    ///< A call is being received.
+    uint8_t lastColorCode = 0;  ///< Colour code last pushed to the modem.
+
+    /**
+     * State of the call being received, one entry per logical slot. Direct
+     * mode uses a single slot and nothing on air names one, so only the
+     * first entry does anything today; the shape is the protocol's.
+     */
+    struct dmrCallState rxCall[DMR_SLOT_COUNT];
 };
 
 #endif /* OPMODE_DMR_H */

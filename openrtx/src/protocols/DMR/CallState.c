@@ -58,6 +58,7 @@ uint8_t dmr_callState_feedBurst(struct dmrCallState *cs,
     if ((burst->colourCode != DMR_CC_UNKNOWN)
         && (burst->colourCode != cs->call.colourCode)) {
         cs->call.colourCode = burst->colourCode;
+        flags |= DMR_CALLSTATE_CC_OBSERVED;
     }
 
     /*

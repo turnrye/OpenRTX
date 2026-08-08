@@ -6,9 +6,40 @@
 
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
+#include "interfaces/delays.h"
 #include "drivers/baseband/dmr.h"
+#include "drivers/baseband/dmr_audio.h"
 #include "core/dmr_debug.h"
 #include "rtx/OpMode_DMR.hpp"
+
+/**
+ * Decide whether a call is meant for this radio. A group call has to be to
+ * the talkgroup the radio is set to and a private call to its own DMR ID,
+ * which is how a radio hears somebody calling it directly whatever talkgroup
+ * it sits on. The promiscuous setting takes everything the channel carries
+ * instead, which is what a monitoring receiver wants and what the radio does
+ * by default while DMR is being brought up.
+ *
+ * Policy reads the rtx status here, in the operating mode, exactly as the
+ * M17 mode evaluates its CAN and callsign checks: the driver carries no
+ * opinion on whose call this is.
+ *
+ * @param status: current rtx status, carrying the radio's DMR settings.
+ * @param groupCall: true for a group call, false for a private one.
+ * @param dstId: destination the call is addressed to.
+ * @return true if the call is to be received.
+ */
+static bool callAccepted(const rtxStatus_t *status, const bool groupCall,
+                         const uint32_t dstId)
+{
+    if(status->dmrRxPromisc != 0)
+        return true;
+
+    if(groupCall)
+        return dstId == status->dmrTalkgroup;
+
+    return (status->dmrId != 0) && (dstId == status->dmrId);
+}
 
 void OpMode_DMR::enable()
 {
@@ -21,6 +52,9 @@ void OpMode_DMR::enable()
     startRx = false;
     startTx = false;
     callActive = false;
+
+    for(int slot = 0; slot < DMR_SLOT_COUNT; slot++)
+        dmr_callState_init(&rxCall[slot]);
 }
 
 void OpMode_DMR::disable()
@@ -32,6 +66,9 @@ void OpMode_DMR::disable()
     }
 
     callActive = false;
+
+    for(int slot = 0; slot < DMR_SLOT_COUNT; slot++)
+        dmr_callState_init(&rxCall[slot]);
 
     platform_ledOff(GREEN);
     platform_ledOff(RED);
@@ -48,6 +85,8 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
         cfg.colorCode     = status->dmrColorCode;
         cfg.rxPromiscuous = (status->dmrRxPromisc != 0);
 
+        uint8_t colorCode = status->dmrColorCode & 0x0F;
+
         if(enabled == false)
         {
             dmr_init(&cfg);
@@ -57,7 +96,19 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
         else
         {
             dmr_setConfig(&cfg);
+
+            /*
+             * A changed colour code restarts the modem's protocol modules,
+             * which drops every call in progress at the chip: the link
+             * control tracking starts over with it, so the next
+             * transmission is confirmed afresh rather than trusted on the
+             * strength of a call the modem no longer has.
+             */
+            if(colorCode != lastColorCode)
+                dmr_callState_resetLcTracking(&rxCall[0]);
         }
+
+        lastColorCode = colorCode;
     }
 
     switch(status->opStatus)
@@ -106,8 +157,101 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
         startRx = false;
     }
 
-    struct dmrRxState rx;
-    dmr_task(&rx);
+    struct dmrCallState *cs = &rxCall[0];
+
+    /*
+     * Poll the modem for a burst and run the call state on it. Everything
+     * the state machine cannot decide is decided here - the accept policy,
+     * the audio, the log lines - mirroring how the M17 mode owns its accept
+     * checks and codec handling.
+     */
+    struct dmrBurst burst;
+    if(dmr_rxPoll(&burst))
+    {
+        bool wasValid = cs->call.valid;
+
+        uint8_t events = dmr_callState_feedBurst(cs, &burst, getTick());
+
+        if(events & DMR_CALLSTATE_CC_OBSERVED)
+        {
+            dmrDebug_log(DMR_DBG_INFO, "call: colour code %u observed",
+                         cs->call.colourCode);
+        }
+
+        /*
+         * Play this burst's decodable frames once the gate is open. The
+         * gate is judged on the call as it stood when the payload was read:
+         * the same burst's link control may just have asked for a decision,
+         * and that decision is taken below, after the audio of the call it
+         * belongs to.
+         */
+        if(wasValid && (burst.voiceFrames != 0)
+                    && dmr_callState_voiceGateOpen(cs) && dmrAudio_running())
+        {
+            for(int f = 0; f < 3; f++)
+            {
+                if(burst.voiceFrames & (1 << f))
+                    dmrAudio_pushFrame(
+                        &burst.payload[f * DMR_VOICE_FRAME_LENGTH]);
+            }
+        }
+
+        /*
+         * A newly confirmed call. Whether it is ours to receive is policy:
+         * the call state knows how to tell a call, not whether we want it.
+         */
+        if(events & DMR_CALLSTATE_NEW_CALL)
+        {
+            bool     group = (cs->candidate.callType == DMR_CALL_GROUP);
+            uint32_t dstId = cs->candidate.dstId;
+            uint32_t srcId = cs->candidate.srcId;
+
+            if(callAccepted(status, group, dstId) == false)
+            {
+                dmrDebug_log(DMR_DBG_INFO, "call: ignored, from %lu to %s %lu",
+                             (unsigned long) srcId, group ? "TG" : "ID",
+                             (unsigned long) dstId);
+
+                /*
+                 * A call in progress is dropped along with the rejected
+                 * one: playback follows the call state, so leaving it up
+                 * would let the rejected call be heard through the tail of
+                 * the one it interrupted.
+                 */
+                if(cs->call.valid)
+                    dmrAudio_stopRx();
+
+                dmr_callState_reject(cs);
+            }
+            else
+            {
+                dmr_callState_accept(cs);
+
+                dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu",
+                             (unsigned long) srcId, group ? "TG" : "ID",
+                             (unsigned long) dstId);
+
+                /* Start voice playback, if the vocoder is installed. */
+                if(dmrAudio_startRx())
+                    dmrDebug_log(DMR_DBG_INFO,
+                                 "audio: voice playback started");
+            }
+        }
+    }
+
+    /*
+     * The call state decides whether the call is over - behind a confirmed
+     * terminator or by the carrier going away - and its decision is acted on
+     * here, where the audio lives.
+     */
+    enum dmrCallEnd endReason = dmr_callState_update(cs, getTick());
+    if(endReason != DMR_CALL_END_NONE)
+    {
+        dmrAudio_stopRx();
+        dmrDebug_log(DMR_DBG_INFO, "call: ended (%s)",
+                     (endReason == DMR_CALL_END_TERMINATOR) ? "terminator"
+                                                            : "timeout");
+    }
 
     /*
      * A call is surfaced only while its voice decodes. The chip refuses the
@@ -116,11 +260,11 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * screen for every rejected transmission; decodable voice is the one
      * signal that tracks what the chip actually accepted.
      */
-    bool callShown = rx.valid && rx.voiceActive;
+    bool callShown = cs->call.valid && cs->call.voiceActive;
 
-    status->dmrRxSrcId     = rx.srcId;
-    status->dmrRxDstId     = rx.dstId;
-    status->dmrRxGroupCall = (rx.groupCall) ? 1 : 0;
+    status->dmrRxSrcId     = cs->call.srcId;
+    status->dmrRxDstId     = cs->call.dstId;
+    status->dmrRxGroupCall = (cs->call.callType == DMR_CALL_GROUP) ? 1 : 0;
     status->dmrLcValid     = (callShown) ? 1 : 0;
 
     /*
@@ -130,9 +274,9 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * transmitting direct never does, and the four bit status field cannot
      * say "unknown" on its own.
      */
-    if(rx.colorCode <= 0x0F)
+    if(cs->call.colourCode <= 0x0F)
     {
-        status->dmrRxColorCode = rx.colorCode;
+        status->dmrRxColorCode = cs->call.colourCode;
         status->dmrRxCcValid   = 1;
     }
     else
@@ -227,6 +371,13 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
          * for the first bursts and costs the far end the call header.
          */
         radio_disableRtx();
+
+        /*
+         * Our own transmission took the receive path away; the call tracking
+         * starts over with it, its liveness clock restarted so an old call
+         * does not time out on the spot.
+         */
+        dmr_callState_restartTracking(&rxCall[0], getTick());
 
         startRx = true;
         status->opStatus = OFF;

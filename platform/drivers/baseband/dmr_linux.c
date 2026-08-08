@@ -7,7 +7,7 @@
 #include "core/dmr_debug.h"
 #include "hwconfig.h"
 #include "dmr.h"
-#include <string.h>
+#include "dmr_audio.h"
 
 #if defined(CONFIG_DMR)
 
@@ -36,11 +36,10 @@ void dmr_setConfig(const struct dmrConfig *cfg)
     dmrCfg = *cfg;
 }
 
-void dmr_task(struct dmrRxState *rx)
+bool dmr_rxPoll(struct dmrBurst *burst)
 {
-    memset(rx, 0, sizeof(struct dmrRxState));
-    rx->colorCode = DMR_CC_UNKNOWN;
-    rx->voiceActive = false;
+    (void) burst;
+    return false;
 }
 
 void dmr_startTx(const bool groupCall, const uint32_t dstId,
@@ -68,6 +67,33 @@ bool dmr_txActive()
 
 void dmr_txTimeslotIsr()
 {
+}
+
+/*
+ * The audio pipeline of the emulated modem: there is no vocoder and no
+ * radio audio path on the host, so playback never starts and no frame is
+ * ever taken. The operating mode calls these exactly as it does on
+ * hardware and the calls fall through, the same way an unprovisioned radio
+ * degrades to header-only reception.
+ */
+
+bool dmrAudio_startRx(void)
+{
+    return false;
+}
+
+void dmrAudio_stopRx(void)
+{
+}
+
+bool dmrAudio_running(void)
+{
+    return false;
+}
+
+void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
+{
+    (void) frame;
 }
 
 #endif /* CONFIG_DMR */
