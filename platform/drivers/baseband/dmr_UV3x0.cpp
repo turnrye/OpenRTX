@@ -14,7 +14,6 @@
 #include "dmr.h"
 #include "dmr_audio.h"
 #include "protocols/DMR/Datatypes.h"
-#include "protocols/DMR/LinkControl.h"
 #include "protocols/DMR/TxSchedule.h"
 #include <string.h>
 
@@ -541,21 +540,24 @@ void dmr_txTimeslotIsr()
     }
 }
 
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId)
+void dmr_startTx(const uint8_t *lc)
 {
     /*
      * Everything the transmit setup touches on the control bus is fenced off
-     * from the interrupt for the duration: the state and link control are set
-     * up, the vocoder pipeline started and the slot clock switched to active
-     * timing, which is what makes the chip raise the timeslot interrupt that
-     * drives the state machine. Only once the bus is released does the next
-     * interrupt find a valid state to act on.
+     * from the interrupt for the duration: the procedure and link control
+     * are set up, the chip's vocoder path reset and the slot clock switched
+     * to active timing, which is what makes the chip raise the timeslot
+     * interrupt that drives the procedure. Only once the bus is released
+     * does the next interrupt find a valid state to act on.
+     *
+     * The link control arrives as its nine information octets, built by the
+     * caller; the parity bytes of the chip's register image stay zero for
+     * the chip to fill in.
      */
     dmrIrq_setBusBusy(true);
 
     memset(txLc, 0, sizeof(txLc));
-    dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
+    memcpy(txLc, lc, DMR_LC_LENGTH);
     dmr_txSchedule_start(&txSchedule);
     txVoiceFrames   = 0;
     txStarvedFrames = 0;
@@ -571,20 +573,6 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
     C6000.setDmrTiming(C6000_DmrTiming::ACTIVE);    // 0x40 = 0xE3, active timing
 
     dmrIrq_setBusBusy(false);
-
-    /*
-     * Start capturing and encoding the microphone. Stop any receive playback
-     * first: the two share the vocoder state and the radio is never receiving
-     * and transmitting at once. Without a vocoder installed this does nothing
-     * and the transmit slot machine sends silence, as before.
-     */
-    dmrAudio_stopRx();
-    if(dmrAudio_startTx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
-
-    dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to %s %lu from %lu",
-                 groupCall ? "TG" : "ID", (unsigned long) dstId,
-                 (unsigned long) srcId);
 }
 
 void dmr_stopTx()
@@ -831,9 +819,6 @@ bool dmr_rxPoll(struct dmrBurst *burst)
     if(rxRestoreNeeded)
     {
         rxRestoreNeeded = false;
-
-        /* The transmission is over; stop capturing the microphone. */
-        dmrAudio_stopTx();
 
         C6000.dmrMode();
         C6000.setDmrColorCode(dmrCfg.colorCode);

@@ -42,12 +42,9 @@ bool dmr_rxPoll(struct dmrBurst *burst)
     return false;
 }
 
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId)
+void dmr_startTx(const uint8_t *lc)
 {
-    (void) groupCall;
-    (void) dstId;
-    (void) srcId;
+    (void) lc;
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: emulated transmitter has no baseband");
 }
@@ -89,6 +86,15 @@ void dmrAudio_stopRx(void)
 bool dmrAudio_running(void)
 {
     return false;
+}
+
+bool dmrAudio_startTx(void)
+{
+    return false;
+}
+
+void dmrAudio_stopTx(void)
+{
 }
 
 void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])

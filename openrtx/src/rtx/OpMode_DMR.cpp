@@ -10,6 +10,7 @@
 #include "drivers/baseband/dmr.h"
 #include "drivers/baseband/dmr_audio.h"
 #include "core/dmr_debug.h"
+#include "protocols/DMR/LinkControl.h"
 #include "rtx/OpMode_DMR.hpp"
 
 /**
@@ -340,7 +341,32 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         platform_ledOn(RED);
 
         radio_enableTx();
-        dmr_startTx(true, status->dmrTalkgroup, status->dmrId);
+
+        /*
+         * The call goes on air as its link control, and the mode composes
+         * it: a group call to the configured talkgroup, from our own DMR
+         * ID. The modem only carries what it is handed - a private call
+         * later is a different link control built here, not a different
+         * driver.
+         */
+        uint8_t lc[DMR_LC_LENGTH];
+        dmr_buildVoiceLc(lc, true, status->dmrTalkgroup, status->dmrId);
+        dmr_startTx(lc);
+
+        /*
+         * Start capturing and encoding the microphone. Stop any receive
+         * playback first: the two share the vocoder state and the radio is
+         * never receiving and transmitting at once. Without a vocoder
+         * installed this does nothing and the transmission carries silence,
+         * as before.
+         */
+        dmrAudio_stopRx();
+        if(dmrAudio_startTx())
+            dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+
+        dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to TG %lu from %lu",
+                     (unsigned long) status->dmrTalkgroup,
+                     (unsigned long) status->dmrId);
     }
 
     /*
@@ -371,6 +397,9 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
          * for the first bursts and costs the far end the call header.
          */
         radio_disableRtx();
+
+        /* The transmission is over; stop capturing the microphone. */
+        dmrAudio_stopTx();
 
         /*
          * Our own transmission took the receive path away; the call tracking

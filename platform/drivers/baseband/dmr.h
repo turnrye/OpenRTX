@@ -71,16 +71,15 @@ void dmr_setConfig(const struct dmrConfig *cfg);
 bool dmr_rxPoll(struct dmrBurst *burst);
 
 /**
- * Key a direct mode group or private call and start sending the constant
- * silence payload. The transmission runs from the timeslot interrupt until
- * dmr_stopTx is called; this only sets it up.
+ * Key a transmission carrying the given link control. The transmission runs
+ * from the timeslot interrupt until dmr_stopTx is called; this only sets it
+ * up. What the call is - its type, its addresses - is entirely in the link
+ * control the caller built: the modem carries content, it does not compose
+ * it.
  *
- * @param groupCall: true for a group call, false for a private one.
- * @param dstId: destination address, a talkgroup for a group call.
- * @param srcId: source address, that is the radio's own DMR ID.
+ * @param lc: link control to transmit, DMR_LC_LENGTH information octets.
  */
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId);
+void dmr_startTx(const uint8_t *lc);
 
 /**
  * Ask the current transmission to end. The terminator is sent at the next
