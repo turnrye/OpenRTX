@@ -15,6 +15,7 @@
 #include "dmr_audio.h"
 #include "protocols/DMR/Datatypes.h"
 #include "protocols/DMR/LinkControl.h"
+#include "protocols/DMR/TxSchedule.h"
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -53,9 +54,6 @@
 #define TX_BURST_VOICE          0x08
 #define TX_BURST_TERMINATOR     0x20
 
-/* Number of voice frames in a superframe, the burst sequence cycles 0..5. */
-#define TX_SUPERFRAME_FRAMES    6
-
 /*
  * A voice frame worth of AMBE silence: the fixed public pattern radios and
  * hotspots send when there is no speech, three 9-byte frames making up the
@@ -67,29 +65,6 @@ static const uint8_t TX_SILENCE_AUDIO[VP_LENGTH] =
     0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B,
     0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B,
     0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
-};
-
-/*
- * The transmit slot state machine, advanced one step per timeslot interrupt.
- * The call opens with three voice link control headers on alternating slots,
- * then voice superframes carrying the silence payload, and closes on a
- * terminator once the transmission has been asked to stop at a superframe
- * boundary. The gap steps leave the other slot idle, as a direct mode station
- * transmits on a single slot.
- */
-enum dmrTxState
-{
-    TX_IDLE = 0,        ///< Not transmitting.
-    TX_START_1,         ///< First header burst.
-    TX_START_2,         ///< Idle slot.
-    TX_START_3,         ///< Second header burst.
-    TX_START_4,         ///< Idle slot.
-    TX_START_5,         ///< Third header burst.
-    TX_GAP,             ///< Idle slot between voice frames.
-    TX_VOICE,           ///< Voice frame carrying the silence payload.
-    TX_END_1,           ///< Terminator burst.
-    TX_END_2,           ///< Terminator going out on air.
-    TX_END_3            ///< Return to reception.
 };
 
 /* Interval between two interrupt activity reports, in milliseconds */
@@ -130,8 +105,13 @@ static volatile uint8_t regValue;
 /* Names of the sync patterns, indexed by the low two bits of register 0x5F. */
 static const char *const SYNC_NAMES[4] = { "ms", "bs", "ts1", "ts2" };
 
-static volatile uint8_t txState;        // Current transmit slot state
-static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
+/*
+ * The transmit call procedure, advanced one step per timeslot interrupt.
+ * The procedure - what burst belongs in which slot - is the protocol
+ * layer's; this driver translates each step into the chip's slot action and
+ * burst type registers and contributes the voice payload.
+ */
+static struct dmrTxSchedule txSchedule;
 
 /*
  * How many payload slots carried encoded audio and how many fell back to
@@ -141,7 +121,6 @@ static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
  */
 static volatile uint32_t txVoiceFrames;
 static volatile uint32_t txStarvedFrames;
-static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
 static volatile bool    rxRestoreNeeded;// Receiver bring-up owed after a TX
 /*
  * Link control sent in the bursts, held as the chip's register image: the
@@ -466,69 +445,45 @@ static void readBurst(struct dmrBurst *burst)
 
 bool dmr_txActive()
 {
-    return txState != TX_IDLE;
+    return dmr_txSchedule_active(&txSchedule);
 }
 
 void dmr_txTimeslotIsr()
 {
-    switch(txState)
+    uint8_t sequence = 0;
+
+    switch(dmr_txSchedule_advance(&txSchedule, &sequence))
     {
         /*
          * The three link control headers go out on the transmit slots, with an
          * idle slot in between each. The link control is handed to the chip
          * once, on the first header; it holds onto it for the following two.
          */
-        case TX_START_1:
+        case DMR_TX_SLOT_FIRST_HEADER:
             C6000.writeDmrLinkControlFromIsr(txLc);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_VOICE_HEADER);
-            txState = TX_START_2;
             break;
 
-        case TX_START_2:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_START_3;
-            break;
-
-        case TX_START_3:
+        case DMR_TX_SLOT_HEADER:
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_VOICE_HEADER);
-            txState = TX_START_4;
             break;
 
-        case TX_START_4:
+        case DMR_TX_SLOT_IDLE:
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_START_5;
-            break;
-
-        case TX_START_5:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_VOICE_HEADER);
-            txState = TX_GAP;
-            break;
-
-        /*
-         * The idle slot preceding each voice frame. Leaving the transmission at
-         * a superframe boundary, when the next frame would be the first of a
-         * superframe, keeps the terminator on the correct slot.
-         */
-        case TX_GAP:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            if(txStopRequested && (txSequence == 0))
-                txState = TX_END_1;
-            else
-                txState = TX_VOICE;
             break;
 
         /*
          * A voice frame: load the payload on the second bus, then set the slot
-         * to transmit it with the current sequence number in the burst type high
-         * nibble, and advance the sequence. The payload is three encoded AMBE
-         * frames from the microphone; any not yet available (start-up, underrun,
-         * or no vocoder installed) fall back to silence, so the call is always
-         * on-air even before audio flows.
+         * to transmit it with the sequence number in the burst type high
+         * nibble. The payload is three encoded AMBE frames from the
+         * microphone; any not yet available (start-up, underrun, or no
+         * vocoder installed) fall back to silence, so the call is always
+         * on-air even before audio flows. The payload is this driver's
+         * contribution - the procedure knows nothing of audio.
          */
-        case TX_VOICE:
+        case DMR_TX_SLOT_VOICE:
         {
             uint8_t payload[VP_LENGTH];
             for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
@@ -547,35 +502,24 @@ void dmr_txTimeslotIsr()
             payloadWrite(payload);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_VOICE | (txSequence << 4));
-            txSequence = (txSequence + 1) % TX_SUPERFRAME_FRAMES;
-            txState = TX_GAP;
+                                          TX_BURST_VOICE | (sequence << 4));
             break;
         }
 
         /*
          * The terminator carries the link control again so a late listener can
-         * still identify the call as it ends.
+         * still identify the call as it ends. The procedure follows it with an
+         * idle slot on purpose: the burst must play out on air untouched -
+         * rewriting the timing register during it cut the burst short, the far
+         * end never saw the call end, and the chip wedged mid-transmission.
+         * The reference firmware holds off its teardown for a slot time at
+         * this exact point for the same reason.
          */
-        case TX_END_1:
+        case DMR_TX_SLOT_TERMINATOR:
             C6000.writeDmrLinkControlFromIsr(txLc);
             payloadWrite(TX_SILENCE_AUDIO);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_TERMINATOR);
-            txState = TX_END_2;
-            break;
-
-        /*
-         * This interrupt marks the start of the slot carrying the terminator,
-         * which must play out untouched: rewriting the timing register here
-         * cut the burst short - the far end never saw the call end - and left
-         * the chip wedged mid-transmission. Only queue an idle slot and wait
-         * out the burst; the reference firmware holds off the teardown for a
-         * slot time at this exact point for the same reason.
-         */
-        case TX_END_2:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_END_3;
             break;
 
         /*
@@ -585,12 +529,11 @@ void dmr_txTimeslotIsr()
          * receive bring-up, which needs more than an idle slot action, is left
          * to the thread and flagged here.
          */
-        case TX_END_3:
+        case DMR_TX_SLOT_FINISH:
             C6000.writeCfgRegisterFromIsr(0x40,
                 static_cast< uint8_t >(C6000_DmrTiming::RX_IDLE));
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
             rxRestoreNeeded = true;
-            txState = TX_IDLE;
             break;
 
         default:
@@ -613,9 +556,7 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
 
     memset(txLc, 0, sizeof(txLc));
     dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
-    txSequence      = 0;
-    txStopRequested = false;
-    txState         = TX_START_1;
+    dmr_txSchedule_start(&txSchedule);
     txVoiceFrames   = 0;
     txStarvedFrames = 0;
 
@@ -648,7 +589,7 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
 
 void dmr_stopTx()
 {
-    txStopRequested = true;
+    dmr_txSchedule_stop(&txSchedule);
     dmrDebug_log(DMR_DBG_INFO, "tx: unkey requested");
 }
 
@@ -678,7 +619,7 @@ void dmr_txTask()
     dmrIrq_getCounters(&counters);
 
     dmrDebug_log(DMR_DBG_IRQ, "tx: state %u seq %u, timeslot %lu transmit %lu "
-                 "in %lums", txState, txSequence,
+                 "in %lums", txSchedule.state, txSchedule.sequence,
                  (unsigned long) (counters.timeslot - txReportedTs),
                  (unsigned long) (counters.transmit - txReportedTx),
                  (unsigned long) (now - txReportTick));
@@ -690,8 +631,7 @@ void dmr_txTask()
 
 void dmr_init(const struct dmrConfig *cfg)
 {
-    txState         = TX_IDLE;
-    txStopRequested = false;
+    dmr_txSchedule_init(&txSchedule);
     rxRestoreNeeded = false;
 
     dmrCfg           = *cfg;
@@ -748,8 +688,7 @@ void dmr_terminate()
     dmrAudio_stopTx();
     dmrIrq_terminate();
 
-    txState         = TX_IDLE;
-    txStopRequested = false;
+    dmr_txSchedule_init(&txSchedule);
     rxRestoreNeeded = false;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);

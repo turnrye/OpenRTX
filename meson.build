@@ -63,6 +63,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/rtx/OpMode_DMR.cpp',
                'openrtx/src/protocols/DMR/LinkControl.c',
                'openrtx/src/protocols/DMR/CallState.c',
+               'openrtx/src/protocols/DMR/TxSchedule.c',
                'openrtx/src/protocols/M17/DSP.cpp',
                'openrtx/src/protocols/M17/Golay.cpp',
                'openrtx/src/protocols/M17/MetaText.cpp',
@@ -1201,6 +1202,10 @@ dmr_callState_test = executable('dmr_callState_test',
                                 sources : unit_test_src + ['tests/unit/DMR_callState.cpp'],
                                 kwargs  : unit_test_opts)
 
+dmr_txSchedule_test = executable('dmr_txSchedule_test',
+                                 sources : unit_test_src + ['tests/unit/DMR_txSchedule.cpp'],
+                                 kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1216,3 +1221,4 @@ test('DSP Oversampling Test', dsp_oversampling_test)
 test('GFX Text Test',        gfx_text_test)
 test('DMR Link Control Test', dmr_linkControl_test)
 test('DMR Call State Test',   dmr_callState_test)
+test('DMR Tx Schedule Test',  dmr_txSchedule_test)
