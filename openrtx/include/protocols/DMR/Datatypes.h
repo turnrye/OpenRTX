@@ -47,6 +47,9 @@ extern "C" {
 /** Destination address of an all call. Addresses are 24 bits on air. */
 #define DMR_ADDR_ALL 0xFFFFFFu
 
+/** Logical channels per RF channel: DMR is two-slot TDMA. */
+#define DMR_SLOT_COUNT 2
+
 /**
  * Data type of a data burst, from the slot type PDU. Voice bursts sit outside
  * this table: burst A of a superframe carries a sync pattern and bursts B to
@@ -65,6 +68,8 @@ enum dmrDataType {
     DMR_DATA_RATE34 = 0x08,           ///< Rate 3/4 data.
     DMR_DATA_IDLE = 0x09,             ///< Idle.
     DMR_DATA_RATE1 = 0x0A,            ///< Rate 1 data.
+    DMR_DATA_UNKNOWN = 0xFF,          ///< The modem could not classify the
+                                      ///  burst; not an on-air value.
 };
 
 /**
@@ -101,10 +106,11 @@ enum dmrCallType {
  * appears on air in direct mode.
  */
 enum dmrSyncClass {
-    DMR_SYNC_MS = 0,  ///< Mobile station sourced.
-    DMR_SYNC_BS = 1,  ///< Base station sourced.
-    DMR_SYNC_TS1 = 2, ///< Direct mode, timeslot 1.
-    DMR_SYNC_TS2 = 3, ///< Direct mode, timeslot 2.
+    DMR_SYNC_MS = 0,      ///< Mobile station sourced.
+    DMR_SYNC_BS = 1,      ///< Base station sourced.
+    DMR_SYNC_TS1 = 2,     ///< Direct mode, timeslot 1.
+    DMR_SYNC_TS2 = 3,     ///< Direct mode, timeslot 2.
+    DMR_SYNC_UNKNOWN = 4, ///< The modem did not observe the sync pattern.
 };
 
 /**

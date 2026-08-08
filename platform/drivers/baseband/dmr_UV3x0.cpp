@@ -15,6 +15,7 @@
 #include "dmr_audio.h"
 #include "protocols/DMR/Datatypes.h"
 #include "protocols/DMR/LinkControl.h"
+#include "protocols/DMR/CallState.h"
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -25,23 +26,6 @@
  */
 #define RX_STATUS_CRC_ERROR     0x04
 #define RX_STATUS_PRIVACY       0x08
-
-/* Full link control frames of a group and of a private call */
-#define LC_FLCO_GROUP           0x00
-#define LC_FLCO_PRIVATE         0x03
-
-/* Data type of a terminator burst, in the high nibble of register 0x51. */
-#define DATA_TYPE_TERMINATOR    0x02
-
-/*
- * How long after a terminator burst the voice has to stay gone before the
- * call is truly considered over, in milliseconds. A real terminator is the
- * last burst of its transmission, but the sampled type nibble also misreads
- * as one routinely in the middle of a call, so a terminator is only believed
- * once the silence it promises actually follows; the next voice burst of a
- * live call arrives within 60ms and cancels it.
- */
-#define TERMINATOR_CONFIRM      150
 
 /*
  * The voice payload of a burst: three 9-byte AMBE frames the chip hands over
@@ -54,16 +38,6 @@
 #define VP_PAGE_READ            0x83
 #define VP_PAGE_WRITE           0x03
 #define VP_REGISTER             0x00
-
-/*
- * The chip hands back the link control of the previous transmission until it
- * has decoded the current one, so the same content has to show up in more than
- * one burst before it can be trusted. Only the bytes naming the call are
- * compared: the last three carry error correction the chip fills in, and it
- * differs between the burst types which repeat one and the same call.
- */
-#define LC_CONFIRM_COUNT        2
-#define LC_ID_LENGTH            9
 
 /*
  * Registers and values driving the transmit slot, written from the timeslot
@@ -123,32 +97,15 @@ enum dmrTxState
 #define IRQ_REPORT_INTERVAL     1000
 
 /*
- * Window within which two bursts carrying decodable voice must fall for the
- * voice to be believed, in milliseconds. Real voice bursts arrive every 60ms,
- * so the second one opens the gate; the noise bursts which rarely clear the
- * per-frame check land much further apart than this and never pair up.
+ * The state of the call being received, one entry per logical slot. Direct
+ * mode uses a single slot and nothing on air names one, so only the first
+ * entry does anything today; the shape is the protocol's.
  */
-#define VOICE_CONFIRM_WINDOW    250
+static struct dmrCallState rxCall[DMR_SLOT_COUNT];
 
-/*
- * How long the receive state is held after the last good burst before the
- * call is considered over, in milliseconds. Voice bursts on the received
- * slot are 60ms apart, so this rides out a few corrupted bursts without
- * keeping the call on screen after the carrier is gone.
- */
-#define RX_HOLD_TIMEOUT         500
-
-static struct dmrRxState rxState;
 static struct dmrConfig  dmrCfg;
-static uint8_t   prevLc[C6000_LC_LENGTH];
-static uint8_t   lcMatches;
-static uint8_t   voiceStreak;   // Bursts in a row carrying decodable voice
-static long long lastVoiceTick; // Tick of the last decodable voice burst
-static long long termPendingTick; // Tick of an unconfirmed terminator burst
-static bool      lcDecided;     // The confirmed link control has been acted on
 static uint32_t  lastSysCount;
 static uint32_t  lastTsCount;
-static long long lastBurstTick;
 static uint32_t  reportedTs;
 static uint32_t  reportedSys;
 static uint32_t  reportedTx;
@@ -443,47 +400,23 @@ static void ccHuntRecord(const struct dmrIrqRxSnapshot *isr)
  * nonzero one is taken as it stands: demanding a second reading which may
  * never come held the code back entirely. The only wrong readings ever
  * seen carried a zero code, which is never taken at all; every nonzero
- * reading so far has matched the far end.
+ * reading so far has matched the far end. Distrusting zero is a fact about
+ * this chip's misreads, not about the air - colour code 0 is legal - which
+ * is why the filter sits here and not in the protocol layer.
  *
  * @param cach: CACH register sampled at the frame event.
+ * @return the observed colour code, or DMR_CC_UNKNOWN.
  */
-static void observeColorCode(const uint8_t cach)
+static uint8_t observedColourCode(const uint8_t cach)
 {
     if((cach & 0x0F) != 0x0F)
-        return;
+        return DMR_CC_UNKNOWN;
 
     uint8_t code = (cach >> 4) & 0x0F;
     if(code == 0)
-        return;
+        return DMR_CC_UNKNOWN;
 
-    if(rxState.colorCode != code)
-    {
-        rxState.colorCode = code;
-        dmrDebug_log(DMR_DBG_INFO, "call: colour code %u observed", code);
-    }
-}
-
-/**
- * Take down the call being received and say why. Everything the link control
- * tracking holds is dropped with it, so the next transmission is treated as a
- * fresh call from its first burst.
- *
- * @param reason: one word for the log, saying what ended the call.
- */
-static void endCall(const char *reason)
-{
-    rxState.valid       = false;
-    rxState.voiceActive = false;
-    rxState.colorCode   = DMR_CC_UNKNOWN;
-
-    memset(prevLc, 0, sizeof(prevLc));
-    lcMatches       = 0;
-    lcDecided       = false;
-    voiceStreak     = 0;
-    termPendingTick = 0;
-
-    dmrAudio_stopRx();
-    dmrDebug_log(DMR_DBG_INFO, "call: ended (%s)", reason);
+    return code;
 }
 
 /**
@@ -510,8 +443,10 @@ static bool callAccepted(const bool groupCall, const uint32_t dstId)
 }
 
 /**
- * Read out a burst the chip has signalled and, if it passes the filters,
- * extract the identities it carries.
+ * Read out a burst the chip has signalled, describe it as a chip-independent
+ * burst for the call state, and act on what comes back: the accept policy,
+ * the audio and the log lines are all decided here, where the radio's
+ * settings and hardware are at hand.
  */
 static void handleBurst()
 {
@@ -535,12 +470,39 @@ static void handleBurst()
     uint8_t syncType    = isr.sync & 0x03;
     uint8_t code        = (isr.cach >> 4) & 0x0F;
 
+    struct dmrCallState *cs = &rxCall[0];
+
+    /*
+     * The chip-independent description of this frame event. An event whose
+     * registers went unsampled leaves the type and sync unknown: the call
+     * state must see the event for its liveness, but must not mistake stale
+     * register bytes for a classification.
+     */
+    struct dmrBurst burst;
+    memset(&burst, 0, sizeof(burst));
+    burst.slot       = 0;
+    burst.dataType   = DMR_DATA_UNKNOWN;
+    burst.syncClass  = DMR_SYNC_UNKNOWN;
+    burst.colourCode = DMR_CC_UNKNOWN;
+    burst.crcOk      = crcOk;
+    burst.privacy    = (status.rxStatus & RX_STATUS_PRIVACY) != 0;
+
     if(isr.valid)
     {
+        burst.dataType   = (isr.status >> 4) & 0x0F;
+        burst.syncClass  = syncType;
+        burst.colourCode = observedColourCode(isr.cach);
+
         rxSyncSeen[syncType] += 1;
         rxSampled += 1;
         ccHuntRecord(&isr);
-        observeColorCode(isr.cach);
+
+        if((burst.colourCode != DMR_CC_UNKNOWN)
+           && (burst.colourCode != cs->call.colourCode))
+        {
+            dmrDebug_log(DMR_DBG_INFO, "call: colour code %u observed",
+                         burst.colourCode);
+        }
     }
 
     dmrDebug_log(DMR_DBG_LC,
@@ -557,241 +519,125 @@ static void handleBurst()
      * frames from it: the data type or voice sequence number is in the high
      * nibble, the sync class in the low bits. The capture cannot be gated on
      * the CRC check, which every voice burst fails for lack of fresh link
-     * control. Classifying voice on the radio is deferred until the exact rule
-     * is confirmed against a full capture; gating on the sync class alone
-     * wrongly dropped almost every burst.
+     * control.
+     *
+     * The classification of an accepted call's payload rides on the burst as
+     * the count of frames passing the vocoder's Golay check: the voice gate
+     * in the call state feeds on the count, and the count alone, so the
+     * protocol layer never touches the codec. The gate below is judged on
+     * the call as it stood when the payload was read: the same burst's link
+     * control may just have asked for a decision, and that decision is taken
+     * further down, after the audio of the call it belongs to.
      */
-    if(dmrDebug_channelEnabled(DMR_DBG_VP) || rxState.valid)
+    bool wasValid = cs->call.valid;
+
+    if(dmrDebug_channelEnabled(DMR_DBG_VP) || wasValid)
     {
-        uint8_t payload[VP_LENGTH];
-        payloadRead(payload);
+        payloadRead(burst.payload);
 
         if(dmrDebug_channelEnabled(DMR_DBG_VP))
         {
             uint8_t record[1 + VP_LENGTH];
             record[0] = burstStatus;
-            memcpy(&record[1], payload, VP_LENGTH);
+            memcpy(&record[1], burst.payload, VP_LENGTH);
             dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
         }
 
-        /*
-         * Classify the payload of every burst of an accepted call by the
-         * Golay error count of its frames. This drives two things: the empty
-         * slot of a direct mode call decodes to noise and is dropped frame by
-         * frame, and the chip refuses to hand over the voice of a call on the
-         * wrong colour code while still delivering its link control - so
-         * decodable voice arriving is what separates a call being received
-         * from one the chip is rejecting, and the receive state records it.
-         *
-         * A single passing burst is not believed: the noise slot's garbage
-         * clears the per-frame check just often enough that a rejected call
-         * would blip through, which on the bench was heard as a moment of
-         * leaked audio. Two passing bursts within a short window are needed:
-         * real voice arrives every 60ms so the second burst opens the gate,
-         * while the stray passes land too far apart to ever pair up.
-         *
-         * A burst with nothing decodable leaves the gate alone. The receiver
-         * hears both timeslots and the empty one's noise falls between the
-         * real voice bursts, so closing the gate on it cut the audio into
-         * rhythmic holes with a pop at each edge; the gate only closes once
-         * decodable voice stops arriving altogether.
-         *
-         * Voice bursts carry no link control of their own, so they can only
-         * be attributed to the call the link control last identified:
-         * playback therefore follows the receive state, set only for a call
-         * which passed the filters below and cleared when one is turned away.
-         */
-        if(rxState.valid)
+        if(wasValid)
         {
-            int passed = 0;
             for(int f = 0; f < 3; f++)
             {
-                if(dmr_codec_frameIsVoice(&payload[f * DMR_CODEC_FRAME_BYTES]))
-                    passed += 1;
-            }
-
-            if(passed > 0)
-            {
-                long long now = getTick();
-
-                if((now - lastVoiceTick) > VOICE_CONFIRM_WINDOW)
-                    voiceStreak = 0;
-
-                if(voiceStreak < 2)
-                    voiceStreak += 1;
-
-                lastVoiceTick   = now;
-                termPendingTick = 0;
-            }
-
-            if((passed > 0) && (voiceStreak >= 2))
-            {
-                if(dmrAudio_running())
-                {
-                    for(int f = 0; f < 3; f++)
-                    {
-                        const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-                        if(dmr_codec_frameIsVoice(frame))
-                            dmrAudio_pushFrame(frame);
-                    }
-                }
+                const uint8_t *frame = &burst.payload[f * DMR_CODEC_FRAME_BYTES];
+                if(dmr_codec_frameIsVoice(frame))
+                    burst.voiceFrames += 1;
             }
         }
     }
 
     /*
-     * A terminator burst ends the call it belongs to, but it is not believed
-     * on sight: the sampled type nibble misreads as a terminator routinely in
-     * the middle of a call, and acting on it immediately cut live calls into
-     * a stream of end-and-restart flaps. What separates a real terminator
-     * from a misread is what follows it - a transmission ends behind its
-     * terminator, so the call is torn down only once the promised silence
-     * holds, while a live call's next voice burst cancels the suspicion
-     * within a burst time. Checking the terminator's link control instead was
-     * no guard at all: the register always names the call in progress.
-     *
-     * This closes most of the carrier-loss window, where the voice gate stood
-     * open over squelch noise and the rare noise frame clearing the Golay
-     * check came out of the vocoder as chopping. The timeout stays behind it
-     * for transmissions which end rudely, with no terminator on the air.
+     * The link control, when this burst can carry one: it is only read for a
+     * burst whose own checks passed, and an encrypted call is turned away
+     * here, before its payload can reach the vocoder. The chip's image
+     * carries the identity in its first nine bytes and error correction of
+     * its own making in the rest, so only the identity crosses over.
      */
-    if(rxState.valid && isr.valid)
+    if(crcOk && (burst.privacy == false))
     {
-        if(((isr.status >> 4) & 0x0F) == DATA_TYPE_TERMINATOR)
+        uint8_t lc[C6000_LC_LENGTH];
+        C6000.readDmrLinkControl(lc);
+        dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
+
+        memcpy(burst.lc, lc, DMR_LC_LENGTH);
+        burst.lcValid = true;
+
+        if((burst.lc[0] != DMR_FLCO_GROUP) && (burst.lc[0] != DMR_FLCO_PRIVATE))
         {
-            if(termPendingTick == 0)
-                termPendingTick = getTick();
+            dmrDebug_log(DMR_DBG_LC, "burst: rejected, unhandled FLCO %02X",
+                         burst.lc[0]);
+        }
+    }
+    else if(crcOk && burst.privacy)
+    {
+        dmrDebug_log(DMR_DBG_LC, "burst: rejected, encrypted");
+    }
+
+    uint8_t events = dmr_callState_feedBurst(cs, &burst, getTick());
+
+    /* Play the voice of this burst, once the call state's gate is open. */
+    if(wasValid && (burst.voiceFrames > 0) && dmr_callState_voiceGateOpen(cs))
+    {
+        if(dmrAudio_running())
+        {
+            for(int f = 0; f < 3; f++)
+            {
+                const uint8_t *frame = &burst.payload[f * DMR_CODEC_FRAME_BYTES];
+                if(dmr_codec_frameIsVoice(frame))
+                    dmrAudio_pushFrame(frame);
+            }
+        }
+    }
+
+    /*
+     * A newly confirmed call. Whether it is ours to receive is policy, and
+     * policy is decided here, with the radio's settings at hand: the call
+     * state knows how to tell a call, not whether we want it.
+     */
+    if(events & DMR_CALLSTATE_NEW_CALL)
+    {
+        bool     group = (cs->candidate.callType == DMR_CALL_GROUP);
+        uint32_t dstId = cs->candidate.dstId;
+        uint32_t srcId = cs->candidate.srcId;
+
+        if(callAccepted(group, dstId) == false)
+        {
+            dmrDebug_log(DMR_DBG_INFO, "call: ignored, from %lu to %s %lu",
+                         (unsigned long) srcId, group ? "TG" : "ID",
+                         (unsigned long) dstId);
+
+            /*
+             * A call in progress is dropped along with the rejected one:
+             * playback follows the call state, so leaving it up would let
+             * the rejected call be heard through the tail of the one it
+             * interrupted.
+             */
+            if(cs->call.valid)
+                dmrAudio_stopRx();
+
+            dmr_callState_reject(cs);
         }
         else
         {
-            /*
-             * Any later burst which is not a terminator proves the
-             * transmission is still running, whatever its payload holds.
-             * Cancelling only on decodable voice was not enough: that
-             * depends on the payload being read in time, and under load the
-             * events collapse, so a misread survived long enough to cut a
-             * live call once or twice a keyup.
-             */
-            termPendingTick = 0;
+            dmr_callState_accept(cs);
+
+            dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu",
+                         (unsigned long) srcId, group ? "TG" : "ID",
+                         (unsigned long) dstId);
+
+            /* Start voice playback, if the vocoder is installed. */
+            if(dmrAudio_startRx())
+                dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
         }
     }
-
-    if(crcOk == false)
-        return;
-
-    if((status.rxStatus & RX_STATUS_PRIVACY) != 0)
-    {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, encrypted");
-        return;
-    }
-
-    /*
-     * The receiver is colour code promiscuous, because neither register we have
-     * tried carries the colour code of the call. On the bench, against a
-     * station transmitting on colour code 1, register 0x52 held zero in its
-     * colour code field throughout, with bit 7 toggling burst by burst - the
-     * timecode, not a colour code - and the reading did not change when this
-     * radio was set to colour code 7 instead, so it is not echoing our own
-     * setting either. That register is the CACH, which direct mode does not
-     * have. Register 0x1F does not gate reception either: with the two colour
-     * codes mismatched the call still decoded, so it is the colour code this
-     * radio transmits rather than a receive filter.
-     *
-     * This is a gap in what we can read out of the chip, NOT an absence on air:
-     * direct mode carries the colour code in the slot type of every data burst
-     * and in the embedded signalling of voice bursts B to F, and commercial
-     * radios filter on it in direct mode perfectly well. Where the chip exposes
-     * it - another status register, a raw burst path, or a mode bit which makes
-     * its own matcher look at the burst instead of the CACH - is unfinished
-     * business, not a settled impossibility.
-     */
-
-    uint8_t lc[C6000_LC_LENGTH];
-    C6000.readDmrLinkControl(lc);
-    dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
-
-    if((lc[0] != LC_FLCO_GROUP) && (lc[0] != LC_FLCO_PRIVATE))
-    {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, unhandled FLCO %02X", lc[0]);
-        return;
-    }
-
-    /*
-     * Only the bytes carrying the identity are compared. The chip fills the
-     * last three with error correction which differs between the burst types
-     * repeating one and the same call, so comparing the whole frame made a
-     * steady call look like a new one every time round - announced again, and
-     * playback started again, several times a transmission.
-     */
-    if(memcmp(lc, prevLc, LC_ID_LENGTH) != 0)
-    {
-        memcpy(prevLc, lc, LC_ID_LENGTH);
-        lcMatches = 1;
-        lcDecided = false;
-        return;
-    }
-
-    /*
-     * Confirmed once the same link control has been seen enough times. The
-     * counter is held at the threshold afterwards: it used to grow with every
-     * burst and, being a byte, wrapped back through zero during a long call,
-     * dropping the receive state for a burst or two each time round.
-     */
-    if(lcMatches < LC_CONFIRM_COUNT)
-    {
-        lcMatches += 1;
-        if(lcMatches < LC_CONFIRM_COUNT)
-            return;
-    }
-
-    uint32_t dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
-    uint32_t srcId = (lc[6] << 16) | (lc[7] << 8) | lc[8];
-    bool     group = (lc[0] == LC_FLCO_GROUP);
-
-    /*
-     * Only the start of a call is acted on, not every burst of it: the same
-     * link control keeps coming back for as long as the call lasts, and the tap
-     * link is far slower than the burst rate, so logging each one floods it and
-     * stalls the thread doing the logging.
-     */
-    if(lcDecided)
-        return;
-
-    lcDecided = true;
-
-    /*
-     * Turn away a call which is not addressed to us. A call in progress is
-     * dropped along with it: playback follows the receive state, so leaving it
-     * up would let the rejected call be heard through the tail of the one it
-     * interrupted.
-     */
-    if(callAccepted(group, dstId) == false)
-    {
-        dmrDebug_log(DMR_DBG_INFO, "call: ignored, from %lu to %s %lu",
-                     (unsigned long) srcId, group ? "TG" : "ID",
-                     (unsigned long) dstId);
-
-        if(rxState.valid)
-        {
-            rxState.valid = false;
-            dmrAudio_stopRx();
-        }
-
-        return;
-    }
-
-    rxState.dstId     = dstId;
-    rxState.srcId     = srcId;
-    rxState.groupCall = group;
-    rxState.valid     = true;
-
-    dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu",
-                 (unsigned long) srcId, group ? "TG" : "ID",
-                 (unsigned long) dstId);
-
-    /* Start voice playback, if the vocoder is installed. */
-    if(dmrAudio_startRx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
 }
 
 bool dmr_txActive()
@@ -1020,9 +866,8 @@ void dmr_txTask()
 
 void dmr_init(const struct dmrConfig *cfg)
 {
-    memset(&rxState, 0, sizeof(rxState));
-    memset(prevLc, 0, sizeof(prevLc));
-    rxState.colorCode = DMR_CC_UNKNOWN;
+    for(int slot = 0; slot < DMR_SLOT_COUNT; slot++)
+        dmr_callState_init(&rxCall[slot]);
 
     txState         = TX_IDLE;
     txStopRequested = false;
@@ -1030,11 +875,8 @@ void dmr_init(const struct dmrConfig *cfg)
 
     dmrCfg           = *cfg;
     dmrCfg.colorCode = cfg->colorCode & 0x0F;
-    lcMatches     = 0;
-    lcDecided     = false;
     lastSysCount  = 0;
     lastTsCount   = 0;
-    lastBurstTick = 0;
     reportedTs   = 0;
     reportedSys  = 0;
     reportedTx   = 0;
@@ -1093,7 +935,9 @@ void dmr_terminate()
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
     payloadBusTerminate();
-    memset(&rxState, 0, sizeof(rxState));
+
+    for(int slot = 0; slot < DMR_SLOT_COUNT; slot++)
+        dmr_callState_init(&rxCall[slot]);
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
@@ -1132,9 +976,7 @@ void dmr_setConfig(const struct dmrConfig *cfg)
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
     dmrIrq_setBusBusy(false);
 
-    memset(prevLc, 0, sizeof(prevLc));
-    lcMatches = 0;
-    lcDecided = false;
+    dmr_callState_resetLcTracking(&rxCall[0]);
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", dmrCfg.colorCode);
 }
@@ -1248,13 +1090,7 @@ void dmr_task(struct dmrRxState *rx)
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
 
-        memset(prevLc, 0, sizeof(prevLc));
-        lcMatches     = 0;
-        lcDecided     = false;
-        voiceStreak   = 0;
-        rxState.colorCode   = DMR_CC_UNKNOWN;
-        rxState.voiceActive = false;
-        lastBurstTick = getTick();
+        dmr_callState_restartTracking(&rxCall[0], getTick());
 
         dmrDebug_log(DMR_DBG_INFO, "tx: %lu payload slots carried audio, "
                      "%lu fell back to silence",
@@ -1287,56 +1123,49 @@ void dmr_task(struct dmrRxState *rx)
             dmrDebug_log(DMR_DBG_IRQ, "dmr: %lu bursts not read in time",
                          (unsigned long) missed);
 
-        /*
-         * A frame event means a DMR carrier is present. This keeps an
-         * established call alive across the voice bursts that sit between the
-         * link control updates: those bursts carry no fresh CRC-valid link
-         * control, so gating the call on link control alone drops it every
-         * few hundred milliseconds during a steady transmission. The identity
-         * of the call still comes from handleBurst; this only holds it up.
-         */
-        lastBurstTick = getTick();
-
         handleBurst();
     }
 
     dmrIrq_setBusBusy(false);
 
     /*
-     * The chip does not say when a call is over: a terminator burst is not
-     * guaranteed to arrive, so the receive state is dropped once no burst
-     * has passed the filters for a while.
+     * The call state decides whether the call is over - behind a confirmed
+     * terminator or by the carrier going away - and this is where its
+     * decision is acted on: the audio and the log are hardware and bench
+     * concerns, so they stay on this side of the boundary.
      */
-    /*
-     * Voice is considered flowing while decodable bursts keep arriving; the
-     * window rides out the link control bursts interleaved with the voice,
-     * which carry no frames of their own.
-     */
-    rxState.voiceActive = rxState.valid &&
-                          ((getTick() - lastVoiceTick) < RX_HOLD_TIMEOUT);
+    struct dmrCallState *cs = &rxCall[0];
 
-    if(rxState.valid && (termPendingTick != 0) &&
-       ((getTick() - termPendingTick) > TERMINATOR_CONFIRM))
+    enum dmrCallEnd endReason = dmr_callState_update(cs, getTick());
+    if(endReason != DMR_CALL_END_NONE)
     {
-        endCall("terminator");
-    }
-    else if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
-    {
-        endCall("timeout");
+        dmrAudio_stopRx();
+        dmrDebug_log(DMR_DBG_INFO, "call: ended (%s)",
+                     (endReason == DMR_CALL_END_TERMINATOR) ? "terminator"
+                                                            : "timeout");
 
-        /*
-         * Start the register hunt afresh for the next call: the table exists
-         * to bound the log rate within a transmission, not to hide what a
-         * later call does differently - a register experiment between two
-         * keyups is judged by exactly that difference.
-         */
-        ccHuntUsed = 0;
-        memset(ccHunt, 0, sizeof(ccHunt));
+        if(endReason == DMR_CALL_END_TIMEOUT)
+        {
+            /*
+             * Start the register hunt afresh for the next call: the table
+             * exists to bound the log rate within a transmission, not to
+             * hide what a later call does differently - a register
+             * experiment between two keyups is judged by exactly that
+             * difference.
+             */
+            ccHuntUsed = 0;
+            memset(ccHunt, 0, sizeof(ccHunt));
+        }
     }
 
     reportIrqActivity();
 
-    *rx = rxState;
+    rx->srcId       = cs->call.srcId;
+    rx->dstId       = cs->call.dstId;
+    rx->colorCode   = cs->call.colourCode;
+    rx->groupCall   = (cs->call.callType == DMR_CALL_GROUP);
+    rx->valid       = cs->call.valid;
+    rx->voiceActive = cs->call.voiceActive;
 }
 
 #endif /* CONFIG_DMR */
