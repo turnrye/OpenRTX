@@ -1007,6 +1007,27 @@ targets = [
   },
 ]
 
+# Python helper scripts are run through `uv run` so they execute inside the
+# uv-managed environment (where their dependencies, e.g. intelhex/cairosvg,
+# live) rather than the system interpreter.
+#
+# `--frozen` keeps uv.lock authoritative: a build never re-resolves
+# dependencies behind your back. `--project` pins the project directory so
+# that build directories outside the source tree still find it, since meson
+# runs custom_target commands from the build directory.
+#
+# uv is optional in the same way the scripts it wraps are: without it the
+# targets below disable themselves rather than failing configuration for
+# everyone, including people who only build the Linux emulator.
+#
+# The scripts are passed as `.full_path()` rather than as program objects so
+# that uv, not meson, chooses the interpreter: meson prefixes the system
+# python for scripts without the executable bit, which would run them outside
+# the uv environment. `depend_files` then restores the dependency edge that
+# passing a program object would have given us, so a target still rebuilds
+# when its script changes.
+uv          = find_program('uv', required:false, disabler:true)
+uv_run      = [uv, 'run', '--frozen', '--project', meson.project_source_root()]
 radio_tool  = find_program('radio_tool')
 bin2sgl     = find_program('scripts/bin2sgl.py',               required:false, disabler:true)
 objcopy     = find_program('objcopy',                          required:false, disabler:true)
@@ -1058,17 +1079,19 @@ foreach t : targets
       uf2 = custom_target(name+'_uf2',
                           input   : bin,
                           output  : name+'.uf2',
-                          command : [uf2conv,
+                          command : uv_run + [uf2conv.full_path(),
                                     'zephyr/zephyr.bin',
                                     '-c',
                                     '-f', 'ESP32S3',
                                     '-b', '0x0',
-                                    '-o', '@OUTPUT@'])
+                                    '-o', '@OUTPUT@'],
+                          depend_files : uf2conv.full_path())
 
       custom_target(name+'_flash',
                     input   : uf2,
                     output  : name+'_flash',
-                    command : [uf2conv, '-D', '@INPUT@'])
+                    command : uv_run + [uf2conv.full_path(), '-D', '@INPUT@'],
+                    depend_files : uf2conv.full_path())
 
   else
 
@@ -1093,15 +1116,17 @@ foreach t : targets
         wrap = custom_target(name+'_wrap',
                               output  : name+'_bin.sgl',
                               input   : bin,
-                              command : [bin2sgl,
+                              command : uv_run + [bin2sgl.full_path(),
                                         '--in', '@INPUT@',
                                         '--out', '@OUTPUT@',
-                                        '--mode', t['wrap']])
+                                        '--mode', t['wrap']],
+                              depend_files : bin2sgl.full_path())
 
         custom_target(name+'_flash',
                       input   : wrap,
                       output  : name+'_flash',
-                      command : [gd77_loader, '-f', '@INPUT@', '-m', t['wrap']])
+                      command : uv_run + [gd77_loader.full_path(), '-f', '@INPUT@', '-m', t['wrap']],
+                      depend_files : gd77_loader.full_path())
 
       # Module17 uses dfu-tool for flashing
       elif name == 'openrtx_mod17'
@@ -1120,12 +1145,14 @@ foreach t : targets
         custom_target(name+'_dfu',
                       output  : name+'_dfu',
                       input   : bin,
-                      command : [dfu_convert, '-b', t['load_addr']+':@INPUT@', '@OUTPUT@'])
+                      command : uv_run + [dfu_convert.full_path(), '-b', t['load_addr']+':@INPUT@', '@OUTPUT@'],
+                      depend_files : dfu_convert.full_path())
 
         custom_target(name+'_wrap',
                       output  : name+'_wrap',
                       input   : bin,
-                      command : [cs7000_wrap, '@INPUT@', '@OUTPUT@'])
+                      command : uv_run + [cs7000_wrap.full_path(), '@INPUT@', '@OUTPUT@'],
+                      depend_files : cs7000_wrap.full_path())
 
         custom_target(name+'_flash',
                       input   : bin,

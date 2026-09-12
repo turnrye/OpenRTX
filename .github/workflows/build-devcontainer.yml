@@ -10,13 +10,15 @@ on:
     branches:
       - master
     paths:
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/build-devcontainer.yml'
       - '.devcontainer/Dockerfile'
       - '.devcontainer/devcontainer.json'
   pull_request:
     paths:
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/build-devcontainer.yml'
       - '.devcontainer/Dockerfile'
       - '.devcontainer/devcontainer.json'

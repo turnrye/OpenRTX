@@ -2,6 +2,8 @@ FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.source=https://github.com/OpenRTX/OpenRTX
 
+COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
+
 # Install dependencies
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
   git \
@@ -30,11 +32,24 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
   libsdl2-dev \
   libcodec2-dev \
   libreadline-dev \
+  libcairo2 \
   gcc \
   g++ \
   python3 \
-  python3-pip \
   && rm -rf /var/lib/apt/lists/*
+
+# Python tooling is managed by uv. Pin the project environment to a fixed path
+# so the dependencies baked in below are the ones used from the workspace
+# mount, and put it on PATH so `gcovr`/`meson` resolve without activation.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Pre-install the interpreter and the locked dependencies so the image stays
+# self-contained; `uv sync` in postCreateCommand is then a fast no-op unless
+# uv.lock actually changed. Only the manifests are copied, so this layer is
+# cached until they do.
+COPY .python-version pyproject.toml uv.lock /app/
+RUN uv sync --locked --project /app
 
 # compile miosix compiler
 # Pinned to Miosix v3.01: upstream layout changes have broken this build
@@ -62,22 +77,3 @@ ENV PATH="$PATH:/usr/local/bin"
 # Install opengd77 sources and put the firmware loader and tools in PATH
 RUN git clone https://github.com/open-ham/OpenGD77.git /tmp/OpenGD77
 ENV PATH="$PATH:/tmp/OpenGD77/tools/Python/FirmwareLoader:/tmp/OpenGD77/firmware/tools"
-
-# Install Python 3.11 using the deadsnakes PPA
-RUN apt-get update -y \
-    && apt-get install -y software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.11 python3.11-venv python3.11-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and activate virtual environment
-ENV VIRTUAL_ENV=/opt/venv
-RUN python3.11 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Copy requirements.txt and install dependencies
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -r requirements.txt

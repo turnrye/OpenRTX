@@ -76,20 +76,27 @@ bash scripts/coverage.sh
 # Zephyr/ESP32S3 build (T-TWR Plus)
 # Requires Zephyr SDK and west; see west.yml for manifest
 west build -b ttwrplus
-python3 scripts/uf2conv.py <binary> -o openrtx_ttwrplus.uf2
+uv run scripts/uf2conv.py <binary> -o openrtx_ttwrplus.uf2
 ```
 
 The T-TWR Plus (ESP32S3/Xtensa) target uses Zephyr RTOS and CMake instead of Meson cross-compilation. Board definitions live in `platform/targets/ttwrplus/`, and Zephyr configuration is in `platform/mcu/ESP32S3/zephyr.conf`. The `west.yml` manifest pins the Zephyr, MCUboot, and HAL Espressif versions.
 
 ### Python Scripts
 
-Python scripts in `scripts/` should be run inside a virtual environment with dependencies from `requirements.txt`:
+Python tooling is managed with [uv](https://docs.astral.sh/uv/). Dependencies are
+declared in `pyproject.toml` and pinned in `uv.lock`; the interpreter version is
+pinned in `.python-version`.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync                              # create/refresh the environment from uv.lock
+uv run scripts/check_strings.py      # run a script inside it
 ```
+
+`meson` invokes the helper scripts through `uv run`, and `scripts/coverage.sh`
+runs `gcovr` the same way, so `uv` must be on `PATH` to build the flashable
+targets or to collect coverage. Targets that need a helper script disable
+themselves when `uv` is missing, so a plain Linux emulator build does not
+require it.
 
 ## Conventions
 
