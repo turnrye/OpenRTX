@@ -91,6 +91,7 @@ openrtx_inc = ['openrtx/include', 'platform']
 ui_src_default = ['openrtx/src/ui/default/ui.c',
                   'openrtx/src/ui/default/ui_main.c',
                   'openrtx/src/ui/default/ui_menu.c',
+                  'openrtx/src/ui/default/ui_messages.c',
                   'openrtx/src/ui/default/ui_strings.c',
                   'openrtx/src/ui/default/ui_aprs.c']
 
