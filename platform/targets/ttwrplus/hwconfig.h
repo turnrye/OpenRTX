@@ -25,4 +25,8 @@
 
 #define CONFIG_M17
 
+/* Message inbox and M17 SMS. */
+#define CONFIG_MESSAGES
+#define CONFIG_M17_SMS
+
 #endif /* HWCONFIG_H */
