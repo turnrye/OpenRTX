@@ -55,7 +55,7 @@ enum uiScreen
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
     LOW_BAT,
-    APRS_PKT
+    APRS_PKT,
 #ifdef CONFIG_MESSAGES
     MESSAGES_LIST,
     MESSAGES_DETAIL,
@@ -249,6 +249,7 @@ typedef struct ui_state_t
 #endif // UI_NO_KEYBOARD
 #ifdef CONFIG_APRS
     struct aprsPacket *pkt; // selected APRS packet
+#endif
 #ifdef CONFIG_MESSAGES
     // Sequence number of the message currently highlighted in
     // MESSAGES_LIST, pinned the same way as messages_detail_seq below: a
