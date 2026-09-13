@@ -57,6 +57,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/voicePromptData.S',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/messages.c',
+               'openrtx/src/core/m17_sms.cpp',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1266,6 +1267,14 @@ messages_test = executable('messages_test',
                                       'tests/unit/messages.cpp'],
                            kwargs  : unit_test_opts)
 
+m17_sms_test = executable('m17_sms_test',
+                          sources : ['openrtx/src/core/messages.c',
+                                     'tests/unit/rtx_packet_stub.cpp',
+                                     'openrtx/src/core/m17_sms.cpp',
+                                     'openrtx/src/protocols/M17/SmsPacket.cpp',
+                                     'tests/unit/m17_sms.cpp'],
+                          kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1285,3 +1294,4 @@ test('M17 Packet Framing Test', m17_packet_framing_test)
 test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
 test('Messages Test', messages_test)
+test('M17 SMS Source Test', m17_sms_test)
