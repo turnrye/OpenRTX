@@ -219,6 +219,55 @@ TEST_CASE("SMS parse: truncates to msgSize - 1", "[m17][smspacket]")
     REQUIRE(strlen(msg) == 3);
 }
 
+// ===========================================================================
+// Text accessor tests (sms_packet_text)
+// ===========================================================================
+
+TEST_CASE("SMS text: rejects null, short and foreign payloads",
+          "[m17][smspacket]")
+{
+    const uint8_t data[] = { 0x05, 'H', 'i', 0x00 };
+    const uint8_t foreign[] = { 0x04, 'H', 'i', 0x00 };
+    size_t len = 0;
+
+    REQUIRE(sms_packet_text(nullptr, sizeof(data), &len) == nullptr);
+    REQUIRE(sms_packet_text(data, sizeof(data), nullptr) == nullptr);
+    REQUIRE(sms_packet_text(data, 1, &len) == nullptr);
+    REQUIRE(sms_packet_text(foreign, sizeof(foreign), &len) == nullptr);
+}
+
+TEST_CASE("SMS text: points into the payload and strips the trailing NUL",
+          "[m17][smspacket]")
+{
+    const uint8_t data[] = { 0x05, 'H', 'e', 'l', 'l', 'o', 0x00 };
+    size_t len = 0;
+
+    const char *text = sms_packet_text(data, sizeof(data), &len);
+    REQUIRE(text == reinterpret_cast<const char *>(&data[1]));
+    REQUIRE(len == 5);
+    REQUIRE(memcmp(text, "Hello", 5) == 0);
+}
+
+TEST_CASE("SMS text: works without trailing NUL in payload", "[m17][smspacket]")
+{
+    const uint8_t data[] = { 0x05, 'H', 'i' };
+    size_t len = 0;
+
+    const char *text = sms_packet_text(data, sizeof(data), &len);
+    REQUIRE(text != nullptr);
+    REQUIRE(len == 2);
+}
+
+TEST_CASE("SMS text: an empty message yields zero length", "[m17][smspacket]")
+{
+    const uint8_t data[] = { 0x05, 0x00 };
+    size_t len = 99;
+
+    const char *text = sms_packet_text(data, sizeof(data), &len);
+    REQUIRE(text != nullptr);
+    REQUIRE(len == 0);
+}
+
 // ---------- Round-trip: format then parse ----------
 
 TEST_CASE("SMS round-trip: format then parse recovers original message",
