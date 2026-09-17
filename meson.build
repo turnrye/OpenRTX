@@ -58,6 +58,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/voicePromptData.S',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/packet_engine.c',
+               'openrtx/src/core/messages.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1276,6 +1277,21 @@ aprs_test = executable('aprs-test',
 slip_test = executable('slip_test',
                       sources : unit_test_src + ['tests/unit/slip.cpp'],
                       kwargs  : unit_test_opts)
+# Built without unit_test_src: the stub replaces the rtx_addPacketRx() and
+# rtx_addPacketTx() definitions from rtx.cpp. The CONFIG_MESSAGES_* sizes are
+# pinned so the size arithmetic in the tests holds whatever the defaults in
+# messages.c or a target's overrides are.
+messages_test_defs = ['-DCONFIG_MESSAGES_MAX_ENTRIES=32',
+                      '-DCONFIG_MESSAGES_POOL_BYTES=3200',
+                      '-DCONFIG_MESSAGES_MAX_SOURCES=2',
+                      '-DCONFIG_MESSAGES_RX_SLOTS=1']
+messages_test = executable('messages_test',
+                           sources : ['openrtx/src/core/messages.c',
+                                      'tests/unit/rtx_packet_stub.cpp',
+                                      'tests/unit/messages.cpp'],
+                           kwargs  : unit_test_opts + {
+                             'c_args'   : linux_c_args + messages_test_defs,
+                             'cpp_args' : linux_cpp_args + messages_test_defs})
 
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
@@ -1298,3 +1314,4 @@ test('M17 Packet OpMode Test', m17_packet_opmode_test)
 test('APRS Packet Test', aprs_packet_test)
 test('APRS Test', aprs_test)
 test('Slip Test', slip_test)
+test('Messages Test', messages_test)
