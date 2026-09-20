@@ -198,7 +198,7 @@ size_t aprsPathToStr(const struct aprsPacket *pkt, char *out, size_t len)
 
 /* ":ADDRESSEE:" — the addressee is always padded to nine characters, so the
  * separator that closes it sits at a fixed offset. */
-#define MSG_ADDRESSEE_LEN 9
+#define MSG_ADDRESSEE_LEN APRS_MSG_ADDRESSEE_LEN
 #define MSG_TEXT_OFFSET (1 + MSG_ADDRESSEE_LEN + 1)
 
 bool aprsMsgUnwrap(const struct aprsPacket *pkt, char *addressee,
@@ -246,4 +246,203 @@ bool aprsMsgUnwrap(const struct aprsPacket *pkt, char *addressee,
     text[bodyLen] = '\0';
 
     return true;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Frame construction — the inverse of everything above.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Shift one address into the seven bytes AX.25 wants, setting the flag bits
+ * the caller asks for.
+ */
+static void writeAddress(uint8_t *dst, const struct aprsAddress *addr,
+                         bool command, bool last)
+{
+    size_t i = 0;
+
+    /* Callsigns shorter than six characters are padded with spaces, which
+     * shift to 0x40 exactly where the parser expects to find them. */
+    for (; (i < ADDR_LEN - 1) && (addr->addr[i] != '\0'); i++)
+        dst[i] = (uint8_t)(addr->addr[i] << 1);
+    for (; i < ADDR_LEN - 1; i++)
+        dst[i] = (uint8_t)(' ' << 1);
+
+    /* The two reserved bits are transmitted as ones, which is what every
+     * other station sends and what the parser ignores. */
+    dst[ADDR_LEN - 1] = 0x60;
+    dst[ADDR_LEN - 1] |= (uint8_t)((addr->ssid & 0x0f) << ADDR_SSID_SHIFT);
+
+    if (addr->repeated)
+        dst[ADDR_LEN - 1] |= ADDR_REPEATED;
+    if (command)
+        dst[ADDR_LEN - 1] |= 0x80;
+    if (last)
+        dst[ADDR_LEN - 1] |= ADDR_LAST;
+}
+
+/**
+ * Upper-case one ASCII letter; anything else is returned unchanged.
+ */
+static char upcase(char c)
+{
+    if ((c >= 'a') && (c <= 'z'))
+        return (char)(c - 'a' + 'A');
+    return c;
+}
+
+bool aprsAddrFromStr(const char *str, struct aprsAddress *addr)
+{
+    if ((str == NULL) || (addr == NULL))
+        return false;
+
+    struct aprsAddress parsed;
+    memset(&parsed, 0, sizeof(parsed));
+
+    size_t i = 0;
+    for (; (str[i] != '\0') && (str[i] != '-'); i++) {
+        if (i >= (ADDR_LEN - 1))
+            return false; /* callsign longer than AX.25 can carry */
+
+        char c = upcase(str[i]);
+        /* Only the printable subset survives the shift-and-unshift round
+         * trip, and a space would silently truncate the callsign. */
+        if ((c <= ' ') || (c >= 0x7f))
+            return false;
+
+        parsed.addr[i] = c;
+    }
+
+    if (i == 0)
+        return false; /* no callsign at all */
+
+    parsed.addr[i] = '\0';
+
+    if (str[i] == '-') {
+        const char *digits = &str[i + 1];
+        if (digits[0] == '\0')
+            return false; /* a dash with nothing after it */
+
+        unsigned ssid = 0;
+        for (size_t j = 0; digits[j] != '\0'; j++) {
+            if ((digits[j] < '0') || (digits[j] > '9'))
+                return false;
+            ssid = (ssid * 10u) + (unsigned)(digits[j] - '0');
+            if (ssid > 15u)
+                return false;
+        }
+        parsed.ssid = ssid & 0x0f;
+    }
+
+    *addr = parsed;
+    return true;
+}
+
+size_t aprsFrameBuild(uint8_t *buf, size_t cap, const char *dest,
+                      const char *src, const char *path, const char *info,
+                      size_t infoLen)
+{
+    if ((buf == NULL) || (dest == NULL) || (src == NULL) || (info == NULL))
+        return 0;
+    if ((infoLen == 0) || (infoLen > APRS_PACLEN))
+        return 0;
+
+    /* Parse every address before writing anything, so a bad path leaves the
+     * caller's frame untouched rather than half-built. */
+    struct aprsAddress addresses[APRS_MAX_ADDRESSES];
+    uint8_t count = 0;
+
+    if (!aprsAddrFromStr(dest, &addresses[count++]))
+        return 0;
+    if (!aprsAddrFromStr(src, &addresses[count++]))
+        return 0;
+
+    if ((path != NULL) && (path[0] != '\0')) {
+        const char *p = path;
+        while (*p != '\0') {
+            if (count >= APRS_MAX_ADDRESSES)
+                return 0; /* more digipeaters than AX.25 allows */
+
+            const char *comma = strchr(p, ',');
+            size_t len = (comma != NULL) ? (size_t)(comma - p) : strlen(p);
+
+            /* A path element carries the same "CALL-SSID" syntax as any
+             * other address, optionally followed by the '*' that marks it as
+             * already repeated — which aprsPathToStr() writes on the way
+             * out, so accepting it here keeps the two symmetric. */
+            char element[APRS_ADDR_STR_LEN];
+            bool repeated = false;
+            if ((len > 0) && (p[len - 1] == '*')) {
+                repeated = true;
+                len--;
+            }
+            if ((len == 0) || (len >= sizeof(element)))
+                return 0;
+
+            memcpy(element, p, len);
+            element[len] = '\0';
+
+            if (!aprsAddrFromStr(element, &addresses[count]))
+                return 0;
+            addresses[count].repeated = repeated ? 1 : 0;
+            count++;
+
+            if (comma == NULL)
+                break;
+
+            p = comma + 1;
+            if (*p == '\0')
+                return 0; /* trailing comma: an element that is not there */
+        }
+    }
+
+    const size_t total = ((size_t)count * ADDR_LEN) + CTRL_PID_LEN + infoLen;
+    if ((total > APRS_PACLEN) || (total > cap))
+        return 0;
+
+    for (uint8_t i = 0; i < count; i++) {
+        /* The command bit belongs to the destination address; APRS sends UI
+         * frames as commands, which is what every other station does. */
+        writeAddress(&buf[(size_t)i * ADDR_LEN], &addresses[i], (i == 0),
+                     (i == (count - 1)));
+    }
+
+    size_t offset = (size_t)count * ADDR_LEN;
+    buf[offset++] = 0x03; /* UI frame, no acknowledgement */
+    buf[offset++] = 0xf0; /* no layer 3 protocol          */
+
+    memcpy(&buf[offset], info, infoLen);
+
+    return total;
+}
+
+size_t aprsMsgFormat(char *out, size_t len, const char *addressee,
+                     const char *text)
+{
+    if ((out == NULL) || (len == 0) || (addressee == NULL) || (text == NULL))
+        return 0;
+
+    size_t addrLen = strlen(addressee);
+    size_t textLen = strlen(text);
+
+    if ((addrLen == 0) || (addrLen > APRS_MSG_ADDRESSEE_LEN))
+        return 0;
+    if (textLen > APRS_MSG_TEXT_MAX)
+        return 0;
+
+    /* ':' + nine addressee characters + ':' + text + NUL. */
+    const size_t total = MSG_TEXT_OFFSET + textLen;
+    if (len < (total + 1))
+        return 0;
+
+    out[0] = ':';
+    memcpy(&out[1], addressee, addrLen);
+    for (size_t i = addrLen; i < APRS_MSG_ADDRESSEE_LEN; i++)
+        out[1 + i] = ' ';
+    out[MSG_TEXT_OFFSET - 1] = ':';
+
+    memcpy(&out[MSG_TEXT_OFFSET], text, textLen);
+    out[total] = '\0';
+
+    return total;
 }

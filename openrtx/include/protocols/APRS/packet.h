@@ -32,6 +32,44 @@ extern "C" {
 #define APRS_ADDR_STR_LEN 10
 
 /**
+ * @brief AX.25 destination address used for every frame OpenRTX transmits.
+ *
+ * APRS calls this the "device identifier" or TOCALL: receiving stations read
+ * it to tell what software produced the packet. `APORT?` is registered to
+ * OpenRTX in aprsorg/aprs-deviceid, with the final character ours to assign;
+ * the digit marks the firmware generation, leaving 2-9 and A-Z for later
+ * variants. It is deliberately not an experimental `APZ***` prefix — those
+ * are for unregistered software and would misreport who is transmitting.
+ */
+#define APRS_TOCALL "APORT1"
+
+/**
+ * @brief Digipeater path used for every frame OpenRTX transmits.
+ *
+ * The conventional one-hop-local, one-hop-wide path: the first digipeater
+ * that hears the frame repeats it, and one wide-area digipeater repeats it
+ * again. Adequate everywhere and antisocial nowhere, which is what a fixed
+ * default has to be. A configurable path ships with beaconing.
+ */
+#define APRS_DEFAULT_PATH "WIDE1-1,WIDE2-1"
+
+/**
+ * @brief Longest message text an addressed message may carry.
+ *
+ * The APRS specification caps the text of a ":ADDRESSEE:text" message at 67
+ * characters, well short of what the info field could otherwise hold.
+ */
+#define APRS_MSG_TEXT_MAX 67
+
+/**
+ * @brief Length of the addressee field in an addressed message.
+ *
+ * Always exactly nine characters, space-padded, so the colon that closes it
+ * sits at a fixed offset.
+ */
+#define APRS_MSG_ADDRESSEE_LEN 9
+
+/**
  * @brief One AX.25 address: callsign, SSID, and the has-been-repeated bit.
  */
 struct aprsAddress {
@@ -148,6 +186,68 @@ size_t aprsPathToStr(const struct aprsPacket *pkt, char *out, size_t len);
  */
 bool aprsMsgUnwrap(const struct aprsPacket *pkt, char *addressee,
                    size_t addresseeLen, char *text, size_t textLen);
+
+/**
+ * @brief Parse a "CALLSIGN" or "CALLSIGN-SSID" string into an address.
+ *
+ * The inverse of aprsAddrToStr(). The callsign is upper-cased on the way in,
+ * so a recipient the user typed in lower case still produces a valid frame.
+ * Rejects an empty or over-long callsign, a non-numeric or out-of-range SSID,
+ * and any character AX.25 cannot carry in an address.
+ *
+ * @param str: address text, NUL-terminated.
+ * @param addr: destination address; untouched if the text is not an address.
+ * @return true if @p str is a well-formed address.
+ */
+bool aprsAddrFromStr(const char *str, struct aprsAddress *addr);
+
+/**
+ * @brief Build an AX.25 UI frame from TNC2-style address text.
+ *
+ * The inverse of aprsPktFromFrame(), and message-agnostic on purpose: an
+ * addressed message, a position beacon, and a digipeated frame all differ
+ * only in what they put in @p info, so everything that transmits shares this
+ * one builder.
+ *
+ * The frame produced carries addresses, the UI control byte, the no-layer-3
+ * protocol identifier, and the info field — but NOT the frame check
+ * sequence, exactly matching what the decoder hands back after it has
+ * verified and stripped the FCS. Appending the FCS belongs to whatever puts
+ * the frame on the air; keeping it out here means a built frame and a
+ * received frame are the same kind of object and can be compared directly.
+ *
+ * @param buf: destination buffer; untouched if the arguments are invalid.
+ * @param cap: size of buf; APRS_PACLEN is always enough.
+ * @param dest: destination address, i.e. the TOCALL for a transmitted frame.
+ * @param src: source address, "CALLSIGN" or "CALLSIGN-SSID".
+ * @param path: comma-separated digipeater path, or NULL/"" for none.
+ * @param info: info field bytes; need not be NUL-terminated.
+ * @param infoLen: number of info bytes, which must be at least one.
+ * @return frame length in bytes, or 0 if the frame could not be built.
+ */
+size_t aprsFrameBuild(uint8_t *buf, size_t cap, const char *dest,
+                      const char *src, const char *path, const char *info,
+                      size_t infoLen);
+
+/**
+ * @brief Format the info field of an addressed text message.
+ *
+ * The inverse of aprsMsgUnwrap(): produces ":ADDRESSEE:text" with the
+ * addressee space-padded to its fixed nine characters. No "{seq"
+ * acknowledgement suffix is appended — OpenRTX does not process incoming
+ * acknowledgements yet, and soliciting one it would ignore only makes the
+ * sending station retry into the void.
+ *
+ * @param out: destination buffer.
+ * @param len: size of out; APRS_MSG_ADDRESSEE_LEN + APRS_MSG_TEXT_MAX + 3 is
+ *             always enough.
+ * @param addressee: recipient callsign, at most nine characters.
+ * @param text: message text, NUL-terminated.
+ * @return number of characters written, or 0 if the arguments do not fit or
+ *         the text exceeds APRS_MSG_TEXT_MAX.
+ */
+size_t aprsMsgFormat(char *out, size_t len, const char *addressee,
+                     const char *text);
 
 #ifdef __cplusplus
 }
