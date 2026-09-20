@@ -15,7 +15,6 @@
 #include "core/event.h"
 #include "hwconfig.h"
 #include "core/ui.h"
-#include "protocols/APRS/packet.h"
 #include "core/messages.h"
 
 // Maximum menu entry length
@@ -55,7 +54,6 @@ enum uiScreen
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
     LOW_BAT,
-    APRS_PKT,
 #ifdef CONFIG_MESSAGES
     MESSAGES_LIST,
     MESSAGES_DETAIL,
@@ -247,9 +245,6 @@ typedef struct ui_state_t
 #if defined(CONFIG_UI_NO_KEYBOARD)
     uint8_t macro_menu_selected;
 #endif // UI_NO_KEYBOARD
-#ifdef CONFIG_APRS
-    struct aprsPacket *pkt; // selected APRS packet
-#endif
 #ifdef CONFIG_MESSAGES
     // Sequence number of the message currently highlighted in
     // MESSAGES_LIST, pinned the same way as messages_detail_seq below: a

@@ -145,9 +145,6 @@ void *main_thread(void *arg)
     (void) arg;
 
     long long time = 0;
-#ifdef CONFIG_APRS
-    packetEngine_init();
-#endif
 
     #if defined(CONFIG_GPS)
     const struct gpsDevice *gps = platform_initGps();
@@ -176,11 +173,6 @@ void *main_thread(void *arg)
 
         // Run state update task
         state_task();
-
-#ifdef CONFIG_APRS
-        if (state.channel.mode == OPMODE_APRS)
-            packetEngine_task();
-#endif
 
         // Run this loop once every 5ms
         time += 5;

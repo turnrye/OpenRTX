@@ -68,18 +68,10 @@ void state_init()
     if (state.settings.brightness > 100) {
         state.settings.brightness = 100;
     }
-
-#ifdef CONFIG_APRS
-    aprsPktList_init(&state.aprsStoredPkts);
-#endif
 }
 
 void state_terminate()
 {
-#ifdef CONFIG_APRS
-    aprsPktList_release(state.aprsStoredPkts);
-#endif
-
     // Never store a brightness of 0 to avoid booting with a black screen
     if (state.settings.brightness == 0) {
         state.settings.brightness = 5;

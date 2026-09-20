@@ -13,7 +13,6 @@
 #include <stdbool.h>
 #include "core/cps.h"
 #include "core/gps.h"
-#include "protocols/APRS/packet_list.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +52,6 @@ typedef struct {
     bool pttDisable;
     uint8_t step_index;
 
-    struct aprsPktList aprsStoredPkts;
 } state_t;
 
 extern const uint32_t freq_steps[];

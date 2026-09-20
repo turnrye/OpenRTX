@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include "rtx/OpMode_APRS.hpp"
-#include "protocols/APRS/packet.h"
-#include "protocols/APRS/packet_list.h"
 #include "rtx/rtx.h"
 
 OpMode_APRS::OpMode_APRS()

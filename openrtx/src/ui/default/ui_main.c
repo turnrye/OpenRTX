@@ -227,8 +227,11 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             /* Display it */
             gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
                       color_white, "APRS");
+#ifdef CONFIG_MESSAGES
             gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                      color_white, "%d", last_state.aprsStoredPkts.len);
+                      color_white, "%u/%u", (unsigned)messages_countUnread(),
+                      (unsigned)messages_count());
+#endif
             break;
 
         #endif

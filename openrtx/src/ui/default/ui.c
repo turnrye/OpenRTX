@@ -106,13 +106,6 @@ extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
 
-#ifdef CONFIG_APRS
-/* UI APRS functions. Their implementation is in "ui_aprs.c" */
-extern void ui_showAprsPkt(ui_state_t *ui_state);
-extern void ui_aprsPktInput(ui_state_t *ui_state, state_t *state,
-                            kbd_msg_t msg);
-#endif
-
 /* UI messages functions, their implementation is in "ui_messages.c" */
 #ifdef CONFIG_MESSAGES
 extern void _ui_drawMessagesList(ui_state_t* ui_state);
@@ -983,15 +976,6 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                     state.channel.fm.txToneEn, state.channel.fm.txTone,
                     queueFlags | vpqIncludeDescriptions);
             }
-#ifdef CONFIG_APRS
-            else if (state.channel.mode == OPMODE_APRS)
-            {
-                ui_state.pkt = state.aprsStoredPkts.head;
-                state.ui_screen = APRS_PKT;
-                macro_latched = false;
-                macro_menu = false;
-            }
-#endif
             break;
         case 2:
             if (state.channel.mode == OPMODE_FM)
@@ -2682,11 +2666,6 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
                 break;
-#ifdef CONFIG_APRS
-            case APRS_PKT:
-                ui_aprsPktInput(&ui_state, &state, msg);
-                break;
-#endif
 #ifdef CONFIG_MESSAGES
             // Messages inbox list view
             case MESSAGES_LIST:
@@ -3238,11 +3217,6 @@ bool ui_updateGUI()
         case LOW_BAT:
             _ui_drawLowBatteryScreen();
             break;
-#ifdef CONFIG_APRS
-        case APRS_PKT:
-            ui_showAprsPkt(&ui_state);
-            break;
-#endif
 #ifdef CONFIG_MESSAGES
         // Messages inbox list view
         case MESSAGES_LIST:

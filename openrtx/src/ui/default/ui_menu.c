@@ -1217,19 +1217,6 @@ bool _ui_drawMacroMenu(ui_state_t* ui_state)
                   color_white, encdec_str);
     }
 #endif
-#ifdef CONFIG_APRS
-    else if (last_state.channel.mode == OPMODE_APRS)
-    {
-        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_LEFT,
-                  yellow_fab413, "1");
-        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_LEFT,
-                  color_white, "  PKTS");
-        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_CENTER,
-                  yellow_fab413, "2");
-        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_RIGHT,
-                  yellow_fab413, "3        ");
-    }
-#endif
 
     // Second row
     // Calculate symmetric second row position, line2_pos is asymmetric like main screen
