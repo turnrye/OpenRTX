@@ -24,6 +24,7 @@
 #include "core/packet_engine.h"
 #include "core/messages.h"
 #include "core/m17_sms.h"
+#include "core/aprs_msg.h"
 #include "core/beeps.h"
 
 #if defined(PLATFORM_TTWRPLUS)
@@ -51,6 +52,9 @@ void *ui_threadFunc(void *arg)
 
     #if defined(CONFIG_M17_SMS)
     messages_registerSource(&m17_sms_ops);
+    #endif
+    #if defined(CONFIG_APRS)
+    messages_registerSource(&aprs_msg_ops);
     #endif
 
     // Load initial state and update the UI

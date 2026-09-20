@@ -128,6 +128,11 @@ void FrameDecoder::closeFrame()
         DEBUG_PRINT("frameCRC=%04x calculatedCRC=%04x\n", frameCrc, calcCrc);
         if (calcCrc == frameCrc) {
             DEBUG_PRINT("Swapping frames and setting newFrame\n");
+            /* Drop the two frame-check bytes now that they have done their
+             * job. Everything downstream — the parser, the KISS emitter, and
+             * the transmit path that has to reproduce a frame — works with the
+             * frame the FCS protects, not the FCS itself. */
+            demodFrame->len -= 2;
             std::swap(demodFrame, readyFrame);
             newFrame = true;
         }

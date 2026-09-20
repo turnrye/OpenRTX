@@ -46,7 +46,7 @@ void strFromPkt(struct aprsPacket *pkt, char *output)
             sprintf(ssid, "-%d", pkt->addresses[i].ssid);
             strcat(output, ssid);
         }
-        if (pkt->addresses[i].commandHeard)
+        if (pkt->addresses[i].repeated)
             strcat(output, "*");
     }
     strcat(output, ":");
@@ -82,10 +82,16 @@ int main()
             uint8_t frame[APRS_PACLEN];
             char pktStr[256];
             ssize_t frameLen = demodulator.getFrame(frame, APRS_PACLEN);
-            struct aprsPacket *pkt = aprsPktFromFrame(frame, frameLen);
-            strFromPkt(pkt, pktStr);
+            struct aprsPacket pkt;
+            if (frameLen < 0
+                || !aprsPktFromFrame(frame, (size_t)frameLen, &pkt)) {
+                printf("Frame %ld failed to parse\n", pktNum);
+                errorFlag = true;
+                pktNum++;
+                continue;
+            }
+            strFromPkt(&pkt, pktStr);
             printf("Frame %ld: %s\n", pktNum, pktStr);
-            free(pkt);
             if (strcmp(TEST_PACKETS[pktNum], pktStr)) {
                 printf("Packet %ld does not match:\n", pktNum);
                 printf("    Expected \"%s\"\n", TEST_PACKETS[pktNum]);

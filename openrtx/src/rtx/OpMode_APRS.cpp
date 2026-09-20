@@ -119,8 +119,7 @@ void OpMode_APRS::rxState(rtxStatus_t *const status)
             rxPkt->res = len;
             rxPkt->status = PKT_STATUS_ERROR;
         } else {
-            rxPkt->size = len;
-            rxPkt->res = 0;
+            rxPkt->res = len;
             rxPkt->status = PKT_STATUS_DONE;
         }
     }

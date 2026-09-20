@@ -41,4 +41,8 @@ enum Mod17Flags {
 #endif
 #define CONFIG_M17_SMS
 
+/* APRS: AFSK1200 receive and transmit, with addressed messages in the
+ * inbox. */
+#define CONFIG_APRS
+
 #endif /* HWCONFIG_H */
