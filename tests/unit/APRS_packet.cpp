@@ -4,225 +4,376 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/*
+ * Contract tests for the AX.25 -> aprsPacket parser. Frames are synthesised
+ * here rather than demodulated so each test can pin one property of the
+ * parser exactly: address unshifting, SSIDs, digipeater paths, DTI
+ * classification, addressed-message unwrapping, and the malformed frames that
+ * must be rejected instead of parsed into garbage.
+ */
+
 #include <catch2/catch_test_macros.hpp>
 
-#include "protocols/APRS/constants.h"
 #include "protocols/APRS/packet.h"
-#include "protocols/APRS/packet_list.h"
-#include "core/crc.h"
-#include <cstdio>
+#include <cstring>
 
-void createAddress(const char *call, uint8_t ssid, bool command, bool last,
-                   uint8_t *addr)
+namespace
 {
-    uint8_t i = 0;
 
-    // copy over address, shifting left one
-    for (; i < 6; i++) {
-        if (call[i] == '\0')
-            break;
-        addr[i] = call[i] << 1;
-    }
+/** A frame the way the decoder hands one back: raw bytes and a length. */
+struct frameData {
+    uint8_t data[APRS_PACLEN];
+    uint8_t len;
+};
 
-    // fill unused bytes with spaces
+/**
+ * Write one shifted-ASCII AX.25 address into a frame.
+ *
+ * The flags byte is CRRSSSSL: command/response, two reserved bits that are
+ * transmitted as ones, the four-bit SSID, and the last-address marker.
+ */
+void putAddress(uint8_t *dst, const char *call, uint8_t ssid, bool repeated,
+                bool last)
+{
+    size_t i = 0;
+
+    for (; (i < 6) && (call[i] != '\0'); i++)
+        dst[i] = (uint8_t)(call[i] << 1);
     for (; i < 6; i++)
-        addr[i] = ' ' << 1;
+        dst[i] = (uint8_t)(' ' << 1);
 
-    // last byte is:
-    // 0bCRRSSSSL: (C)ommand/response, (R)eserved (usually 1s), (S)SID,
-    //             and (L)ast address flag
-    addr[6] = 0;
-    if (command)
-        addr[6] |= 0b10000000;
-    addr[6] |= 0b01100000;
-    addr[6] |= (ssid & 0x0F) << 1;
+    dst[6] = 0x60; /* reserved bits */
+    if (repeated)
+        dst[6] |= 0x80;
+    dst[6] |= (uint8_t)((ssid & 0x0f) << 1);
     if (last)
-        addr[6] |= 1;
+        dst[6] |= 0x01;
 }
 
-size_t createFrameData(const uint8_t num, uint8_t *frame)
+/**
+ * Build a two-address (destination, source) UI frame carrying @p info.
+ */
+frameData makeFrame(const char *dst, uint8_t dstSsid, const char *src,
+                    uint8_t srcSsid, const char *info)
 {
-    char info[85];
-    char dst[] = "APRS";
-    uint8_t dstSSID = 0;
-    char src[] = "N2BP";
-    uint8_t srcSSID = 9;
-    char addressee[] = "N2BP";
-    uint16_t crc;
-    size_t pktSize;
+    frameData frame;
+    memset(&frame, 0, sizeof(frame));
 
-    createAddress(dst, dstSSID, true, false, frame + 0);
-    createAddress(src, srcSSID, false, true, frame + 7);
-    frame[14] = 0x03; // UI-frame
-    frame[15] = 0xf0; // no layer 3 protocol
-    sprintf(info, ":%-9s:Testing %d", addressee, num);
-    memcpy(frame + 16, info, strlen(info));
-    pktSize = 16 + strlen(info);
-    crc = crc_hdlc(frame, pktSize);
-    frame[pktSize] = crc & 0xFF;
-    frame[pktSize + 1] = (crc >> 8) & 0xFF;
-    pktSize += 2;
+    putAddress(frame.data + 0, dst, dstSsid, false, false);
+    putAddress(frame.data + 7, src, srcSsid, false, true);
+    frame.data[14] = 0x03; /* UI frame           */
+    frame.data[15] = 0xf0; /* no layer 3 protocol */
 
-    return pktSize;
+    const size_t infoLen = strlen(info);
+    memcpy(frame.data + 16, info, infoLen);
+    frame.len = (uint8_t)(16 + infoLen);
+
+    return frame;
 }
 
-void printPacket(struct aprsPacket *pkt)
+} // namespace
+
+TEST_CASE("APRS packet: destination and source are unshifted", "[aprs]")
 {
-    printf("aprsPacket %p: prev=%p, next=%p, addressLen=%d, infoLen=%d\n",
-           (void *)pkt, (void *)pkt->prev, (void *)pkt->next, pkt->addressesLen,
-           pkt->infoLen);
-    printf("  ts: year=%d, month=%d, day=%d, hour=%d, minute=%d, second=%d\n",
-           pkt->ts.year, pkt->ts.month, pkt->ts.day, pkt->ts.hour,
-           pkt->ts.minute, pkt->ts.second);
-    for (uint8_t i = 0; i < pkt->addressesLen; i++) {
-        printf("  address[%d]: addr=%s, ssid=%d, commandHeard=%d\n", i,
-               pkt->addresses[i].addr, pkt->addresses[i].ssid,
-               pkt->addresses[i].commandHeard);
-    }
-    printf("  info=%s\n", pkt->info);
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ">hello");
+    aprsPacket pkt;
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(pkt.addressesLen == 2);
+    REQUIRE(strcmp(pkt.addresses[0].addr, "APRS") == 0);
+    REQUIRE(pkt.addresses[0].ssid == 0);
+    REQUIRE(strcmp(pkt.addresses[1].addr, "N2BP") == 0);
+    REQUIRE(pkt.addresses[1].ssid == 7);
+    REQUIRE(strcmp(pkt.info, ">hello") == 0);
+    REQUIRE(pkt.infoLen == 6);
 }
 
-void printPacketList(struct aprsPktList list)
+TEST_CASE("APRS packet: a single address can be read without a full parse",
+          "[aprs]")
 {
-    printf("aprsPacketList: head=%p, tail=%p, len=%ld\n", (void *)list.head,
-           (void *)list.tail, list.len);
-    for (aprsPacket *pkt = list.head; pkt; pkt = pkt->next)
-        printPacket(pkt);
+    frameData frame;
+    memset(&frame, 0, sizeof(frame));
+
+    putAddress(frame.data + 0, "APRS", 0, false, false);
+    putAddress(frame.data + 7, "N2BP", 7, false, false);
+    putAddress(frame.data + 14, "WIDE1", 1, true, true);
+    frame.data[21] = 0x03;
+    frame.data[22] = 0xf0;
+    memcpy(frame.data + 23, ">hi", 3);
+    frame.len = 26;
+
+    aprsAddress addr;
+
+    REQUIRE(aprsAddrFromFrame(frame.data, frame.len, 0, &addr) == true);
+    REQUIRE(strcmp(addr.addr, "APRS") == 0);
+
+    REQUIRE(aprsAddrFromFrame(frame.data, frame.len, 1, &addr) == true);
+    REQUIRE(strcmp(addr.addr, "N2BP") == 0);
+    REQUIRE(addr.ssid == 7);
+    REQUIRE(addr.repeated == 0);
+
+    REQUIRE(aprsAddrFromFrame(frame.data, frame.len, 2, &addr) == true);
+    REQUIRE(strcmp(addr.addr, "WIDE1") == 0);
+    REQUIRE(addr.ssid == 1);
+    REQUIRE(addr.repeated == 1);
+
+    /* Past the end of the address field, and on a frame that has none. */
+    REQUIRE(aprsAddrFromFrame(frame.data, frame.len, 3, &addr) == false);
+
+    frameData tooShort;
+    memset(&tooShort, 0, sizeof(tooShort));
+    putAddress(tooShort.data, "APRS", 0, false, true);
+    tooShort.len = 7;
+    REQUIRE(aprsAddrFromFrame(tooShort.data, tooShort.len, 0, &addr) == false);
+
+    REQUIRE(aprsAddrFromFrame(nullptr, 20, 0, &addr) == false);
+    REQUIRE(aprsAddrFromFrame(frame.data, frame.len, 0, nullptr) == false);
 }
 
-TEST_CASE("APRS packets can be created from frame data", "[aprs][packet]")
+TEST_CASE("APRS packet: address formatting follows the TNC2 convention",
+          "[aprs]")
 {
-    uint8_t frame[APRS_PACLEN];
-    size_t len;
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ">hi");
+    aprsPacket pkt;
+    char buf[APRS_ADDR_STR_LEN];
 
-    len = createFrameData(1, frame);
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
 
-    aprsPacket *pkt = aprsPktFromFrame(frame, len);
-    printPacket(pkt);
+    /* SSID 0 is left off entirely. */
+    REQUIRE(aprsAddrToStr(&pkt.addresses[0], buf, sizeof(buf)) == 4);
+    REQUIRE(strcmp(buf, "APRS") == 0);
 
-    REQUIRE(pkt->prev == NULL);
-    REQUIRE(pkt->next == NULL);
-    REQUIRE(pkt->addressesLen == 2);
-    REQUIRE(pkt->infoLen == 21);
-    REQUIRE(std::string(pkt->addresses[0].addr) == std::string("APRS"));
-    REQUIRE(pkt->addresses[0].ssid == 0);
-    REQUIRE(std::string(pkt->addresses[1].addr) == std::string("N2BP"));
-    REQUIRE(pkt->addresses[1].ssid == 9);
-    REQUIRE(std::string(pkt->info) == std::string(":N2BP     :Testing 1"));
-
-    free(pkt);
+    REQUIRE(aprsAddrToStr(&pkt.addresses[1], buf, sizeof(buf)) == 6);
+    REQUIRE(strcmp(buf, "N2BP-7") == 0);
 }
 
-TEST_CASE("APRS packet lists can be added to and deleted from",
-          "[aprs][packet]")
+TEST_CASE("APRS packet: the longest callsign-SSID pair still fits", "[aprs]")
 {
-    struct aprsPktList list;
-    struct aprsPacket *pkts[5];
-    uint8_t frame[APRS_PACLEN];
-    uint8_t i;
+    frameData frame = makeFrame("APRS", 0, "ABCDEF", 15, ">hi");
+    aprsPacket pkt;
+    char buf[APRS_ADDR_STR_LEN];
 
-    // initialize the list
-    aprsPktList_init(&list);
-    REQUIRE(list.head == NULL);
-    REQUIRE(list.tail == NULL);
-    REQUIRE(list.len == 0);
-
-    // add packets to the list
-    for (i = 0; i < 5; i++) {
-        size_t len = createFrameData(i, frame);
-        pkts[i] = aprsPktFromFrame(frame, len);
-        list = aprsPktList_insert(list, pkts[i]);
-    }
-    REQUIRE(list.head == pkts[4]);
-    REQUIRE(list.tail == pkts[0]);
-    REQUIRE(list.len == 5);
-    REQUIRE(list.head->prev == NULL);
-    REQUIRE(list.tail->next == NULL);
-
-    // move forward throught the list
-    i = 4;
-    for (aprsPacket *pkt = list.head; pkt; pkt = pkt->next)
-        REQUIRE(pkt == pkts[i--]);
-
-    // move backward throught the list
-    i = 0;
-    for (aprsPacket *pkt = list.tail; pkt; pkt = pkt->prev)
-        REQUIRE(pkt == pkts[i++]);
-
-    // delete the head
-    list = aprsPktList_delete(list, pkts[4]);
-    REQUIRE(list.head == pkts[3]);
-    REQUIRE(list.tail == pkts[0]);
-    REQUIRE(list.len == 4);
-    REQUIRE(list.head->prev == NULL);
-    REQUIRE(list.tail->next == NULL);
-
-    // delete the tail
-    list = aprsPktList_delete(list, pkts[0]);
-    REQUIRE(list.head == pkts[3]);
-    REQUIRE(list.tail == pkts[1]);
-    REQUIRE(list.len == 3);
-    REQUIRE(list.head->prev == NULL);
-    REQUIRE(list.tail->next == NULL);
-
-    // delete from middle
-    list = aprsPktList_delete(list, pkts[2]);
-    REQUIRE(list.head == pkts[3]);
-    REQUIRE(list.tail == pkts[1]);
-    REQUIRE(list.len == 2);
-    REQUIRE(list.head->prev == NULL);
-    REQUIRE(list.tail->next == NULL);
-    REQUIRE(pkts[3]->next == pkts[1]);
-    REQUIRE(pkts[1]->prev == pkts[3]);
-
-    aprsPktList_release(list);
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(aprsAddrToStr(&pkt.addresses[1], buf, sizeof(buf)) == 9);
+    REQUIRE(strcmp(buf, "ABCDEF-15") == 0);
 }
 
-TEST_CASE("APRS packet lists can be concatenated", "[aprs][packet]")
+TEST_CASE("APRS packet: digipeater path is formatted with repeat markers",
+          "[aprs]")
 {
-    struct aprsPktList list1, list2, list3;
-    uint8_t frame[APRS_PACLEN];
-    struct aprsPacket *pkts[10];
-    uint8_t i;
+    frameData frame;
+    memset(&frame, 0, sizeof(frame));
 
-    // initialize the lists
-    aprsPktList_init(&list1);
-    aprsPktList_init(&list2);
+    putAddress(frame.data + 0, "APRS", 0, false, false);
+    putAddress(frame.data + 7, "N2BP", 7, false, false);
+    putAddress(frame.data + 14, "WIDE1", 1, true, false);
+    putAddress(frame.data + 21, "WIDE2", 2, false, true);
+    frame.data[28] = 0x03;
+    frame.data[29] = 0xf0;
+    memcpy(frame.data + 30, ">hi", 3);
+    frame.len = 33;
 
-    // add packets to list1
-    for (i = 0; i < 5; i++) {
-        size_t len = createFrameData(i, frame);
-        pkts[i] = aprsPktFromFrame(frame, len);
-        list1 = aprsPktList_insert(list1, pkts[i]);
+    aprsPacket pkt;
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(pkt.addressesLen == 4);
+
+    char path[32];
+    REQUIRE(aprsPathToStr(&pkt, path, sizeof(path)) == strlen(path));
+    REQUIRE(strcmp(path, "WIDE1-1*,WIDE2-2") == 0);
+}
+
+TEST_CASE("APRS packet: a directly heard packet has an empty path", "[aprs]")
+{
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ">hi");
+    aprsPacket pkt;
+    char path[32];
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(aprsPathToStr(&pkt, path, sizeof(path)) == 0);
+    REQUIRE(path[0] == '\0');
+}
+
+TEST_CASE("APRS packet: the data type identifier is classified", "[aprs]")
+{
+    struct {
+        const char *info;
+        enum aprsType type;
+    } cases[] = {
+        { ":N2BP-7   :hi", APRS_TYPE_MESSAGE },
+        { "!4903.50N/07201.75W-", APRS_TYPE_POSITION },
+        { "=4903.50N/07201.75W-", APRS_TYPE_POSITION },
+        { "/092345z4903.50N/07201.75W>", APRS_TYPE_POSITION },
+        { "@092345z4903.50N/07201.75W>", APRS_TYPE_POSITION },
+        { ">on the air", APRS_TYPE_STATUS },
+        { ";LEADER   *092345z4903.50N/07201.75W>", APRS_TYPE_OBJECT },
+        { ")AID #2!4903.50N/07201.75W", APRS_TYPE_OBJECT },
+        { "T#005,199,000,255,073,123,01101001", APRS_TYPE_TELEMETRY },
+        { "?APRS?", APRS_TYPE_OTHER },
+    };
+
+    for (const auto &c : cases) {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, c.info);
+        aprsPacket pkt;
+
+        INFO("info field: " << c.info);
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+        REQUIRE(pkt.type == c.type);
+    }
+}
+
+TEST_CASE("APRS packet: an addressed message is split into addressee and text",
+          "[aprs]")
+{
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":W1AW     :hello there");
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(pkt.type == APRS_TYPE_MESSAGE);
+    REQUIRE(
+        aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text, sizeof(text))
+        == true);
+    REQUIRE(strcmp(addressee, "W1AW") == 0);
+    REQUIRE(strcmp(text, "hello there") == 0);
+}
+
+TEST_CASE("APRS packet: the acknowledgement sequence is stripped", "[aprs]")
+{
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":W1AW     :ping{042");
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(
+        aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text, sizeof(text))
+        == true);
+    REQUIRE(strcmp(addressee, "W1AW") == 0);
+    REQUIRE(strcmp(text, "ping") == 0);
+}
+
+TEST_CASE("APRS packet: a full-width addressee keeps every character", "[aprs]")
+{
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":ABCDEF-15:x");
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(
+        aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text, sizeof(text))
+        == true);
+    REQUIRE(strcmp(addressee, "ABCDEF-15") == 0);
+    REQUIRE(strcmp(text, "x") == 0);
+}
+
+TEST_CASE("APRS packet: an empty message body unwraps to an empty string",
+          "[aprs]")
+{
+    frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":W1AW     :");
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+    REQUIRE(
+        aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text, sizeof(text))
+        == true);
+    REQUIRE(strcmp(addressee, "W1AW") == 0);
+    REQUIRE(text[0] == '\0');
+}
+
+TEST_CASE("APRS packet: unwrapping rejects info fields that only look like "
+          "messages",
+          "[aprs]")
+{
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    SECTION("no separator at the fixed offset")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":not a message");
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+        REQUIRE(pkt.type == APRS_TYPE_MESSAGE);
+        REQUIRE(aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text,
+                              sizeof(text))
+                == false);
     }
 
-    // add packets to list2
-    for (; i < 10; i++) {
-        size_t len = createFrameData(i, frame);
-        pkts[i] = aprsPktFromFrame(frame, len);
-        list2 = aprsPktList_insert(list2, pkts[i]);
+    SECTION("too short to hold an addressee")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":W1AW");
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+        REQUIRE(aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text,
+                              sizeof(text))
+                == false);
     }
 
-    list3 = aprsPktList_concat(list1, list2);
-    // result should be [4, 3, 2, 1, 0, 9, 8, 7, 6, 5]
-    printPacketList(list3);
-
-    REQUIRE(list3.head->prev == NULL);
-    REQUIRE(list3.tail->next == NULL);
-
-    // move forward throught the list
-    i = 4;
-    for (aprsPacket *pkt = list3.head; pkt; pkt = pkt->next) {
-        REQUIRE(pkt == pkts[i]);
-        i = (i == 0) ? 9 : i - 1;
+    SECTION("blank addressee")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, ":         :hi");
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+        REQUIRE(aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text,
+                              sizeof(text))
+                == false);
     }
 
-    // move backward throught the list
-    i = 5;
-    for (aprsPacket *pkt = list3.tail; pkt; pkt = pkt->prev) {
-        REQUIRE(pkt == pkts[i]);
-        i = (i == 9) ? 0 : i + 1;
+    SECTION("not a message at all")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, ">status text");
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == true);
+        REQUIRE(aprsMsgUnwrap(&pkt, addressee, sizeof(addressee), text,
+                              sizeof(text))
+                == false);
+    }
+}
+
+TEST_CASE("APRS packet: malformed frames are rejected", "[aprs]")
+{
+    aprsPacket pkt;
+
+    SECTION("too short for two addresses")
+    {
+        frameData frame;
+        memset(&frame, 0, sizeof(frame));
+        putAddress(frame.data, "APRS", 0, false, true);
+        frame.len = 7;
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == false);
     }
 
-    aprsPktList_release(list3);
+    SECTION("address field is never terminated")
+    {
+        frameData frame;
+        memset(&frame, 0, sizeof(frame));
+        for (uint8_t i = 0; i < 4; i++)
+            putAddress(frame.data + i * 7, "NOEND", 0, false, false);
+        frame.len = 30;
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == false);
+    }
+
+    SECTION("more addresses than AX.25 allows")
+    {
+        frameData frame;
+        memset(&frame, 0, sizeof(frame));
+        for (uint8_t i = 0; i < APRS_MAX_ADDRESSES + 1; i++)
+            putAddress(frame.data + i * 7, "RELAY", 0, false, false);
+        frame.len = (uint8_t)(7 * (APRS_MAX_ADDRESSES + 1));
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == false);
+    }
+
+    SECTION("no room left for an info field")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, "");
+        REQUIRE(frame.len == 16);
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, &pkt) == false);
+    }
+
+    SECTION("null arguments")
+    {
+        frameData frame = makeFrame("APRS", 0, "N2BP", 7, ">hi");
+        REQUIRE(aprsPktFromFrame(nullptr, 20, &pkt) == false);
+        REQUIRE(aprsPktFromFrame(frame.data, frame.len, nullptr) == false);
+    }
 }
