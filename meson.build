@@ -1305,6 +1305,18 @@ messages_test = executable('messages_test',
                              'c_args'   : linux_c_args + messages_test_defs,
                              'cpp_args' : linux_cpp_args + messages_test_defs})
 
+aprs_source_test = executable('aprs_source_test',
+                              sources : ['openrtx/src/core/messages.c',
+                                         'openrtx/src/core/aprs_msg.cpp',
+                                         'openrtx/src/protocols/APRS/packet.c',
+                                         'tests/unit/rtx_packet_stub.cpp',
+                                         'tests/unit/aprs_source_stubs.cpp',
+                                         'tests/unit/aprs_source_test.cpp'],
+                              kwargs  : unit_test_opts + {
+                                'c_args'   : linux_c_args + messages_test_defs,
+                                'cpp_args' : linux_cpp_args + messages_test_defs})
+test('APRS Source Test', aprs_source_test)
+
 m17_sms_test = executable('m17_sms_test',
                           sources : ['openrtx/src/core/messages.c',
                                      'tests/unit/rtx_packet_stub.cpp',
