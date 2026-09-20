@@ -80,6 +80,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/APRS/Slicer.cpp',
                'openrtx/src/protocols/APRS/FrameDecoder.cpp',
                'openrtx/src/protocols/APRS/Demodulator.cpp',
+               'openrtx/src/protocols/APRS/Modulator.cpp',
                'openrtx/src/protocols/APRS/packet.c']
 
 openrtx_inc = ['openrtx/include', 'platform']
@@ -1275,6 +1276,11 @@ aprs_test = executable('aprs-test',
                        sources : unit_test_src + ['tests/unit/APRS.cpp'],
                        kwargs  : unit_test_opts)
 
+aprs_modulator_test = executable('aprs_modulator_test',
+                                 sources : unit_test_src
+                                           + ['tests/unit/APRS_modulator.cpp'],
+                                 kwargs  : unit_test_opts)
+
 slip_test = executable('slip_test',
                       sources : unit_test_src + ['tests/unit/slip.cpp'],
                       kwargs  : unit_test_opts)
@@ -1322,6 +1328,7 @@ test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
 test('APRS Packet Test', aprs_packet_test)
 test('APRS Test', aprs_test)
+test('APRS Modulator Test', aprs_modulator_test)
 test('Slip Test', slip_test)
 test('Messages Test', messages_test)
 test('M17 SMS Source Test', m17_sms_test)
