@@ -49,7 +49,7 @@ ENTRY(_Z13Reset_Handlerv)
 /* specify the memory areas  */
 MEMORY
 {
-    flash(rx)   : ORIGIN = 0x08100000, LENGTH = 1M
+    flash(rx)   : ORIGIN = 0x08000000, LENGTH = 2M
 
     /* Main general-purpose RAM */
     ram(wx)     : ORIGIN = 0x24000200, LENGTH =  512K-0x200
@@ -154,6 +154,14 @@ SECTIONS
     } > ram AT > flash
     _etext = LOADADDR(.data);
 
+    /*
+     * The DMR AMBE vocoder occupies a fixed region of bank 1, installed from
+     * the user's donor firmware by the separate DMR installer. Only the address
+     * is pinned here; no bytes are emitted.
+     */
+    _ambe_blob_start = 0x0807537C;
+    _ambe_blob_end   = 0x080BDF2C;      /* start + 0x48BB0 */
+
     /* .bss section: uninitialized global variables go to ram */
     _bss_start = .;
     .bss :
@@ -175,3 +183,11 @@ SECTIONS
         *(.usb_ram.*)
     } > usb_ram
 }
+
+/*
+ * The codec starts inside flash sector 3 (128 kB sectors, 0x08060000). Keep the
+ * image below that sector, or flashing OpenRTX alone would erase the codec's
+ * first bytes along with it.
+ */
+ASSERT(_etext + SIZEOF(.data) <= 0x08060000,
+       "OpenRTX image reaches the flash sector holding the DMR AMBE codec")
