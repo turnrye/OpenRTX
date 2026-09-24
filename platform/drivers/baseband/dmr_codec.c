@@ -20,6 +20,7 @@
 
 #include "dmr_codec.h"
 #include "core/dmr_debug.h"
+#include <pthread.h>
 #include <string.h>
 
 /*
@@ -365,20 +366,25 @@ static int16_t pcmPeak(const int16_t *pcm)
     return peak;
 }
 
-void dmr_codec_selfTest(void)
+/**
+ * The self-test proper, run on its own thread by dmr_codec_selfTest().
+ */
+static void *selfTestThread(void *arg)
 {
+    (void) arg;
+
     if(dmr_codec_available() == false)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: not installed (no donor blob at "
                      "0x%08lX)", (unsigned long) AMBE_BLOB_BASE);
-        return;
+        return NULL;
     }
 
     dmrDebug_log(DMR_DBG_INFO, "codec: blob present, self-test start");
     if(dmr_codec_init() == false)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: init failed");
-        return;
+        return NULL;
     }
     dmrDebug_log(DMR_DBG_INFO, "codec: init ok");
 
@@ -391,7 +397,7 @@ void dmr_codec_selfTest(void)
     {
         dmrDebug_log(DMR_DBG_INFO, "codec: encode gated off (TX ABI unverified), "
                      "decode-only self-test done");
-        return;
+        return NULL;
     }
 
     /*
@@ -417,4 +423,28 @@ void dmr_codec_selfTest(void)
     dmr_codec_decode(selfTestOut, frame);
     dmrDebug_log(DMR_DBG_INFO, "codec: self-test done, round-trip peak %d",
                  pcmPeak(selfTestOut));
+    return NULL;
+}
+
+/*
+ * Stack for the self-test thread. The encoder alone needs about 4 kB of stack,
+ * more than the thread serving the debug tap has to spare.
+ */
+#define SELFTEST_STACK_SIZE 8192
+
+void dmr_codec_selfTest(void)
+{
+    pthread_attr_t attr;
+    pthread_t      thread;
+
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, SELFTEST_STACK_SIZE);
+
+    if(pthread_create(&thread, &attr, selfTestThread, NULL) != 0)
+    {
+        dmrDebug_log(DMR_DBG_INFO, "codec: cannot start the self-test thread");
+        return;
+    }
+
+    pthread_join(thread, NULL);
 }
