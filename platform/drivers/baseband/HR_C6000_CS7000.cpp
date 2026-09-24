@@ -148,7 +148,56 @@ void HR_Cx000< M >::setModOffset(const uint16_t offset)
 template< class M >
 void HR_Cx000< M >::dmrMode()
 {
+    /*
+     * DMR direct mode, following the order in which the Connect Systems
+     * firmware loads a digital channel (reference: function at 0x0804BE90).
+     * The settings only needed to transmit - modulation amplitude and bias,
+     * PA ramp and own ID - are left to the transmit path.
+     */
+    writeReg(M::CONFIG, 0x20, 0x00);  // Local access policy
+    writeReg(M::CONFIG, 0x21, 0x01);  // Clear the vocoder decoding buffer
+    writeReg(M::CONFIG, 0x21, 0x02);  // Clear the vocoder encoding buffer
+    writeReg(M::CONFIG, 0x22, 0x16);  // Polite to all
+    writeReg(M::CONFIG, 0x22, 0x46);  // Polite to all
+    writeReg(M::CONFIG, 0x40, 0x03);  // Decode mode = non test mode
+    writeReg(M::CONFIG, 0x41, 0x20);  // SyncFail = 1, search for sync again
+    writeReg(M::CONFIG, 0x41, 0x00);  // SyncFail = 0
+    writeReg(M::CONFIG, 0x41, 0x40);  // Receive the upcoming time slot
+    writeReg(M::CONFIG, 0x40, 0x43);  // RxEn = 1, receive synchronization active
+    writeReg(M::CONFIG, 0xE0, 0x8B);  // CPU controls the codec, LineOut2, Mic_p, I2S slave
+    writeReg(M::CONFIG, 0x11, 0x80);  // LocalChanMode = 1
+    writeReg(M::CONFIG, 0xA1, 0x00);  // No FM tone modulation
 
+    writeReg(M::CONFIG, 0x00, 0x3F);  // Reset DMR and physical layer
+    writeReg(M::CONFIG, 0x35, 0x20);  // Deviation coefficient
+    writeReg(M::CONFIG, 0x3E, 0x06);  // Receiving end frequency offset coefficient
+    writeReg(M::CONFIG, 0x34, 0xA0);  // Receive filtering for DMR
+    writeReg(M::CONFIG, 0x3F, 0x04);  // Limiting modulation coefficient
+
+    // Frame sync pattern, MS sourced data
+    writeReg(M::AUX,    0x04, 0xD5);
+    writeReg(M::AUX,    0x05, 0xD7);
+    writeReg(M::AUX,    0x06, 0xF7);
+    writeReg(M::AUX,    0x07, 0x7F);
+    writeReg(M::AUX,    0x08, 0xD7);
+    writeReg(M::AUX,    0x09, 0x57);
+
+    writeReg(M::CONFIG, 0x10, 0x6A);  // DMR, direct mode
+    writeReg(M::CONFIG, 0x5F, 0xC0);  // Frame sync detection for direct mode
+    writeReg(M::CONFIG, 0x81, 0xFF);  // InterClass1Mask, all interrupts enabled
+
+    writeReg(M::CONFIG, 0x40, 0x03);  // Decode mode = non test mode
+    writeReg(M::CONFIG, 0x41, 0x20);  // SyncFail = 1, search for sync again
+    writeReg(M::CONFIG, 0x41, 0x00);  // SyncFail = 0
+    writeReg(M::CONFIG, 0x41, 0x40);  // Receive the upcoming time slot
+    writeReg(M::CONFIG, 0x40, 0x43);  // RxEn = 1, receive synchronization active
+
+    writeReg(M::AUX,    0x24, 0x00);  // Undocumented register
+    writeReg(M::AUX,    0x25, 0x00);  // Undocumented register
+    writeReg(M::AUX,    0x26, 0x00);  // Undocumented register
+    writeReg(M::AUX,    0x27, 0x00);  // Undocumented register
+    writeReg(M::CONFIG, 0x64, 0x10);  // Undocumented register
+    writeReg(M::CONFIG, 0x26, 0xFE);  // Undocumented register, disable FM audio output
 }
 
 template< class M >
