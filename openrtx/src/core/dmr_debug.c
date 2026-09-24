@@ -17,6 +17,8 @@
 
 #if defined(PLATFORM_LINUX)
 #include <unistd.h>
+#elif defined(CONFIG_USB_SERIAL)
+#include "interfaces/usb_serial.h"
 #else
 #include "drivers/usb_vcom.h"
 #endif
@@ -85,6 +87,9 @@ static void tapWrite(const void *data, const size_t len)
 #if defined(PLATFORM_LINUX)
     ssize_t ret = write(STDOUT_FILENO, data, len);
     (void) ret;
+#elif defined(CONFIG_USB_SERIAL)
+    ssize_t ret = usb_serial_write(data, len);
+    (void) ret;
 #else
     vcom_writeBlock(data, len);
 #endif
@@ -134,7 +139,11 @@ static void tapPollCommands()
 {
 #if !defined(PLATFORM_LINUX)
     uint8_t cmd[8];
+#if defined(CONFIG_USB_SERIAL)
+    ssize_t num = usb_serial_read(cmd, sizeof(cmd));
+#else
     ssize_t num = vcom_readBlock(cmd, sizeof(cmd));
+#endif
 
     for(ssize_t i = 0; i < num; i++)
     {
