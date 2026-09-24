@@ -230,6 +230,10 @@ void radio_setOpmode(const enum opmode mode)
             C6000.setModFactor(0x25);
             break;
 
+        case OPMODE_DMR:
+            C6000.dmrMode();            // HR_C6000 in DMR direct mode
+            break;
+
         default:
             break;
     }
@@ -286,9 +290,13 @@ void radio_enableRx()
     // Enable RX LNA and first IF stage
     gpioDev_set(RX_PWR_EN);
 
-    // Configure FM detector
+    // Configure FM detector. DMR gets a narrower IF filter, as in the stock
+    // firmware.
     AK2365A_init(&detector);
-    AK2365A_setFilterBandwidth(&detector, AK2365A_BPF_6);
+    if(config->opMode == OPMODE_DMR)
+        AK2365A_setFilterBandwidth(&detector, AK2365A_BPF_4p5);
+    else
+        AK2365A_setFilterBandwidth(&detector, AK2365A_BPF_6);
 
     // Start sampling of CTCSS signal, if enabled
     if((config->opMode == OPMODE_FM) && (config->rxToneEn == true))
