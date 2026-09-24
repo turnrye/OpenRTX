@@ -302,6 +302,11 @@ void radio_enableTx()
     if(config->txDisable == 1)
         return;
 
+    // DMR transmission is not brought up on this radio yet: without its
+    // modulation setup, keying would put out a bare carrier.
+    if(config->opMode == OPMODE_DMR)
+        return;
+
     gpioDev_clear(RX_PWR_EN);   // Disable RX LNA
     gpioDev_set(RF_APC_SW);     // APC/TV in power control mode
     gpioDev_clear(VCOVCC_SW);   // Enable TX VCO
