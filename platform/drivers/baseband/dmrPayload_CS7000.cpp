@@ -26,8 +26,10 @@
 
 /**
  * Bring up the voice payload bus. PB3 and PB4 come out of reset as JTAG pins,
- * so all three are explicitly given to SPI1. The chip wants the clock idle high
- * and data sampled on the falling edge, as on the MD-UV3x0.
+ * so all three are explicitly given to SPI1. The bus runs as the stock firmware
+ * drives it: SPI mode 1 (clock idle low, data sampled on the falling edge) at
+ * well under 1MHz, which still moves a burst's payload in a fraction of a
+ * slot.
  */
 void dmrPayload_init()
 {
@@ -37,7 +39,7 @@ void dmrPayload_init()
     gpio_setMode(VOC_CS,   OUTPUT);
     gpio_setPin(VOC_CS);        // Chip select idle high
 
-    spiStm32_init(&voc_spi, 6000000, SPI_FLAG_CPOL);
+    spiStm32_init(&voc_spi, 1000000, SPI_FLAG_CPHA);
 }
 
 void dmrPayload_terminate()
@@ -55,7 +57,7 @@ void dmrPayload_read(uint8_t *payload)
     uint8_t tx[2 + DMR_PAYLOAD_LENGTH];
     uint8_t rx[2 + DMR_PAYLOAD_LENGTH];
 
-    memset(tx, 0, sizeof(tx));
+    memset(tx, 0xFF, sizeof(tx));     // Dummy bytes, as the stock firmware
     tx[0] = VP_PAGE_READ;
     tx[1] = VP_REGISTER;
 
