@@ -101,10 +101,17 @@ void HR_Cx000< C6000_SpiOpModes >::setInputGain(int8_t value)
     writeReg(C6000_SpiOpModes::CONFIG, 0xE4, regValue);
 }
 
+/*
+ * Raised while a thread holds the control bus, so that interrupt-context
+ * accesses, which cannot take the bus mutex, can stay off it.
+ */
+static volatile bool busActiveFlag = false;
+
 ScopedChipSelect::ScopedChipSelect(const struct spiDevice *spi,
                                    const struct gpioPin& cs) : spi(spi), cs(cs)
 {
     spi_acquire(spi);
+    busActiveFlag = true;
     gpioPin_clear(&cs);
 }
 
@@ -116,7 +123,13 @@ ScopedChipSelect::~ScopedChipSelect()
     delayUs(2);
     gpioPin_set(&cs);
     delayUs(2);
+    busActiveFlag = false;
     spi_release(spi);
+}
+
+bool ScopedChipSelect::busActive()
+{
+    return busActiveFlag;
 }
 
 FmConfig operator |(FmConfig lhs, FmConfig rhs)

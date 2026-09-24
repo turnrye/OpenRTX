@@ -292,6 +292,15 @@ public:
      */
     ~ScopedChipSelect();
 
+    /**
+     * Tell whether a thread currently holds the "user" SPI bus. Interrupt
+     * handlers accessing the chip directly, which cannot take the bus mutex,
+     * must stay off the bus while this is true.
+     *
+     * @return true if a transaction is in progress.
+     */
+    static bool busActive();
+
 private:
     const struct spiDevice *spi;
     const struct gpioPin& cs;
