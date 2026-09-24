@@ -226,7 +226,6 @@ platform/drivers/baseband/dmrPayload.h
 platform/drivers/baseband/dmrPayload_UV3x0.cpp
 platform/drivers/baseband/dmrPayload_CS7000.cpp
 platform/drivers/baseband/dmrIrq_CS7000.cpp
-platform/drivers/baseband/dmr_CS7000.cpp
 platform/drivers/baseband/dmr_C6000.cpp
 platform/drivers/baseband/dmr_codec.c
 platform/drivers/baseband/dmr_codec.h
