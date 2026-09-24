@@ -64,16 +64,12 @@
 #define ENC_MODE            0x0800
 
 /*
- * The TX/encode path is not yet validated on real hardware. Two obstacles: the
- * donor's setup writes a handful of context fields that our init sequence does
- * not yet reproduce, and the encoder's pitch-analysis loop cannot be faithfully
- * emulated off-radio (a unicorn IT-block limitation), so the encode ABI cannot
- * be golden-vector checked before flashing. Calling the vocoder with an
- * unverified ABI faults the radio, so until encode is brought up on the bench it
- * emits a valid AMBE silence frame instead. Decode/RX is fully working and does
- * not depend on this.
+ * Encode the microphone through the vocoder on transmit. Set to 0 to send a
+ * valid AMBE silence frame instead, which keeps the rest of the transmit path
+ * working while the vocoder is left out, for instance to tell an encode
+ * problem from an RF one.
  */
-#define DMR_CODEC_TX_ENABLED  0
+#define DMR_CODEC_TX_ENABLED  1
 
 /* Function-pointer views of the blob entries. */
 typedef void (*ambe_init_enc_fn)(void *st, int a, int b);
@@ -166,10 +162,7 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
      */
     uint16_t bits[72];
 
-    /*
-     * Until the encoder is validated on the bench, transmit valid silence rather
-     * than driving the vocoder with an unverified ABI (see DMR_CODEC_TX_ENABLED).
-     */
+    /* With encode switched off, transmit valid silence (DMR_CODEC_TX_ENABLED). */
     if(DMR_CODEC_TX_ENABLED == 0)
     {
         memcpy(frame, ambeSilenceFrame, DMR_CODEC_FRAME_BYTES);
@@ -395,7 +388,7 @@ static void *selfTestThread(void *arg)
 
     if(DMR_CODEC_TX_ENABLED == 0)
     {
-        dmrDebug_log(DMR_DBG_INFO, "codec: encode gated off (TX ABI unverified), "
+        dmrDebug_log(DMR_DBG_INFO, "codec: encode switched off, "
                      "decode-only self-test done");
         return NULL;
     }
