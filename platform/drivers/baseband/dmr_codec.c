@@ -57,12 +57,10 @@
 #define DEC_MODE_PRIME      8
 
 /*
- * Half-frame mode words passed to the encoder for the two 80-sample halves,
- * recovered from the donor's own encode driver: the first half is the literal
- * 0x800, the second half takes the value the setup leaves in the context (0).
+ * Mode word passed to the encoder for both 80-sample halves of a frame, as the
+ * donor's own encode driver does once its setup has run.
  */
-#define ENC_MODE_HALF0      0x0800
-#define ENC_MODE_HALF1      0x0000
+#define ENC_MODE            0x0800
 
 /*
  * The TX/encode path is not yet validated on real hardware. Two obstacles: the
@@ -94,7 +92,7 @@ typedef void (*ambe_setstats_fn)(void *st, void *stats);
 
 static uint8_t encState[ENC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t decState[DEC_STATE_SIZE] __attribute__((aligned(4)));
-static uint8_t eccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
+static uint8_t encEccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t decEccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t fecStats[FEC_STATS_SIZE] __attribute__((aligned(4)));
 static bool    ready = false;
@@ -114,17 +112,19 @@ bool dmr_codec_init(void)
 
     memset(encState, 0, sizeof(encState));
     memset(decState, 0, sizeof(decState));
-    memset(eccState, 0, sizeof(eccState));
+    memset(encEccState, 0, sizeof(encEccState));
     memset(decEccState, 0, sizeof(decEccState));
 
     /*
      * The donor firmware's setup runs this exact sequence before the first
-     * encode/decode: bulk-init the encoder, the decoder and the decoder's FEC
-     * state, then apply the fixed configuration and prime the decoder once.
-     * The parameters are the constants the donor uses; they are rate/scale
-     * settings, not codec data.
+     * encode/decode: bulk-init the encoder, the decoder and their FEC states,
+     * then apply the fixed configuration and prime the decoder once. The
+     * parameters are the constants the donor uses; they are rate/scale
+     * settings, not codec data. An FEC state which was never initialised
+     * leaves the encoder's output unprotected.
      */
     ((ambe_init_enc_fn) AMBE_INIT_ENC)(encState, 1, 1);
+    ((ambe_ecc_init_fn) AMBE_ECC_INIT)(encEccState, 1);
     ((ambe_init_dec_fn) AMBE_INIT_DEC)(decState, 1);
     ((ambe_ecc_init_fn) AMBE_ECC_INIT)(decEccState, 1);
     ((ambe_cfg_enc_fn)  AMBE_CFG_ENC )(encState, -22, 20, -10, -40, 0x4000,
@@ -159,7 +159,11 @@ static const uint8_t ambeSilenceFrame[DMR_CODEC_FRAME_BYTES] =
 void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
                       const int16_t pcm[DMR_CODEC_PCM_SAMPLES])
 {
-    uint8_t bits[72];
+    /*
+     * One bit per 16-bit word: the encoder leaves the 49 parameter bits here and
+     * the FEC stage expands them in place to the 72 protected on-air bits.
+     */
+    uint16_t bits[72];
 
     /*
      * Until the encoder is validated on the bench, transmit valid silence rather
@@ -180,16 +184,16 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
 
     /*
      * A 20 ms frame is encoded in two 80-sample halves, then protected. The
-     * encoder keeps the pitch history in its state across the two calls; the
-     * mode word and the half flag distinguish them. NOTE: the exact wave
-     * pointer handling for the two halves is confirmed on-radio by the
-     * golden-vector loopback before any voice test.
+     * encoder keeps the pitch history in its state across the two calls and
+     * writes the frame's parameter bits on the second one; the half flag tells
+     * them apart. The FEC stage copies its input before writing, so it runs in
+     * place.
      */
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE_HALF0, 0,
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) pcm, 80, ENC_MODE, 0,
                                    0x2000, encState);
-    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80,
-                                   ENC_MODE_HALF1, 1, 0x2000, encState);
-    ((ambe_ecc_fn) AMBE_ENCODE_ECC)(bits, bits, 0, eccState);
+    ((ambe_encode_fn) AMBE_ENCODE)(bits, 0, (void *) (pcm + 80), 80, ENC_MODE,
+                                   1, 0x2000, encState);
+    ((ambe_ecc_fn) AMBE_ENCODE_ECC)(bits, bits, 0, encEccState);
 
     /* Pack the 72 protected bits MSB first into the 9-byte AMBE frame. */
     for(int i = 0; i < 72; i++)
