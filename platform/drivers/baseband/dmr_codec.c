@@ -39,11 +39,22 @@
 #define AMBE_ENCODE         THUMB(0x080754ACu)  /* one 80-sample encode half       */
 #define AMBE_ENCODE_ECC     THUMB(0x08075864u)  /* add FEC to the 72-bit frame     */
 #define AMBE_DECODE         THUMB(0x08075954u)  /* one 80-sample decode half       */
+#define AMBE_ECC_INIT       THUMB(0x08075848u)  /* init an FEC state (buf,1)       */
+#define AMBE_FEC_DEC        THUMB(0x08075EE0u)  /* 72 on-air bits -> 49, status    */
+#define AMBE_FEC_STATS      THUMB(0x080763DCu)  /* read the FEC error statistics   */
+#define AMBE_DEC_SETSTATS   THUMB(0x0807591Cu)  /* feed them to the decoder        */
 
 /* State buffer sizes, from the donor init routines' clear/write extents. */
 #define ENC_STATE_SIZE      0x2000
 #define DEC_STATE_SIZE      0x07EC
 #define ECC_STATE_SIZE      0x0100
+#define FEC_STATS_SIZE      0x0034
+
+/*
+ * Decode mode word of the priming call the donor makes once after setup, which
+ * leaves the decoder in its idle state before the first real frame.
+ */
+#define DEC_MODE_PRIME      8
 
 /*
  * Half-frame mode words passed to the encoder for the two 80-sample halves,
@@ -76,10 +87,16 @@ typedef void (*ambe_encode_fn)(void *bits, int, void *wave, int count, int mode,
 typedef void (*ambe_ecc_fn)(void *bits, void *bits2, int zero, void *ecc);
 typedef void (*ambe_decode_fn)(void *wave, int count, void *bits, int, int,
                                int half, void *st);
+typedef int  (*ambe_ecc_init_fn)(void *ecc, int a);
+typedef int  (*ambe_fec_dec_fn)(void *out, int, void *in, int, int, void *ecc);
+typedef void (*ambe_fec_stats_fn)(void *stats, void *ecc);
+typedef void (*ambe_setstats_fn)(void *st, void *stats);
 
 static uint8_t encState[ENC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t decState[DEC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t eccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
+static uint8_t decEccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
+static uint8_t fecStats[FEC_STATS_SIZE] __attribute__((aligned(4)));
 static bool    ready = false;
 
 bool dmr_codec_available(void)
@@ -98,19 +115,28 @@ bool dmr_codec_init(void)
     memset(encState, 0, sizeof(encState));
     memset(decState, 0, sizeof(decState));
     memset(eccState, 0, sizeof(eccState));
+    memset(decEccState, 0, sizeof(decEccState));
 
     /*
      * The donor firmware's setup runs this exact sequence before the first
-     * encode/decode: bulk-init the encoder and decoder state, then apply the
-     * fixed configuration. The parameters are the constants the donor uses;
-     * they are rate/scale settings, not codec data.
+     * encode/decode: bulk-init the encoder, the decoder and the decoder's FEC
+     * state, then apply the fixed configuration and prime the decoder once.
+     * The parameters are the constants the donor uses; they are rate/scale
+     * settings, not codec data.
      */
     ((ambe_init_enc_fn) AMBE_INIT_ENC)(encState, 1, 1);
     ((ambe_init_dec_fn) AMBE_INIT_DEC)(decState, 1);
+    ((ambe_ecc_init_fn) AMBE_ECC_INIT)(decEccState, 1);
     ((ambe_cfg_enc_fn)  AMBE_CFG_ENC )(encState, -22, 20, -10, -40, 0x4000,
                                        0xCCC, 0xCCC, 0x51E, 10, 20);
     ((ambe_cfg_fn)      AMBE_CFG_A   )(encState, 0x80, -20);
     ((ambe_cfg_fn)      AMBE_CFG_B   )(decState, 0x80, -20);
+
+    int16_t  primePcm[DMR_CODEC_PCM_SAMPLES / 2];
+    uint16_t primeBits[49];
+    memset(primeBits, 0, sizeof(primeBits));
+    ((ambe_decode_fn) AMBE_DECODE)(primePcm, 0x50, primeBits, 0,
+                                   DEC_MODE_PRIME, 0, decState);
 
     ready = true;
     return true;
@@ -175,10 +201,10 @@ void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
 
 /*
  * The DMR AMBE de-interleave. The 72 on-air bits of a frame are scattered into
- * the four codewords (a flat [4][24] buffer) by these fixed position tables,
- * then the second codeword is de-scrambled and the frame is repacked into the
- * 49 parameter bits the vocoder decodes. This is the standard DMR AMBE frame
- * layout; the decoder cannot use the raw frame directly.
+ * the four codewords (a flat [4][24] buffer) by these fixed position tables.
+ * This is the standard DMR AMBE frame layout. The decoder does its own
+ * de-interleave and error correction; these tables are only used to look at
+ * codeword 0 when telling voice from noise.
  */
 static const uint8_t ambeDeintA[36] =
 {
@@ -190,57 +216,6 @@ static const uint8_t ambeDeintB[36] =
      5, 51,  4, 50,  3, 49,  2, 48,  1, 85,  0, 84, 46, 83, 45, 82, 44, 81,
     43, 80, 42, 79, 41, 78, 40, 77, 39, 76, 38, 75, 37, 74, 36, 73, 35, 72
 };
-
-/**
- * Turn a 9-byte on-air AMBE frame into the 49-bit parameter buffer the vocoder
- * decodes. De-interleave into four codewords, de-scramble the second one with a
- * PRNG seeded from the first, then repack. Error correction on the two protected
- * codewords is not applied here; a clean frame needs none.
- */
-static void ambeInitFrame(const uint8_t *frame, uint16_t bits[49])
-{
-    uint8_t cw[96];
-    memset(cw, 0, sizeof(cw));
-
-    int pos = 0;
-    for(int i = 0; i < 9; i++)
-    {
-        for(int j = 7; j > 0; j -= 2)
-        {
-            cw[ambeDeintA[pos]] = (frame[i] >> j)       & 1;
-            cw[ambeDeintB[pos]] = (frame[i] >> (j - 1)) & 1;
-            pos++;
-        }
-    }
-
-    uint8_t *c0 = cw;         /* codeword 0 */
-    uint8_t *c1 = cw + 24;    /* codeword 1, scrambled */
-    uint8_t *c2 = cw + 48;    /* codeword 2 */
-    uint8_t *c3 = cw + 72;    /* codeword 3 */
-
-    /* De-scramble c1 with a PRNG seeded from c0's high bits. */
-    uint32_t seed = 0;
-    for(int i = 23; i >= 12; i--)
-        seed = (seed << 1) | c0[i];
-
-    uint16_t prng[24];
-    uint32_t p = (seed << 4) & 0xFFFF;
-    prng[0] = (uint16_t) p;
-    for(int i = 0; i < 23; i++)
-    {
-        p = (0xAD * p + 0x3619) & 0xFFFF;
-        prng[i + 1] = (uint16_t) p;
-    }
-    for(int i = 0; i < 23; i++)
-        c1[i] ^= (prng[23 - i] >> 15) & 1;
-
-    /* Repack into the 49 parameter bits (c3, c2, c1, c0 order). */
-    int o = 48;
-    for(int i = 0;  i < 14; i++) bits[o--] = c3[i];
-    for(int i = 0;  i < 11; i++) bits[o--] = c2[i];
-    for(int i = 11; i < 23; i++) bits[o--] = c1[i];
-    for(int i = 12; i < 24; i++) bits[o--] = c0[i];
-}
 
 /*
  * Golay(23,12) syndrome of a 23-bit codeword, generator 0xC75. Zero for a valid
@@ -333,17 +308,31 @@ bool dmr_codec_frameIsVoice(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
                       const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 {
-    uint16_t bits[49];
+    uint16_t bits[72];
 
     memset(pcm, 0, DMR_CODEC_PCM_SAMPLES * sizeof(int16_t));
     if(ready == false)
         return;
 
-    ambeInitFrame(frame, bits);
+    /* One on-air bit per word, MSB first, as the donor feeds its decoder. */
+    for(int i = 0; i < 72; i++)
+        bits[i] = (frame[i >> 3] >> (7 - (i & 7))) & 1;
+
+    /*
+     * De-interleave, de-scramble and correct the frame in place, leaving the 49
+     * parameter bits. The returned status tells the decoder how damaged the
+     * frame was, so it can repeat or mute it; the error statistics feed the
+     * decoder's own concealment.
+     */
+    int status = ((ambe_fec_dec_fn) AMBE_FEC_DEC)(bits, 0, bits, 1, 0,
+                                                  decEccState) & 0xFFFF;
+    ((ambe_fec_stats_fn) AMBE_FEC_STATS)(fecStats, decEccState);
+    ((ambe_setstats_fn)  AMBE_DEC_SETSTATS)(decState, fecStats);
 
     /* Two 80-sample halves per frame, decoder state carried across the pair. */
-    ((ambe_decode_fn) AMBE_DECODE)(pcm, 0x50, bits, 0, 0, 0, decState);
-    ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, 0, 1, decState);
+    ((ambe_decode_fn) AMBE_DECODE)(pcm, 0x50, bits, 0, status, 0, decState);
+    ((ambe_decode_fn) AMBE_DECODE)(pcm + 80, 0x50, bits, 0, status, 1,
+                                   decState);
 }
 
 /* One cycle of a 1 kHz tone sampled at 8 kHz, the encode test input. */
