@@ -462,7 +462,8 @@ mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/drivers/baseband/AT1846S_UV3x0.cpp',
                'platform/drivers/baseband/HR_C6000_UV3x0.cpp',
                'platform/drivers/baseband/dmrIrq_UV3x0.cpp',
-               'platform/drivers/baseband/dmr_UV3x0.cpp',
+               'platform/drivers/baseband/dmrPayload_UV3x0.cpp',
+               'platform/drivers/baseband/dmr_C6000.cpp',
                'platform/drivers/baseband/dmr_codec.c',
                'platform/drivers/baseband/dmr_audio.c']
 

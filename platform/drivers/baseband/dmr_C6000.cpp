@@ -6,13 +6,11 @@
 
 #include "interfaces/delays.h"
 #include "core/dmr_debug.h"
-#include "drivers/SPI/spi_stm32.h"
-#include "peripherals/gpio.h"
-#include "peripherals/spi.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
 #include "dmr_audio.h"
+#include "dmrPayload.h"
 #include "protocols/DMR/LinkControl.h"
 #include <string.h>
 
@@ -31,15 +29,9 @@
 
 /*
  * The voice payload of a burst: three 9-byte AMBE frames the chip hands over
- * on page 0x03 of its second SPI bus, separate from the bitbanged control bus
- * the rest of the driver uses. The read command is the page number with the
- * read flag set, followed by the register offset; the payload comes back after
- * those two command bytes, so the transfer is two bytes longer than the data.
+ * on its second SPI bus, reached through the board's payload bus driver.
  */
-#define VP_LENGTH               27
-#define VP_PAGE_READ            0x83
-#define VP_PAGE_WRITE           0x03
-#define VP_REGISTER             0x00
+#define VP_LENGTH               DMR_PAYLOAD_LENGTH
 
 /*
  * The chip hands back the link control of the previous transmission until it
@@ -138,83 +130,6 @@ static long long txReportTick;          // Tick of the last transmit report
 #define TX_REPORT_INTERVAL      500
 
 /**
- * Bring up the second SPI bus that carries the voice payload. Unlike the
- * bitbanged control interface this is a hardware peripheral, so it does not
- * contend with the control bus and can be driven straight from the driver.
- * The chip wants clock idle high and data sampled on the falling edge; the
- * bus clock is the APB1 clock divided by eight, well within the chip's limit.
- */
-static void payloadBusInit()
-{
-    gpio_setMode(DMR_V_CLK,  ALTERNATE | ALTERNATE_FUNC(5));
-    gpio_setMode(DMR_V_MISO, ALTERNATE | ALTERNATE_FUNC(5));
-    gpio_setMode(DMR_V_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
-    gpio_setMode(DMR_V_CS,   OUTPUT);
-    gpio_setPin(DMR_V_CS);      // Chip select idle high
-
-    spiStm32_init(&payload_spi, 6000000, SPI_FLAG_CPOL);
-}
-
-/**
- * Shut the voice payload bus back down and park its lines.
- */
-static void payloadBusTerminate()
-{
-    spiStm32_terminate(&payload_spi);
-
-    gpio_setMode(DMR_V_CLK,  INPUT);
-    gpio_setMode(DMR_V_MISO, INPUT);
-    gpio_setMode(DMR_V_MOSI, INPUT);
-    gpio_setMode(DMR_V_CS,   INPUT);
-}
-
-/**
- * Read the raw voice payload of the burst the chip has just decoded. The two
- * command bytes are clocked out first and their returned bytes discarded, the
- * payload follows.
- *
- * @param payload: destination buffer, VP_LENGTH bytes long.
- */
-static void payloadRead(uint8_t *payload)
-{
-    uint8_t tx[2 + VP_LENGTH];
-    uint8_t rx[2 + VP_LENGTH];
-
-    memset(tx, 0, sizeof(tx));
-    tx[0] = VP_PAGE_READ;
-    tx[1] = VP_REGISTER;
-
-    gpio_clearPin(DMR_V_CS);
-    spi_transfer(&payload_spi, tx, rx, sizeof(tx));
-    gpio_setPin(DMR_V_CS);
-
-    memcpy(payload, &rx[2], VP_LENGTH);
-}
-
-/**
- * Load the voice payload the chip transmits in the upcoming slot. The two
- * command bytes select the payload page and its first register, the payload
- * follows in the same transfer. This runs from the timeslot interrupt: the
- * payload rides on the second SPI bus, a hardware peripheral separate from the
- * bitbanged control bus, so it is safe to drive from an interrupt with no bus
- * coordination.
- *
- * @param payload: source buffer, VP_LENGTH bytes long.
- */
-static void payloadWrite(const uint8_t *payload)
-{
-    uint8_t tx[2 + VP_LENGTH];
-
-    tx[0] = VP_PAGE_WRITE;
-    tx[1] = VP_REGISTER;
-    memcpy(&tx[2], payload, VP_LENGTH);
-
-    gpio_clearPin(DMR_V_CS);
-    spi_transfer(&payload_spi, tx, NULL, sizeof(tx));
-    gpio_setPin(DMR_V_CS);
-}
-
-/**
  * Read back what was written during the initialisation. A mismatch here means
  * the SPI interface towards the baseband is not working at all, which is worth
  * telling apart from a chip which is configured but receiving nothing.
@@ -309,7 +224,7 @@ static void handleBurst()
     if(dmrDebug_channelEnabled(DMR_DBG_VP) || dmrAudio_running())
     {
         uint8_t payload[VP_LENGTH];
-        payloadRead(payload);
+        dmrPayload_read(payload);
 
         if(dmrDebug_channelEnabled(DMR_DBG_VP))
         {
@@ -490,7 +405,7 @@ void dmr_txTimeslotIsr()
                 if(dmrAudio_popFrame(slot) == false)
                     memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
             }
-            payloadWrite(payload);
+            dmrPayload_write(payload);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
                                           TX_BURST_VOICE | (txSequence << 4));
@@ -505,7 +420,7 @@ void dmr_txTimeslotIsr()
          */
         case TX_END_1:
             C6000.writeDmrLinkControlFromIsr(txLc);
-            payloadWrite(TX_SILENCE_AUDIO);
+            dmrPayload_write(TX_SILENCE_AUDIO);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_TERMINATOR);
             txState = TX_END_2;
@@ -672,7 +587,7 @@ void dmr_init(const uint8_t colorCode)
     dmrDebug_mark("dmr: configuring baseband");
 
     /* The voice payload rides on its own SPI bus, brought up here. */
-    payloadBusInit();
+    dmrPayload_init();
 
     /*
      * The receiver idles in passive timing so the chip can lock to the slot
@@ -711,7 +626,7 @@ void dmr_terminate()
     rxRestoreNeeded = false;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-    payloadBusTerminate();
+    dmrPayload_terminate();
     memset(&rxState, 0, sizeof(rxState));
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
