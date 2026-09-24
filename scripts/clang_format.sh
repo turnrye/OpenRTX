@@ -222,6 +222,7 @@ platform/drivers/baseband/SA8x8.c
 platform/drivers/baseband/dmr.h
 platform/drivers/baseband/dmrIrq.h
 platform/drivers/baseband/dmrIrq_UV3x0.cpp
+platform/drivers/baseband/dmr_CS7000.cpp
 platform/drivers/baseband/dmr_UV3x0.cpp
 platform/drivers/baseband/dmr_codec.c
 platform/drivers/baseband/dmr_codec.h

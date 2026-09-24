@@ -595,7 +595,10 @@ cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
                'platform/targets/CS7000-PLUS/hwconfig.c',
                'platform/targets/CS7000-PLUS/platform.c',
                'platform/drivers/USB/usb_serial_stm32h7.c',
-               'platform/drivers/USB/usb_descriptors.c']
+               'platform/drivers/USB/usb_descriptors.c',
+               'platform/drivers/baseband/dmr_CS7000.cpp',
+               'platform/drivers/baseband/dmr_codec.c',
+               'platform/drivers/baseband/dmr_audio.c']
 
 cs7000p_inc = ['platform/targets/CS7000-PLUS',
                'platform/drivers/USB']
