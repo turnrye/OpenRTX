@@ -69,10 +69,10 @@ extern const struct gpsDevice gps;
 /* Miosix sets NVIC_SetPriorityGrouping(7), disabling interrupt nesting.
  * In the resulting flat 0-15 scheme, 14 is near-lowest priority,
  * consistent with other peripheral drivers. */
-#define USB_OTG_FS_IRQ_PRIORITY  14
+#define USB_OTG_FS_IRQ_PRIORITY 14
 
 /* tinyUSB root-hub port index. USB OTG FS is port 0 on all STM32H7 targets. */
-#define USB_SERIAL_RHPORT        0
+#define USB_SERIAL_RHPORT 0
 
 /* Use extended addressing for external flash memory */
 #define CONFIG_W25Qx_EXT_ADDR
