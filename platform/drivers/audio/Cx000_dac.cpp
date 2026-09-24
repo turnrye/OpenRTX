@@ -9,6 +9,18 @@
 #include <errno.h>
 #include "Cx000_dac.h"
 
+/*
+ * Base value of the chip's register 0x06, on top of which the "OpenMusic" bit
+ * (0x02) is set and cleared. The CS7000 radios configure the chip with the
+ * vocoder on its V_SPI bus under MCU control (bit 0), which their stock
+ * firmware never clears, so that bit is kept.
+ */
+#if defined(PLATFORM_CS7000) || defined(PLATFORM_CS7000P)
+#define REG06_BASE  0x21
+#else
+#define REG06_BASE  0x20
+#endif
+
 #define TONE_BASE_FREQ    125 // [Hz]
 #define DAC_FIFO_SIZE     32
 
@@ -52,7 +64,7 @@ static inline void stopStream()
     stream->running = 0;
 
     // Clear the "OpenMusic" bit
-    c6000->writeCfgRegister(0x06, 0x20);
+    c6000->writeCfgRegister(0x06, REG06_BASE);
 }
 
 void Cx000dac_init(HR_C6000 *device)
@@ -153,7 +165,7 @@ int Cx000dac_startBeep(const uint16_t freq)
     funcMode = DAC_BEEP;
 
     // Set the "OpenMusic" bit
-    c6000->writeCfgRegister(0x06, 0x22);
+    c6000->writeCfgRegister(0x06, REG06_BASE | 0x02);
 
     return 0;
 }
@@ -165,7 +177,7 @@ void Cx000dac_stopBeep()
         return;
 
     // Clear the "OpenMusic" bit
-    c6000->writeCfgRegister(0x06, 0x20);
+    c6000->writeCfgRegister(0x06, REG06_BASE);
     funcMode = DAC_OFF;
 }
 
@@ -203,7 +215,7 @@ static int Cx000dac_start(const uint8_t instance, const void *config,
     }
 
     // Set the "OpenMusic" bit
-    c6000->writeCfgRegister(0x06, 0x22);
+    c6000->writeCfgRegister(0x06, REG06_BASE | 0x02);
 
     // Audio stream mode takes over beep: switching to stream mode will start
     // the new stream as soon as the HR_Cx000 sample buffer is empty.
