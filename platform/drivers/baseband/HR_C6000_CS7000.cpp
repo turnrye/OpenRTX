@@ -197,7 +197,11 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::AUX,    0x26, 0x00);  // Undocumented register
     writeReg(M::AUX,    0x27, 0x00);  // Undocumented register
     writeReg(M::CONFIG, 0x64, 0x10);  // Undocumented register
-    writeReg(M::CONFIG, 0x26, 0xFE);  // Undocumented register, disable FM audio output
+
+    // Undocumented register gating the receive path (it is the one written
+    // with 0xFE to shut FM reception off). DMR needs it on: the stock firmware
+    // leaves it at 0x7D, the value set during init.
+    writeReg(M::CONFIG, 0x26, 0x7D);
 }
 
 template< class M >
