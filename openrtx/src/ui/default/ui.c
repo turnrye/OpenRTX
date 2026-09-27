@@ -1429,7 +1429,9 @@ static void _ui_startCompose(const char *recipient, bool is_reply)
     ui_state.last_keypress        = 0;
     ui_state.compose_focus        = 1;
     ui_state.compose_editing      = false;
-    ui_state.compose_body_editing = false;
+    /* Land directly in body text-entry so the user can type immediately;
+     * the empty-draft cursor state matches the focus==1 ENTER branch. */
+    ui_state.compose_body_editing = true;
     ui_state.compose_is_reply     = is_reply;
     state.ui_screen = MESSAGES_COMPOSE;
 }
