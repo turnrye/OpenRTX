@@ -6,6 +6,7 @@
 
 #include "interfaces/delays.h"
 #include "core/dmr_debug.h"
+#include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
@@ -117,6 +118,16 @@ static uint32_t  reportedSys;
 static uint32_t  reportedTx;
 static long long reportTick;
 
+/*
+ * Chip interrupt flags (register 0x82) and burst status (register 0x51) seen
+ * by polling since the last activity report, and which interrupt lines were
+ * seen low. They tell a chip that detects nothing apart from interrupts that
+ * never reach the processor.
+ */
+static uint8_t   seenFlags;
+static uint8_t   seenStatus;
+static uint8_t   seenLinesLow;
+
 static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
@@ -147,6 +158,15 @@ static void checkInitRegisters()
     dmrDebug_log(DMR_DBG_INFO, "init: timing %02X, receiver bits %s, "
                  "color code set to %u", timing, ok ? "PASS" : "FAIL",
                  configuredCc);
+
+    /* The registers shaping DMR reception, to confirm the mode setup took. */
+    dmrDebug_log(DMR_DBG_INFO,
+                 "init: regs 01=%02X 06=%02X 10=%02X 11=%02X 34=%02X 5F=%02X "
+                 "81=%02X E0=%02X",
+                 C6000.readCfgRegister(0x01), C6000.readCfgRegister(0x06),
+                 C6000.readCfgRegister(0x10), C6000.readCfgRegister(0x11),
+                 C6000.readCfgRegister(0x34), C6000.readCfgRegister(0x5F),
+                 C6000.readCfgRegister(0x81), C6000.readCfgRegister(0xE0));
 }
 
 /**
@@ -170,11 +190,17 @@ static void reportIrqActivity()
 
     dmrIrq_feedWatchdog();
 
-    dmrDebug_log(DMR_DBG_IRQ, "irq: timeslot %lu system %lu transmit %lu in %lums",
+    dmrDebug_log(DMR_DBG_IRQ, "irq: timeslot %lu system %lu transmit %lu in "
+                 "%lums, flags %02X status %02X lines low %X",
                  (unsigned long) (counters.timeslot - reportedTs),
                  (unsigned long) (counters.system   - reportedSys),
                  (unsigned long) (counters.transmit - reportedTx),
-                 (unsigned long) (now - reportTick));
+                 (unsigned long) (now - reportTick),
+                 seenFlags, seenStatus, seenLinesLow);
+
+    seenFlags    = 0;
+    seenStatus   = 0;
+    seenLinesLow = 0;
 
     reportedTs  = counters.timeslot;
     reportedSys = counters.system;
@@ -712,6 +738,13 @@ void dmr_task(struct dmrRxState *rx)
         lastTsCount = counters.timeslot;
         C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
     }
+
+    /* Diagnostics for the activity report, see seenFlags. */
+    seenFlags  |= C6000.readCfgRegister(0x82);
+    seenStatus |= C6000.readCfgRegister(0x51);
+    if(gpio_readPin(DMR_TS_INT)  == 0) seenLinesLow |= 0x01;
+    if(gpio_readPin(DMR_SYS_INT) == 0) seenLinesLow |= 0x02;
+    if(gpio_readPin(DMR_TX_INT)  == 0) seenLinesLow |= 0x04;
 
     /*
      * The chip signals a frame event on the system interrupt line, but reading
