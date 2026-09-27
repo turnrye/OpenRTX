@@ -239,6 +239,14 @@ public:
     void writeDmrLinkControlFromIsr(const uint8_t *lc);
 
     /**
+     * Hand the transmit link control to the chip, as writeDmrLinkControlFromIsr
+     * does, from a thread: the access goes through the SPI mutex.
+     *
+     * @param lc: link control to transmit, C6000_LC_LENGTH bytes long.
+     */
+    void writeDmrLinkControl(const uint8_t *lc);
+
+    /**
      * Acknowledge the interrupt sources which have been served, leaving the
      * ones raised in the meantime untouched.
      *
