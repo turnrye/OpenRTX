@@ -600,6 +600,7 @@ cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
                'platform/drivers/baseband/dmr_C6000.cpp',
                'platform/drivers/baseband/dmrIrq_CS7000.cpp',
                'platform/drivers/baseband/dmrPayload_CS7000.cpp',
+               'platform/drivers/baseband/paRamp_CS7000.cpp',
                'platform/drivers/baseband/dmr_codec.c',
                'platform/drivers/baseband/dmr_audio.c']
 
