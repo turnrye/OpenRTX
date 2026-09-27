@@ -19,6 +19,9 @@
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/SKY72310.h"
 #include "drivers/baseband/AK2365A.h"
+#ifdef CONFIG_DMR
+#include "drivers/baseband/paRamp_CS7000.h"
+#endif
 
 #ifdef PLATFORM_CS7000P
 #define DAC     DAC1
@@ -35,6 +38,10 @@ static uint8_t txpwr_hi  = 0;                  // APC voltage for TX output powe
 static struct rssiParams rssi;                 // RSSI curve parameters
 
 static enum opstatus radioStatus;               // Current operating status
+#ifdef CONFIG_DMR
+static struct paRampShape dmrRamp;              // PA ramp of the DMR bursts
+static bool dmrRampOk = false;                  // DMR ramp calibration usable
+#endif
 static enum opmode currentMode = OPMODE_NONE;   // Mode the baseband is set up for
 
 static int16_t __attribute__((section(".bss2"))) ctcssSamples[128];
@@ -102,6 +109,47 @@ static uint8_t interpParameter(uint32_t freq, uint32_t *calFreq, uint8_t param[8
         ret += 1;
 
     return ret;
+}
+
+#ifdef CONFIG_DMR
+/**
+ * Linear interpolation of a 16-bit calibration parameter over the eight
+ * calibration frequencies.
+ */
+static uint16_t interpParameter16(uint32_t freq, uint32_t *calFreq,
+                                  uint16_t param[8])
+{
+    uint8_t i;
+    for(i = 6; i > 0; i--)
+    {
+        if(freq >= calFreq[i])
+            break;
+    }
+
+    int32_t num = ((int32_t) freq - (int32_t) calFreq[i]) / 10;
+    int32_t den = ((int32_t) calFreq[i + 1] - (int32_t) calFreq[i]) / 10;
+    if(den == 0)
+        return param[i];
+
+    int32_t ret = param[i] + (((param[i + 1] - param[i]) * num) / den);
+    return static_cast< uint16_t >(std::max(std::min(ret, (int32_t) 0xFFFF),
+                                            (int32_t) 0));
+}
+#endif
+
+/**
+ * APC value for the configured TX power, between the 1W and 5W calibration
+ * points.
+ */
+static uint8_t txApcLevel()
+{
+    float power = static_cast< float >(config->txPower) / 1000.0f;
+          power = std::max(std::min(power, 5.0f), 1.0f);
+    float pwrHi = static_cast< float >(txpwr_hi);
+    float pwrLo = static_cast< float >(txpwr_lo);
+    float apc   = pwrLo + (pwrHi - pwrLo)/4.0f*(power - 1.0f);
+
+    return static_cast< uint8_t >(apc);
 }
 
 static struct rssiParams interpRssi(const uint32_t freq, const struct rssiParams cal[7])
@@ -194,6 +242,10 @@ void radio_init(const rtxStatus_t *rtxState)
      * Set VCTXO bias
      */
     C6000.setModOffset(calData.errorRate[0]);
+
+#ifdef CONFIG_DMR
+    paRamp_init();
+#endif
 }
 
 void radio_terminate()
@@ -286,6 +338,10 @@ void radio_disableAfOutput()
 
 void radio_enableRx()
 {
+#ifdef CONFIG_DMR
+    paRamp_disarm();              // Let the last DMR burst ramp down
+#endif
+
     gpioDev_clear(TX_PWR_EN);     // Disable TX PA
     gpioDev_clear(RF_APC_SW);     // APC/TV used for RX filter tuning
     gpioDev_set(VCOVCC_SW);       // Enable RX VCO
@@ -327,10 +383,48 @@ void radio_enableTx()
     if(config->txDisable == 1)
         return;
 
-    // DMR transmission is not brought up on this radio yet: without its
-    // modulation setup, keying would put out a bare carrier.
+#ifdef CONFIG_DMR
     if(config->opMode == OPMODE_DMR)
+    {
+        /*
+         * DMR sends a burst every other slot and the PA is only on for the
+         * bursts: it is ramped up and down for each of them from the
+         * baseband's transmit interrupt. Here the RF path is switched over,
+         * as the stock firmware does ahead of the first burst. The APC output
+         * goes to zero before anything else, as it still holds the receiver
+         * filter tuning voltage. Without a usable ramp calibration the PA is
+         * never armed.
+         */
+        if(radioStatus == TX)
+        {
+            if(dmrRampOk)
+                paRamp_arm(&dmrRamp);
+
+            return;
+        }
+
+        gpioDev_clear(TX_PWR_EN);
+        gpioDev_clear(RF_APC_SW);
+        DAC->DHR8R1 = 0;
+        gpioDev_clear(RX_PWR_EN);
+
+        // The stock firmware takes the other VCO below 430MHz for DMR.
+        if((config->txFrequency >= 400000000)
+           && (config->txFrequency <= 430000000))
+            gpioDev_set(VCOVCC_SW);
+        else
+            gpioDev_clear(VCOVCC_SW);
+
+        SKY73210_setFrequency(&pll, config->txFrequency, 3);
+        C6000.writeCfgRegister(0x04, calData.dmrTxBias ^ 0x80);
+
+        if(dmrRampOk)
+            paRamp_arm(&dmrRamp);
+
+        radioStatus = TX;
         return;
+    }
+#endif
 
     gpioDev_clear(RX_PWR_EN);   // Disable RX LNA
     gpioDev_set(RF_APC_SW);     // APC/TV in power control mode
@@ -340,12 +434,7 @@ void radio_enableTx()
     SKY73210_setFrequency(&pll, config->txFrequency, 3);
 
     // Set TX output power, constrain between 1W and 5W.
-    float power = static_cast < float >(config->txPower) / 1000.0f;
-          power = std::max(std::min(power, 5.0f), 1.0f);
-    float pwrHi = static_cast< float >(txpwr_hi);
-    float pwrLo = static_cast< float >(txpwr_lo);
-    float apc   = pwrLo + (pwrHi - pwrLo)/4.0f*(power - 1.0f);
-    DAC1->DHR8R1 = static_cast< uint8_t >(apc);
+    DAC1->DHR8R1 = txApcLevel();
 
     switch(config->opMode)
     {
@@ -386,10 +475,15 @@ void radio_enableTx()
 
 void radio_disableRtx()
 {
+#ifdef CONFIG_DMR
+    paRamp_disarm();
+#endif
+
     gpioDev_clear(TX_PWR_EN);   // Disable TX PA
     gpioDev_clear(RX_PWR_EN);   // Disable RX LNA
 
-    if(radioStatus == TX)
+    // DMR transmits through the slot machine, not the analog path
+    if((radioStatus == TX) && (currentMode != OPMODE_DMR))
         C6000.stopAnalogTx();   // Stop HR_C6000 Tx
 
     // Shut down CTCSS ADC sampling and reset tone detector
@@ -411,11 +505,41 @@ void radio_updateConfiguration()
     txpwr_lo = interpParameter(config->txFrequency, calData.txCalFreq, calData.txMiddlePwr);
     txpwr_hi = interpParameter(config->txFrequency, calData.txCalFreq, calData.txHighPwr);
 
-    // HR_C6000 modulation amplitude
-    uint8_t qAmp = interpParameter(config->txFrequency, calData.txCalFreq, calData.txDigitalPathQ);
-    uint8_t iAmp = interpParameter(config->txFrequency, calData.txCalFreq, calData.txAnalogPathI);
-    C6000.writeCfgRegister(0x45, qAmp);   // Adjustment of Mod2 amplitude
-    C6000.writeCfgRegister(0x46, iAmp);   // Adjustment of Mod1 amplitude
+#ifdef CONFIG_DMR
+    if(config->opMode == OPMODE_DMR)
+    {
+        uint32_t freq = config->txFrequency;
+        uint32_t *cal = calData.txCalFreq;
+
+        // DMR modulation amplitude, from its own calibration
+        C6000.writeCfgRegister(0x45, interpParameter(freq, cal, calData.dmrMod2Amp));
+        C6000.writeCfgRegister(0x46, interpParameter(freq, cal, calData.dmrMod1Amp));
+
+        // PA ramp of the bursts, calibrated at low and high power
+        struct CS7000PaRamp *ramp = (config->txPower >= 3000) ? &calData.paRampHigh
+                                                              : &calData.paRampLow;
+
+        // Advance of the transmit interrupt on the bursts
+        uint8_t advance = interpParameter(freq, cal, ramp->txAdvance);
+        C6000.writeCfgRegister(0x12, advance & 0x3F);
+        C6000.writeCfgRegister(0x13, 0x00);
+
+        dmrRampOk = paRamp_build(&dmrRamp, txApcLevel(),
+                                 interpParameter(freq, cal, ramp->rampStart),
+                                 interpParameter(freq, cal, ramp->rampUpEnd),
+                                 interpParameter16(freq, cal, ramp->holdEnd),
+                                 interpParameter16(freq, cal, ramp->rampDownEnd));
+    }
+    else
+#endif
+    {
+        // HR_C6000 modulation amplitude
+        uint8_t qAmp = interpParameter(config->txFrequency, calData.txCalFreq, calData.txDigitalPathQ);
+        uint8_t iAmp = interpParameter(config->txFrequency, calData.txCalFreq, calData.txAnalogPathI);
+        C6000.writeCfgRegister(0x45, qAmp);   // Adjustment of Mod2 amplitude
+        C6000.writeCfgRegister(0x46, iAmp);   // Adjustment of Mod1 amplitude
+        C6000.writeCfgRegister(0x12, 0x00);   // No DMR transmit interrupt advance
+    }
 
     // RSSI interpolation curve
     rssi = interpRssi(config->rxFrequency, rssiCal);
