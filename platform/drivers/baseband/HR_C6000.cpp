@@ -158,3 +158,8 @@ void HR_C6000::readDmrLinkControl(uint8_t *lc)
 {
     readPage(C6000_SpiOpModes::DATA, 0x00, lc, C6000_LC_LENGTH);
 }
+
+void HR_C6000::readDmrVoicePayload(uint8_t *payload)
+{
+    readPage(C6000_SpiOpModes::DATA, 0x66, payload, C6000_VOICE_PAYLOAD_LENGTH);
+}

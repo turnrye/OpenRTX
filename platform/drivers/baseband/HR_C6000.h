@@ -70,6 +70,11 @@ struct C6000_DmrStatus
 };
 
 /**
+ * Length of the voice payload of a DMR burst: three 9-byte AMBE frames.
+ */
+#define C6000_VOICE_PAYLOAD_LENGTH  27
+
+/**
  * Length of the link control data the chip hands over once it has decoded and
  * error corrected a burst.
  */
@@ -255,6 +260,16 @@ public:
      * @param lc: destination buffer, C6000_LC_LENGTH bytes long.
      */
     void readDmrLinkControl(uint8_t *lc);
+
+    /**
+     * Read the voice payload of the last received DMR burst from the data
+     * page of the control interface: three 9-byte AMBE frames. In direct mode
+     * the chip keeps them at offset 0x66 of the page, where the Connect Systems
+     * firmware reads them.
+     *
+     * @param payload: destination buffer, C6000_VOICE_PAYLOAD_LENGTH bytes.
+     */
+    void readDmrVoicePayload(uint8_t *payload);
 
 private:
 
