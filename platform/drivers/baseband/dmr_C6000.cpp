@@ -161,12 +161,13 @@ static void checkInitRegisters()
 
     /* The registers shaping DMR reception, to confirm the mode setup took. */
     dmrDebug_log(DMR_DBG_INFO,
-                 "init: regs 01=%02X 06=%02X 10=%02X 11=%02X 34=%02X 5F=%02X "
-                 "81=%02X E0=%02X",
+                 "init: regs 01=%02X 06=%02X 10=%02X 11=%02X 26=%02X 34=%02X "
+                 "5F=%02X 81=%02X E0=%02X",
                  C6000.readCfgRegister(0x01), C6000.readCfgRegister(0x06),
                  C6000.readCfgRegister(0x10), C6000.readCfgRegister(0x11),
-                 C6000.readCfgRegister(0x34), C6000.readCfgRegister(0x5F),
-                 C6000.readCfgRegister(0x81), C6000.readCfgRegister(0xE0));
+                 C6000.readCfgRegister(0x26), C6000.readCfgRegister(0x34),
+                 C6000.readCfgRegister(0x5F), C6000.readCfgRegister(0x81),
+                 C6000.readCfgRegister(0xE0));
 }
 
 /**
