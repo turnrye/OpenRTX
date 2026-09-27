@@ -35,6 +35,7 @@ static uint8_t txpwr_hi  = 0;                  // APC voltage for TX output powe
 static struct rssiParams rssi;                 // RSSI curve parameters
 
 static enum opstatus radioStatus;               // Current operating status
+static enum opmode currentMode = OPMODE_NONE;   // Mode the baseband is set up for
 
 static int16_t __attribute__((section(".bss2"))) ctcssSamples[128];
 static streamCtx ctcssCtx;
@@ -217,6 +218,8 @@ void radio_terminate()
 
 void radio_setOpmode(const enum opmode mode)
 {
+    currentMode = mode;
+
     switch(mode)
     {
         case OPMODE_FM:
@@ -261,6 +264,10 @@ bool radio_checkRxDigitalSquelch()
 
 void radio_enableAfOutput()
 {
+    // Register 0x26 stays as the DMR mode configuration set it
+    if(currentMode == OPMODE_DMR)
+        return;
+
     // Undocumented register, bits [1:0] seem to enable/disable FM audio RX.
     // 0xFD enable FM receive.
     C6000.writeCfgRegister(0x26, 0xFD);
@@ -268,6 +275,11 @@ void radio_enableAfOutput()
 
 void radio_disableAfOutput()
 {
+    // The previous mode is torn down after the new one is set up: leaving FM
+    // for DMR must not switch the receive path off behind the DMR mode.
+    if(currentMode == OPMODE_DMR)
+        return;
+
     // Undocumented register, disable FM receive
     C6000.writeCfgRegister(0x26, 0xFE);
 }
