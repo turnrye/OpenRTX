@@ -24,6 +24,12 @@
 #define RX_STATUS_CRC_ERROR     0x04
 #define RX_STATUS_PRIVACY       0x08
 
+/*
+ * Interrupt flag the chip raises on every slot once its slot clock runs,
+ * whether or not anything was received; any other flag is a received event.
+ */
+#define INT_FLAG_SLOT           0x20
+
 /* Full link control frames of a group and of a private call */
 #define LC_FLCO_GROUP           0x00
 #define LC_FLCO_PRIVATE         0x03
@@ -212,12 +218,17 @@ static void reportIrqActivity()
 /**
  * Read out a burst the chip has signalled and, if it passes the filters,
  * extract the identities it carries.
+ *
+ * @return true if the chip reported something received, false if the event
+ * was only the slot clock ticking.
  */
-static void handleBurst()
+static bool handleBurst()
 {
     struct C6000_DmrStatus status;
     C6000.readDmrStatus(&status);
     C6000.clearDmrInterrupts(status.intFlags);
+
+    bool received = (status.intFlags & ~INT_FLAG_SLOT) != 0;
 
     bool    crcOk = (status.rxStatus & RX_STATUS_CRC_ERROR) == 0;
     uint8_t code  = (status.cach >> 4) & 0x0F;
@@ -279,12 +290,12 @@ static void handleBurst()
     }
 
     if(crcOk == false)
-        return;
+        return received;
 
     if((status.rxStatus & RX_STATUS_PRIVACY) != 0)
     {
         dmrDebug_log(DMR_DBG_LC, "burst: rejected, encrypted");
-        return;
+        return received;
     }
 
     /*
@@ -306,14 +317,14 @@ static void handleBurst()
     if((lc[0] != LC_FLCO_GROUP) && (lc[0] != LC_FLCO_PRIVATE))
     {
         dmrDebug_log(DMR_DBG_LC, "burst: rejected, unhandled FLCO %02X", lc[0]);
-        return;
+        return received;
     }
 
     if(memcmp(lc, prevLc, sizeof(lc)) != 0)
     {
         memcpy(prevLc, lc, sizeof(lc));
         lcMatches = 1;
-        return;
+        return received;
     }
 
     /*
@@ -326,7 +337,7 @@ static void handleBurst()
     {
         lcMatches += 1;
         if(lcMatches < LC_CONFIRM_COUNT)
-            return;
+            return received;
     }
 
     uint32_t dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
@@ -357,6 +368,8 @@ static void handleBurst()
         if(dmrAudio_startRx())
             dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
     }
+
+    return received;
 }
 
 bool dmr_txActive()
@@ -767,16 +780,17 @@ void dmr_task(struct dmrRxState *rx)
                          (unsigned long) missed);
 
         /*
-         * A frame event means a DMR carrier is present. This keeps an
+         * A received frame means a DMR carrier is present. This keeps an
          * established call alive across the voice bursts that sit between the
          * link control updates: those bursts carry no fresh CRC-valid link
          * control, so gating the call on link control alone drops it every
          * few hundred milliseconds during a steady transmission. The identity
          * of the call still comes from handleBurst; this only holds it up.
+         * Events which are only the slot clock ticking - it keeps running
+         * after a call once the chip has locked to it - do not count.
          */
-        lastBurstTick = getTick();
-
-        handleBurst();
+        if(handleBurst())
+            lastBurstTick = getTick();
     }
 
     dmrIrq_setBusBusy(false);
