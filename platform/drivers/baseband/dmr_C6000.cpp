@@ -13,9 +13,21 @@
 #include "dmr_audio.h"
 #include "dmrPayload.h"
 #include "protocols/DMR/LinkControl.h"
+#include "core/threads.h"
+#include <pthread.h>
 #include <string.h>
 
 #if defined(CONFIG_DMR)
+
+/*
+ * The CS7000 Plus receives from a thread of its own, woken by the chip's
+ * interrupt lines, running the receiver the way its stock firmware does. The
+ * MD-UV3x0 still polls from the rtx thread, until the same receiver has been
+ * bench tested on it.
+ */
+#if defined(PLATFORM_CS7000P)
+#define DMR_RX_THREAD
+#endif
 
 /*
  * Bits of the receive status register, 0x51: the CRC bit is set when the check
@@ -223,6 +235,459 @@ static void reportIrqActivity()
     reportTick  = now;
 }
 
+#if defined(DMR_RX_THREAD)
+
+/*
+ * Burst status, register 0x51, as the stock firmware reads it: the sync class
+ * in bits 1..0 and, in bit 2, whether the check on the burst failed; masking
+ * both together gives a class only for a burst that passed. A data burst has
+ * its data type in bits 7..4, a voice burst its frame number, A = 1 to F = 6,
+ * in bits 6..4.
+ */
+#define RX_SYNC_MASK            0x07
+#define RX_CLASS_VOICE          0x00    // Voice, frames B to F
+#define RX_CLASS_VOICE_SYNC     0x01    // Voice carrying the sync, frame A
+#define RX_CLASS_DATA           0x02    // Data or control, with its sync
+#define RX_DATA_VOICE_HEADER    0x01    // Data type of a voice LC header
+#define RX_DATA_TERMINATOR      0x02    // Data type of a terminator with LC
+
+/*
+ * Interrupt flags, register 0x82. Two carry work in reception: a burst was
+ * received and parsed, and the embedded link control of a superframe is
+ * complete, which is what identifies a call joined part way through. The
+ * others are only acknowledged, 0x20 being the slot clock ticking. The stock
+ * firmware handles and clears them one at a time, in this order.
+ */
+#define INT_FLAG_BURST          0x08
+#define INT_FLAG_EMBEDDED_LC    0x10
+
+static const uint8_t INT_FLAG_ORDER[] =
+{
+    0x80, 0x08, 0x40, 0x20, 0x10, 0x04, 0x02, 0x01
+};
+
+/* Slot action receiving the next slot; in direct mode both slots are taken. */
+#define RX_SLOT_RECEIVE         0x40
+
+/* Slot timing register value with the receiver stopped. */
+#define RX_TIMING_OFF           0x03
+
+/* Link control service options bit marking an encrypted call. */
+#define LC_SO_PRIVACY           0x40
+
+/*
+ * Delay between the timeslot interrupt and the read of the slot status, by
+ * when the chip has updated it for the slot just gone, in milliseconds. The
+ * stock firmware waits the same.
+ */
+#define SLOT_READ_DELAY         10
+
+/*
+ * Bad slots in a row that drop the lock, and empty slots in a row that restart
+ * the search while unlocked. During a call the idle slot reads a random colour
+ * code, so a locked receiver sees one bad slot in two and never gets to four;
+ * once the carrier goes both are bad and the lock drops within 120ms.
+ */
+#define LOCKED_MISS_LIMIT       4
+#define UNLOCKED_MISS_LIMIT     12
+
+#define RX_THREAD_STKSIZE       4096
+
+static pthread_t       rxThread;
+static pthread_mutex_t rxMutex = PTHREAD_MUTEX_INITIALIZER; // Guards rxState
+static volatile bool   rxThreadRun;
+static bool            rxLocked;    // Receiver locked to a transmission
+static uint8_t         rxMisses;    // Bad or empty slots in a row
+static bool            rxEncrypted; // The call in progress is encrypted
+
+/**
+ * Restart the receiver's search for a transmission, as the stock firmware does
+ * whenever it loses the lock or a call ends: stop reception, reset the slot
+ * state machine, ask for the next slot and start reception again.
+ */
+static void armReceiver()
+{
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    C6000.writeCfgRegister(0x40, RX_TIMING_OFF);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+    C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
+
+    rxLocked = false;
+    rxMisses = 0;
+}
+
+/**
+ * End the call in progress, in the order the stock firmware does at a
+ * terminator: stop the chip's vocoder decode, restart the search for a
+ * transmission, clear the decode buffer, then stop the playback.
+ *
+ * @param reason: what ended the call, for the log.
+ */
+static void endCall(const char *reason)
+{
+    C6000.writeCfgRegister(0x22, 0x16);
+    armReceiver();
+    C6000.writeCfgRegister(0x20, 0x00);
+    C6000.writeCfgRegister(0x21, 0x01);
+
+    pthread_mutex_lock(&rxMutex);
+    rxState.valid = false;
+    pthread_mutex_unlock(&rxMutex);
+
+    rxEncrypted      = false;
+    lastPayloadValid = false;
+
+    dmrAudio_stopRx();
+    dmrDebug_log(DMR_DBG_INFO, "call: ended, %s", reason);
+}
+
+/**
+ * Read the link control the chip has just decoded and check it is a voice
+ * call. The chip has already checked it, so it is trusted as it comes.
+ *
+ * @param lc: destination buffer, C6000_LC_LENGTH bytes long.
+ * @return true for the link control of a group or private voice call.
+ */
+static bool readVoiceLc(uint8_t *lc)
+{
+    C6000.readDmrLinkControl(lc);
+    dmrDebug_record(DMR_DBG_LC, "LC", lc, C6000_LC_LENGTH);
+
+    uint8_t flco = lc[0] & 0x3F;
+    if((flco != LC_FLCO_GROUP) && (flco != LC_FLCO_PRIVATE))
+    {
+        dmrDebug_log(DMR_DBG_LC, "lc: ignored, FLCO %02X", flco);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Take the link control of a voice LC header or of a superframe's embedded
+ * signalling: start the call it describes, or keep the one in progress.
+ *
+ * @param cc: colour code the link control was received with.
+ */
+static void takeCallLc(const uint8_t cc)
+{
+    uint8_t lc[C6000_LC_LENGTH];
+    if(readVoiceLc(lc) == false)
+        return;
+
+    uint32_t dstId     = (lc[3] << 16) | (lc[4] << 8) | lc[5];
+    uint32_t srcId     = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+    bool     group     = ((lc[0] & 0x3F) == LC_FLCO_GROUP);
+    bool     encrypted = ((lc[2] & LC_SO_PRIVACY) != 0);
+
+    lastBurstTick = getTick();
+
+    if(rxState.valid && (rxState.srcId == srcId) && (rxState.dstId == dstId)
+       && (rxState.groupCall == group))
+        return;
+
+    /*
+     * A new call: clear the chip's decode buffer as the stock firmware does
+     * when it accepts one, and restart the playback on a clean queue.
+     */
+    C6000.writeCfgRegister(0x21, 0x01);
+
+    if(dmrAudio_running())
+        dmrAudio_stopRx();
+
+    pthread_mutex_lock(&rxMutex);
+    rxState.dstId     = dstId;
+    rxState.srcId     = srcId;
+    rxState.colorCode = cc;
+    rxState.groupCall = group;
+    rxState.valid     = true;
+    pthread_mutex_unlock(&rxMutex);
+
+    rxEncrypted      = encrypted;
+    lastPayloadValid = false;
+
+    dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u%s",
+                 (unsigned long) srcId, group ? "TG" : "ID",
+                 (unsigned long) dstId, cc, encrypted ? ", encrypted" : "");
+
+    /* Encrypted voice is not played, as in OpenGD77. */
+    if(encrypted)
+        return;
+
+    if(dmrAudio_startRx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
+}
+
+/**
+ * Take a terminator: end the call in progress if the terminator is its own.
+ */
+static void takeTerminator()
+{
+    uint8_t lc[C6000_LC_LENGTH];
+    if((readVoiceLc(lc) == false) || (rxState.valid == false))
+        return;
+
+    uint32_t dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
+    uint32_t srcId = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+
+    if((rxState.srcId == srcId) && (rxState.dstId == dstId))
+        endCall("terminator");
+}
+
+/**
+ * Take the payload of a voice burst of the call in progress and queue its
+ * three AMBE frames for playback.
+ *
+ * @param status: burst status the payload was received with, for the tap.
+ */
+static void takeVoicePayload(const uint8_t status)
+{
+    uint8_t payload[VP_LENGTH];
+    dmrPayload_read(payload);
+
+    if(dmrDebug_channelEnabled(DMR_DBG_VP))
+    {
+        uint8_t record[1 + VP_LENGTH];
+        record[0] = status;
+        memcpy(&record[1], payload, VP_LENGTH);
+        dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
+    }
+
+    bool repeated = lastPayloadValid
+                    && (memcmp(payload, lastPayload, VP_LENGTH) == 0);
+    memcpy(lastPayload, payload, VP_LENGTH);
+    lastPayloadValid = true;
+
+    if(repeated || (dmrAudio_running() == false))
+        return;
+
+    for(int f = 0; f < 3; f++)
+    {
+        const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
+        if(dmr_codec_frameIsVoice(frame))
+            dmrAudio_pushFrame(frame);
+    }
+}
+
+/**
+ * Handle a received and parsed burst. Everything but the voice frame carrying
+ * the sync has to come with the configured colour code: the chip decodes both
+ * slots in direct mode, and the idle one reads a random colour code. At frame A
+ * the colour code register is not updated, so it is not checked there.
+ *
+ * @param status: burst status, register 0x51, read at the event.
+ * @param cc: received colour code, register 0x52, read at the event.
+ */
+static void handleBurstEvent(const uint8_t status, const uint8_t cc)
+{
+    bool ccOk = (cc == configuredCc);
+
+    dmrDebug_log(DMR_DBG_LC, "burst: status %02X cc %u", status, cc);
+
+    switch(status & RX_SYNC_MASK)
+    {
+        case RX_CLASS_DATA:
+            if(ccOk == false)
+                return;
+
+            if((status >> 4) == RX_DATA_VOICE_HEADER)
+                takeCallLc(cc);
+            else if((status >> 4) == RX_DATA_TERMINATOR)
+                takeTerminator();
+            return;
+
+        case RX_CLASS_VOICE:
+            if(ccOk == false)
+                return;
+            break;
+
+        case RX_CLASS_VOICE_SYNC:
+            break;
+
+        default:
+            return;
+    }
+
+    if(rxState.valid == false)
+        return;
+
+    lastBurstTick = getTick();
+
+    if(rxEncrypted == false)
+        takeVoicePayload(status);
+}
+
+/**
+ * Handle a system interrupt: read the flags and the burst they describe, then
+ * handle and acknowledge the flags one at a time. Until the receiver has locked
+ * to a transmission the bursts are noise and are only acknowledged.
+ */
+static void handleSystemEvent()
+{
+    struct C6000_DmrStatus status;
+    C6000.readDmrStatus(&status);
+
+    seenFlags  |= status.intFlags;
+    seenStatus |= status.rxStatus;
+
+    uint8_t cc = (status.cach >> 4) & 0x0F;
+
+    for(uint8_t flag : INT_FLAG_ORDER)
+    {
+        if((status.intFlags & flag) == 0)
+            continue;
+
+        /* Checked per flag, as handling a terminator ends the call. */
+        bool active = rxLocked || rxState.valid;
+
+        if(active && (flag == INT_FLAG_BURST))
+            handleBurstEvent(status.rxStatus, cc);
+        else if(active && (flag == INT_FLAG_EMBEDDED_LC))
+            takeCallLc(cc);
+
+        C6000.clearDmrInterrupts(flag);
+    }
+}
+
+/**
+ * Run the stock firmware's slot handler, once per slot: lock to a transmission
+ * on a frame sync, or on a data sync with the configured colour code, keep
+ * receiving both slots while locked, and restart the search once the lock is
+ * lost or nothing shows up for a while.
+ */
+static void handleSlot()
+{
+    uint8_t status = C6000.readCfgRegister(0x51);
+    uint8_t cc     = (C6000.readCfgRegister(0x52) >> 4) & 0x0F;
+    uint8_t sync   = status & RX_SYNC_MASK;
+    bool    ccOk   = (cc == configuredCc);
+
+    if(rxLocked == false)
+    {
+        if((sync == RX_CLASS_VOICE_SYNC) || ((sync == RX_CLASS_DATA) && ccOk))
+        {
+            rxLocked = true;
+            rxMisses = 0;
+            C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+        }
+        else if(sync == RX_CLASS_VOICE)
+        {
+            rxMisses += 1;
+            if(rxMisses >= UNLOCKED_MISS_LIMIT)
+                armReceiver();
+        }
+
+        return;
+    }
+
+    bool good = (sync == RX_CLASS_VOICE_SYNC)
+                || (((sync == RX_CLASS_VOICE) || (sync == RX_CLASS_DATA))
+                    && ccOk);
+
+    if(good)
+    {
+        rxMisses = 0;
+    }
+    else
+    {
+        rxMisses += 1;
+        if(rxMisses >= LOCKED_MISS_LIMIT)
+        {
+            if(rxState.valid)
+                endCall("carrier lost");
+            else
+                armReceiver();
+
+            return;
+        }
+    }
+
+    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+}
+
+/**
+ * Bring the receiver back after a transmission. The transmission leaves the
+ * chip's receive path needing the whole DMR mode configuration written again,
+ * then the usual search for a transmission follows.
+ */
+static void restoreAfterTx()
+{
+    rxRestoreNeeded = false;
+
+    /* The transmission is over; stop capturing the microphone. */
+    dmrAudio_stopTx();
+
+    C6000.dmrMode();
+    C6000.setDmrColorCode(configuredCc);
+    armReceiver();
+    lastBurstTick = getTick();
+
+    dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx, timing %02X",
+                 C6000.getDmrTiming());
+}
+
+/**
+ * The reception thread: woken by the interrupt lines, it does all the chip
+ * access for reception through the normal, mutex protected, accessors, as the
+ * stock firmware does from the tasks its interrupts wake. System events are
+ * handled straight away, the slot handler runs a fixed delay after each slot
+ * boundary.
+ */
+static void *rxThreadFunc(void *arg)
+{
+    (void) arg;
+    long long slotDue = -1;
+
+    while(rxThreadRun)
+    {
+        uint32_t events = (slotDue < 0) ? dmrIrq_waitEvents()
+                                        : dmrIrq_takeEvents();
+        if(rxThreadRun == false)
+            break;
+
+        if(rxRestoreNeeded)
+        {
+            restoreAfterTx();
+            slotDue = -1;
+            continue;
+        }
+
+        /* The transmit slot machine runs from the timeslot interrupt. */
+        if(dmr_txActive())
+        {
+            slotDue = -1;
+            continue;
+        }
+
+        if((events & DMR_IRQ_EVENT_SYSTEM) != 0)
+            handleSystemEvent();
+
+        if((events & DMR_IRQ_EVENT_TIMESLOT) != 0)
+            slotDue = getTick() + SLOT_READ_DELAY;
+
+        if((slotDue >= 0) && (getTick() >= slotDue))
+        {
+            handleSlot();
+            slotDue = -1;
+        }
+
+        /*
+         * A call whose bursts stopped without a terminator and without the
+         * lock being dropped, which the slot handler normally catches first.
+         */
+        if(rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT))
+            endCall("timeout");
+
+        if(slotDue >= 0)
+            sleepFor(0u, 1u);
+    }
+
+    return NULL;
+}
+
+#else /* DMR_RX_THREAD */
+
 /**
  * Read out a burst the chip has signalled and, if it passes the filters,
  * extract the identities it carries.
@@ -392,6 +857,8 @@ static bool handleBurst()
 
     return received;
 }
+
+#endif /* DMR_RX_THREAD */
 
 bool dmr_txActive()
 {
@@ -660,6 +1127,10 @@ void dmr_init(const uint8_t colorCode)
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
+#if defined(DMR_RX_THREAD)
+    armReceiver();
+    rxEncrypted = false;
+#else
     /*
      * Restarting the slot state machine takes the reset twice before asking
      * for a receive, anything less leaves the chip ignoring the next slot.
@@ -668,17 +1139,45 @@ void dmr_init(const uint8_t colorCode)
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
+#endif
 
     dmrDebug_mark("dmr: baseband configured");
     checkInitRegisters();
 
     dmrDebug_mark("dmr: enabling interrupt lines");
     dmrIrq_init();
+
+#if defined(DMR_RX_THREAD)
+    rxThreadRun = true;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, RX_THREAD_STKSIZE);
+    struct sched_param param;
+    param.sched_priority = THREAD_PRIO_RT;
+    pthread_attr_setschedparam(&attr, &param);
+
+    if(pthread_create(&rxThread, &attr, rxThreadFunc, NULL) != 0)
+    {
+        rxThreadRun = false;
+        dmrDebug_log(DMR_DBG_INFO, "dmr: reception thread not started");
+    }
+#endif
+
     dmrDebug_mark("dmr: receiver running");
 }
 
 void dmr_terminate()
 {
+#if defined(DMR_RX_THREAD)
+    if(rxThreadRun)
+    {
+        rxThreadRun = false;
+        dmrIrq_wakeWaiter();
+        pthread_join(rxThread, NULL);
+    }
+#endif
+
     dmrAudio_stopRx();
     dmrAudio_stopTx();
     dmrIrq_terminate();
@@ -710,6 +1209,28 @@ void dmr_setColorCode(const uint8_t colorCode)
 
 void dmr_task(struct dmrRxState *rx)
 {
+#if defined(DMR_RX_THREAD)
+    /*
+     * Reception runs on its own thread: this hands its state out, keeps the
+     * diagnostics going and wakes the thread for the work it would otherwise
+     * only notice on its next event, as the slot clock may have stopped:
+     * bringing the receiver back after a transmission, or ending a call whose
+     * bursts are gone.
+     */
+    if(gpio_readPin(DMR_TS_INT)  == 0) seenLinesLow |= 0x01;
+    if(gpio_readPin(DMR_SYS_INT) == 0) seenLinesLow |= 0x02;
+    if(gpio_readPin(DMR_TX_INT)  == 0) seenLinesLow |= 0x04;
+
+    if(rxRestoreNeeded
+       || (rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT)))
+        dmrIrq_wakeWaiter();
+
+    reportIrqActivity();
+
+    pthread_mutex_lock(&rxMutex);
+    *rx = rxState;
+    pthread_mutex_unlock(&rxMutex);
+#else
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
 
@@ -836,6 +1357,7 @@ void dmr_task(struct dmrRxState *rx)
     reportIrqActivity();
 
     *rx = rxState;
+#endif
 }
 
 #endif /* CONFIG_DMR */

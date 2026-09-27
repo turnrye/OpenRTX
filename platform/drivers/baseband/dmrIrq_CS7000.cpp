@@ -15,20 +15,6 @@ using namespace miosix;
 
 #if defined(CONFIG_DMR)
 
-/* Register holding the received colour code in its upper nibble. */
-#define C6000_REG_CACH  0x52
-
-/*
- * Register holding the status of the burst just decoded: bits 7..4 the data
- * type or voice frame sequence number, bit 2 the CRC result, bits 1..0 the
- * sync class (1 = voice). Like the colour code it is only valid at the frame
- * event, so it is sampled here rather than from the consuming thread.
- */
-#define C6000_REG_RX_STATUS 0x51
-
-/* Colour code value standing for "nothing received yet". */
-#define CC_NONE         0xFF
-
 /*
  * Events tolerated between two watchdog feeds before the lines are considered
  * stuck. A slot boundary comes every 30ms, so even the busiest run is around
@@ -48,8 +34,6 @@ static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool     stormSeen;  /* Lines shut down by the guard */
-static volatile uint8_t  rxColorCode = CC_NONE; /* CC of the last frame event */
-static volatile uint8_t  rxBurstStatus;         /* 0x51 of the last frame event */
 static volatile bool     busBusy;    /* The DMR thread is on the SPI bus */
 static volatile uint32_t pendingEvents; /* Events not yet taken, DMR_IRQ_EVENT_* */
 static Thread           *waiting;    /* Thread waiting for an event, if any */
@@ -146,18 +130,9 @@ void __attribute__((used)) dmrSystemIrqImpl()
     sysCount += 1;
 
     /*
-     * The burst status and colour code registers are only valid at the instant
-     * of the frame event, so they are read here rather than from the consuming
-     * thread, unless a thread holds the bus; the next event picks them up. They
-     * are also skipped while transmitting, when a receive read has nothing to
-     * say.
+     * The flags and the burst they describe are read by the reception thread,
+     * which gets to them well within the slot the chip holds them for.
      */
-    if(busFree() && (dmr_txActive() == false))
-    {
-        rxBurstStatus = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
-        rxColorCode   = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
-    }
-
     if(IRQsignal(DMR_IRQ_EVENT_SYSTEM))
         Scheduler::IRQfindNextThread();
 
@@ -236,8 +211,6 @@ void dmrIrq_clearCounters()
     tsCount       = 0;
     sysCount      = 0;
     txCount       = 0;
-    rxColorCode   = CC_NONE;
-    rxBurstStatus = 0;
 }
 
 void dmrIrq_feedWatchdog()
@@ -248,16 +221,6 @@ void dmrIrq_feedWatchdog()
 bool dmrIrq_stormDetected()
 {
     return stormSeen;
-}
-
-uint8_t dmrIrq_getRxColorCode()
-{
-    return rxColorCode;
-}
-
-uint8_t dmrIrq_getRxBurstStatus()
-{
-    return rxBurstStatus;
 }
 
 void dmrIrq_setBusBusy(bool busy)
