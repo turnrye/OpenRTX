@@ -130,6 +130,14 @@ static long long reportTick;
  * seen low. They tell a chip that detects nothing apart from interrupts that
  * never reach the processor.
  */
+/*
+ * Payload last handed to playback. The chip keeps a burst's payload until the
+ * next burst replaces it and may raise more than one event per burst, so the
+ * same payload can be read several times over.
+ */
+static uint8_t   lastPayload[VP_LENGTH];
+static bool      lastPayloadValid;
+
 static uint8_t   seenFlags;
 static uint8_t   seenStatus;
 static uint8_t   seenLinesLow;
@@ -286,7 +294,12 @@ static bool handleBurst()
          * timeslots, and the empty one decodes to noise. Gating on each frame's
          * Golay error count keeps the call's slot and drops the other.
          */
-        if(dmrAudio_running())
+        bool repeated = lastPayloadValid
+                        && (memcmp(payload, lastPayload, VP_LENGTH) == 0);
+        memcpy(lastPayload, payload, VP_LENGTH);
+        lastPayloadValid = true;
+
+        if(dmrAudio_running() && (repeated == false))
         {
             for(int f = 0; f < 3; f++)
             {
@@ -613,6 +626,7 @@ void dmr_init(const uint8_t colorCode)
 {
     memset(&rxState, 0, sizeof(rxState));
     memset(prevLc, 0, sizeof(prevLc));
+    lastPayloadValid = false;
 
     txState         = TX_IDLE;
     txStopRequested = false;
@@ -812,6 +826,7 @@ void dmr_task(struct dmrRxState *rx)
     {
         rxState.valid = false;
         memset(prevLc, 0, sizeof(prevLc));
+        lastPayloadValid = false;
         lcMatches = 0;
 
         dmrAudio_stopRx();
