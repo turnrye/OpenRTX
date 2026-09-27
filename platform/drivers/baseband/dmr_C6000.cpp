@@ -20,13 +20,13 @@
 #if defined(CONFIG_DMR)
 
 /*
- * The CS7000 Plus receives from a thread of its own, woken by the chip's
- * interrupt lines, running the receiver the way its stock firmware does. The
- * MD-UV3x0 still polls from the rtx thread, until the same receiver has been
- * bench tested on it.
+ * The CS7000 Plus runs DMR from a thread of its own, woken by the chip's
+ * interrupt lines, receiving and transmitting the way its stock firmware does.
+ * The MD-UV3x0 still polls from the rtx thread and transmits from the timeslot
+ * interrupt, until the same has been bench tested on it.
  */
 #if defined(PLATFORM_CS7000P)
-#define DMR_RX_THREAD
+#define DMR_THREAD
 #endif
 
 /*
@@ -157,6 +157,7 @@ static uint8_t   seenLinesLow;
 static volatile uint8_t txState;        // Current transmit slot state
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
+static long long        txStopTick;     // When the unkey was asked
 static volatile bool    rxRestoreNeeded;// Receiver bring-up owed after a TX
 static uint8_t          txLc[DMR_LC_LENGTH]; // Link control sent in the bursts
 static uint32_t  txReportedTs;          // Timeslot count at the last tx report
@@ -235,7 +236,7 @@ static void reportIrqActivity()
     reportTick  = now;
 }
 
-#if defined(DMR_RX_THREAD)
+#if defined(DMR_THREAD)
 
 /*
  * Burst status, register 0x51, as the stock firmware reads it: the sync class
@@ -606,21 +607,191 @@ static void handleSlot()
     C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
 }
 
+/*
+ * Transmission, as the stock firmware runs it from its timeslot task: every
+ * other slot is sent, starting with three voice link control headers, the
+ * last one starting the vocoder encode, then voice superframes until the
+ * transmission is asked to stop after a frame F, a terminator, an idle slot,
+ * and the end.
+ */
+#define TX_HEADER_REPEATS       2       // Headers before the last one
+#define TX_STOP_TIMEOUT         1500    // Longest wind down after unkey, ms
+
+static volatile bool txKeyupRequested;  // Key-up handed to the thread
+static uint32_t      txSrcId;           // Own ID, sent as the source
+static uint8_t       txHeaders;         // Headers left before the last one
+static bool          txLastHeader;      // The last header is still to go
+static bool          txAtBoundary;      // The last frame sent was frame F
+static bool          txTerminated;      // The terminator has been sent
+static bool          txIdleSlot;        // The upcoming slot is the idle one
+
 /**
- * Bring the receiver back after a transmission. The transmission leaves the
- * chip's receive path needing the whole DMR mode configuration written again,
- * then the usual search for a transmission follows.
+ * Key up, as the stock firmware does: clear voice, transmission with the
+ * chip generating its own slot timing and the receiver off, starting on the
+ * next slot. A call being received is dropped; direct mode transmission does
+ * not wait for the channel in the stock firmware either.
+ */
+static void keyUp()
+{
+    txKeyupRequested = false;
+    rxRestoreNeeded  = false;
+
+    if(rxState.valid)
+    {
+        pthread_mutex_lock(&rxMutex);
+        rxState.valid = false;
+        pthread_mutex_unlock(&rxMutex);
+
+        rxEncrypted      = false;
+        lastPayloadValid = false;
+        dmrDebug_log(DMR_DBG_INFO, "call: ended, transmitting");
+    }
+
+    dmrAudio_stopRx();
+
+    txHeaders    = TX_HEADER_REPEATS;
+    txLastHeader = true;
+    txAtBoundary = false;
+    txTerminated = false;
+    txIdleSlot   = false;
+    txSequence   = 0;
+
+    C6000.writeCfgRegister(0x56, C6000.readCfgRegister(0x56) & ~0x10);
+    C6000.writeCfgRegister(0x14, txSrcId & 0xFF);
+    C6000.writeCfgRegister(0x15, (txSrcId >> 8) & 0xFF);
+    C6000.writeCfgRegister(0x16, (txSrcId >> 16) & 0xFF);
+    C6000.writeCfgRegister(0x40, 0xA3);
+    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+
+    rxLocked = false;
+    rxMisses = 0;
+
+    /*
+     * Capture and encode the microphone from now on, so the first voice
+     * frames are ready when the headers are over.
+     */
+    if(dmrAudio_startTx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+
+    dmrDebug_log(DMR_DBG_INFO, "tx: keyed, timing %02X", C6000.getDmrTiming());
+}
+
+/**
+ * End the transmission, in the slot after the one following the terminator:
+ * stop the vocoder encode and the microphone, clear the vocoder buffers and
+ * stop transmitting. The receiver comes back on the next event.
+ *
+ * @param reason: what ended it, for the log.
+ */
+static void endTransmission(const char *reason)
+{
+    C6000.writeCfgRegister(0x22, 0x46);
+    dmrAudio_stopTx();
+    C6000.writeCfgRegister(0x21, 0x03);
+    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+
+    txState         = TX_IDLE;
+    rxRestoreNeeded = true;
+
+    dmrDebug_log(DMR_DBG_INFO, "tx: ended, %s", reason);
+}
+
+/**
+ * Set up the next slot of the transmission, straight after the slot boundary.
+ * The link control is written before the burst type, and the voice payload
+ * before the burst it goes out in.
+ */
+static void txSlot()
+{
+    if(txIdleSlot)
+    {
+        C6000.writeCfgRegister(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
+        txIdleSlot = false;
+        return;
+    }
+
+    txIdleSlot = true;
+
+    if(txTerminated)
+    {
+        endTransmission("terminator sent");
+        return;
+    }
+
+    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
+
+    if((txHeaders > 0) || txLastHeader)
+    {
+        C6000.writeDmrLinkControl(txLc);
+        C6000.writeCfgRegister(TX_REG_BURST_TYPE, TX_BURST_VOICE_HEADER);
+
+        if(txHeaders > 0)
+        {
+            txHeaders -= 1;
+        }
+        else
+        {
+            txLastHeader = false;
+            C6000.writeCfgRegister(0x22, 0x86);     // Start the vocoder encode
+        }
+
+        return;
+    }
+
+    if(txAtBoundary && txStopRequested)
+    {
+        C6000.writeDmrLinkControl(txLc);
+        C6000.writeCfgRegister(TX_REG_BURST_TYPE, TX_BURST_TERMINATOR);
+        txTerminated = true;
+        return;
+    }
+
+    /*
+     * A voice frame: three encoded AMBE frames from the microphone, any not
+     * yet available falling back to silence.
+     */
+    uint8_t payload[VP_LENGTH];
+    for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
+    {
+        uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
+        if(dmrAudio_popFrame(slot) == false)
+            memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
+    }
+
+    dmrPayload_write(payload);
+    C6000.writeCfgRegister(TX_REG_BURST_TYPE,
+                           TX_BURST_VOICE | (txSequence << 4));
+
+    txAtBoundary = (txSequence == (TX_SUPERFRAME_FRAMES - 1));
+    txSequence   = (txSequence + 1) % TX_SUPERFRAME_FRAMES;
+}
+
+/**
+ * Acknowledge the chip's interrupt flags while transmitting, when they carry
+ * nothing to act on.
+ */
+static void acknowledgeFlags()
+{
+    uint8_t flags = C6000.readCfgRegister(0x82);
+    if(flags != 0)
+        C6000.clearDmrInterrupts(flags);
+}
+
+/**
+ * Bring the receiver back after a transmission, as the stock firmware does:
+ * clear the vocoder buffers, reset its decode, then restart the search for a
+ * transmission.
  */
 static void restoreAfterTx()
 {
     rxRestoreNeeded = false;
 
-    /* The transmission is over; stop capturing the microphone. */
-    dmrAudio_stopTx();
-
-    C6000.dmrMode();
-    C6000.setDmrColorCode(configuredCc);
+    C6000.writeCfgRegister(0x20, 0x00);
+    C6000.writeCfgRegister(0x21, 0x02);
+    C6000.writeCfgRegister(0x22, 0x16);
+    C6000.writeCfgRegister(0x22, 0x46);
     armReceiver();
+    acknowledgeFlags();
     lastBurstTick = getTick();
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx, timing %02X",
@@ -628,11 +799,11 @@ static void restoreAfterTx()
 }
 
 /**
- * The reception thread: woken by the interrupt lines, it does all the chip
- * access for reception through the normal, mutex protected, accessors, as the
- * stock firmware does from the tasks its interrupts wake. System events are
- * handled straight away, the slot handler runs a fixed delay after each slot
- * boundary.
+ * The DMR thread: woken by the interrupt lines, it does all the chip access for
+ * reception and transmission through the normal, mutex protected, accessors,
+ * as the stock firmware does from the tasks its interrupts wake. System events
+ * are handled straight away; the slot handler runs a fixed delay after each
+ * slot boundary when receiving, straight away when transmitting.
  */
 static void *rxThreadFunc(void *arg)
 {
@@ -646,6 +817,13 @@ static void *rxThreadFunc(void *arg)
         if(rxThreadRun == false)
             break;
 
+        if(txKeyupRequested)
+        {
+            keyUp();
+            slotDue = -1;
+            continue;
+        }
+
         if(rxRestoreNeeded)
         {
             restoreAfterTx();
@@ -653,10 +831,24 @@ static void *rxThreadFunc(void *arg)
             continue;
         }
 
-        /* The transmit slot machine runs from the timeslot interrupt. */
         if(dmr_txActive())
         {
             slotDue = -1;
+
+            if((events & DMR_IRQ_EVENT_SYSTEM) != 0)
+                acknowledgeFlags();
+
+            if((events & DMR_IRQ_EVENT_TIMESLOT) != 0)
+                txSlot();
+
+            /*
+             * The transmission winds down on its own once unkeyed, within a
+             * superframe or so; if the slot clock stopped it would not.
+             */
+            if(dmr_txActive() && txStopRequested
+               && ((getTick() - txStopTick) > TX_STOP_TIMEOUT))
+                endTransmission("timed out after unkey");
+
             continue;
         }
 
@@ -686,7 +878,7 @@ static void *rxThreadFunc(void *arg)
     return NULL;
 }
 
-#else /* DMR_RX_THREAD */
+#else /* DMR_THREAD */
 
 /**
  * Read out a burst the chip has signalled and, if it passes the filters,
@@ -858,7 +1050,7 @@ static bool handleBurst()
     return received;
 }
 
-#endif /* DMR_RX_THREAD */
+#endif /* DMR_THREAD */
 
 bool dmr_txActive()
 {
@@ -990,6 +1182,29 @@ void dmr_txTimeslotIsr()
 void dmr_startTx(const bool groupCall, const uint32_t dstId,
                  const uint32_t srcId)
 {
+#if defined(DMR_THREAD)
+    /*
+     * The key-up itself is left to the DMR thread, which runs the whole
+     * transmission, so that it never interleaves with reception.
+     */
+    dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
+    txSrcId          = srcId;
+    txStopRequested  = false;
+    txState          = TX_START_1;
+
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+    txReportedTs = counters.timeslot;
+    txReportedTx = counters.transmit;
+    txReportTick = getTick();
+
+    txKeyupRequested = true;
+    dmrIrq_wakeWaiter();
+
+    dmrDebug_log(DMR_DBG_INFO, "tx: keying, to %s %lu from %lu",
+                 groupCall ? "TG" : "ID", (unsigned long) dstId,
+                 (unsigned long) srcId);
+#else
     /*
      * Everything the transmit setup touches on the control bus is fenced off
      * from the interrupt for the duration: the state and link control are set
@@ -1045,10 +1260,14 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId,
     dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to %s %lu from %lu",
                  groupCall ? "TG" : "ID", (unsigned long) dstId,
                  (unsigned long) srcId);
+#endif
 }
 
 void dmr_stopTx()
 {
+    if(txStopRequested == false)
+        txStopTick = getTick();
+
     txStopRequested = true;
     dmrDebug_log(DMR_DBG_INFO, "tx: unkey requested");
 }
@@ -1065,6 +1284,13 @@ void dmr_txTask()
     dmrIrq_feedWatchdog();
 
     long long now = getTick();
+
+#if defined(DMR_THREAD)
+    /* Let the thread check its wind down even if the slot clock stopped. */
+    if(dmr_txActive() && txStopRequested
+       && ((now - txStopTick) > TX_STOP_TIMEOUT))
+        dmrIrq_wakeWaiter();
+#endif
 
     if((now - txReportTick) < TX_REPORT_INTERVAL)
         return;
@@ -1127,7 +1353,7 @@ void dmr_init(const uint8_t colorCode)
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
-#if defined(DMR_RX_THREAD)
+#if defined(DMR_THREAD)
     armReceiver();
     rxEncrypted = false;
 #else
@@ -1147,7 +1373,7 @@ void dmr_init(const uint8_t colorCode)
     dmrDebug_mark("dmr: enabling interrupt lines");
     dmrIrq_init();
 
-#if defined(DMR_RX_THREAD)
+#if defined(DMR_THREAD)
     rxThreadRun = true;
 
     pthread_attr_t attr;
@@ -1169,7 +1395,7 @@ void dmr_init(const uint8_t colorCode)
 
 void dmr_terminate()
 {
-#if defined(DMR_RX_THREAD)
+#if defined(DMR_THREAD)
     if(rxThreadRun)
     {
         rxThreadRun = false;
@@ -1209,7 +1435,7 @@ void dmr_setColorCode(const uint8_t colorCode)
 
 void dmr_task(struct dmrRxState *rx)
 {
-#if defined(DMR_RX_THREAD)
+#if defined(DMR_THREAD)
     /*
      * Reception runs on its own thread: this hands its state out, keeps the
      * diagnostics going and wakes the thread for the work it would otherwise

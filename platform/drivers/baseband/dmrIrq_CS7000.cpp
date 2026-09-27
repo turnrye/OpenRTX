@@ -8,6 +8,7 @@
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
+#include "paRamp_CS7000.h"
 #include <kernel/scheduler/scheduler.h>
 #include <miosix.h>
 
@@ -37,17 +38,6 @@ static volatile bool     stormSeen;  /* Lines shut down by the guard */
 static volatile bool     busBusy;    /* The DMR thread is on the SPI bus */
 static volatile uint32_t pendingEvents; /* Events not yet taken, DMR_IRQ_EVENT_* */
 static Thread           *waiting;    /* Thread waiting for an event, if any */
-
-/**
- * Tell whether the handlers may reach the chip right now. The control bus is
- * a hardware SPI shared with other threads, the DAC FIFO feeding the speaker
- * among them, and a handler cannot take its mutex: it stays off the bus while
- * any thread is on it.
- */
-static inline bool busFree()
-{
-    return (busBusy == false) && (ScopedChipSelect::busActive() == false);
-}
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -97,13 +87,9 @@ void __attribute__((used)) dmrTimeslotIrqImpl()
     tsCount += 1;
 
     /*
-     * The timeslot interrupt is the slot clock the transmit state machine runs
-     * on: while a transmission is active it sets up the next burst here, within
-     * the slot deadline the thread cannot meet.
+     * The DMR thread sets up each slot, transmitting as well as receiving,
+     * straight after the boundary.
      */
-    if(dmr_txActive() && busFree())
-        dmr_txTimeslotIsr();
-
     if(IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
         Scheduler::IRQfindNextThread();
 
@@ -121,6 +107,10 @@ void __attribute__((used)) EXTI2_IRQHandler()
 {
     EXTI->PR1 = EXTI_PR1_PR2;
     txCount += 1;
+
+    /* The chip is about to send a burst: ramp the PA up for it. */
+    paRamp_burstIsr();
+
     stormGuard();
 }
 
