@@ -16,11 +16,11 @@
 /*
  * The CS7000 Plus voice payload bus: the HR_C6000's V_SPI on SPI1, with the
  * clock on PB3, the data lines on PB4 and PB5 and a software chip select on
- * PB6. The read command is the page number with the read flag set, followed by
- * the register offset; the payload comes back after those two command bytes,
- * so the transfer is two bytes longer than the data.
+ * PB6. It carries the payload to transmit; the write command is the page
+ * number followed by the register offset. Received payloads do not come back
+ * on it in this configuration - reading it returns zeros - so, as in the stock
+ * firmware, they are read from the data page of the control interface.
  */
-#define VP_PAGE_READ            0x83
 #define VP_PAGE_WRITE           0x03
 #define VP_REGISTER             0x00
 
@@ -54,18 +54,7 @@ void dmrPayload_terminate()
 
 void dmrPayload_read(uint8_t *payload)
 {
-    uint8_t tx[2 + DMR_PAYLOAD_LENGTH];
-    uint8_t rx[2 + DMR_PAYLOAD_LENGTH];
-
-    memset(tx, 0xFF, sizeof(tx));     // Dummy bytes, as the stock firmware
-    tx[0] = VP_PAGE_READ;
-    tx[1] = VP_REGISTER;
-
-    gpio_clearPin(VOC_CS);
-    spi_transfer(&voc_spi, tx, rx, sizeof(tx));
-    gpio_setPin(VOC_CS);
-
-    memcpy(payload, &rx[2], DMR_PAYLOAD_LENGTH);
+    C6000.readDmrVoicePayload(payload);
 }
 
 void dmrPayload_write(const uint8_t *payload)
