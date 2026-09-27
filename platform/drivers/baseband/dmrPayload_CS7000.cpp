@@ -65,8 +65,34 @@ void dmrPayload_write(const uint8_t *payload)
     tx[1] = VP_REGISTER;
     memcpy(&tx[2], payload, DMR_PAYLOAD_LENGTH);
 
+    /*
+     * The transfer is run as the stock firmware runs it, rather than through
+     * the generic driver: a transfer of known length, each byte shifted in
+     * full before the next one is queued, and the peripheral disabled at its
+     * end, before the chip select is released. Sent through the generic
+     * driver, the payload never reached the chip: every burst went out with
+     * a payload of zeros.
+     */
+    SPI_TypeDef *spi = SPI1;
+
     gpio_clearPin(VOC_CS);
-    spi_transfer(&voc_spi, tx, NULL, sizeof(tx));
+
+    spi->CR2  = sizeof(tx);
+    spi->CR1 |= SPI_CR1_SPE;
+    spi->CR1 |= SPI_CR1_CSTART;
+
+    for(size_t i = 0; i < sizeof(tx); i++)
+    {
+        while((spi->SR & SPI_SR_TXP) == 0) ;
+        *((volatile uint8_t *) &spi->TXDR) = tx[i];
+        while((spi->SR & SPI_SR_RXP) == 0) ;
+        (void) *((volatile uint8_t *) &spi->RXDR);
+    }
+
+    while((spi->SR & SPI_SR_EOT) == 0) ;
+    spi->IFCR = SPI_IFCR_EOTC | SPI_IFCR_TXTFC;
+    spi->CR1 &= ~SPI_CR1_SPE;
+
     gpio_setPin(VOC_CS);
 }
 
