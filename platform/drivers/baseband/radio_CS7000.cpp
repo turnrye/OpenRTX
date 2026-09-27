@@ -277,7 +277,12 @@ void radio_enableRx()
     gpioDev_clear(TX_PWR_EN);     // Disable TX PA
     gpioDev_clear(RF_APC_SW);     // APC/TV used for RX filter tuning
     gpioDev_set(VCOVCC_SW);       // Enable RX VCO
-    gpioDev_set(CTCSS_AMP_EN);    // Enable CTCSS filter/amplifier
+    // The CTCSS filter/amplifier only serves FM tone squelch; the stock
+    // firmware keeps it off while receiving DMR.
+    if(config->opMode == OPMODE_DMR)
+        gpioDev_clear(CTCSS_AMP_EN);
+    else
+        gpioDev_set(CTCSS_AMP_EN);
     gpioDev_set(DET_PDN);         // Enable FM detector
 
     // Set PLL frequency
