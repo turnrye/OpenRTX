@@ -96,7 +96,13 @@ void audio_init()
     gpioDev_set(RX_PWR_EN);
     gpioDev_clear(C6K_SLEEP);
     delayMs(10);
-    spiStm32_init(&c6000_spi, 12500000, SPI_FLAG_CPHA);
+    /*
+     * The HR_C6000 does not return register reads reliably at 12.5MHz: on the
+     * CS7000 Plus they came back corrupt while writes went through. 1.6MHz
+     * (1.56MHz on the H7) reads back correctly and leaves the bus mostly idle
+     * with the DAC FIFO running; the stock firmware runs it slower still.
+     */
+    spiStm32_init(&c6000_spi, 1600000, SPI_FLAG_CPHA);
     C6000.init();
     C6000.fmMode();
 
