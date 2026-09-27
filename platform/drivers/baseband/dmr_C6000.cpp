@@ -230,6 +230,14 @@ static bool handleBurst()
 
     bool received = (status.intFlags & ~INT_FLAG_SLOT) != 0;
 
+    /*
+     * An event that is only the slot clock ticking carries nothing to read: the
+     * chip still hands back the previous call's link control and payload, which
+     * would bring a call that is over straight back.
+     */
+    if(received == false)
+        return false;
+
     bool    crcOk = (status.rxStatus & RX_STATUS_CRC_ERROR) == 0;
     uint8_t code  = (status.cach >> 4) & 0x0F;
 
