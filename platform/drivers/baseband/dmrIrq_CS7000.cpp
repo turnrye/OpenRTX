@@ -8,6 +8,10 @@
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr.h"
+#include <kernel/scheduler/scheduler.h>
+#include <miosix.h>
+
+using namespace miosix;
 
 #if defined(CONFIG_DMR)
 
@@ -47,6 +51,8 @@ static volatile bool     stormSeen;  /* Lines shut down by the guard */
 static volatile uint8_t  rxColorCode = CC_NONE; /* CC of the last frame event */
 static volatile uint8_t  rxBurstStatus;         /* 0x51 of the last frame event */
 static volatile bool     busBusy;    /* The DMR thread is on the SPI bus */
+static volatile uint32_t pendingEvents; /* Events not yet taken, DMR_IRQ_EVENT_* */
+static Thread           *waiting;    /* Thread waiting for an event, if any */
 
 /**
  * Tell whether the handlers may reach the chip right now. The control bus is
@@ -75,7 +81,33 @@ static inline void stormGuard()
     }
 }
 
-void __attribute__((used)) EXTI0_IRQHandler()
+/**
+ * Record an event and wake the thread waiting for one, if any. Called with the
+ * interrupts disabled.
+ *
+ * @param event: DMR_IRQ_EVENT_* bits to record.
+ * @return true if the woken thread should preempt the running one.
+ */
+static inline bool IRQsignal(const uint32_t event)
+{
+    pendingEvents |= event;
+
+    if(waiting == nullptr)
+        return false;
+
+    Thread *woken = waiting;
+    waiting       = nullptr;
+    woken->IRQwakeup();
+
+    return woken->IRQgetPriority() > Thread::IRQgetCurrentThread()->IRQgetPriority();
+}
+
+/*
+ * The timeslot and system handlers can wake the reception thread and switch
+ * to it straight away, which in Miosix takes a handler saving and restoring
+ * the interrupted context itself: the handlers proper run from naked wrappers.
+ */
+void __attribute__((used)) dmrTimeslotIrqImpl()
 {
     EXTI->PR1 = EXTI_PR1_PR0;
     tsCount += 1;
@@ -88,7 +120,17 @@ void __attribute__((used)) EXTI0_IRQHandler()
     if(dmr_txActive() && busFree())
         dmr_txTimeslotIsr();
 
+    if(IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
+        Scheduler::IRQfindNextThread();
+
     stormGuard();
+}
+
+void __attribute__((naked)) EXTI0_IRQHandler()
+{
+    saveContext();
+    asm volatile("bl _Z18dmrTimeslotIrqImplv");
+    restoreContext();
 }
 
 void __attribute__((used)) EXTI2_IRQHandler()
@@ -98,7 +140,7 @@ void __attribute__((used)) EXTI2_IRQHandler()
     stormGuard();
 }
 
-void __attribute__((used)) EXTI3_IRQHandler()
+void __attribute__((used)) dmrSystemIrqImpl()
 {
     EXTI->PR1 = EXTI_PR1_PR3;
     sysCount += 1;
@@ -116,12 +158,23 @@ void __attribute__((used)) EXTI3_IRQHandler()
         rxColorCode   = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4) & 0x0F;
     }
 
+    if(IRQsignal(DMR_IRQ_EVENT_SYSTEM))
+        Scheduler::IRQfindNextThread();
+
     stormGuard();
+}
+
+void __attribute__((naked)) EXTI3_IRQHandler()
+{
+    saveContext();
+    asm volatile("bl _Z16dmrSystemIrqImplv");
+    restoreContext();
 }
 
 void dmrIrq_init()
 {
     dmrIrq_clearCounters();
+    pendingEvents = 0;
 
     /*
      * The lines are active on the falling edge, so they idle high: pulling
@@ -210,6 +263,52 @@ uint8_t dmrIrq_getRxBurstStatus()
 void dmrIrq_setBusBusy(bool busy)
 {
     busBusy = busy;
+}
+
+uint32_t dmrIrq_waitEvents()
+{
+    FastInterruptDisableLock dLock;
+
+    while(pendingEvents == 0)
+    {
+        waiting = Thread::IRQgetCurrentThread();
+        Thread::IRQwait();
+        {
+            FastInterruptEnableLock eLock(dLock);
+            Thread::yield();
+        }
+    }
+
+    uint32_t events = pendingEvents;
+    pendingEvents   = 0;
+
+    return events;
+}
+
+uint32_t dmrIrq_takeEvents()
+{
+    FastInterruptDisableLock dLock;
+
+    uint32_t events = pendingEvents;
+    pendingEvents   = 0;
+
+    return events;
+}
+
+void dmrIrq_wakeWaiter()
+{
+    /*
+     * From a thread the switch cannot be made with the interrupts disabled:
+     * wake the waiter, then yield to it once they are enabled again.
+     */
+    bool preempt;
+    {
+        FastInterruptDisableLock dLock;
+        preempt = IRQsignal(DMR_IRQ_EVENT_WAKE);
+    }
+
+    if(preempt)
+        Thread::yield();
 }
 
 #endif /* CONFIG_DMR */

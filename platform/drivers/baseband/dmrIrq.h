@@ -104,6 +104,36 @@ uint8_t dmrIrq_getRxBurstStatus();
  */
 void dmrIrq_setBusBusy(bool busy);
 
+/**
+ * Events the interrupt lines signal to a thread waiting on them.
+ */
+#define DMR_IRQ_EVENT_TIMESLOT  0x01    ///< Slot boundary.
+#define DMR_IRQ_EVENT_SYSTEM    0x02    ///< Frame event, flags in 0x82.
+#define DMR_IRQ_EVENT_WAKE      0x04    ///< Woken by dmrIrq_wakeWaiter.
+
+/**
+ * Wait until the interrupt lines signal an event, on the platforms which
+ * handle reception from a thread of their own: the handlers only record the
+ * event and wake the thread, which then does all the chip access through the
+ * normal, mutex protected, register accessors. Only one thread may wait.
+ *
+ * @return the events signalled since the previous call, DMR_IRQ_EVENT_* bits.
+ */
+uint32_t dmrIrq_waitEvents();
+
+/**
+ * Get the events signalled since the previous call without waiting.
+ *
+ * @return the pending events, DMR_IRQ_EVENT_* bits, possibly none.
+ */
+uint32_t dmrIrq_takeEvents();
+
+/**
+ * Wake the thread waiting in dmrIrq_waitEvents, which then returns with
+ * DMR_IRQ_EVENT_WAKE set, for instance to let it exit.
+ */
+void dmrIrq_wakeWaiter();
+
 #ifdef __cplusplus
 }
 #endif
