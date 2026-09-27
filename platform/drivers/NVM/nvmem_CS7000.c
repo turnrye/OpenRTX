@@ -122,6 +122,11 @@ void nvm_readCalibData(void *buf)
     nvm_read(0, 1, 0x10C4, &(calData->txDigitalPathQ), sizeof(calData->txDigitalPathQ));
     nvm_read(0, 1, 0x10CC, &(calData->txAnalogPathI),  sizeof(calData->txAnalogPathI));
     nvm_read(0, 1, 0x10DC, &(calData->errorRate),      sizeof(calData->errorRate));
+    nvm_read(0, 1, 0x10B4, &(calData->dmrMod2Amp),     sizeof(calData->dmrMod2Amp));
+    nvm_read(0, 1, 0x10BC, &(calData->dmrMod1Amp),     sizeof(calData->dmrMod1Amp));
+    nvm_read(0, 1, 0x10EC, &(calData->paRampHigh),     sizeof(calData->paRampHigh));
+    nvm_read(0, 1, 0x1124, &(calData->paRampLow),      sizeof(calData->paRampLow));
+    nvm_read(0, 1, 0x1174, &(calData->dmrTxBias),      sizeof(calData->dmrTxBias));
 
     for(int i = 0; i < 8; i++)
     {
