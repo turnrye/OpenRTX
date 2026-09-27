@@ -10,6 +10,7 @@
 #include "core/audio_path.h"
 #include "core/threads.h"
 #include "core/dsp.h"
+#include "core/dmr_debug.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,7 @@ static void *playbackFunc(void *arg)
      */
     if(dmr_codec_init() == false)
     {
+        dmrDebug_log(DMR_DBG_INFO, "audio: playback not started, no vocoder");
         running = false;
         pthread_detach(pthread_self());
         return NULL;
@@ -66,6 +68,8 @@ static void *playbackFunc(void *arg)
                                     STREAM_OUTPUT | BUF_CIRC_DOUBLE);
     if(os < 0)
     {
+        dmrDebug_log(DMR_DBG_INFO, "audio: playback not started, output "
+                     "stream error %d", (int) os);
         running = false;
         pthread_detach(pthread_self());
         return NULL;
@@ -76,7 +80,11 @@ static void *playbackFunc(void *arg)
     while(reqStop == false)
     {
         if(audioPath_getStatus(path) != PATH_OPEN)
+        {
+            dmrDebug_log(DMR_DBG_INFO, "audio: playback stopped, speaker path "
+                         "taken over");
             break;
+        }
 
         uint8_t frame[DMR_CODEC_FRAME_BYTES];
         bool    haveFrame = false;
@@ -93,7 +101,11 @@ static void *playbackFunc(void *arg)
 
         stream_sample_t *buf = outputStream_getIdleBuffer(os);
         if(buf == NULL)
+        {
+            dmrDebug_log(DMR_DBG_INFO, "audio: playback stopped, output "
+                         "stream lost");
             break;
+        }
 
         if(haveFrame)
             dmr_codec_decode(buf, frame);
