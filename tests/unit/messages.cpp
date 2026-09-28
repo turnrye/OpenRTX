@@ -708,6 +708,74 @@ TEST_CASE("messages: receive errors are dropped and rearmed", "[messages]")
     CHECK(desc->status == PKT_STATUS_SUBMITTED);
 }
 
+/*
+ * RX re-arm window
+ *
+ * The inbox keeps a single RX descriptor submitted to the rtx stage
+ * (CONFIG_MESSAGES_RX_SLOTS == 1).  When a packet completes, the rtx stage
+ * hands the descriptor back (DONE) and the inbox only re-submits a fresh one
+ * on the next messages_task() run, from the message task thread.  Between
+ * those two events NO descriptor is armed: a second packet arriving in that
+ * window has nowhere to land and the OpMode layer drops every one of its
+ * frames (rxState() sees currRxPkt == nullptr and an empty queue, binds the
+ * deframer to a null buffer, and each pushFrame() returns ERR_OVERFLOW).
+ *
+ * These tests pin the window down deterministically.  They are the handoff /
+ * "single RX slot re-arm" behavior described in the field-loss investigation:
+ * back-to-back packets can be lost beyond raw channel loss.  Closing the
+ * window means keeping a spare descriptor armed (a second RX slot), which the
+ * messages layer already supports but the M17 OpMode RX queue, sized 1, does
+ * not yet accept.
+ */
+
+TEST_CASE("messages: a completed packet leaves the RX slot unarmed until "
+          "the task re-runs",
+          "[messages][rearm]")
+{
+    activate();
+
+    struct pktDesc *desc = rtxStub_rxDesc();
+    REQUIRE(desc != nullptr);
+    REQUIRE(desc->status == PKT_STATUS_SUBMITTED);
+
+    /* The rtx stage completes the packet. */
+    deliver(desc, "first");
+    REQUIRE(desc->status == PKT_STATUS_DONE);
+
+    /*
+     * Re-arm window: the message task has not run yet.  The only descriptor
+     * is DONE, not SUBMITTED, and no new one has been handed to the rtx
+     * stage.  A back-to-back packet arriving now finds nothing armed.
+     */
+    CHECK(desc->status == PKT_STATUS_DONE);
+    CHECK(rtxStub_rxSubmissions() == 1);
+
+    /* The window closes only when the task runs and re-submits the slot. */
+    CHECK(messages_task(MODE_A) == 1);
+    CHECK(desc->status == PKT_STATUS_SUBMITTED);
+    CHECK(rtxStub_rxSubmissions() == 2);
+}
+
+TEST_CASE("messages: an aborted packet leaves the same re-arm window",
+          "[messages][rearm]")
+{
+    activate();
+
+    struct pktDesc *desc = rtxStub_rxDesc();
+    REQUIRE(desc != nullptr);
+
+    /* A packet that failed mid-reassembly is handed back with an error. */
+    desc->res = -EIO;
+    desc->status = PKT_STATUS_ERROR;
+
+    /* Same window: nothing is armed until the task re-runs. */
+    CHECK(rtxStub_rxSubmissions() == 1);
+
+    messages_task(MODE_A);
+    CHECK(desc->status == PKT_STATUS_SUBMITTED);
+    CHECK(rtxStub_rxSubmissions() == 2);
+}
+
 TEST_CASE("messages: a refused receive is retried", "[messages]")
 {
     setup();
