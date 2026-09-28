@@ -1248,6 +1248,10 @@ m17_packet_disassembly_test = executable('m17_packet_disassembly_test',
                                          sources : unit_test_src + ['tests/unit/M17_packet_disassembly.cpp'],
                                          kwargs  : unit_test_opts)
 
+m17_packet_loss_test = executable('m17_packet_loss_test',
+                                  sources : unit_test_src + ['tests/unit/M17_packet_loss.cpp'],
+                                  kwargs  : unit_test_opts)
+
 m17_packet_framing_test = executable('m17_packet_framing_test',
                                      sources : unit_test_src + ['tests/unit/M17_packet_framing.cpp'],
                                      kwargs  : unit_test_opts)
@@ -1299,6 +1303,7 @@ test('DSP Oversampling Test', dsp_oversampling_test)
 test('GFX Text Test',        gfx_text_test)
 test('RTX TX Disable Test', rtx_tx_disable_test)
 test('M17 Packet Disassembly Test', m17_packet_disassembly_test)
+test('M17 Packet Loss Test', m17_packet_loss_test)
 test('M17 Packet Framing Test', m17_packet_framing_test)
 test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
