@@ -103,6 +103,16 @@ public:
      */
     const softFrame_t& getSoftFrame();
 
+    /**
+     * Tell the demodulator whether a carrier is present on the channel. While
+     * no carrier is reported, lock acquisition is suspended so that channel
+     * noise cannot produce false locks; an existing lock is not affected.
+     * Defaults to present.
+     *
+     * @param present: true if a carrier is present.
+     */
+    void setCarrierPresent(const bool present);
+
 private:
 
     /**
@@ -187,6 +197,7 @@ private:
     std::unique_ptr<softFrame_t >  softDemod;       ///< Soft bits of the frame being demodulated.
     std::unique_ptr<softFrame_t >  softReady;       ///< Soft bits of the fully demodulated frame.
     bool                           newFrame;        ///< A new frame has been fully decoded.
+    bool                           carrierPresent;  ///< Carrier detected, lock acquisition allowed.
     bool                           resetClockRec;   ///< Clock recovery reset request.
     bool                           updateSampPoint; ///< Sampling point update pending.
     uint16_t                       frameIndex;      ///< Index for filling the raw frame.

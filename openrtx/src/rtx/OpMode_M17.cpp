@@ -188,6 +188,12 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         startRx = false;
     }
 
+    // Gate lock acquisition on the squelch level, mapped to an RSSI threshold
+    // the same way FM mode does (0 to 15 -> -127 dBm to -61 dBm), so that
+    // channel noise cannot produce false locks that hide a real transmission.
+    rssi_t squelch = -127 + (status->sqlLevel * 66) / 15;
+    demodulator.setCarrierPresent(rtx_getRssi() > squelch);
+
     bool newData = demodulator.update(invertRxPhase);
     bool lock = demodulator.isLocked();
 

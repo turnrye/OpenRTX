@@ -216,6 +216,11 @@ const softFrame_t& Demodulator::getSoftFrame()
     return *softReady;
 }
 
+void Demodulator::setCarrierPresent(const bool present)
+{
+    carrierPresent = present;
+}
+
 bool Demodulator::isLocked()
 {
     return (demodState == DemodState::LOCKED)
@@ -349,6 +354,7 @@ void Demodulator::reset()
     frameIndex  = 0;
     sampleCount = 0;
     newFrame    = false;
+    carrierPresent = true;
     demodState  = DemodState::INIT;
     initCount   = RX_SAMPLE_RATE / 50;  // 50ms of init time
 
@@ -357,6 +363,10 @@ void Demodulator::reset()
 
 void Demodulator::unlockedState()
 {
+    // Do not try to acquire a lock on channel noise.
+    if(carrierPresent == false)
+        return;
+
     // Three synchronizers are checked per sample (LSF, stream, packet).
     // Each convolve() is O(SYNCW_SIZE) = 8 MACs; the total overhead is ~50
     // cycles per sample on the slowest supported target.
