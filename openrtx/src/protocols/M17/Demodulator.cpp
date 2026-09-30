@@ -5,6 +5,8 @@
  */
 
 #include "protocols/M17/Demodulator.hpp"
+#include <algorithm>
+#include <cmath>
 #include "protocols/M17/DSP.hpp"
 #include "protocols/M17/Utils.hpp"
 #include "core/audio_stream.h"
@@ -153,6 +155,8 @@ void Demodulator::init()
     baseband_buffer = std::make_unique< int16_t[] >(2 * SAMPLE_BUF_SIZE);
     demodFrame      = std::make_unique< frame_t >();
     readyFrame      = std::make_unique< frame_t >();
+    softDemod       = std::make_unique< softFrame_t >();
+    softReady       = std::make_unique< softFrame_t >();
 
     reset();
 
@@ -176,6 +180,8 @@ void Demodulator::terminate()
     baseband_buffer.reset();
     demodFrame.reset();
     readyFrame.reset();
+    softDemod.reset();
+    softReady.reset();
 
     #ifdef ENABLE_DEMOD_LOG
     logRunning = false;
@@ -203,6 +209,11 @@ const frame_t& Demodulator::getFrame()
     // When a frame is read is not new anymore
     newFrame = false;
     return *readyFrame;
+}
+
+const softFrame_t& Demodulator::getSoftFrame()
+{
+    return *softReady;
 }
 
 bool Demodulator::isLocked()
@@ -314,6 +325,21 @@ void Demodulator::quantize(stream_sample_t sample)
     }
 
     setSymbol(*demodFrame, frameIndex, symbol);
+    // Soft bits for the FEC decoder. Normalise the sample against the
+    // estimated outer deviation so the ideal levels sit at +-3, then map the
+    // sign to the first bit and the magnitude to the second one, as in the
+    // hard symbol mapping: +3 = 01, +1 = 00, -1 = 10, -3 = 11.
+    float outer = static_cast< float >(outerDeviation.first);
+    if(outer < 1.0f) outer = 1.0f;
+    float level = 3.0f * static_cast< float >(sample) / outer;
+    level = std::max(-3.0f, std::min(3.0f, level));
+    float sign = 0.5f - level / 4.0f;             // 0 for +3, 1 for -3
+    float mag  = (std::fabs(level) - 1.0f) / 2.0f; // 0 for +-1, 1 for +-3
+    sign = std::max(0.0f, std::min(1.0f, sign));
+    mag  = std::max(0.0f, std::min(1.0f, mag));
+    (*softDemod)[2 * frameIndex]     = static_cast< uint16_t >(sign * 65535.0f);
+    (*softDemod)[2 * frameIndex + 1] = static_cast< uint16_t >(mag  * 65535.0f);
+
     frameIndex += 1;
 }
 
@@ -415,6 +441,7 @@ void Demodulator::lockedState(int16_t sample)
     if(frameIndex == FRAME_SYMBOLS) {
         devEstimator.update();
         std::swap(readyFrame, demodFrame);
+        std::swap(softReady, softDemod);
 
         frameIndex = 0;
         newFrame = true;

@@ -34,34 +34,47 @@ void FrameDecoder::reset()
 
 FrameType FrameDecoder::decodeFrame(const frame_t &frame)
 {
+    for (size_t i = 0; i < softFromHard.size(); i++)
+        softFromHard[i] = getBit(frame, i) ? 0xFFFF : 0x0000;
+
+    return decodeFrame(frame, softFromHard);
+}
+
+FrameType FrameDecoder::decodeFrame(const frame_t &frame,
+                                    const softFrame_t &soft)
+{
     std::array<uint8_t, 2> syncWord;
-    std::array<uint8_t, 46> data;
-
     std::copy_n(frame.begin(), 2, syncWord.begin());
-    std::copy(frame.begin() + 2, frame.end(), data.begin());
-
-    // Re-correlating data is the same operation as decorrelating
-    decorrelate(data);
-    deinterleave(data);
-
     auto type = getFrameType(syncWord);
+
+    // The payload is the 368 coded bits after the sync word. Decorrelating a
+    // soft bit means inverting its confidence where the randomiser sequence
+    // has a one; deinterleaving uses the same quadratic permutation as the
+    // hard-bit helpers in Interleaver.hpp.
+    static constexpr size_t F1 = 45;
+    static constexpr size_t F2 = 92;
+    const size_t NB = softPayload.size();
+
+    for (size_t i = 0; i < NB; i++) {
+        size_t index = ((F1 * i) + (F2 * i * i)) % NB;
+        uint16_t value = soft[16 + index];
+        if (getBit(sequence, index))
+            value = 0xFFFF - value;
+        softPayload[i] = value;
+    }
 
     switch (type) {
         case FrameType::LINK_SETUP:
-            decodeLSF(data);
+            decodeLSF(softPayload);
             break;
-
         case FrameType::STREAM:
-            decodeStream(data);
+            decodeStream(softPayload);
             break;
-
         case FrameType::PACKET:
-            decodePacket(data);
+            decodePacket(softPayload);
             break;
-
         case FrameType::EOT:
             break; // EOT conveys termination only; no payload to decode.
-
         default:
             break;
     }
@@ -121,22 +134,21 @@ FrameType FrameDecoder::getFrameType(const std::array<uint8_t, 2> &syncWord)
     return type;
 }
 
-void FrameDecoder::decodeLSF(const std::array<uint8_t, 46> &data)
+void FrameDecoder::decodeLSF(const std::array<uint16_t, 368> &soft)
 {
     std::array<uint8_t, sizeof(LinkSetupFrame)> tmp;
-
-    viterbi.decodePunctured(data, tmp, LSF_PUNCTURE);
+    viterbi.decodePunctured(soft, tmp, LSF_PUNCTURE);
     memcpy(&lsf.data, tmp.data(), tmp.size());
 }
 
-void FrameDecoder::decodePacket(const std::array<uint8_t, 46> &data)
+void FrameDecoder::decodePacket(const std::array<uint16_t, 368> &soft)
 {
     packetFrame.clear();
 
     // Extract and decode packet data
     std::array<uint8_t, PacketFrame::FRAME_SIZE> tmp;
 
-    uint16_t bitErrs = viterbi.decodePunctured(data, tmp, PACKET_PUNCTURE);
+    uint16_t cost = viterbi.decodePunctured(soft, tmp, PACKET_PUNCTURE);
 
     // Viterbi decoding of P3-punctured packets produces a 2-bit right shift:
     // encoding 26 bytes (208 bits) with flush gives 210 Viterbi steps → 420
@@ -150,19 +162,23 @@ void FrameDecoder::decodePacket(const std::array<uint8_t, 46> &data)
         tmp[i] = (currentByte << 2) | (nextByte >> 6);
     }
 
-    if (bitErrs < MAX_VITERBI_ERRORS)
-        memcpy(&packetFrame.frameData, tmp.data(), tmp.size());
+    // No cost limit here: the packet CRC checked by the deframer is the
+    // authority, and a frame that decoded badly ends the packet either way.
+    (void)cost;
+    memcpy(&packetFrame.frameData, tmp.data(), tmp.size());
 }
 
-void FrameDecoder::decodeStream(const std::array<uint8_t, 46> &data)
+void FrameDecoder::decodeStream(const std::array<uint16_t, 368> &soft)
 {
-    // Extract and unpack the LICH segment contained at beginning of frame
+    // The LICH occupies the first 96 coded bits and is Golay-protected, so it
+    // is decoded from hard bits: slice the soft values at half scale.
     lich_t lich;
+    lich.fill(0x00);
+    for (size_t i = 0; i < lich.size() * 8; i++)
+        setBit(lich, i, soft[i] >= 0x8000);
+
     std::array<uint8_t, 6> lsfSegment;
-
-    std::copy_n(data.begin(), lich.size(), lich.begin());
     bool decodeOk = decodeLich(lsfSegment, lich);
-
     if (decodeOk) {
         // Append LICH segment
         uint8_t segmentNum = lsfSegment[5];
@@ -178,22 +194,18 @@ void FrameDecoder::decodeStream(const std::array<uint8_t, 46> &data)
         if (lsfSegmentMap == 0x3F) {
             if (lsfFromLich.valid())
                 lsf = lsfFromLich;
+
             lsfSegmentMap = 0;
             lsfFromLich.clear();
         }
     }
 
-    // Extract and decode stream data
-    std::array<uint8_t, 34> punctured;
+    // Extract and decode stream data, which follows the LICH
+    std::copy(soft.begin() + lich.size() * 8, soft.end(), softStream.begin());
+
     std::array<uint8_t, sizeof(StreamFrame)> tmp;
-
-    auto begin = data.begin();
-    begin += lich.size();
-    std::copy(begin, data.end(), punctured.begin());
-
-    // Skip payload copy if BER is too high to avoid audio artifacts
-    uint16_t bitErrs = viterbi.decodePunctured(punctured, tmp, DATA_PUNCTURE);
-    if (bitErrs < MAX_VITERBI_ERRORS)
+    uint16_t cost = viterbi.decodePunctured(softStream, tmp, DATA_PUNCTURE);
+    if (cost < MAX_VITERBI_COST)
         memcpy(&streamFrame.frameData, tmp.data(), tmp.size());
 }
 

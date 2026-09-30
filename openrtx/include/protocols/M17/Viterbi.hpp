@@ -269,7 +269,7 @@ public:
             pos++;
         }
 
-        return chainback(out, pos);
+        return static_cast< uint16_t >(chainback(out, pos) / 0xFFFF);
     }
 
     /**
@@ -319,7 +319,13 @@ public:
             histPos++;
         }
 
-        return chainback(out, histPos) - punctBitCnt;
+        // Each punctured-out bit is fed in at half scale and so adds about
+        // 0x7FFF to every path; remove that before normalising the metric to
+        // full-scale units, which approximates the number of bits corrected.
+        uint32_t cost  = chainback(out, histPos);
+        uint32_t punct = static_cast< uint32_t >(punctBitCnt) * 0x7FFF;
+        cost = (cost > punct) ? (cost - punct) : 0;
+        return static_cast< uint16_t >(cost / 0xFFFF);
     }
 
 private:
@@ -384,7 +390,7 @@ private:
      *
      * @param out: destination byte array for decoded data.
      * @param pos: starting position for the chainback.
-     * @return minimum Viterbi cost at the end of the decode sequence.
+     * @return minimum Viterbi path metric at the end of the decode sequence.
      */
     template < size_t OUT >
     uint32_t chainback(std::array< uint8_t, OUT >& out, size_t pos)

@@ -54,7 +54,20 @@ public:
 
     /**
      * Decode an M17 frame, identifying its type. Frame data must contain the
-     * sync word in the first two bytes.
+     * sync word in the first two bytes. The payload is decoded with a
+     * soft-decision Viterbi using the per-bit confidence values in @p soft,
+     * which are parallel to the coded bits of @p frame: 0x0000 is a confident
+     * 0, 0xFFFF a confident 1 (see Demodulator::getSoftFrame()).
+     *
+     * @param frame: byte array containing frame data.
+     * @param soft: soft bits, one per coded bit of the frame.
+     * @return the type of frame recognized.
+     */
+    FrameType decodeFrame(const frame_t &frame, const softFrame_t &soft);
+
+    /**
+     * Decode an M17 frame from hard bits only. Every bit is treated as fully
+     * confident, which makes the decoder behave as a hard-decision one.
      *
      * @param frame: byte array containing frame data.
      * @return the type of frame recognized.
@@ -108,25 +121,28 @@ private:
      * Decode Link Setup Frame data and update the internal LSF field with
      * the new frame data.
      *
-     * @param data: byte array containing frame data, without sync word.
+     * @param soft: soft bits of the frame payload, decorrelated and
+     * deinterleaved, without sync word.
      */
-    void decodeLSF(const std::array<uint8_t, 46> &data);
+    void decodeLSF(const std::array<uint16_t, 368> &soft);
 
     /**
      * Decode stream data and update the internal LSF field with the new
      * frame data.
      *
-     * @param data: byte array containing frame data, without sync word.
+     * @param soft: soft bits of the frame payload, decorrelated and
+     * deinterleaved, without sync word.
      */
-    void decodeStream(const std::array<uint8_t, 46> &data);
+    void decodeStream(const std::array<uint16_t, 368> &soft);
 
     /**
      * Decode packet data and update the internal packet frame field with the
      * new frame data.
      *
-     * @param data: byte array containing frame data, without sync word.
+     * @param soft: soft bits of the frame payload, decorrelated and
+     * deinterleaved, without sync word.
      */
-    void decodePacket(const std::array<uint8_t, 46> &data);
+    void decodePacket(const std::array<uint16_t, 368> &soft);
 
     /**
      * Decode a LICH block.
@@ -143,13 +159,29 @@ private:
     LinkSetupFrame lsfFromLich; ///< LSF assembled from LICH segments.
     StreamFrame streamFrame;    ///< Latest stream dat frame received.
     PacketFrame packetFrame;    ///< Latest packet data frame received.
-    HardViterbi viterbi;        ///< Viterbi decoder.
+    SoftViterbi viterbi;        ///< Soft-decision Viterbi decoder.
+
+    // Scratch buffers are members rather than locals: a frame decode runs on
+    // the RTX thread, whose stack is small.
+    softFrame_t softFromHard; ///< Soft bits derived from hard input.
+    std::array<uint16_t, 368>
+        softPayload;          ///< Decorrelated, deinterleaved payload.
+    std::array<uint16_t, 272> softStream; ///< Stream payload after the LICH.
 
     ///< Maximum allowed hamming distance when determining the frame type.
     static constexpr uint8_t MAX_SYNC_HAMM_DISTANCE = 4;
 
-    ///< Maximum number of corrected bit errors allowed in a stream frame.
-    static constexpr uint16_t MAX_VITERBI_ERRORS = 15;
+    /**
+     * Maximum Viterbi cost, in full-scale soft units, for a stream payload to
+     * be accepted; stream frames carry no CRC, so this is what keeps a badly
+     * decoded frame away from the codec. With hard (saturated) input the cost
+     * equals the number of corrected bit errors. With demodulator soft bits
+     * the +-1 symbols carry a less confident sign bit, so even a clean frame
+     * costs 25 to 45 units. Measured over the air on an MD-UV380: frames of
+     * packets that passed their CRC never exceeded 60 (6200 frames), frames
+     * that broke a CRC cost 59 to 75.
+     */
+    static constexpr uint16_t MAX_VITERBI_COST = 64;
 };
 
 } // namespace M17
