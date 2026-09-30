@@ -348,13 +348,30 @@ void _ui_drawMainBottom()
             break;
         #ifdef CONFIG_M17
         case OPMODE_M17:
-            gfx_drawSmeterLevel(meter_pos,
-                                meter_width,
-                                meter_height,
-                                rssi,
-                                mic_level,
-                                volume,
-                                true);
+            // The squelch level gates M17 lock acquisition, so show and let
+            // the user adjust it as in FM while receiving; keep the mic level
+            // meter while transmitting.
+            if(rtx_getStatus()->opStatus == TX)
+            {
+                gfx_drawSmeterLevel(meter_pos,
+                                    meter_width,
+                                    meter_height,
+                                    rssi,
+                                    mic_level,
+                                    volume,
+                                    true);
+            }
+            else
+            {
+                gfx_drawSmeter(meter_pos,
+                               meter_width,
+                               meter_height,
+                               rssi,
+                               squelch,
+                               volume,
+                               true,
+                               yellow_fab413);
+            }
             break;
         #endif
     }
