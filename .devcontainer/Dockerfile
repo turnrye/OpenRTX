@@ -69,6 +69,12 @@ ENV PATH="$PATH:/usr/local/bin"
 RUN git clone https://github.com/open-ham/OpenGD77.git /tmp/OpenGD77
 ENV PATH="$PATH:/tmp/OpenGD77/tools/Python/FirmwareLoader:/tmp/OpenGD77/firmware/tools"
 
+# faketime freezes the clock shown by the emulator in the UI tests. It has its
+# own layer so that adding it did not invalidate the toolchain layers above.
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+  faketime \
+  && rm -rf /var/lib/apt/lists/*
+
 # Create and activate a virtual environment, using uv both to supply the
 # interpreter (replacing the deadsnakes PPA) and to install into it.
 ENV VIRTUAL_ENV=/opt/venv
