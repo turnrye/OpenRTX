@@ -1402,10 +1402,12 @@ void dmr_init(const uint8_t colorCode)
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
+#if defined(_MIOSIX)
     pthread_attr_setstacksize(&attr, RX_THREAD_STKSIZE);
     struct sched_param param;
     param.sched_priority = THREAD_PRIO_RT;
     pthread_attr_setschedparam(&attr, &param);
+#endif
 
     if(pthread_create(&rxThread, &attr, rxThreadFunc, NULL) != 0)
     {

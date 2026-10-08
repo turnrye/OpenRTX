@@ -1268,6 +1268,26 @@ mic_frame_test = executable('mic_frame_test',
                             sources : unit_test_src + ['tests/unit/mic_frame.cpp'],
                             kwargs  : unit_test_opts)
 
+dmr_harness_src = ['tests/unit/dmr_harness.cpp',
+                   'tests/harness/dmr/fakes.cpp',
+                   'platform/drivers/baseband/dmr_C6000.cpp',
+                   'platform/drivers/baseband/HR_C6000.cpp',
+                   'platform/drivers/baseband/HR_C6000_CS7000.cpp',
+                   'platform/drivers/baseband/HR_Cx000.cpp',
+                   'openrtx/src/protocols/DMR/LinkControl.c',
+                   'openrtx/src/protocols/DMR/VoiceFrame.c']
+
+dmr_harness_test = executable('dmr_harness_test',
+                              sources : dmr_harness_src,
+                              c_args  : linux_c_args,
+                              cpp_args: linux_cpp_args,
+                              include_directories: ['tests/harness/dmr',
+                                                    'openrtx/include',
+                                                    'platform',
+                                                    'platform/drivers/baseband'],
+                              dependencies: [threads_dep, catch2_dep],
+                              link_args: linux_l_args)
+
 dsp_oversampling_test = executable('dsp_oversampling_test',
                                     sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1313,5 +1333,6 @@ test('DMR Link Control Test', dmr_lc_test)
 test('DMR Voice Frame Test', dmr_voice_frame_test)
 test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('Mic Frame Test', mic_frame_test)
+test('DMR Driver Harness', dmr_harness_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)
