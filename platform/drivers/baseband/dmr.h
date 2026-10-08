@@ -94,6 +94,18 @@ bool dmr_txActive();
  */
 void dmr_txTimeslotIsr();
 
+/**
+ * Send a test pattern in place of the voice: each burst's payload carries a
+ * sequence number, so a receiver on the bench can tell whether every payload
+ * handed to the baseband went out on air exactly once. Chip select timing
+ * on the vocoder bus once lost a share of them, each going out as a repeat
+ * of the previous burst; this is how that is checked after a change to the
+ * transmit path. Toggled from the debug tap.
+ *
+ * @param enable: true to send the pattern, false for the voice.
+ */
+void dmr_setPayloadMarker(const bool enable);
+
 #ifdef __cplusplus
 }
 #endif

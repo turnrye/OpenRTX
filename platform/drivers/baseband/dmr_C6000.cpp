@@ -156,6 +156,10 @@ static uint8_t   seenStatus;
 static uint8_t   seenLinesLow;
 
 static volatile uint8_t txState;        // Current transmit slot state
+static volatile bool    txMarker;       // Test pattern in place of the voice
+static uint8_t          txMarkerSeq;    // Sequence number of the next pattern
+
+static void nextVoicePayload(uint8_t *payload);
 static volatile uint8_t txSequence;     // Voice frame sequence, 0..5
 static volatile bool    txStopRequested;// Unkey asked, waiting for a boundary
 static long long        txStopTick;     // When the unkey was asked
@@ -747,17 +751,9 @@ static void txSlot()
         return;
     }
 
-    /*
-     * A voice frame: three encoded AMBE frames from the microphone, any not
-     * yet available falling back to silence.
-     */
+    /* A voice frame. */
     uint8_t payload[VP_LENGTH];
-    for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
-    {
-        uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
-        if(dmrAudio_popFrame(slot) == false)
-            memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
-    }
+    nextVoicePayload(payload);
 
     dmrPayload_write(payload);
     C6000.writeCfgRegister(TX_REG_BURST_TYPE,
@@ -1053,6 +1049,44 @@ static bool handleBurst()
 
 #endif /* DMR_THREAD */
 
+/**
+ * Build the payload of the next voice burst: three encoded AMBE frames from
+ * the microphone, any not yet available falling back to silence; or, on the
+ * bench, the test pattern: a marker byte, the sequence number and its
+ * complement, filler, and a checksum over the rest.
+ *
+ * @param payload: destination, VP_LENGTH bytes.
+ */
+static void nextVoicePayload(uint8_t *payload)
+{
+    for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
+    {
+        uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
+        if(dmrAudio_popFrame(slot) == false)
+            memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
+    }
+
+    if(txMarker == false)
+        return;
+
+    memset(payload, 0x5A, VP_LENGTH);
+    payload[0] = 0xA5;
+    payload[1] = txMarkerSeq;
+    payload[2] = ~txMarkerSeq;
+    txMarkerSeq += 1;
+
+    uint8_t sum = 0;
+    for(int i = 0; i < VP_LENGTH - 1; i++)
+        sum ^= payload[i];
+    payload[VP_LENGTH - 1] = sum;
+}
+
+void dmr_setPayloadMarker(const bool enable)
+{
+    txMarker    = enable;
+    txMarkerSeq = 0;
+}
+
 bool dmr_txActive()
 {
     return txState != TX_IDLE;
@@ -1120,12 +1154,7 @@ void dmr_txTimeslotIsr()
         case TX_VOICE:
         {
             uint8_t payload[VP_LENGTH];
-            for(int f = 0; f < VP_LENGTH / DMR_CODEC_FRAME_BYTES; f++)
-            {
-                uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
-                if(dmrAudio_popFrame(slot) == false)
-                    memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
-            }
+            nextVoicePayload(payload);
             dmrPayload_write(payload);
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,

@@ -30,6 +30,13 @@
  */
 void dmr_codec_selfTest(void) __attribute__((weak));
 
+/*
+ * The transmit test pattern switch, provided by the HR_C6000 DMR driver; weak
+ * for the same reason.
+ */
+void dmr_setPayloadMarker(const bool enable) __attribute__((weak));
+static bool marker;
+
 #define TAP_BUF_SIZE    2048    /* Message buffer size, in bytes            */
 #define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
 #define TAP_LINE_SIZE    128    /* Maximum length of a single message       */
@@ -158,7 +165,18 @@ static void tapPollCommands()
 
             case '?':
                 dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X "
-                             "(1 info, 2 irq, 3 lc, 4 payload)", channels);
+                             "(1 info, 2 irq, 3 lc, 4 payload; c codec "
+                             "self-test, m tx test pattern)", channels);
+                continue;
+
+            case 'm':
+                if(dmr_setPayloadMarker != NULL)
+                {
+                    marker = !marker;
+                    dmr_setPayloadMarker(marker);
+                    dmrDebug_log(DMR_DBG_INFO, "tx: test pattern %s",
+                                 marker ? "on" : "off");
+                }
                 continue;
 
             case 'c':
