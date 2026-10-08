@@ -57,6 +57,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/voicePromptData.S',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/dmr_debug.c',
+               'openrtx/src/core/mic_frame.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1263,6 +1264,10 @@ cs7000_pa_ramp_test = executable('cs7000_pa_ramp_test',
                                            'platform/drivers/baseband/paRampShape_CS7000.cpp'],
                                  kwargs  : unit_test_opts)
 
+mic_frame_test = executable('mic_frame_test',
+                            sources : unit_test_src + ['tests/unit/mic_frame.cpp'],
+                            kwargs  : unit_test_opts)
+
 dsp_oversampling_test = executable('dsp_oversampling_test',
                                     sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1307,5 +1312,6 @@ test('DSP Oversampling Test', dsp_oversampling_test)
 test('DMR Link Control Test', dmr_lc_test)
 test('DMR Voice Frame Test', dmr_voice_frame_test)
 test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
+test('Mic Frame Test', mic_frame_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)

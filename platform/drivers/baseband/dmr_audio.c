@@ -6,6 +6,8 @@
 
 #include "hwconfig.h"
 #include "dmr_audio.h"
+#include "core/mic_frame.h"
+#include "protocols/DMR/VoiceFrame.h"
 #include "core/audio_stream.h"
 #include "core/audio_path.h"
 #include "core/threads.h"
@@ -21,9 +23,6 @@
 #define DMA_BUF_SAMPLES  (FRAME_SAMPLES * 2)    /* Double-buffered DMA            */
 #define QUEUE_FRAMES     8                      /* Playback queue depth           */
 
-#ifndef CONFIG_MIC_GAIN
-#define CONFIG_MIC_GAIN 1
-#endif
 #ifndef CONFIG_MIC_OVERSAMPLE
 #define CONFIG_MIC_OVERSAMPLE 1
 #endif
@@ -218,8 +217,7 @@ static pthread_t txThread;
 static void *captureFunc(void *arg)
 {
     pathId path = *((pathId *) arg);
-    struct dcBlock        dcBlock;
-    struct decimatorState decimator;
+    struct micFrameState  mic;
 
     /* Oversampled ADC buffer is too big for the stack. */
     stream_sample_t *adcBuf = malloc(DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE
@@ -237,8 +235,7 @@ static void *captureFunc(void *arg)
     if(is < 0)
         goto freebuf;
 
-    dsp_resetState(dcBlock);
-    dsp_resetState(decimator);
+    micFrame_init(&mic);
 
     while(txReqStop == false)
     {
@@ -250,20 +247,14 @@ static void *captureFunc(void *arg)
             break;
 
         /* One buffer is FRAME_SAMPLES*oversample raw samples; decimate to 160. */
-        size_t outIdx = 0;
-        for(size_t i = 0; i < audio.len; i++)
-        {
-            int16_t sample = audio.data[i];
-#if CONFIG_MIC_OVERSAMPLE > 1
-            if(dsp_decimator(&decimator, &sample, CONFIG_MIC_OVERSAMPLE) == false)
-                continue;
-#endif
-            sample = dsp_dcBlockFilter(&dcBlock, sample);
-            audio.data[outIdx++] = sample * CONFIG_MIC_GAIN;
-        }
+        size_t n = micFrame_condition(&mic, audio.data, audio.len);
 
+        /* Without voice the silence frame goes out, as other radios send. */
         uint8_t frame[DMR_CODEC_FRAME_BYTES];
-        dmr_codec_encode(frame, audio.data);
+        if(micFrame_hasVoice(&mic, audio.data, n))
+            dmr_codec_encode(frame, audio.data);
+        else
+            memcpy(frame, DMR_VOICE_SILENCE_FRAME, DMR_CODEC_FRAME_BYTES);
 
         if((txHead - txTail) < TX_QUEUE_FRAMES)
         {

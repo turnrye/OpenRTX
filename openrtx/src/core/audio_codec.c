@@ -6,6 +6,7 @@
 
 #include "core/audio_stream.h"
 #include "core/audio_codec.h"
+#include "core/mic_frame.h"
 #include <pthread.h>
 #include "core/threads.h"
 // codec2 system library has a weird include prefix
@@ -24,10 +25,6 @@
 #define BUF_SIZE 4
 #define CODEC2_FRAME_SAMPLES 160 /* Samples per codec2 3200-mode frame */
 #define DMA_BUF_SAMPLES (CODEC2_FRAME_SAMPLES * 2) /* Double-buffered DMA */
-
-#ifndef CONFIG_MIC_GAIN
-#define CONFIG_MIC_GAIN 1
-#endif
 
 #ifndef CONFIG_MIC_OVERSAMPLE
 #define CONFIG_MIC_OVERSAMPLE 1
@@ -172,8 +169,8 @@ static void *encodeFunc(void *arg)
     streamId iStream;
     pathId iPath = *((pathId *)arg);
     struct CODEC2 *codec2;
-    struct dcBlock dcBlock;
-    struct decimatorState decimator;
+    struct micFrameState mic;
+    uint64_t silence = 0;
 
     // Allocate on the heap, as the stack isn't big enough for oversampling
     // above 2 or so.
@@ -189,9 +186,15 @@ static void *encodeFunc(void *arg)
     if (iStream < 0)
         goto exit;
 
-    dsp_resetState(dcBlock);
-    dsp_resetState(decimator);
+    micFrame_init(&mic);
     codec2 = codec2_create(CODEC2_MODE_3200);
+
+    // The silence frame: what the encoder makes of digital silence.
+    {
+        int16_t zeros[CODEC2_FRAME_SAMPLES];
+        memset(zeros, 0, sizeof(zeros));
+        codec2_encode(codec2, ((uint8_t *)&silence), zeros);
+    }
 
     while (reqStop == false) {
         // Invalid audio path, quit
@@ -204,27 +207,16 @@ static void *encodeFunc(void *arg)
 
         // Each inputStream_getData call returns exactly
         // CODEC2_FRAME_SAMPLES * CONFIG_MIC_OVERSAMPLE raw samples
-        // (one half of the double-buffered DMA transfer).  Decimate
-        // by averaging each group of CONFIG_MIC_OVERSAMPLE samples.
-        size_t outIdx = 0;
-        for (size_t i = 0; i < audio.len; i++) {
-            int16_t sample = audio.data[i];
+        // (one half of the double-buffered DMA transfer), conditioned
+        // into one 160-sample frame.
+        size_t n = micFrame_condition(&mic, audio.data, audio.len);
 
-#if CONFIG_MIC_OVERSAMPLE > 1
-            if (!dsp_decimator(&decimator, &sample, CONFIG_MIC_OVERSAMPLE))
-                continue;
-#endif
-
-            sample = dsp_dcBlockFilter(&dcBlock, sample);
-            audio.data[outIdx++] = sample * CONFIG_MIC_GAIN;
-        }
-
-        // CODEC2 encodes 160 speech samples (20 ms), into 8 bytes: here we
-        // write the new encoded data into a buffer of 16 bytes, writing the
-        // first half and then the second one, sequentially.
-        // Data ready flag is rised once all the 16 bytes contain new data.
-        uint64_t frame = 0;
-        codec2_encode(codec2, ((uint8_t *)&frame), audio.data);
+        // CODEC2 encodes 160 speech samples (20 ms) into 8 bytes. A frame
+        // without voice in it is sent as the encoding of silence instead
+        // of the room noise.
+        uint64_t frame = silence;
+        if (micFrame_hasVoice(&mic, audio.data, n))
+            codec2_encode(codec2, ((uint8_t *)&frame), audio.data);
 
         pthread_mutex_lock(&data_mutex);
 
