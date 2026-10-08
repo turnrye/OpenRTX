@@ -35,7 +35,43 @@ enum class TxAudioSource
     LINE_IN     ///< Audio source is "line in", e.g. tone generator.
 };
 
-class ScopedChipSelect;
+/**
+ * \internal
+ * RAII class for chip select management.
+ */
+class ScopedChipSelect
+{
+public:
+
+    /**
+     * Constructor.
+     * When called it acquires exclusive ownership on the "user" SPI bus and
+     * brings the  HR_C5000/HR_C6000 chip select to logical low.
+     *
+     * @param dev: pointer to device interface.
+     */
+    ScopedChipSelect(const struct spiDevice *spi, const struct gpioPin& cs);
+
+    /**
+     * Destructor.
+     * When called it brings the  HR_C5000/HR_C6000 chip select to logical high,
+     * and releases exclusive ownership on the "user" SPI bus.
+     */
+    ~ScopedChipSelect();
+
+    /**
+     * Tell whether a thread currently holds the "user" SPI bus. Interrupt
+     * handlers accessing the chip directly, which cannot take the bus mutex,
+     * must stay off the bus while this is true.
+     *
+     * @return true if a transaction is in progress.
+     */
+    static bool busActive();
+
+private:
+    const struct spiDevice *spi;
+    const struct gpioPin& cs;
+};
 
 /**
  * Generic driver for HR_C5000/HR_C6000 "baseband" chip.
@@ -268,42 +304,5 @@ protected:
  */
 FmConfig operator |(FmConfig lhs, FmConfig rhs);
 
-/**
- * \internal
- * RAII class for chip select management.
- */
-class ScopedChipSelect
-{
-public:
-
-    /**
-     * Constructor.
-     * When called it acquires exclusive ownership on the "user" SPI bus and
-     * brings the  HR_C5000/HR_C6000 chip select to logical low.
-     *
-     * @param dev: pointer to device interface.
-     */
-    ScopedChipSelect(const struct spiDevice *spi, const struct gpioPin& cs);
-
-    /**
-     * Destructor.
-     * When called it brings the  HR_C5000/HR_C6000 chip select to logical high,
-     * and releases exclusive ownership on the "user" SPI bus.
-     */
-    ~ScopedChipSelect();
-
-    /**
-     * Tell whether a thread currently holds the "user" SPI bus. Interrupt
-     * handlers accessing the chip directly, which cannot take the bus mutex,
-     * must stay off the bus while this is true.
-     *
-     * @return true if a transaction is in progress.
-     */
-    static bool busActive();
-
-private:
-    const struct spiDevice *spi;
-    const struct gpioPin& cs;
-};
 
 #endif // HRCx000_H
