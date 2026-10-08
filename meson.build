@@ -1250,6 +1250,19 @@ m17_packet_test = executable('m17_packet_test',
                               sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
                               kwargs  : unit_test_opts)
 
+dmr_lc_test = executable('dmr_lc_test',
+                         sources : unit_test_src + ['tests/unit/DMR_linkControl.cpp'],
+                         kwargs  : unit_test_opts)
+
+dmr_voice_frame_test = executable('dmr_voice_frame_test',
+                                  sources : unit_test_src + ['tests/unit/DMR_voiceFrame.cpp'],
+                                  kwargs  : unit_test_opts)
+
+cs7000_pa_ramp_test = executable('cs7000_pa_ramp_test',
+                                 sources : unit_test_src + ['tests/unit/CS7000_paRamp.cpp',
+                                           'platform/drivers/baseband/paRampShape_CS7000.cpp'],
+                                 kwargs  : unit_test_opts)
+
 dsp_oversampling_test = executable('dsp_oversampling_test',
                                     sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1291,5 +1304,8 @@ test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
 test('M17 Packet Frame Test', m17_packet_test)
 test('DSP Oversampling Test', dsp_oversampling_test)
+test('DMR Link Control Test', dmr_lc_test)
+test('DMR Voice Frame Test', dmr_voice_frame_test)
+test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)
