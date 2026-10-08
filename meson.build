@@ -1018,7 +1018,7 @@ targets = [
     'opts'     : cs7000p_opts,
     'flashable': true,
     'wrap'     : ' ',
-    'load_addr': '0x08100000',
+    'load_addr': '0x08000000',
     'cpu'      : 'cm7'
   },
   {
