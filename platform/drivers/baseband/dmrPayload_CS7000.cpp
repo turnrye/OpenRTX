@@ -9,6 +9,7 @@
 #include "peripherals/spi.h"
 #include "hwconfig.h"
 #include "dmrPayload.h"
+#include "interfaces/delays.h"
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -23,6 +24,17 @@
  */
 #define VP_PAGE_WRITE           0x03
 #define VP_REGISTER             0x00
+
+/*
+ * Time the chip select is held low before the first clock edge and after the
+ * last one, in microseconds. The chip needs it: with the clock starting right
+ * after the select, as the hardware SPI does on its own, it ignored a share
+ * of the transfers that drifted between a tenth and a third from one session
+ * to the next, each ignored payload going out on air as a repeat of the
+ * previous burst. The stock firmware gets the same margin from the code it
+ * runs between the two steps.
+ */
+#define CS_SETUP_HOLD_US        10
 
 /**
  * Bring up the voice payload bus. PB3 and PB4 come out of reset as JTAG pins,
@@ -76,6 +88,7 @@ void dmrPayload_write(const uint8_t *payload)
     SPI_TypeDef *spi = SPI1;
 
     gpio_clearPin(VOC_CS);
+    delayUs(CS_SETUP_HOLD_US);
 
     spi->CR2  = sizeof(tx);
     spi->CR1 |= SPI_CR1_SPE;
@@ -93,6 +106,7 @@ void dmrPayload_write(const uint8_t *payload)
     spi->IFCR = SPI_IFCR_EOTC | SPI_IFCR_TXTFC;
     spi->CR1 &= ~SPI_CR1_SPE;
 
+    delayUs(CS_SETUP_HOLD_US);
     gpio_setPin(VOC_CS);
 }
 
