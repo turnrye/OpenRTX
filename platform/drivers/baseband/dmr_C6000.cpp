@@ -13,6 +13,7 @@
 #include "dmr_audio.h"
 #include "dmrPayload.h"
 #include "protocols/DMR/LinkControl.h"
+#include "protocols/DMR/VoiceFrame.h"
 #include "core/threads.h"
 #include <pthread.h>
 #include <string.h>
@@ -466,7 +467,7 @@ static void takeVoicePayload(const uint8_t status)
     for(int f = 0; f < 3; f++)
     {
         const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-        if(dmr_codec_frameIsVoice(frame))
+        if(dmr_isVoiceFrame(frame))
             dmrAudio_pushFrame(frame);
     }
 }
@@ -961,7 +962,7 @@ static bool handleBurst()
             for(int f = 0; f < 3; f++)
             {
                 const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-                if(dmr_codec_frameIsVoice(frame))
+                if(dmr_isVoiceFrame(frame))
                     dmrAudio_pushFrame(frame);
             }
         }

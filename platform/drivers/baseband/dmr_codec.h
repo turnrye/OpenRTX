@@ -64,17 +64,6 @@ void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
                       const uint8_t frame[DMR_CODEC_FRAME_BYTES]);
 
 /**
- * Tell a real voice frame from noise on the empty timeslot, by the error count
- * of its Golay-protected codeword. In direct mode the receiver hears both slots;
- * this gates playback to the one carrying the call. Needs no codec state, so it
- * is safe to call before/without init.
- *
- * @param frame: 9-byte AMBE frame.
- * @return true if the frame looks like real voice.
- */
-bool dmr_codec_frameIsVoice(const uint8_t frame[DMR_CODEC_FRAME_BYTES]);
-
-/**
  * Run the vocoder self-test and report over the debug tap: check the blob is
  * present, initialise, encode a baked test tone (streaming the AMBE frames as
  * "$CE" records for an off-radio decoder to verify), and round-trip one frame.
