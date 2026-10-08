@@ -21,6 +21,12 @@ extern "C" {
 #define DMR_VOICE_FRAME_LENGTH 9
 
 /**
+ * The AMBE frame radios send when there is no voice: the fixed, public
+ * pattern every receiver decodes as silence.
+ */
+extern const uint8_t DMR_VOICE_SILENCE_FRAME[DMR_VOICE_FRAME_LENGTH];
+
+/**
  * Estimate the bit errors in the first codeword of a voice frame, the one
  * protected by a Golay(23,12) code. A frame sent as voice decodes almost error
  * free; noise, such as what the receiver picks up on the empty timeslot in

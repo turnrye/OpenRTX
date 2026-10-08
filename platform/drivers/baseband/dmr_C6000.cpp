@@ -78,18 +78,6 @@
 /* Number of voice frames in a superframe, the burst sequence cycles 0..5. */
 #define TX_SUPERFRAME_FRAMES    6
 
-/*
- * A voice frame worth of AMBE silence: the fixed public pattern radios and
- * hotspots send when there is no speech, three 9-byte frames making up the
- * 27-byte payload. Hardcoding it keeps the transmit path free of any vocoder
- * output; it is the same motif seen in our own received captures.
- */
-static const uint8_t TX_SILENCE_AUDIO[VP_LENGTH] =
-{
-    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B,
-    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B,
-    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
-};
 
 /*
  * The transmit slot state machine, advanced one step per timeslot interrupt.
@@ -1063,7 +1051,7 @@ static void nextVoicePayload(uint8_t *payload)
     {
         uint8_t *slot = &payload[f * DMR_CODEC_FRAME_BYTES];
         if(dmrAudio_popFrame(slot) == false)
-            memcpy(slot, TX_SILENCE_AUDIO, DMR_CODEC_FRAME_BYTES);
+            memcpy(slot, DMR_VOICE_SILENCE_FRAME, DMR_CODEC_FRAME_BYTES);
     }
 
     if(txMarker == false)
@@ -1170,7 +1158,13 @@ void dmr_txTimeslotIsr()
          */
         case TX_END_1:
             C6000.writeDmrLinkControlFromIsr(txLc);
-            dmrPayload_write(TX_SILENCE_AUDIO);
+            {
+                uint8_t silence[VP_LENGTH];
+                for(int f = 0; f < 3; f++)
+                    memcpy(&silence[f * DMR_CODEC_FRAME_BYTES],
+                           DMR_VOICE_SILENCE_FRAME, DMR_CODEC_FRAME_BYTES);
+                dmrPayload_write(silence);
+            }
             C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
             C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE, TX_BURST_TERMINATOR);
             txState = TX_END_2;

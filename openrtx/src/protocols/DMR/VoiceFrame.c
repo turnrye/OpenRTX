@@ -7,6 +7,10 @@
 #include "protocols/DMR/VoiceFrame.h"
 #include <string.h>
 
+const uint8_t DMR_VOICE_SILENCE_FRAME[DMR_VOICE_FRAME_LENGTH] = {
+    0xB9, 0xE8, 0x81, 0x52, 0x61, 0x73, 0x00, 0x2A, 0x6B
+};
+
 /*
  * The DMR AMBE de-interleave. The 72 on-air bits of a frame are scattered into
  * the four codewords (a flat [4][24] buffer) by these fixed position tables.
