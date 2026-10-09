@@ -24,14 +24,10 @@
 #if defined(CONFIG_DMR)
 
 /*
- * The CS7000 Plus runs DMR from a thread of its own, woken by the chip's
- * interrupt lines, receiving and transmitting the way its stock firmware does.
- * The MD-UV3x0 still polls from the rtx thread and transmits from the timeslot
- * interrupt, until the same has been bench tested on it.
+ * DMR runs from a thread of its own, woken by the chip's interrupt lines,
+ * receiving and transmitting the way the CS7000 Plus stock firmware does.
  */
-#if defined(PLATFORM_CS7000P)
 #define DMR_THREAD
-#endif
 
 /*
  * Bits of the receive status register, 0x51: the CRC bit is set when the check

@@ -99,14 +99,9 @@ void __attribute__((used)) dmrTimeslotIrqImpl()
     tsCount += 1;
 
     /*
-     * The timeslot interrupt is the slot clock the transmit state machine runs
-     * on: while a transmission is active it sets up the next burst here, within
-     * the slot deadline the thread cannot meet. It is fenced off while a thread
-     * holds the control bus, exactly as the system interrupt's read below is.
+     * The DMR thread sets up each slot, transmitting as well as receiving,
+     * straight after the boundary.
      */
-    if (dmr_txActive() && (busBusy == false))
-        dmr_txTimeslotIsr();
-
     if (IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
         Scheduler::IRQfindNextThread();
 
@@ -126,19 +121,9 @@ void __attribute__((used)) dmrSystemIrqImpl()
     sysCount += 1;
 
     /*
-     * The burst status and colour code registers are only valid at the instant
-     * of the frame event, so they are read here rather than from the consuming
-     * thread. The reads are skipped while a thread holds the bus, to avoid two
-     * contexts driving the bitbanged SPI at once; the next event picks them up.
-     * They are also skipped while transmitting, when the timeslot interrupt is
-     * the one driving the bus and a receive read would have nothing to say.
+     * The flags and the burst they describe are read by the DMR thread, which
+     * gets to them well within the slot the chip holds them for.
      */
-    if ((busBusy == false) && (dmr_txActive() == false)) {
-        rxBurstStatus = C6000.readCfgRegisterFromIsr(C6000_REG_RX_STATUS);
-        rxColorCode = (C6000.readCfgRegisterFromIsr(C6000_REG_CACH) >> 4)
-                    & 0x0F;
-    }
-
     if (IRQsignal(DMR_IRQ_EVENT_SYSTEM))
         Scheduler::IRQfindNextThread();
 
