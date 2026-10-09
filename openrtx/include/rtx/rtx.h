@@ -55,12 +55,13 @@ typedef struct
     char     M17_meta_text[53];        /**< M17 Meta Text              */
 
     uint32_t dmrId;                    /**< DMR radio ID               */
-    uint32_t dmrTalkgroup;             /**< DMR TX talkgroup           */
+    uint32_t dmrTalkgroup;             /**< DMR TX destination ID      */
 
     uint8_t  dmrColorCode  : 4,        /**< DMR color code             */
              dmrTimeslot   : 1,        /**< DMR timeslot, 0=TS1 1=TS2  */
              dmrRxPromisc  : 1,        /**< Accept any TG on RX        */
-             _dmrUnused    : 2;
+             dmrPrivateCall: 1,        /**< TX private, not group call */
+             _dmrUnused    : 1;
 
     uint32_t dmrRxSrcId;               /**< DMR last heard source ID   */
     uint32_t dmrRxDstId;               /**< DMR last heard destination */

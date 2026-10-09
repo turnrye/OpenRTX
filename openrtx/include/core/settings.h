@@ -56,7 +56,8 @@ typedef struct
     uint8_t dmr_colorcode   : 4,  // DMR color code, 0 to 15
             dmr_timeslot    : 1,  // DMR timeslot, 0 = TS1, 1 = TS2
             dmr_rx_promisc  : 1,  // Accept any talkgroup on RX
-            _dmr_reserved   : 2;
+            dmr_private_call: 1,  // Transmit private calls, not group calls
+            _dmr_reserved   : 1;
 }
 __attribute__((packed)) settings_t;
 
@@ -90,6 +91,7 @@ static const settings_t default_settings =
     1,                            // DMR color code
     1,                            // DMR timeslot, TS2
     1,                            // Accept any talkgroup on RX
+    0,                            // DMR group calls
     0,                            // not used
 };
 

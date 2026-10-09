@@ -169,7 +169,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         platform_ledOn(RED);
 
         radio_enableTx();
-        dmr_startTx(true, status->dmrTalkgroup);
+        dmr_startTx(status->dmrPrivateCall == 0, status->dmrTalkgroup);
     }
 
     /*

@@ -98,6 +98,7 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.dmrColorCode = state.settings.dmr_colorcode;
             rtx_cfg.dmrTimeslot  = state.settings.dmr_timeslot;
             rtx_cfg.dmrRxPromisc = state.settings.dmr_rx_promisc;
+            rtx_cfg.dmrPrivateCall = state.settings.dmr_private_call;
 
             pthread_mutex_unlock(&rtx_mutex);
 
