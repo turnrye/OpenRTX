@@ -1285,7 +1285,9 @@ dmr_harness_src = ['tests/unit/dmr_harness.cpp',
                    'platform/drivers/baseband/HR_C6000_CS7000.cpp',
                    'platform/drivers/baseband/HR_Cx000.cpp',
                    'openrtx/src/protocols/DMR/LinkControl.c',
-                   'openrtx/src/protocols/DMR/VoiceFrame.c']
+                   'openrtx/src/protocols/DMR/VoiceFrame.c',
+                   'openrtx/src/protocols/DMR/CallControl.c',
+                   'openrtx/src/protocols/DMR/VoiceSequence.c']
 
 dmr_harness_test = executable('dmr_harness_test',
                               sources : dmr_harness_src,
