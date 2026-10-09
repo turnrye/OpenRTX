@@ -483,6 +483,12 @@ int _ui_getDMRValueName(char *buf, uint8_t max_len, uint8_t index)
             sniprintf(buf, max_len, "TS%d",
                       last_state.settings.dmr_timeslot + 1);
             break;
+
+        case DMR_CALLTYPE:
+            sniprintf(buf, max_len, "%s",
+                      last_state.settings.dmr_private_call ? "Private"
+                                                           : "Group");
+            break;
     }
 
     return 0;

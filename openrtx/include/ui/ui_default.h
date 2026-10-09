@@ -154,7 +154,8 @@ enum settingsDMRItems
     DMR_ID = 0,
     DMR_TALKGROUP,
     DMR_COLORCODE,
-    DMR_TIMESLOT
+    DMR_TIMESLOT,
+    DMR_CALLTYPE
 };
 
 enum settingsFMItems

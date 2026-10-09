@@ -147,11 +147,12 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             }
             else
             {
-                // Idle: show the configured talkgroup and color code. Lines 3
-                // and 4 are taken by the frequency, so everything has to fit
-                // on line 2.
+                // Idle: show the configured destination and color code.
+                // Lines 3 and 4 are taken by the frequency, so everything has
+                // to fit on line 2.
                 gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                          color_white, "DMR TG%lu CC%d",
+                          color_white, "DMR %s%lu CC%d",
+                          rtxStatus.dmrPrivateCall ? "ID" : "TG",
                           (unsigned long) rtxStatus.dmrTalkgroup,
                           rtxStatus.dmrColorCode);
             }
