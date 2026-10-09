@@ -231,41 +231,6 @@ static void reportIrqActivity()
 
 #if defined(DMR_THREAD)
 
-/*
- * Burst status, register 0x51, as the stock firmware reads it: the sync class
- * in bits 1..0 and, in bit 2, whether the check on the burst failed; masking
- * both together gives a class only for a burst that passed. A data burst has
- * its data type in bits 7..4, a voice burst its frame number, A = 1 to F = 6,
- * in bits 6..4.
- */
-#define RX_SYNC_MASK            0x07
-#define RX_CLASS_VOICE          0x00    // Voice, frames B to F
-#define RX_CLASS_VOICE_SYNC     0x01    // Voice carrying the sync, frame A
-#define RX_CLASS_DATA           0x02    // Data or control, with its sync
-#define RX_DATA_VOICE_HEADER    0x01    // Data type of a voice LC header
-#define RX_DATA_TERMINATOR      0x02    // Data type of a terminator with LC
-
-/*
- * Interrupt flags, register 0x82. Two carry work in reception: a burst was
- * received and parsed, and the embedded link control of a superframe is
- * complete, which is what identifies a call joined part way through. The
- * others are only acknowledged, 0x20 being the slot clock ticking. The stock
- * firmware handles and clears them one at a time, in this order.
- */
-#define INT_FLAG_BURST          0x08
-#define INT_FLAG_EMBEDDED_LC    0x10
-
-static const uint8_t INT_FLAG_ORDER[] =
-{
-    0x80, 0x08, 0x40, 0x20, 0x10, 0x04, 0x02, 0x01
-};
-
-/* Slot action receiving the next slot; in direct mode both slots are taken. */
-#define RX_SLOT_RECEIVE         0x40
-
-/* Slot timing register value with the receiver stopped. */
-#define RX_TIMING_OFF           0x03
-
 /* Link control service options bit marking an encrypted call. */
 #define LC_SO_PRIVACY           0x40
 
@@ -301,11 +266,7 @@ static bool            rxEncrypted; // The call in progress is encrypted
  */
 static void armReceiver()
 {
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-    C6000.writeCfgRegister(0x40, RX_TIMING_OFF);
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
-    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
-    C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
+    C6000.dmrArmReceiver();
 
     rxLocked = false;
     rxMisses = 0;
@@ -320,10 +281,10 @@ static void armReceiver()
  */
 static void endCall(const char *reason)
 {
-    C6000.writeCfgRegister(0x22, 0x16);
+    C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
     armReceiver();
-    C6000.writeCfgRegister(0x20, 0x00);
-    C6000.writeCfgRegister(0x21, 0x01);
+    C6000.resetDmrVoiceControl();
+    C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
 
     pthread_mutex_lock(&rxMutex);
     rxState.valid = false;
@@ -385,7 +346,7 @@ static void takeCallLc(const uint8_t cc)
      * A new call: clear the chip's decode buffer as the stock firmware does
      * when it accepts one, and restart the playback on a clean queue.
      */
-    C6000.writeCfgRegister(0x21, 0x01);
+    C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
 
     if(dmrAudio_running())
         dmrAudio_stopRx();
@@ -479,24 +440,24 @@ static void handleBurstEvent(const uint8_t status, const uint8_t cc)
 
     dmrDebug_log(DMR_DBG_LC, "burst: status %02X cc %u", status, cc);
 
-    switch(status & RX_SYNC_MASK)
+    switch(status & C6000_DMR_SYNC_MASK)
     {
-        case RX_CLASS_DATA:
+        case C6000_DMR_CLASS_DATA:
             if(ccOk == false)
                 return;
 
-            if((status >> 4) == RX_DATA_VOICE_HEADER)
+            if((status >> 4) == C6000_DMR_DATA_VOICE_HEADER)
                 takeCallLc(cc);
-            else if((status >> 4) == RX_DATA_TERMINATOR)
+            else if((status >> 4) == C6000_DMR_DATA_TERMINATOR)
                 takeTerminator();
             return;
 
-        case RX_CLASS_VOICE:
+        case C6000_DMR_CLASS_VOICE:
             if(ccOk == false)
                 return;
             break;
 
-        case RX_CLASS_VOICE_SYNC:
+        case C6000_DMR_CLASS_VOICE_SYNC:
             break;
 
         default:
@@ -527,7 +488,7 @@ static void handleSystemEvent()
 
     uint8_t cc = (status.cach >> 4) & 0x0F;
 
-    for(uint8_t flag : INT_FLAG_ORDER)
+    for(uint8_t flag : C6000_DMR_FLAG_ORDER)
     {
         if((status.intFlags & flag) == 0)
             continue;
@@ -535,9 +496,9 @@ static void handleSystemEvent()
         /* Checked per flag, as handling a terminator ends the call. */
         bool active = rxLocked || rxState.valid;
 
-        if(active && (flag == INT_FLAG_BURST))
+        if(active && (flag == C6000_DMR_FLAG_BURST))
             handleBurstEvent(status.rxStatus, cc);
-        else if(active && (flag == INT_FLAG_EMBEDDED_LC))
+        else if(active && (flag == C6000_DMR_FLAG_EMBEDDED_LC))
             takeCallLc(cc);
 
         C6000.clearDmrInterrupts(flag);
@@ -552,20 +513,21 @@ static void handleSystemEvent()
  */
 static void handleSlot()
 {
-    uint8_t status = C6000.readCfgRegister(0x51);
-    uint8_t cc     = (C6000.readCfgRegister(0x52) >> 4) & 0x0F;
-    uint8_t sync   = status & RX_SYNC_MASK;
-    bool    ccOk   = (cc == configuredCc);
+    uint8_t status, cc;
+    C6000.readDmrBurst(&status, &cc);
+    uint8_t sync = status & C6000_DMR_SYNC_MASK;
+    bool    ccOk = (cc == configuredCc);
 
     if(rxLocked == false)
     {
-        if((sync == RX_CLASS_VOICE_SYNC) || ((sync == RX_CLASS_DATA) && ccOk))
+        if((sync == C6000_DMR_CLASS_VOICE_SYNC)
+           || ((sync == C6000_DMR_CLASS_DATA) && ccOk))
         {
             rxLocked = true;
             rxMisses = 0;
-            C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+            C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
         }
-        else if(sync == RX_CLASS_VOICE)
+        else if(sync == C6000_DMR_CLASS_VOICE)
         {
             rxMisses += 1;
             if(rxMisses >= UNLOCKED_MISS_LIMIT)
@@ -575,9 +537,9 @@ static void handleSlot()
         return;
     }
 
-    bool good = (sync == RX_CLASS_VOICE_SYNC)
-                || (((sync == RX_CLASS_VOICE) || (sync == RX_CLASS_DATA))
-                    && ccOk);
+    bool good = (sync == C6000_DMR_CLASS_VOICE_SYNC)
+                || (((sync == C6000_DMR_CLASS_VOICE)
+                     || (sync == C6000_DMR_CLASS_DATA)) && ccOk);
 
     if(good)
     {
@@ -597,7 +559,7 @@ static void handleSlot()
         }
     }
 
-    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 }
 
 /*
@@ -649,12 +611,10 @@ static void keyUp()
     txIdleSlot   = false;
     txSequence   = 0;
 
-    C6000.writeCfgRegister(0x56, C6000.readCfgRegister(0x56) & ~0x10);
-    C6000.writeCfgRegister(0x14, txSrcId & 0xFF);
-    C6000.writeCfgRegister(0x15, (txSrcId >> 8) & 0xFF);
-    C6000.writeCfgRegister(0x16, (txSrcId >> 16) & 0xFF);
-    C6000.writeCfgRegister(0x40, 0xA3);
-    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+    C6000.setDmrPrivacy(false);
+    C6000.setDmrOwnId(txSrcId);
+    C6000.setDmrTiming(C6000_DmrTiming::TRANSMIT);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
     rxLocked = false;
     rxMisses = 0;
@@ -678,10 +638,10 @@ static void keyUp()
  */
 static void endTransmission(const char *reason)
 {
-    C6000.writeCfgRegister(0x22, 0x46);
+    C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
     dmrAudio_stopTx();
-    C6000.writeCfgRegister(0x21, 0x03);
-    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, RX_SLOT_RECEIVE);
+    C6000.clearDmrBuffers(C6000_DmrBuffers::ALL);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
     txState         = TX_IDLE;
     rxRestoreNeeded = true;
@@ -698,7 +658,7 @@ static void txSlot()
 {
     if(txIdleSlot)
     {
-        C6000.writeCfgRegister(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
         txIdleSlot = false;
         return;
     }
@@ -711,12 +671,12 @@ static void txSlot()
         return;
     }
 
-    C6000.writeCfgRegister(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::TRANSMIT);
 
     if((txHeaders > 0) || txLastHeader)
     {
         C6000.writeDmrLinkControl(txLc);
-        C6000.writeCfgRegister(TX_REG_BURST_TYPE, TX_BURST_VOICE_HEADER);
+        C6000.setDmrBurstType(C6000_DmrBurstType::VOICE_HEADER);
 
         if(txHeaders > 0)
         {
@@ -725,7 +685,7 @@ static void txSlot()
         else
         {
             txLastHeader = false;
-            C6000.writeCfgRegister(0x22, 0x86);     // Start the vocoder encode
+            C6000.setDmrVocoder(C6000_DmrVocoder::ENCODE);
         }
 
         return;
@@ -734,7 +694,7 @@ static void txSlot()
     if(txAtBoundary && txStopRequested)
     {
         C6000.writeDmrLinkControl(txLc);
-        C6000.writeCfgRegister(TX_REG_BURST_TYPE, TX_BURST_TERMINATOR);
+        C6000.setDmrBurstType(C6000_DmrBurstType::TERMINATOR);
         txTerminated = true;
         return;
     }
@@ -744,8 +704,7 @@ static void txSlot()
     nextVoicePayload(payload);
 
     dmrPayload_write(payload);
-    C6000.writeCfgRegister(TX_REG_BURST_TYPE,
-                           TX_BURST_VOICE | (txSequence << 4));
+    C6000.setDmrBurstType(C6000_DmrBurstType::VOICE, txSequence);
 
     txAtBoundary = (txSequence == (TX_SUPERFRAME_FRAMES - 1));
     txSequence   = (txSequence + 1) % TX_SUPERFRAME_FRAMES;
@@ -757,7 +716,7 @@ static void txSlot()
  */
 static void acknowledgeFlags()
 {
-    uint8_t flags = C6000.readCfgRegister(0x82);
+    uint8_t flags = C6000.getDmrInterrupts();
     if(flags != 0)
         C6000.clearDmrInterrupts(flags);
 }
@@ -771,10 +730,10 @@ static void restoreAfterTx()
 {
     rxRestoreNeeded = false;
 
-    C6000.writeCfgRegister(0x20, 0x00);
-    C6000.writeCfgRegister(0x21, 0x02);
-    C6000.writeCfgRegister(0x22, 0x16);
-    C6000.writeCfgRegister(0x22, 0x46);
+    C6000.resetDmrVoiceControl();
+    C6000.clearDmrBuffers(C6000_DmrBuffers::ENCODE);
+    C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
+    C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
     armReceiver();
     acknowledgeFlags();
     lastBurstTick = getTick();

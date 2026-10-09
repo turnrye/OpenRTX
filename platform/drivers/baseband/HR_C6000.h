@@ -31,9 +31,11 @@ enum class C6000_SpiOpModes : uint8_t
  */
 enum class C6000_DmrTiming : uint8_t
 {
-    RX_IDLE = 0x43,     ///< RX enabled, slots locked to the received signal.
-    PASSIVE = 0xC3,     ///< TX and RX enabled, slots locked to a base station.
-    ACTIVE  = 0xE3      ///< TX and RX enabled, chip generates its own timing.
+    OFF      = 0x03,    ///< Receiver and transmitter stopped.
+    RX_IDLE  = 0x43,    ///< RX enabled, slots locked to the received signal.
+    TRANSMIT = 0xA3,    ///< TX enabled on the chip's own timing, RX off.
+    PASSIVE  = 0xC3,    ///< TX and RX enabled, slots locked to a base station.
+    ACTIVE   = 0xE3     ///< TX and RX enabled, chip generates its own timing.
 };
 
 /**
@@ -53,9 +55,71 @@ enum class C6000_DmrSlotAction : uint8_t
 {
     IDLE     = 0x00,    ///< Neither transmit nor receive.
     RESET    = 0x20,    ///< Sync fail, used to restart the slot state.
+    NEXT     = 0x40,    ///< Receive the next slot, as the stock firmware does.
     RECEIVE  = 0x50,    ///< Receive, with the layer 2 access bit set.
     TRANSMIT = 0x80     ///< Transmit.
 };
+
+/**
+ * Burst the chip builds in a transmit slot, written to configuration register
+ * 0x50. A voice burst carries its frame number, 0 to 5 for A to F, in the high
+ * nibble.
+ */
+enum class C6000_DmrBurstType : uint8_t
+{
+    VOICE        = 0x08,    ///< Voice frame, the frame number added.
+    VOICE_HEADER = 0x10,    ///< Voice link control header.
+    TERMINATOR   = 0x20     ///< Terminator with link control.
+};
+
+/**
+ * Vocoder interface mode, configuration register 0x22, as the stock firmware
+ * sets it around calls.
+ */
+enum class C6000_DmrVocoder : uint8_t
+{
+    OFF    = 0x16,  ///< Decode stopped, at the end of a received call.
+    IDLE   = 0x46,  ///< Neither encoding nor decoding.
+    ENCODE = 0x86   ///< Encoding, from the last voice header on.
+};
+
+/**
+ * Voice buffers of the vocoder interface, cleared through configuration
+ * register 0x21.
+ */
+enum class C6000_DmrBuffers : uint8_t
+{
+    DECODE = 0x01,  ///< The receive buffer.
+    ENCODE = 0x02,  ///< The transmit buffer.
+    ALL    = 0x03   ///< Both.
+};
+
+/**
+ * DMR interrupt flags, registers 0x82 (raised) and 0x83 (acknowledge). The
+ * stock firmware handles and acknowledges them one at a time, in the order of
+ * C6000_DMR_FLAG_ORDER; only the received burst and the completed embedded
+ * link control carry work in reception, the slot tick comes every slot once
+ * the receiver is locked.
+ */
+static constexpr uint8_t C6000_DMR_FLAG_BURST       = 0x08;
+static constexpr uint8_t C6000_DMR_FLAG_EMBEDDED_LC = 0x10;
+static constexpr uint8_t C6000_DMR_FLAG_SLOT        = 0x20;
+static constexpr uint8_t C6000_DMR_FLAG_ORDER[]     =
+{
+    0x80, 0x08, 0x40, 0x20, 0x10, 0x04, 0x02, 0x01
+};
+
+/**
+ * Burst status, register 0x51: the sync class in bits 1..0 and, in bit 2,
+ * whether the check on the burst failed; masked together they give a class
+ * only for a burst that passed. A data burst has its data type in bits 7..4.
+ */
+static constexpr uint8_t C6000_DMR_SYNC_MASK       = 0x07;
+static constexpr uint8_t C6000_DMR_CLASS_VOICE     = 0x00;  ///< Frames B to F.
+static constexpr uint8_t C6000_DMR_CLASS_VOICE_SYNC = 0x01; ///< Frame A.
+static constexpr uint8_t C6000_DMR_CLASS_DATA      = 0x02;  ///< Data or control.
+static constexpr uint8_t C6000_DMR_DATA_VOICE_HEADER = 0x01;
+static constexpr uint8_t C6000_DMR_DATA_TERMINATOR = 0x02;
 
 /**
  * Status of the DMR receiver, sampled from the chip in one go so that the
@@ -190,6 +254,108 @@ public:
     inline void setDmrSlotAction(const C6000_DmrSlotAction action)
     {
         writeCfgRegister(0x41, static_cast< uint8_t >(action));
+    }
+
+    /**
+     * Tell the chip which burst to build in the upcoming transmit slot.
+     *
+     * @param type: burst type.
+     * @param frame: voice frame number, 0 to 5, for a voice burst.
+     */
+    inline void setDmrBurstType(const C6000_DmrBurstType type,
+                                const uint8_t frame = 0)
+    {
+        writeCfgRegister(0x50, static_cast< uint8_t >(type) | (frame << 4));
+    }
+
+    /**
+     * Set the mode of the vocoder interface.
+     *
+     * @param mode: vocoder interface mode.
+     */
+    inline void setDmrVocoder(const C6000_DmrVocoder mode)
+    {
+        writeCfgRegister(0x22, static_cast< uint8_t >(mode));
+    }
+
+    /**
+     * Clear voice buffers of the vocoder interface.
+     *
+     * @param which: buffers to clear.
+     */
+    inline void clearDmrBuffers(const C6000_DmrBuffers which)
+    {
+        writeCfgRegister(0x21, static_cast< uint8_t >(which));
+    }
+
+    /**
+     * Reset configuration register 0x20, which the stock firmware writes to
+     * zero ahead of clearing the voice buffers when a call ends.
+     */
+    inline void resetDmrVoiceControl()
+    {
+        writeCfgRegister(0x20, 0x00);
+    }
+
+    /**
+     * Set the own DMR ID, which the chip uses when transmitting.
+     *
+     * @param id: 24-bit DMR ID.
+     */
+    inline void setDmrOwnId(const uint32_t id)
+    {
+        writeCfgRegister(0x14, id & 0xFF);
+        writeCfgRegister(0x15, (id >> 8) & 0xFF);
+        writeCfgRegister(0x16, (id >> 16) & 0xFF);
+    }
+
+    /**
+     * Turn the chip's privacy (encryption) on or off; it is off for clear
+     * voice.
+     *
+     * @param enable: true for privacy.
+     */
+    inline void setDmrPrivacy(const bool enable)
+    {
+        uint8_t reg = readCfgRegister(0x56) & ~0x10;
+        writeCfgRegister(0x56, enable ? (reg | 0x10) : reg);
+    }
+
+    /**
+     * Restart the receiver's search for a transmission, as the stock firmware
+     * does when it loses the lock or a call ends: stop reception, reset the
+     * slot state machine, ask for the next slot and start reception again.
+     */
+    inline void dmrArmReceiver()
+    {
+        setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+        setDmrTiming(C6000_DmrTiming::OFF);
+        setDmrSlotAction(C6000_DmrSlotAction::RESET);
+        setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+        setDmrTiming(C6000_DmrTiming::RX_IDLE);
+    }
+
+    /**
+     * Read the status and colour code of the last burst, as the slot handler
+     * samples them.
+     *
+     * @param status: burst status, register 0x51.
+     * @param colorCode: received colour code.
+     */
+    inline void readDmrBurst(uint8_t *status, uint8_t *colorCode)
+    {
+        *status    = readCfgRegister(0x51);
+        *colorCode = (readCfgRegister(0x52) >> 4) & 0x0F;
+    }
+
+    /**
+     * Get the raised DMR interrupt flags.
+     *
+     * @return register 0x82.
+     */
+    inline uint8_t getDmrInterrupts()
+    {
+        return readCfgRegister(0x82);
     }
 
     /**
