@@ -230,10 +230,24 @@ static void reportIrqActivity()
 
 #if defined(DMR_THREAD)
 
+#if defined(PLATFORM_MDUV3x0)
+
+/*
+ * The TYT firmware reads the slot's colour code as soon as the timeslot
+ * interrupt comes in, and restarts the receiver after eight slots in a row
+ * without the configured colour code. During a call the idle slot reads a
+ * random colour code, so one slot in two misses and the count never gets
+ * there; once the carrier goes it does within 240ms.
+ */
+#define SLOT_READ_DELAY 0
+#define SLOT_MISS_LIMIT 8
+
+#else
+
 /*
  * Delay between the timeslot interrupt and the read of the slot status, by
  * when the chip has updated it for the slot just gone, in milliseconds. The
- * stock firmware waits the same.
+ * Connect Systems firmware waits the same.
  */
 #define SLOT_READ_DELAY 10
 
@@ -245,6 +259,8 @@ static void reportIrqActivity()
  */
 #define LOCKED_MISS_LIMIT 4
 #define UNLOCKED_MISS_LIMIT 12
+
+#endif
 
 #define RX_THREAD_STKSIZE 4096
 
@@ -488,11 +504,48 @@ static void handleSystemEvent()
     }
 }
 
+#if defined(PLATFORM_MDUV3x0)
+
 /**
- * Run the stock firmware's slot handler, once per slot: lock to a transmission
- * on a frame sync, or on a data sync with the configured colour code, keep
- * receiving both slots while locked, and restart the search once the lock is
- * lost or nothing shows up for a while.
+ * Run the TYT firmware's slot handler, once per slot: the receiver counts as
+ * aligned from the first slot boundary on, each slot is judged on its colour
+ * code alone, and eight misses in a row restart the search for a
+ * transmission.
+ */
+static void handleSlot()
+{
+    uint8_t cach = C6000.readCfgRegister(0x52);
+    uint8_t cc = (cach >> 4) & 0x0F;
+
+    rxLocked = true;
+
+    if (cc == configuredCc) {
+        rxMisses = 0;
+    } else {
+        rxMisses += 1;
+        if (rxMisses >= SLOT_MISS_LIMIT) {
+            dmrDebug_log(DMR_DBG_LC, "slot: no colour code %u, re-armed",
+                         configuredCc);
+            if (rxCall.active)
+                endCall("carrier lost");
+            else
+                armReceiver();
+
+            return;
+        }
+    }
+
+    dmrDebug_log(DMR_DBG_LC, "slot: 52=%02X misses %u", cach, rxMisses);
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+}
+
+#else
+
+/**
+ * Run the Connect Systems firmware's slot handler, once per slot: lock to a
+ * transmission on a frame sync, or on a data sync with the configured colour
+ * code, keep receiving both slots while locked, and restart the search once
+ * the lock is lost or nothing shows up for a while.
  */
 static void handleSlot()
 {
@@ -504,13 +557,17 @@ static void handleSlot()
     if (rxLocked == false) {
         if ((sync == C6000_DMR_CLASS_VOICE_SYNC)
             || ((sync == C6000_DMR_CLASS_DATA) && ccOk)) {
+            dmrDebug_log(DMR_DBG_LC, "slot: locked, status %02X cc %u", status,
+                         cc);
             rxLocked = true;
             rxMisses = 0;
             C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
         } else if (sync == C6000_DMR_CLASS_VOICE) {
             rxMisses += 1;
-            if (rxMisses >= UNLOCKED_MISS_LIMIT)
+            if (rxMisses >= UNLOCKED_MISS_LIMIT) {
+                dmrDebug_log(DMR_DBG_LC, "slot: no sync, re-armed");
                 armReceiver();
+            }
         }
 
         return;
@@ -526,6 +583,8 @@ static void handleSlot()
     } else {
         rxMisses += 1;
         if (rxMisses >= LOCKED_MISS_LIMIT) {
+            dmrDebug_log(DMR_DBG_LC, "slot: lock lost, status %02X cc %u",
+                         status, cc);
             if (rxCall.active)
                 endCall("carrier lost");
             else
@@ -537,6 +596,8 @@ static void handleSlot()
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 }
+
+#endif
 
 /*
  * Transmission, as the stock firmware runs it from its timeslot task: every
