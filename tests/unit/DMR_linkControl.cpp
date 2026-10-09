@@ -53,3 +53,46 @@ TEST_CASE("DMR link control addresses are 24 bits", "[dmr][lc]")
     REQUIRE(lc[6] == 0x00);
     REQUIRE(lc[8] == 0x06);
 }
+
+TEST_CASE("DMR link control parses back what was built", "[dmr][lc]")
+{
+    uint8_t lc[DMR_LC_LENGTH];
+    struct dmrVoiceCall call;
+
+    dmr_buildVoiceLc(lc, true, 91, 3101003);
+    REQUIRE(dmr_parseVoiceLc(lc, &call));
+    REQUIRE(call.groupCall);
+    REQUIRE(call.dstId == 91);
+    REQUIRE(call.srcId == 3101003);
+    REQUIRE_FALSE(call.encrypted);
+
+    dmr_buildVoiceLc(lc, false, 2357322, 0xFFFFFF);
+    REQUIRE(dmr_parseVoiceLc(lc, &call));
+    REQUIRE_FALSE(call.groupCall);
+    REQUIRE(call.dstId == 2357322);
+    REQUIRE(call.srcId == 0xFFFFFF);
+}
+
+TEST_CASE("DMR link control parse reads privacy and refuses other opcodes",
+          "[dmr][lc]")
+{
+    uint8_t lc[DMR_LC_LENGTH];
+    struct dmrVoiceCall call;
+
+    dmr_buildVoiceLc(lc, true, 9, 1234);
+    lc[2] = 0x40; // Service options: privacy
+    REQUIRE(dmr_parseVoiceLc(lc, &call));
+    REQUIRE(call.encrypted);
+
+    // The protect flag and reserved bit do not change the opcode
+    lc[0] = 0x80 | DMR_FLCO_GROUP;
+    REQUIRE(dmr_parseVoiceLc(lc, &call));
+
+    // Talker alias header, GPS info: not a voice call
+    for (uint8_t flco : { 0x04, 0x08, 0x05 }) {
+        lc[0] = flco;
+        call.dstId = 77;
+        REQUIRE_FALSE(dmr_parseVoiceLc(lc, &call));
+        REQUIRE(call.dstId == 77); // Untouched
+    }
+}
