@@ -11,6 +11,7 @@
 #include "dmrIrq.h"
 #include "dmr_C6000.h"
 #include "core/dmr_audio.h"
+#include "interfaces/dmr_codec.h"
 #include "dmrPayload.h"
 #include "protocols/DMR/LinkControl.h"
 #include "protocols/DMR/VoiceFrame.h"
@@ -997,10 +998,18 @@ static void nextVoicePayload(uint8_t *payload)
     payload[VP_LENGTH - 1] = sum;
 }
 
-void dmr_setPayloadMarker(const bool enable)
+/**
+ * Debug tap command: send the test pattern in place of the voice, or the voice
+ * again. Each burst's payload then carries a sequence number, so a receiver on
+ * the bench can tell whether every payload handed to the baseband went out on
+ * air exactly once: chip select timing on the CS7000 Plus vocoder bus once
+ * lost a share of them, each going out as a repeat of the previous burst.
+ */
+static void toggleMarker()
 {
-    txMarker    = enable;
+    txMarker    = !txMarker;
     txMarkerSeq = 0;
+    dmrDebug_log(DMR_DBG_INFO, "tx: test pattern %s", txMarker ? "on" : "off");
 }
 
 bool dmr_txActive()
@@ -1344,6 +1353,9 @@ void dmr_init(const uint8_t colorCode)
     }
 #endif
 
+    dmrDebug_setCommand('c', dmr_codec_selfTest, "vocoder self-test");
+    dmrDebug_setCommand('m', toggleMarker, "tx test pattern on/off");
+
     dmrDebug_mark("dmr: receiver running");
 }
 
@@ -1369,6 +1381,9 @@ void dmr_terminate()
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
     dmrPayload_terminate();
     memset(&rxState, 0, sizeof(rxState));
+
+    dmrDebug_setCommand('c', NULL, NULL);
+    dmrDebug_setCommand('m', NULL, NULL);
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }

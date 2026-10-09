@@ -23,19 +23,17 @@
 #include "drivers/usb_vcom.h"
 #endif
 
-/*
- * The DMR voice codec self-test, provided only by targets that build the
- * vocoder driver (dmr_codec). A weak reference so the tap links everywhere;
- * the 'c' command reports it unavailable where the symbol is absent.
- */
-void dmr_codec_selfTest(void) __attribute__((weak));
+/* Commands registered by the drivers, run on their key. */
+#define TAP_MAX_COMMANDS   4
 
-/*
- * The transmit test pattern switch, provided by the HR_C6000 DMR driver; weak
- * for the same reason.
- */
-void dmr_setPayloadMarker(const bool enable) __attribute__((weak));
-static bool marker;
+struct tapCommand
+{
+    char            key;
+    dmrDebugCommand command;
+    const char     *help;
+};
+
+static struct tapCommand commands[TAP_MAX_COMMANDS];
 
 #define TAP_BUF_SIZE    2048    /* Message buffer size, in bytes            */
 #define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
@@ -165,34 +163,22 @@ static void tapPollCommands()
 
             case '?':
                 dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X "
-                             "(1 info, 2 irq, 3 lc, 4 payload; c codec "
-                             "self-test, m tx test pattern)", channels);
-                continue;
-
-            case 'm':
-                if(dmr_setPayloadMarker != NULL)
+                             "(1 info, 2 irq, 3 lc, 4 payload)", channels);
+                for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
                 {
-                    marker = !marker;
-                    dmr_setPayloadMarker(marker);
-                    dmrDebug_log(DMR_DBG_INFO, "tx: test pattern %s",
-                                 marker ? "on" : "off");
+                    if(commands[c].command != NULL)
+                        dmrDebug_log(DMR_DBG_INFO, "tap: %c %s",
+                                     commands[c].key, commands[c].help);
                 }
                 continue;
 
-            case 'c':
-                /*
-                 * Run the DMR voice codec self-test, if this target builds the
-                 * vocoder driver. The reference is weak so targets without it
-                 * still link.
-                 */
-                if(dmr_codec_selfTest != NULL)
-                    dmr_codec_selfTest();
-                else
-                    dmrDebug_log(DMR_DBG_INFO,
-                                 "codec: not available on this build");
-                continue;
-
             default:
+                for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
+                {
+                    if((commands[c].command != NULL)
+                       && (commands[c].key == (char) cmd[i]))
+                        commands[c].command();
+                }
                 continue;
         }
 
@@ -200,6 +186,32 @@ static void tapPollCommands()
         dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X", channels);
     }
 #endif
+}
+
+int dmrDebug_setCommand(const char key, dmrDebugCommand command,
+                        const char *help)
+{
+    struct tapCommand *free = NULL;
+
+    for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
+    {
+        if((commands[c].command != NULL) && (commands[c].key == key))
+        {
+            free = &commands[c];
+            break;
+        }
+
+        if((commands[c].command == NULL) && (free == NULL))
+            free = &commands[c];
+    }
+
+    if(free == NULL)
+        return -1;
+
+    free->key     = key;
+    free->command = command;
+    free->help    = help;
+    return 0;
 }
 
 void dmrDebug_init()

@@ -118,6 +118,24 @@ void dmrDebug_mark(const char *msg);
 void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
                      const void *data, const size_t len);
 
+/**
+ * A command run from the host link.
+ */
+typedef void (*dmrDebugCommand)(void);
+
+/**
+ * Run a command when its key comes from the host, besides the channel
+ * toggles '1' to '4' and '?' for the status. Drivers register theirs while
+ * they are running.
+ *
+ * @param key: key of the command.
+ * @param command: command to run, NULL to remove the key.
+ * @param help: few words on the command, for '?'.
+ * @return 0 on success, -1 if no more commands fit.
+ */
+int dmrDebug_setCommand(const char key, dmrDebugCommand command,
+                        const char *help);
+
 #ifdef __cplusplus
 }
 #endif

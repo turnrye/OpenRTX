@@ -427,6 +427,17 @@ bool dmrDebug_channelEnabled(const enum dmrDebugChannel channel)
     (void)channel;
     return false;
 }
+int dmrDebug_setCommand(const char key, dmrDebugCommand command,
+                        const char *help)
+{
+    (void)key;
+    (void)command;
+    (void)help;
+    return 0;
+}
+void dmr_codec_selfTest(void)
+{
+}
 void dmrDebug_mark(const char *msg)
 {
     std::lock_guard<std::mutex> lk(logMutex);
