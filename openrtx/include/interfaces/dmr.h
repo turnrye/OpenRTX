@@ -33,11 +33,32 @@ struct dmrRxState {
 };
 
 /**
+ * How the channel is reached: directly, both stations on one frequency, or
+ * through a repeater, which receives on one frequency and transmits on the
+ * other.
+ */
+enum dmrAccess {
+    DMR_ACCESS_DIRECT,  ///< Direct mode.
+    DMR_ACCESS_REPEATER ///< Through a repeater.
+};
+
+/**
+ * What the baseband needs to know about the channel and the radio.
+ */
+struct dmrConfig {
+    enum dmrAccess access; ///< Direct mode or through a repeater.
+    uint8_t colorCode;     ///< Color code to accept and to send, 0 to 15.
+    uint8_t timeslot;      ///< Timeslot of the channel, 1 or 2.
+    uint32_t ownId;        ///< The radio's own DMR ID, sent as the source.
+    bool rxPromiscuous;    ///< Accept calls to any destination.
+};
+
+/**
  * Bring the baseband up for DMR reception and start handling its interrupts.
  *
- * @param colorCode: color code the receiver has to accept.
+ * @param config: channel and radio configuration.
  */
-void dmr_init(const uint8_t colorCode);
+void dmr_init(const struct dmrConfig *config);
 
 /**
  * Stop the DMR reception.
@@ -45,11 +66,11 @@ void dmr_init(const uint8_t colorCode);
 void dmr_terminate();
 
 /**
- * Change the color code the receiver accepts.
+ * Apply a new configuration to the running baseband.
  *
- * @param colorCode: color code the receiver has to accept.
+ * @param config: channel and radio configuration.
  */
-void dmr_setColorCode(const uint8_t colorCode);
+void dmr_configure(const struct dmrConfig *config);
 
 /**
  * Periodic update step, has to be called from a thread as it accesses the
@@ -60,16 +81,13 @@ void dmr_setColorCode(const uint8_t colorCode);
 void dmr_task(struct dmrRxState *rx);
 
 /**
- * Key a direct mode group or private call and start sending the constant
- * silence payload. The transmission runs from the timeslot interrupt until
- * dmr_stopTx is called; this only sets it up.
+ * Key a group or private call from the radio's own DMR ID. The transmission
+ * runs until dmr_stopTx is called; this only sets it up.
  *
  * @param groupCall: true for a group call, false for a private one.
  * @param dstId: destination address, a talkgroup for a group call.
- * @param srcId: source address, that is the radio's own DMR ID.
  */
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId);
+void dmr_startTx(const bool groupCall, const uint32_t dstId);
 
 /**
  * Ask the current transmission to end. The terminator is sent at the next

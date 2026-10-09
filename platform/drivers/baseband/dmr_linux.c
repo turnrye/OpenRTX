@@ -19,9 +19,9 @@
 
 static uint8_t configuredCc;
 
-void dmr_init(const uint8_t colorCode)
+void dmr_init(const struct dmrConfig *config)
 {
-    configuredCc = colorCode & 0x0F;
+    configuredCc = config->colorCode & 0x0F;
     dmrDebug_log(DMR_DBG_INFO, "dmr: emulated receiver, color code %u",
                  configuredCc);
 }
@@ -31,9 +31,9 @@ void dmr_terminate()
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
 
-void dmr_setColorCode(const uint8_t colorCode)
+void dmr_configure(const struct dmrConfig *config)
 {
-    configuredCc = colorCode & 0x0F;
+    configuredCc = config->colorCode & 0x0F;
 }
 
 void dmr_task(struct dmrRxState *rx)
@@ -41,12 +41,10 @@ void dmr_task(struct dmrRxState *rx)
     memset(rx, 0, sizeof(struct dmrRxState));
 }
 
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId)
+void dmr_startTx(const bool groupCall, const uint32_t dstId)
 {
     (void)groupCall;
     (void)dstId;
-    (void)srcId;
 
     dmrDebug_log(DMR_DBG_INFO, "dmr: emulated transmitter has no baseband");
 }

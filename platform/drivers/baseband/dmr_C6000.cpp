@@ -111,7 +111,8 @@ enum dmrTxState {
 #define RX_HOLD_TIMEOUT 500
 
 static struct dmrRxState rxState;
-static uint8_t configuredCc;
+static struct dmrConfig config; // Channel and radio configuration
+static uint8_t configuredCc;    // Colour code of the configuration
 static uint8_t prevLc[C6000_LC_LENGTH];
 static uint8_t lcMatches;
 static uint32_t lastSysCount;
@@ -1175,9 +1176,10 @@ void dmr_txTimeslotIsr()
     }
 }
 
-void dmr_startTx(const bool groupCall, const uint32_t dstId,
-                 const uint32_t srcId)
+void dmr_startTx(const bool groupCall, const uint32_t dstId)
 {
+    const uint32_t srcId = config.ownId;
+
 #if defined(DMR_THREAD)
     /*
      * The key-up itself is left to the DMR thread, which runs the whole
@@ -1313,8 +1315,23 @@ void dmr_txTask()
     txReportTick = now;
 }
 
-void dmr_init(const uint8_t colorCode)
+/**
+ * Say on the tap what the configuration asks for that the baseband does not do
+ * yet: repeater channels are received and sent in direct mode for now.
+ */
+static void reportAccess()
 {
+    if (config.access == DMR_ACCESS_REPEATER)
+        dmrDebug_log(DMR_DBG_INFO,
+                     "dmr: repeater channel, timeslot %u: repeater mode is "
+                     "not supported yet, running direct mode",
+                     config.timeslot);
+}
+
+void dmr_init(const struct dmrConfig *cfg)
+{
+    config = *cfg;
+
     memset(&rxState, 0, sizeof(rxState));
     memset(prevLc, 0, sizeof(prevLc));
     lastPayloadValid = false;
@@ -1323,7 +1340,7 @@ void dmr_init(const uint8_t colorCode)
     txStopRequested = false;
     rxRestoreNeeded = false;
 
-    configuredCc = colorCode & 0x0F;
+    configuredCc = config.colorCode & 0x0F;
     lcMatches = 0;
     lastSysCount = 0;
     lastTsCount = 0;
@@ -1399,6 +1416,7 @@ void dmr_init(const uint8_t colorCode)
     dmrDebug_setCommand('m', toggleMarker, "tx test pattern on/off");
 
     dmrDebug_mark("dmr: receiver running");
+    reportAccess();
 }
 
 void dmr_terminate()
@@ -1429,12 +1447,19 @@ void dmr_terminate()
     dmrDebug_log(DMR_DBG_INFO, "dmr: receiver stopped");
 }
 
-void dmr_setColorCode(const uint8_t colorCode)
+void dmr_configure(const struct dmrConfig *cfg)
 {
-    if ((colorCode & 0x0F) == configuredCc)
+    bool accessChanged = (cfg->access != config.access)
+                      || (cfg->timeslot != config.timeslot);
+    config = *cfg;
+
+    if (accessChanged)
+        reportAccess();
+
+    if ((config.colorCode & 0x0F) == configuredCc)
         return;
 
-    configuredCc = colorCode & 0x0F;
+    configuredCc = config.colorCode & 0x0F;
     C6000.setDmrColorCode(configuredCc);
 
     memset(prevLc, 0, sizeof(prevLc));

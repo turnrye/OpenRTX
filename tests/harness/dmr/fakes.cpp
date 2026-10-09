@@ -525,9 +525,15 @@ void harness::reset()
     pendingEvents = 0;
 }
 
+static struct dmrConfig harnessConfig;
+
 void harness::start(uint8_t colorCode)
 {
-    dmr_init(colorCode);
+    harnessConfig = {};
+    harnessConfig.access = DMR_ACCESS_DIRECT;
+    harnessConfig.colorCode = colorCode;
+    harnessConfig.timeslot = 1;
+    dmr_init(&harnessConfig);
     waitIdle();
 }
 
@@ -560,7 +566,9 @@ RxState harness::poll()
 
 void harness::keyUp(bool group, uint32_t dst, uint32_t src)
 {
-    dmr_startTx(group, dst, src);
+    harnessConfig.ownId = src;
+    dmr_configure(&harnessConfig);
+    dmr_startTx(group, dst);
     waitIdle();
 }
 

@@ -34,14 +34,43 @@ void OpMode_DMR::disable()
     radio_disableRtx();
 }
 
+/*
+ * A channel whose transmit and receive frequencies are more than 10kHz apart
+ * goes through a repeater, the rule the MD-UV380 stock firmware applies.
+ */
+static const freq_t REPEATER_MIN_SPLIT = 10000;
+
+/**
+ * Build the baseband configuration from the rtx status.
+ *
+ * @param status: rtx status the channel and radio settings come from.
+ * @param config: destination configuration.
+ */
+static void buildConfig(const rtxStatus_t *status, struct dmrConfig *config)
+{
+    freq_t split = (status->txFrequency > status->rxFrequency) ?
+                       (status->txFrequency - status->rxFrequency) :
+                       (status->rxFrequency - status->txFrequency);
+
+    config->access = (split > REPEATER_MIN_SPLIT) ? DMR_ACCESS_REPEATER :
+                                                    DMR_ACCESS_DIRECT;
+    config->colorCode = status->dmrColorCode;
+    config->timeslot = status->dmrTimeslot + 1;
+    config->ownId = status->dmrId;
+    config->rxPromiscuous = status->dmrRxPromisc;
+}
+
 void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 {
+    struct dmrConfig config;
+    buildConfig(status, &config);
+
     if (enabled == false) {
-        dmr_init(status->dmrColorCode);
+        dmr_init(&config);
         enabled = true;
         startRx = true;
     } else if (newCfg) {
-        dmr_setColorCode(status->dmrColorCode);
+        dmr_configure(&config);
     }
 
     switch (status->opStatus) {
@@ -140,7 +169,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         platform_ledOn(RED);
 
         radio_enableTx();
-        dmr_startTx(true, status->dmrTalkgroup, status->dmrId);
+        dmr_startTx(true, status->dmrTalkgroup);
     }
 
     /*
