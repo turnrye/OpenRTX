@@ -22,8 +22,8 @@
  * on it in this configuration - reading it returns zeros - so, as in the stock
  * firmware, they are read from the data page of the control interface.
  */
-#define VP_PAGE_WRITE           0x03
-#define VP_REGISTER             0x00
+#define VP_PAGE_WRITE 0x03
+#define VP_REGISTER 0x00
 
 /*
  * Time the chip select is held low before the first clock edge and after the
@@ -34,7 +34,7 @@
  * previous burst. The stock firmware gets the same margin from the code it
  * runs between the two steps.
  */
-#define CS_SETUP_HOLD_US        10
+#define CS_SETUP_HOLD_US 10
 
 /**
  * Bring up the voice payload bus. PB3 and PB4 come out of reset as JTAG pins,
@@ -45,11 +45,11 @@
  */
 void dmrPayload_init()
 {
-    gpio_setMode(VOC_CLK,  ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(VOC_CLK, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(VOC_MISO, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(VOC_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
-    gpio_setMode(VOC_CS,   OUTPUT);
-    gpio_setPin(VOC_CS);        // Chip select idle high
+    gpio_setMode(VOC_CS, OUTPUT);
+    gpio_setPin(VOC_CS); // Chip select idle high
 
     spiStm32_init(&voc_spi, 1000000, SPI_FLAG_CPHA);
 }
@@ -58,10 +58,10 @@ void dmrPayload_terminate()
 {
     spiStm32_terminate(&voc_spi);
 
-    gpio_setMode(VOC_CLK,  INPUT);
+    gpio_setMode(VOC_CLK, INPUT);
     gpio_setMode(VOC_MISO, INPUT);
     gpio_setMode(VOC_MOSI, INPUT);
-    gpio_setMode(VOC_CS,   INPUT);
+    gpio_setMode(VOC_CS, INPUT);
 }
 
 void dmrPayload_read(uint8_t *payload)
@@ -90,19 +90,21 @@ void dmrPayload_write(const uint8_t *payload)
     gpio_clearPin(VOC_CS);
     delayUs(CS_SETUP_HOLD_US);
 
-    spi->CR2  = sizeof(tx);
+    spi->CR2 = sizeof(tx);
     spi->CR1 |= SPI_CR1_SPE;
     spi->CR1 |= SPI_CR1_CSTART;
 
-    for(size_t i = 0; i < sizeof(tx); i++)
-    {
-        while((spi->SR & SPI_SR_TXP) == 0) ;
-        *((volatile uint8_t *) &spi->TXDR) = tx[i];
-        while((spi->SR & SPI_SR_RXP) == 0) ;
-        (void) *((volatile uint8_t *) &spi->RXDR);
+    for (size_t i = 0; i < sizeof(tx); i++) {
+        while ((spi->SR & SPI_SR_TXP) == 0)
+            ;
+        *((volatile uint8_t *)&spi->TXDR) = tx[i];
+        while ((spi->SR & SPI_SR_RXP) == 0)
+            ;
+        (void)*((volatile uint8_t *)&spi->RXDR);
     }
 
-    while((spi->SR & SPI_SR_EOT) == 0) ;
+    while ((spi->SR & SPI_SR_EOT) == 0)
+        ;
     spi->IFCR = SPI_IFCR_EOTC | SPI_IFCR_TXTFC;
     spi->CR1 &= ~SPI_CR1_SPE;
 

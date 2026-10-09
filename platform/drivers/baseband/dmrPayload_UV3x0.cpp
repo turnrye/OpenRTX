@@ -18,9 +18,9 @@
  * read flag set, followed by the register offset; the payload comes back after
  * those two command bytes, so the transfer is two bytes longer than the data.
  */
-#define VP_PAGE_READ            0x83
-#define VP_PAGE_WRITE           0x03
-#define VP_REGISTER             0x00
+#define VP_PAGE_READ 0x83
+#define VP_PAGE_WRITE 0x03
+#define VP_REGISTER 0x00
 
 /**
  * Bring up the second SPI bus that carries the voice payload. Unlike the
@@ -31,11 +31,11 @@
  */
 void dmrPayload_init()
 {
-    gpio_setMode(DMR_V_CLK,  ALTERNATE | ALTERNATE_FUNC(5));
+    gpio_setMode(DMR_V_CLK, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(DMR_V_MISO, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(DMR_V_MOSI, ALTERNATE | ALTERNATE_FUNC(5));
-    gpio_setMode(DMR_V_CS,   OUTPUT);
-    gpio_setPin(DMR_V_CS);      // Chip select idle high
+    gpio_setMode(DMR_V_CS, OUTPUT);
+    gpio_setPin(DMR_V_CS); // Chip select idle high
 
     spiStm32_init(&payload_spi, 6000000, SPI_FLAG_CPOL);
 }
@@ -47,10 +47,10 @@ void dmrPayload_terminate()
 {
     spiStm32_terminate(&payload_spi);
 
-    gpio_setMode(DMR_V_CLK,  INPUT);
+    gpio_setMode(DMR_V_CLK, INPUT);
     gpio_setMode(DMR_V_MISO, INPUT);
     gpio_setMode(DMR_V_MOSI, INPUT);
-    gpio_setMode(DMR_V_CS,   INPUT);
+    gpio_setMode(DMR_V_CS, INPUT);
 }
 
 /**

@@ -43,12 +43,11 @@ extern "C" {
  * Debug tap message categories, used to keep the high rate records from
  * drowning out the low rate ones. Categories are enabled independently.
  */
-enum dmrDebugChannel
-{
-    DMR_DBG_INFO = 0x01,    ///< Mode changes, init results, errors.
-    DMR_DBG_IRQ  = 0x02,    ///< Periodic interrupt counters.
-    DMR_DBG_LC   = 0x04,    ///< Decoded link control.
-    DMR_DBG_VP   = 0x08     ///< Raw voice payload records.
+enum dmrDebugChannel {
+    DMR_DBG_INFO = 0x01, ///< Mode changes, init results, errors.
+    DMR_DBG_IRQ = 0x02,  ///< Periodic interrupt counters.
+    DMR_DBG_LC = 0x04,   ///< Decoded link control.
+    DMR_DBG_VP = 0x08    ///< Raw voice payload records.
 };
 
 /**
@@ -92,7 +91,7 @@ bool dmrDebug_channelEnabled(const enum dmrDebugChannel channel);
  * @param fmt: printf-style format string.
  */
 void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
-                  __attribute__((format(printf, 2, 3)));
+    __attribute__((format(printf, 2, 3)));
 
 /**
  * Write a marker straight to the host link, bypassing the buffer.

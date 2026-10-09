@@ -47,7 +47,6 @@ openrtx/include/core/chan.h
 openrtx/include/core/cps.h
 openrtx/include/core/ctcssDetector.hpp
 openrtx/include/core/datetime.h
-openrtx/include/core/dmr_debug.h
 openrtx/include/core/event.h
 openrtx/include/core/fir.hpp
 openrtx/include/core/goertzel.hpp
@@ -63,7 +62,6 @@ openrtx/include/peripherals/adc.h
 openrtx/include/peripherals/gpio.h
 openrtx/include/peripherals/i2c.h
 openrtx/include/peripherals/spi.h
-openrtx/include/protocols/DMR/LinkControl.h
 openrtx/include/protocols/M17/ClockRecovery.hpp
 openrtx/include/protocols/M17/CodePuncturing.hpp
 openrtx/include/protocols/M17/Constants.hpp
@@ -86,7 +84,6 @@ openrtx/include/protocols/M17/Synchronizer.hpp
 openrtx/include/protocols/M17/Utils.hpp
 openrtx/include/protocols/M17/Viterbi.hpp
 openrtx/include/rtx/OpMode.hpp
-openrtx/include/rtx/OpMode_DMR.hpp
 openrtx/include/rtx/OpMode_FM.hpp
 openrtx/include/rtx/OpMode_M17.hpp
 openrtx/include/rtx/rtx.h
@@ -103,7 +100,6 @@ openrtx/src/core/chan.c
 openrtx/src/core/cps.c
 openrtx/src/core/data_conversion.c
 openrtx/src/core/datetime.c
-openrtx/src/core/dmr_debug.c
 openrtx/src/core/gps.c
 openrtx/src/core/openrtx.c
 openrtx/src/core/queue.c
@@ -111,7 +107,6 @@ openrtx/src/core/threads.c
 openrtx/src/core/utils.c
 openrtx/src/core/xmodem.c
 openrtx/src/main.c
-openrtx/src/protocols/DMR/LinkControl.c
 openrtx/src/protocols/M17/DSP.cpp
 openrtx/src/protocols/M17/Demodulator.cpp
 openrtx/src/protocols/M17/FrameEncoder.cpp
@@ -119,7 +114,6 @@ openrtx/src/protocols/M17/Golay.cpp
 openrtx/src/protocols/M17/LinkSetupFrame.cpp
 openrtx/src/protocols/M17/MetaText.cpp
 openrtx/src/protocols/M17/Modulator.cpp
-openrtx/src/rtx/OpMode_DMR.cpp
 openrtx/src/rtx/OpMode_FM.cpp
 openrtx/src/rtx/OpMode_M17.cpp
 openrtx/src/rtx/rtx.cpp
@@ -219,22 +213,6 @@ platform/drivers/baseband/HR_Cx000.cpp
 platform/drivers/baseband/HR_Cx000.h
 platform/drivers/baseband/MCP4551.c
 platform/drivers/baseband/SA8x8.c
-openrtx/include/interfaces/dmr.h
-platform/drivers/baseband/dmrIrq.h
-platform/drivers/baseband/dmrIrq_UV3x0.cpp
-platform/drivers/baseband/dmrPayload.h
-platform/drivers/baseband/dmrPayload_UV3x0.cpp
-platform/drivers/baseband/dmrPayload_CS7000.cpp
-platform/drivers/baseband/dmrIrq_CS7000.cpp
-platform/drivers/baseband/paRamp_CS7000.cpp
-platform/drivers/baseband/paRampShape_CS7000.cpp
-platform/drivers/baseband/paRamp_CS7000.h
-platform/drivers/baseband/dmr_C6000.cpp
-platform/drivers/baseband/dmr_codec.c
-openrtx/include/interfaces/dmr_codec.h
-openrtx/src/core/dmr_audio.c
-openrtx/include/core/dmr_audio.h
-platform/drivers/baseband/dmr_linux.c
 platform/drivers/baseband/radioUtils.h
 platform/drivers/baseband/radio_CS7000.cpp
 platform/drivers/baseband/radio_GDx.cpp

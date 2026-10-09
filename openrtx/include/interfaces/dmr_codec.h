@@ -24,8 +24,8 @@ extern "C" {
  * A voice frame is one 20 ms AMBE frame: 160 PCM samples at 8 kHz in, 9 bytes
  * out (three of these make up the 27-byte payload of a DMR voice burst).
  */
-#define DMR_CODEC_PCM_SAMPLES  160
-#define DMR_CODEC_FRAME_BYTES  9
+#define DMR_CODEC_PCM_SAMPLES 160
+#define DMR_CODEC_FRAME_BYTES 9
 
 /**
  * @return true if the donor vocoder is installed at the expected flash address.

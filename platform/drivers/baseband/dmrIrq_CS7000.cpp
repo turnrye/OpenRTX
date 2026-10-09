@@ -27,16 +27,17 @@ using namespace miosix;
  * The three lines on the CS7000 Plus: timeslot on PC0, transmit on PC2 and
  * system on PC3, each on the EXTI line of the same number.
  */
-#define LINES_MASK      (EXTI_IMR1_IM0 | EXTI_IMR1_IM2 | EXTI_IMR1_IM3)
+#define LINES_MASK (EXTI_IMR1_IM0 | EXTI_IMR1_IM2 | EXTI_IMR1_IM3)
 
 static volatile uint32_t tsCount;    /* Timeslot interrupt counter  */
 static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
-static volatile bool     stormSeen;  /* Lines shut down by the guard */
-static volatile bool     busBusy;    /* The DMR thread is on the SPI bus */
-static volatile uint32_t pendingEvents; /* Events not yet taken, DMR_IRQ_EVENT_* */
-static Thread           *waiting;    /* Thread waiting for an event, if any */
+static volatile bool stormSeen;      /* Lines shut down by the guard */
+static volatile bool busBusy;        /* The DMR thread is on the SPI bus */
+static volatile uint32_t
+    pendingEvents;                   /* Events not yet taken, DMR_IRQ_EVENT_* */
+static Thread *waiting;              /* Thread waiting for an event, if any */
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -47,10 +48,9 @@ static inline void stormGuard()
 {
     stormCount += 1;
 
-    if(stormCount > IRQ_STORM_LIMIT)
-    {
+    if (stormCount > IRQ_STORM_LIMIT) {
         EXTI->IMR1 &= ~LINES_MASK;
-        stormSeen   = true;
+        stormSeen = true;
     }
 }
 
@@ -65,14 +65,15 @@ static inline bool IRQsignal(const uint32_t event)
 {
     pendingEvents |= event;
 
-    if(waiting == nullptr)
+    if (waiting == nullptr)
         return false;
 
     Thread *woken = waiting;
-    waiting       = nullptr;
+    waiting = nullptr;
     woken->IRQwakeup();
 
-    return woken->IRQgetPriority() > Thread::IRQgetCurrentThread()->IRQgetPriority();
+    return woken->IRQgetPriority()
+         > Thread::IRQgetCurrentThread()->IRQgetPriority();
 }
 
 /*
@@ -89,7 +90,7 @@ void __attribute__((used)) dmrTimeslotIrqImpl()
      * The DMR thread sets up each slot, transmitting as well as receiving,
      * straight after the boundary.
      */
-    if(IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
+    if (IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
         Scheduler::IRQfindNextThread();
 
     stormGuard();
@@ -122,7 +123,7 @@ void __attribute__((used)) dmrSystemIrqImpl()
      * The flags and the burst they describe are read by the reception thread,
      * which gets to them well within the slot the chip holds them for.
      */
-    if(IRQsignal(DMR_IRQ_EVENT_SYSTEM))
+    if (IRQsignal(DMR_IRQ_EVENT_SYSTEM))
         Scheduler::IRQfindNextThread();
 
     stormGuard();
@@ -144,25 +145,24 @@ void dmrIrq_init()
      * The lines are active on the falling edge, so they idle high: pulling
      * them up keeps a line the chip is not driving from tripping on noise.
      */
-    gpio_setMode(DMR_TS_INT,  INPUT_PULL_UP);
+    gpio_setMode(DMR_TS_INT, INPUT_PULL_UP);
     gpio_setMode(DMR_SYS_INT, INPUT_PULL_UP);
-    gpio_setMode(DMR_TX_INT,  INPUT_PULL_UP);
+    gpio_setMode(DMR_TX_INT, INPUT_PULL_UP);
 
     RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
     __DSB();
 
     /* Route EXTI lines 0, 2 and 3 to port C. */
     SYSCFG->EXTICR[0] = (SYSCFG->EXTICR[0]
-                        & ~(SYSCFG_EXTICR1_EXTI0 | SYSCFG_EXTICR1_EXTI2
-                            | SYSCFG_EXTICR1_EXTI3))
-                      | SYSCFG_EXTICR1_EXTI0_PC
-                      | SYSCFG_EXTICR1_EXTI2_PC
+                         & ~(SYSCFG_EXTICR1_EXTI0 | SYSCFG_EXTICR1_EXTI2
+                             | SYSCFG_EXTICR1_EXTI3))
+                      | SYSCFG_EXTICR1_EXTI0_PC | SYSCFG_EXTICR1_EXTI2_PC
                       | SYSCFG_EXTICR1_EXTI3_PC;
 
     EXTI->FTSR1 |= EXTI_FTSR1_TR0 | EXTI_FTSR1_TR2 | EXTI_FTSR1_TR3;
     EXTI->RTSR1 &= ~(EXTI_RTSR1_TR0 | EXTI_RTSR1_TR2 | EXTI_RTSR1_TR3);
-    EXTI->PR1    = EXTI_PR1_PR0 | EXTI_PR1_PR2 | EXTI_PR1_PR3;
-    EXTI->IMR1  |= LINES_MASK;
+    EXTI->PR1 = EXTI_PR1_PR0 | EXTI_PR1_PR2 | EXTI_PR1_PR3;
+    EXTI->IMR1 |= LINES_MASK;
 
     /*
      * Lowest priority, as the handlers only touch their own counters and the
@@ -191,15 +191,15 @@ void dmrIrq_terminate()
 void dmrIrq_getCounters(struct dmrIrqCounters *counters)
 {
     counters->timeslot = tsCount;
-    counters->system   = sysCount;
+    counters->system = sysCount;
     counters->transmit = txCount;
 }
 
 void dmrIrq_clearCounters()
 {
-    tsCount       = 0;
-    sysCount      = 0;
-    txCount       = 0;
+    tsCount = 0;
+    sysCount = 0;
+    txCount = 0;
 }
 
 void dmrIrq_feedWatchdog()
@@ -221,8 +221,7 @@ uint32_t dmrIrq_waitEvents()
 {
     FastInterruptDisableLock dLock;
 
-    while(pendingEvents == 0)
-    {
+    while (pendingEvents == 0) {
         waiting = Thread::IRQgetCurrentThread();
         Thread::IRQwait();
         {
@@ -232,7 +231,7 @@ uint32_t dmrIrq_waitEvents()
     }
 
     uint32_t events = pendingEvents;
-    pendingEvents   = 0;
+    pendingEvents = 0;
 
     return events;
 }
@@ -242,7 +241,7 @@ uint32_t dmrIrq_takeEvents()
     FastInterruptDisableLock dLock;
 
     uint32_t events = pendingEvents;
-    pendingEvents   = 0;
+    pendingEvents = 0;
 
     return events;
 }
@@ -259,7 +258,7 @@ void dmrIrq_wakeWaiter()
         preempt = IRQsignal(DMR_IRQ_EVENT_WAKE);
     }
 
-    if(preempt)
+    if (preempt)
         Thread::yield();
 }
 

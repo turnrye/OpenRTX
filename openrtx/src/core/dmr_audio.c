@@ -19,17 +19,17 @@
 
 #if defined(CONFIG_DMR)
 
-#define FRAME_SAMPLES    160                    /* 20 ms at 8 kHz, one AMBE frame */
-#define DMA_BUF_SAMPLES  (FRAME_SAMPLES * 2)    /* Double-buffered DMA            */
-#define QUEUE_FRAMES     8                      /* Playback queue depth           */
+#define FRAME_SAMPLES 160                   /* 20 ms at 8 kHz, one AMBE frame */
+#define DMA_BUF_SAMPLES (FRAME_SAMPLES * 2) /* Double-buffered DMA            */
+#define QUEUE_FRAMES 8                      /* Playback queue depth           */
 
 #ifndef CONFIG_MIC_OVERSAMPLE
 #define CONFIG_MIC_OVERSAMPLE 1
 #endif
 
-static pathId  rxPath;
-static bool    running  = false;
-static bool    reqStop  = false;
+static pathId rxPath;
+static bool running = false;
+static bool reqStop = false;
 
 /* Ring buffer of AMBE frames waiting to be decoded and played. */
 static uint8_t queue[QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
@@ -37,7 +37,7 @@ static uint8_t readPos;
 static uint8_t writePos;
 static uint8_t numFrames;
 
-static pthread_t       thread;
+static pthread_t thread;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
@@ -47,15 +47,14 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 static void *playbackFunc(void *arg)
 {
-    pathId path = *((pathId *) arg);
+    pathId path = *((pathId *)arg);
     int16_t audioBuf[DMA_BUF_SAMPLES];
 
     /*
      * Bring the vocoder up here, on this thread's generous stack: the codec uses
      * far more of it than the rtx thread that starts playback has to spare.
      */
-    if(dmr_codec_init() == false)
-    {
+    if (dmr_codec_init() == false) {
         dmrDebug_log(DMR_DBG_INFO, "audio: playback not started, no vocoder");
         running = false;
         pthread_detach(pthread_self());
@@ -65,10 +64,11 @@ static void *playbackFunc(void *arg)
     memset(audioBuf, 0, sizeof(audioBuf));
     streamId os = audioStream_start(path, audioBuf, DMA_BUF_SAMPLES, 8000,
                                     STREAM_OUTPUT | BUF_CIRC_DOUBLE);
-    if(os < 0)
-    {
-        dmrDebug_log(DMR_DBG_INFO, "audio: playback not started, output "
-                     "stream error %d", (int) os);
+    if (os < 0) {
+        dmrDebug_log(DMR_DBG_INFO,
+                     "audio: playback not started, output "
+                     "stream error %d",
+                     (int)os);
         running = false;
         pthread_detach(pthread_self());
         return NULL;
@@ -76,21 +76,18 @@ static void *playbackFunc(void *arg)
 
     outputStream_sync(os, false);
 
-    while(reqStop == false)
-    {
-        if(audioPath_getStatus(path) != PATH_OPEN)
-        {
+    while (reqStop == false) {
+        if (audioPath_getStatus(path) != PATH_OPEN) {
             dmrDebug_log(DMR_DBG_INFO, "audio: playback stopped, speaker path "
-                         "taken over");
+                                       "taken over");
             break;
         }
 
         uint8_t frame[DMR_CODEC_FRAME_BYTES];
-        bool    haveFrame = false;
+        bool haveFrame = false;
 
         pthread_mutex_lock(&mutex);
-        if(numFrames > 0)
-        {
+        if (numFrames > 0) {
             memcpy(frame, queue[readPos], DMR_CODEC_FRAME_BYTES);
             readPos = (readPos + 1) % QUEUE_FRAMES;
             numFrames -= 1;
@@ -99,14 +96,13 @@ static void *playbackFunc(void *arg)
         pthread_mutex_unlock(&mutex);
 
         stream_sample_t *buf = outputStream_getIdleBuffer(os);
-        if(buf == NULL)
-        {
+        if (buf == NULL) {
             dmrDebug_log(DMR_DBG_INFO, "audio: playback stopped, output "
-                         "stream lost");
+                                       "stream lost");
             break;
         }
 
-        if(haveFrame)
+        if (haveFrame)
             dmr_codec_decode(buf, frame);
         else
             memset(buf, 0, FRAME_SAMPLES * sizeof(stream_sample_t));
@@ -115,7 +111,7 @@ static void *playbackFunc(void *arg)
     }
 
     audioStream_stop(os);
-    if(reqStop == false)
+    if (reqStop == false)
         pthread_detach(pthread_self());
 
     running = false;
@@ -124,25 +120,24 @@ static void *playbackFunc(void *arg)
 
 bool dmrAudio_startRx(void)
 {
-    if(running)
+    if (running)
         return true;
 
     /* Cheap check here; the actual init runs on the playback thread's stack. */
-    if(dmr_codec_available() == false)
+    if (dmr_codec_available() == false)
         return false;
 
     rxPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_RX);
-    if(audioPath_getStatus(rxPath) != PATH_OPEN)
-    {
+    if (audioPath_getStatus(rxPath) != PATH_OPEN) {
         audioPath_release(rxPath);
         return false;
     }
 
-    readPos   = 0;
-    writePos  = 0;
+    readPos = 0;
+    writePos = 0;
     numFrames = 0;
-    reqStop   = false;
-    running   = true;
+    reqStop = false;
+    running = true;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -153,8 +148,7 @@ bool dmrAudio_startRx(void)
     pthread_attr_setschedparam(&attr, &param);
 #endif
 
-    if(pthread_create(&thread, &attr, playbackFunc, &rxPath) != 0)
-    {
+    if (pthread_create(&thread, &attr, playbackFunc, &rxPath) != 0) {
         running = false;
         audioPath_release(rxPath);
     }
@@ -164,7 +158,7 @@ bool dmrAudio_startRx(void)
 
 void dmrAudio_stopRx(void)
 {
-    if(running == false)
+    if (running == false)
         return;
 
     reqStop = true;
@@ -180,12 +174,11 @@ bool dmrAudio_running(void)
 
 void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 {
-    if(running == false)
+    if (running == false)
         return;
 
     pthread_mutex_lock(&mutex);
-    if(numFrames < QUEUE_FRAMES)
-    {
+    if (numFrames < QUEUE_FRAMES) {
         memcpy(queue[writePos], frame, DMR_CODEC_FRAME_BYTES);
         writePos = (writePos + 1) % QUEUE_FRAMES;
         numFrames += 1;
@@ -200,14 +193,14 @@ void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
  * with no lock - the interrupt cannot take a mutex. head is written only by the
  * encode thread, tail only by the interrupt; both are word-aligned reads/writes.
  */
-#define TX_QUEUE_FRAMES  8
+#define TX_QUEUE_FRAMES 8
 
-static uint8_t          txQueue[TX_QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
+static uint8_t txQueue[TX_QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
 static volatile uint32_t txHead;
 static volatile uint32_t txTail;
-static pathId    txPath;
-static bool      txRunning = false;
-static bool      txReqStop = false;
+static pathId txPath;
+static bool txRunning = false;
+static bool txReqStop = false;
 static pthread_t txThread;
 
 /**
@@ -216,34 +209,33 @@ static pthread_t txThread;
  */
 static void *captureFunc(void *arg)
 {
-    pathId path = *((pathId *) arg);
-    struct micFrameState  mic;
+    pathId path = *((pathId *)arg);
+    struct micFrameState mic;
 
     /* Oversampled ADC buffer is too big for the stack. */
     stream_sample_t *adcBuf = malloc(DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE
                                      * sizeof(stream_sample_t));
-    if(adcBuf == NULL)
+    if (adcBuf == NULL)
         goto detach;
 
-    if(dmr_codec_init() == false)
+    if (dmr_codec_init() == false)
         goto freebuf;
 
     streamId is = audioStream_start(path, adcBuf,
                                     DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE,
                                     8000 * CONFIG_MIC_OVERSAMPLE,
                                     STREAM_INPUT | BUF_CIRC_DOUBLE);
-    if(is < 0)
+    if (is < 0)
         goto freebuf;
 
     micFrame_init(&mic);
 
-    while(txReqStop == false)
-    {
-        if(audioPath_getStatus(path) != PATH_OPEN)
+    while (txReqStop == false) {
+        if (audioPath_getStatus(path) != PATH_OPEN)
             break;
 
         dataBlock_t audio = inputStream_getData(is);
-        if((audio.data == NULL) || (audio.len == 0))
+        if ((audio.data == NULL) || (audio.len == 0))
             break;
 
         /* One buffer is FRAME_SAMPLES*oversample raw samples; decimate to 160. */
@@ -251,14 +243,14 @@ static void *captureFunc(void *arg)
 
         /* Without voice the silence frame goes out, as other radios send. */
         uint8_t frame[DMR_CODEC_FRAME_BYTES];
-        if(micFrame_hasVoice(&mic, audio.data, n))
+        if (micFrame_hasVoice(&mic, audio.data, n))
             dmr_codec_encode(frame, audio.data);
         else
             memcpy(frame, DMR_VOICE_SILENCE_FRAME, DMR_CODEC_FRAME_BYTES);
 
-        if((txHead - txTail) < TX_QUEUE_FRAMES)
-        {
-            memcpy(txQueue[txHead % TX_QUEUE_FRAMES], frame, DMR_CODEC_FRAME_BYTES);
+        if ((txHead - txTail) < TX_QUEUE_FRAMES) {
+            memcpy(txQueue[txHead % TX_QUEUE_FRAMES], frame,
+                   DMR_CODEC_FRAME_BYTES);
             __sync_synchronize();
             txHead += 1;
         }
@@ -269,7 +261,7 @@ static void *captureFunc(void *arg)
 freebuf:
     free(adcBuf);
 detach:
-    if(txReqStop == false)
+    if (txReqStop == false)
         pthread_detach(pthread_self());
     txRunning = false;
     return NULL;
@@ -277,21 +269,20 @@ detach:
 
 bool dmrAudio_startTx(void)
 {
-    if(txRunning)
+    if (txRunning)
         return true;
 
-    if(dmr_codec_available() == false)
+    if (dmr_codec_available() == false)
         return false;
 
     txPath = audioPath_request(SOURCE_MIC, SINK_MCU, PRIO_TX);
-    if(audioPath_getStatus(txPath) != PATH_OPEN)
-    {
+    if (audioPath_getStatus(txPath) != PATH_OPEN) {
         audioPath_release(txPath);
         return false;
     }
 
-    txHead    = 0;
-    txTail    = 0;
+    txHead = 0;
+    txTail = 0;
     txReqStop = false;
     txRunning = true;
 
@@ -304,8 +295,7 @@ bool dmrAudio_startTx(void)
     pthread_attr_setschedparam(&attr, &param);
 #endif
 
-    if(pthread_create(&txThread, &attr, captureFunc, &txPath) != 0)
-    {
+    if (pthread_create(&txThread, &attr, captureFunc, &txPath) != 0) {
         txRunning = false;
         audioPath_release(txPath);
     }
@@ -315,7 +305,7 @@ bool dmrAudio_startTx(void)
 
 void dmrAudio_stopTx(void)
 {
-    if(txRunning == false)
+    if (txRunning == false)
         return;
 
     txReqStop = true;
@@ -331,7 +321,7 @@ bool dmrAudio_txRunning(void)
 
 bool dmrAudio_popFrame(uint8_t frame[DMR_CODEC_FRAME_BYTES])
 {
-    if(txHead == txTail)
+    if (txHead == txTail)
         return false;
 
     memcpy(frame, txQueue[txTail % TX_QUEUE_FRAMES], DMR_CODEC_FRAME_BYTES);

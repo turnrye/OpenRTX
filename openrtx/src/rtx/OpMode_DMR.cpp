@@ -24,8 +24,7 @@ void OpMode_DMR::enable()
 
 void OpMode_DMR::disable()
 {
-    if(enabled)
-    {
+    if (enabled) {
         dmr_terminate();
         enabled = false;
     }
@@ -37,19 +36,15 @@ void OpMode_DMR::disable()
 
 void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 {
-    if(enabled == false)
-    {
+    if (enabled == false) {
         dmr_init(status->dmrColorCode);
         enabled = true;
         startRx = true;
-    }
-    else if(newCfg)
-    {
+    } else if (newCfg) {
         dmr_setColorCode(status->dmrColorCode);
     }
 
-    switch(status->opStatus)
-    {
+    switch (status->opStatus) {
         case OFF:
             offState(status);
             break;
@@ -69,14 +64,12 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 
 void OpMode_DMR::offState(rtxStatus_t *const status)
 {
-    if(startRx)
-    {
+    if (startRx) {
         status->opStatus = RX;
         return;
     }
 
-    if(platform_getPttStatus() && (status->txDisable == 0))
-    {
+    if (platform_getPttStatus() && (status->txDisable == 0)) {
         startTx = true;
         status->opStatus = TX;
         return;
@@ -87,8 +80,7 @@ void OpMode_DMR::offState(rtxStatus_t *const status)
 
 void OpMode_DMR::rxState(rtxStatus_t *const status)
 {
-    if(startRx)
-    {
+    if (startRx) {
         radio_enableRx();
         platform_ledOff(RED);
         startRx = false;
@@ -97,13 +89,13 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
     struct dmrRxState rx;
     dmr_task(&rx);
 
-    status->dmrRxSrcId     = rx.srcId;
-    status->dmrRxDstId     = rx.dstId;
+    status->dmrRxSrcId = rx.srcId;
+    status->dmrRxDstId = rx.dstId;
     status->dmrRxColorCode = rx.colorCode;
     status->dmrRxGroupCall = (rx.groupCall) ? 1 : 0;
-    status->dmrLcValid     = (rx.valid) ? 1 : 0;
+    status->dmrLcValid = (rx.valid) ? 1 : 0;
 
-    if(rx.valid)
+    if (rx.valid)
         platform_ledOn(GREEN);
     else
         platform_ledOff(GREEN);
@@ -112,8 +104,7 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * Pressing the PTT hands over through the OFF state, as the M17 mode does,
      * so the transition into transmission goes through a single place.
      */
-    if(platform_getPttStatus() && (status->txDisable == 0))
-    {
+    if (platform_getPttStatus() && (status->txDisable == 0)) {
         status->opStatus = OFF;
         return;
     }
@@ -128,8 +119,7 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
 
 void OpMode_DMR::txState(rtxStatus_t *const status)
 {
-    if(startTx)
-    {
+    if (startTx) {
         startTx = false;
 
         /*
@@ -137,10 +127,10 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
          * an unidentified call on the air. Say so on the tap, as an unexplained
          * dead PTT is otherwise a puzzle, and fall back to reception.
          */
-        if(status->dmrId == 0)
-        {
-            dmrDebug_log(DMR_DBG_INFO,
-                         "tx: refused, no DMR ID set (Settings > DMR > DMR ID)");
+        if (status->dmrId == 0) {
+            dmrDebug_log(
+                DMR_DBG_INFO,
+                "tx: refused, no DMR ID set (Settings > DMR > DMR ID)");
             startRx = true;
             status->opStatus = OFF;
             return;
@@ -159,7 +149,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
      */
     dmr_txTask();
 
-    if(platform_getPttStatus() == false)
+    if (platform_getPttStatus() == false)
         dmr_stopTx();
 
     /*
@@ -167,8 +157,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
      * on its own; wait for it to finish before handing back so the terminator
      * is not cut off.
      */
-    if(dmr_txActive() == false)
-    {
+    if (dmr_txActive() == false) {
         platform_ledOff(RED);
         startRx = true;
         status->opStatus = OFF;

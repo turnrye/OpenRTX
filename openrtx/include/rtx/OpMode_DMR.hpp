@@ -20,10 +20,13 @@
 class OpMode_DMR : public OpMode
 {
 public:
+    OpMode_DMR()
+    {
+    }
 
-    OpMode_DMR() { }
-
-    ~OpMode_DMR() { }
+    ~OpMode_DMR()
+    {
+    }
 
     virtual void enable() override;
 
@@ -42,7 +45,6 @@ public:
     }
 
 private:
-
     /**
      * Idle handling: move on to reception once the baseband is up, or into
      * transmission when the PTT is pressed.
@@ -61,9 +63,9 @@ private:
      */
     void txState(rtxStatus_t *const status);
 
-    bool enabled = false;   ///< Baseband brought up.
-    bool startRx = false;   ///< Reception has still to be armed.
-    bool startTx = false;   ///< A transmission has still to be keyed.
+    bool enabled = false; ///< Baseband brought up.
+    bool startRx = false; ///< Reception has still to be armed.
+    bool startTx = false; ///< A transmission has still to be keyed.
 };
 
 #endif /* OPMODE_DMR_H */

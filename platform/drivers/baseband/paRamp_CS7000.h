@@ -27,22 +27,21 @@ extern "C" {
  */
 
 /** Longest ramp up or down, in steps. */
-#define PA_RAMP_MAX_STEPS   64
+#define PA_RAMP_MAX_STEPS 64
 
 /**
  * Shape of the ramp of a burst. Steps are 50us long and counted from the
  * transmit interrupt.
  */
-struct paRampShape
-{
-    uint16_t start;                     ///< Step the ramp up starts at.
-    uint16_t holdEnd;                   ///< Step the hold ends at.
-    uint8_t  upLen;                     ///< Length of the ramp up.
-    uint8_t  downLen;                   ///< Length of the ramp down.
-    uint8_t  paOn;                      ///< Step of the ramp up turning the PA on.
-    uint8_t  paOff;                     ///< Step of the ramp down turning it off.
-    uint8_t  up[PA_RAMP_MAX_STEPS];     ///< APC values of the ramp up.
-    uint8_t  down[PA_RAMP_MAX_STEPS];   ///< APC values of the ramp down, reversed.
+struct paRampShape {
+    uint16_t start;                  ///< Step the ramp up starts at.
+    uint16_t holdEnd;                ///< Step the hold ends at.
+    uint8_t upLen;                   ///< Length of the ramp up.
+    uint8_t downLen;                 ///< Length of the ramp down.
+    uint8_t paOn;                    ///< Step of the ramp up turning the PA on.
+    uint8_t paOff;                   ///< Step of the ramp down turning it off.
+    uint8_t up[PA_RAMP_MAX_STEPS];   ///< APC values of the ramp up.
+    uint8_t down[PA_RAMP_MAX_STEPS]; ///< APC values of the ramp down, reversed.
 };
 
 /**

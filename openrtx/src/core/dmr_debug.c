@@ -24,35 +24,34 @@
 #endif
 
 /* Commands registered by the drivers, run on their key. */
-#define TAP_MAX_COMMANDS   4
+#define TAP_MAX_COMMANDS 4
 
-struct tapCommand
-{
-    char            key;
+struct tapCommand {
+    char key;
     dmrDebugCommand command;
-    const char     *help;
+    const char *help;
 };
 
 static struct tapCommand commands[TAP_MAX_COMMANDS];
 
-#define TAP_BUF_SIZE    2048    /* Message buffer size, in bytes            */
-#define TAP_CHUNK_SIZE   256    /* Maximum amount of bytes sent per task run */
-#define TAP_LINE_SIZE    128    /* Maximum length of a single message       */
-#define TAP_MAX_RECORD    48    /* Maximum payload of a binary record       */
+#define TAP_BUF_SIZE 2048  /* Message buffer size, in bytes            */
+#define TAP_CHUNK_SIZE 256 /* Maximum amount of bytes sent per task run */
+#define TAP_LINE_SIZE 128  /* Maximum length of a single message       */
+#define TAP_MAX_RECORD 48  /* Maximum payload of a binary record       */
 
-static char    buf[TAP_BUF_SIZE];
+static char buf[TAP_BUF_SIZE];
 /*
  * Messages are formatted here rather than on the stack of whoever is logging:
  * the rtx thread has little of it to spare. Guarded by the same mutex as the
  * ring buffer below.
  */
-static char    fmtBuf[TAP_LINE_SIZE];
-static size_t  head;            /* Index of the first free byte             */
-static size_t  tail;            /* Index of the first byte to be sent       */
-static size_t  used;            /* Amount of bytes waiting to be sent       */
-static size_t  dropped;         /* Bytes discarded because the buffer filled */
-static uint8_t channels;        /* Bitmap of the enabled message categories */
-static bool    initialised;
+static char fmtBuf[TAP_LINE_SIZE];
+static size_t head;      /* Index of the first free byte             */
+static size_t tail;      /* Index of the first byte to be sent       */
+static size_t used;      /* Amount of bytes waiting to be sent       */
+static size_t dropped;   /* Bytes discarded because the buffer filled */
+static uint8_t channels; /* Bitmap of the enabled message categories */
+static bool initialised;
 
 /*
  * Timestamps are relative to the tap initialisation: the linux target counts
@@ -78,7 +77,7 @@ static const char hexDigits[] = "0123456789ABCDEF";
  */
 static unsigned long tapTimestamp()
 {
-    return (unsigned long) (getTick() - baseTick);
+    return (unsigned long)(getTick() - baseTick);
 }
 
 /**
@@ -91,10 +90,10 @@ static void tapWrite(const void *data, const size_t len)
 
 #if defined(PLATFORM_LINUX)
     ssize_t ret = write(STDOUT_FILENO, data, len);
-    (void) ret;
+    (void)ret;
 #elif defined(CONFIG_USB_SERIAL)
     ssize_t ret = usb_serial_write(data, len);
-    (void) ret;
+    (void)ret;
 #else
     vcom_writeBlock(data, len);
 #endif
@@ -109,14 +108,10 @@ static void tapWrite(const void *data, const size_t len)
  */
 static void tapPushLocked(const char *data, const size_t len)
 {
-    if(len > (TAP_BUF_SIZE - used))
-    {
+    if (len > (TAP_BUF_SIZE - used)) {
         dropped += len;
-    }
-    else
-    {
-        for(size_t i = 0; i < len; i++)
-        {
+    } else {
+        for (size_t i = 0; i < len; i++) {
             buf[head] = data[i];
             head = (head + 1) % TAP_BUF_SIZE;
         }
@@ -150,33 +145,39 @@ static void tapPollCommands()
     ssize_t num = vcom_readBlock(cmd, sizeof(cmd));
 #endif
 
-    for(ssize_t i = 0; i < num; i++)
-    {
+    for (ssize_t i = 0; i < num; i++) {
         uint8_t ch = 0;
 
-        switch(cmd[i])
-        {
-            case '1': ch = DMR_DBG_INFO; break;
-            case '2': ch = DMR_DBG_IRQ;  break;
-            case '3': ch = DMR_DBG_LC;   break;
-            case '4': ch = DMR_DBG_VP;   break;
+        switch (cmd[i]) {
+            case '1':
+                ch = DMR_DBG_INFO;
+                break;
+            case '2':
+                ch = DMR_DBG_IRQ;
+                break;
+            case '3':
+                ch = DMR_DBG_LC;
+                break;
+            case '4':
+                ch = DMR_DBG_VP;
+                break;
 
             case '?':
-                dmrDebug_log(DMR_DBG_INFO, "tap: channels %02X "
-                             "(1 info, 2 irq, 3 lc, 4 payload)", channels);
-                for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
-                {
-                    if(commands[c].command != NULL)
+                dmrDebug_log(DMR_DBG_INFO,
+                             "tap: channels %02X "
+                             "(1 info, 2 irq, 3 lc, 4 payload)",
+                             channels);
+                for (size_t c = 0; c < TAP_MAX_COMMANDS; c++) {
+                    if (commands[c].command != NULL)
                         dmrDebug_log(DMR_DBG_INFO, "tap: %c %s",
                                      commands[c].key, commands[c].help);
                 }
                 continue;
 
             default:
-                for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
-                {
-                    if((commands[c].command != NULL)
-                       && (commands[c].key == (char) cmd[i]))
+                for (size_t c = 0; c < TAP_MAX_COMMANDS; c++) {
+                    if ((commands[c].command != NULL)
+                        && (commands[c].key == (char)cmd[i]))
                         commands[c].command();
                 }
                 continue;
@@ -193,50 +194,48 @@ int dmrDebug_setCommand(const char key, dmrDebugCommand command,
 {
     struct tapCommand *free = NULL;
 
-    for(size_t c = 0; c < TAP_MAX_COMMANDS; c++)
-    {
-        if((commands[c].command != NULL) && (commands[c].key == key))
-        {
+    for (size_t c = 0; c < TAP_MAX_COMMANDS; c++) {
+        if ((commands[c].command != NULL) && (commands[c].key == key)) {
             free = &commands[c];
             break;
         }
 
-        if((commands[c].command == NULL) && (free == NULL))
+        if ((commands[c].command == NULL) && (free == NULL))
             free = &commands[c];
     }
 
-    if(free == NULL)
+    if (free == NULL)
         return -1;
 
-    free->key     = key;
+    free->key = key;
     free->command = command;
-    free->help    = help;
+    free->help = help;
     return 0;
 }
 
 void dmrDebug_init()
 {
     pthread_mutex_lock(&mutex);
-    head        = 0;
-    tail        = 0;
-    used        = 0;
-    dropped     = 0;
-    baseTick    = getTick();
-    channels    = DMR_DBG_INFO;
+    head = 0;
+    tail = 0;
+    used = 0;
+    dropped = 0;
+    baseTick = getTick();
+    channels = DMR_DBG_INFO;
     initialised = true;
     pthread_mutex_unlock(&mutex);
 
     dmrDebug_log(DMR_DBG_INFO, "tap: DMR debug tap ready, "
-                 "send '?' for status, 1-4 to toggle channels");
+                               "send '?' for status, 1-4 to toggle channels");
 }
 
 void dmrDebug_terminate()
 {
     pthread_mutex_lock(&mutex);
     initialised = false;
-    head        = 0;
-    tail        = 0;
-    used        = 0;
+    head = 0;
+    tail = 0;
+    used = 0;
     pthread_mutex_unlock(&mutex);
 }
 
@@ -244,7 +243,7 @@ void dmrDebug_enableChannels(const uint8_t chans, const bool enable)
 {
     pthread_mutex_lock(&mutex);
 
-    if(enable)
+    if (enable)
         channels |= chans;
     else
         channels &= ~chans;
@@ -254,15 +253,15 @@ void dmrDebug_enableChannels(const uint8_t chans, const bool enable)
 
 bool dmrDebug_channelEnabled(const enum dmrDebugChannel channel)
 {
-    if(initialised == false)
+    if (initialised == false)
         return false;
 
-    return (channels & ((uint8_t) channel)) != 0;
+    return (channels & ((uint8_t)channel)) != 0;
 }
 
 void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
 {
-    if(dmrDebug_channelEnabled(channel) == false)
+    if (dmrDebug_channelEnabled(channel) == false)
         return;
 
     pthread_mutex_lock(&mutex);
@@ -274,10 +273,9 @@ void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
     int num = vsniprintf(fmtBuf + pos, sizeof(fmtBuf) - pos - 3, fmt, args);
     va_end(args);
 
-    if(num >= 0)
-    {
+    if (num >= 0) {
         /* Account for the truncation performed by vsniprintf, if any */
-        if(num > (int)(sizeof(fmtBuf) - pos - 3))
+        if (num > (int)(sizeof(fmtBuf) - pos - 3))
             num = sizeof(fmtBuf) - pos - 3;
 
         pos += num;
@@ -293,26 +291,24 @@ void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
 void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
                      const void *data, const size_t len)
 {
-    if(dmrDebug_channelEnabled(channel) == false)
+    if (dmrDebug_channelEnabled(channel) == false)
         return;
 
-    if(len > TAP_MAX_RECORD)
-    {
+    if (len > TAP_MAX_RECORD) {
         dmrDebug_log(DMR_DBG_INFO, "tap: record %s too long (%u bytes)", tag,
-                     (unsigned int) len);
+                     (unsigned int)len);
         return;
     }
 
-    const uint8_t *bytes = (const uint8_t *) data;
-    uint8_t        sum   = 0;
+    const uint8_t *bytes = (const uint8_t *)data;
+    uint8_t sum = 0;
 
     pthread_mutex_lock(&mutex);
 
     int pos = sniprintf(fmtBuf, sizeof(fmtBuf), "$%s %08lu ", tag,
                         tapTimestamp());
 
-    for(size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         fmtBuf[pos++] = hexDigits[bytes[i] >> 4];
         fmtBuf[pos++] = hexDigits[bytes[i] & 0x0F];
         sum += bytes[i];
@@ -332,15 +328,14 @@ void dmrDebug_record(const enum dmrDebugChannel channel, const char *tag,
 void dmrDebug_mark(const char *msg)
 {
     static char mark[TAP_LINE_SIZE];
-    size_t      pos = 0;
-    size_t      i   = 0;
+    size_t pos = 0;
+    size_t i = 0;
 
     mark[pos++] = '<';
     mark[pos++] = '<';
     mark[pos++] = ' ';
 
-    while((msg[i] != '\0') && (pos < (sizeof(mark) - 2)))
-    {
+    while ((msg[i] != '\0') && (pos < (sizeof(mark) - 2))) {
         mark[pos++] = msg[i];
         i += 1;
     }
@@ -353,11 +348,11 @@ void dmrDebug_mark(const char *msg)
 
 void dmrDebug_task()
 {
-    if(initialised == false)
+    if (initialised == false)
         return;
 
-    char   chunk[TAP_CHUNK_SIZE];
-    size_t num  = 0;
+    char chunk[TAP_CHUNK_SIZE];
+    size_t num = 0;
     size_t lost = 0;
 
     /*
@@ -367,24 +362,23 @@ void dmrDebug_task()
      */
     pthread_mutex_lock(&mutex);
 
-    while((used > 0) && (num < sizeof(chunk)))
-    {
+    while ((used > 0) && (num < sizeof(chunk))) {
         chunk[num++] = buf[tail];
         tail = (tail + 1) % TAP_BUF_SIZE;
         used--;
     }
 
-    lost    = dropped;
+    lost = dropped;
     dropped = 0;
 
     pthread_mutex_unlock(&mutex);
 
-    if(num > 0)
+    if (num > 0)
         tapWrite(chunk, num);
 
     /* Never let a buffer overrun pass silently, it would look like a gap */
-    if(lost > 0)
-        dmrDebug_log(DMR_DBG_INFO, "tap: dropped %u bytes", (unsigned int) lost);
+    if (lost > 0)
+        dmrDebug_log(DMR_DBG_INFO, "tap: dropped %u bytes", (unsigned int)lost);
 
     tapPollCommands();
 }

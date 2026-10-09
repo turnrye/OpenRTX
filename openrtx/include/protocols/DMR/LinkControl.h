@@ -19,11 +19,11 @@ extern "C" {
  * plain link control and adds the error correction and interleaving itself, so
  * this is the bare 72-bit block with no forward error correction.
  */
-#define DMR_LC_LENGTH   12
+#define DMR_LC_LENGTH 12
 
 /* Full link control opcodes distinguishing a group call from a private one. */
-#define DMR_FLCO_GROUP      0x00
-#define DMR_FLCO_PRIVATE    0x03
+#define DMR_FLCO_GROUP 0x00
+#define DMR_FLCO_PRIVATE 0x03
 
 /**
  * Build the full link control transmitted in a voice header or terminator
@@ -46,12 +46,11 @@ void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
 /**
  * A voice call, as its full link control describes it.
  */
-struct dmrVoiceCall
-{
-    uint32_t dstId;      ///< Talkgroup, or the called station for a private call.
-    uint32_t srcId;      ///< Calling station.
-    bool     groupCall;  ///< Group call, or private.
-    bool     encrypted;  ///< Privacy set in the service options.
+struct dmrVoiceCall {
+    uint32_t dstId; ///< Talkgroup, or the called station for a private call.
+    uint32_t srcId; ///< Calling station.
+    bool groupCall; ///< Group call, or private.
+    bool encrypted; ///< Privacy set in the service options.
 };
 
 /**

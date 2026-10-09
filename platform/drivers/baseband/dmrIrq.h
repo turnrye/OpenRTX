@@ -26,11 +26,10 @@ extern "C" {
  * interrupts disabled and its chip select is taken through a mutex, so it
  * cannot be used from an interrupt context at all.
  */
-struct dmrIrqCounters
-{
-    uint32_t timeslot;      ///< Timeslot interrupts, one per slot boundary.
-    uint32_t system;        ///< System interrupts, one per frame event.
-    uint32_t transmit;      ///< Transmit interrupts.
+struct dmrIrqCounters {
+    uint32_t timeslot; ///< Timeslot interrupts, one per slot boundary.
+    uint32_t system;   ///< System interrupts, one per frame event.
+    uint32_t transmit; ///< Transmit interrupts.
 };
 
 /**
@@ -107,9 +106,9 @@ void dmrIrq_setBusBusy(bool busy);
 /**
  * Events the interrupt lines signal to a thread waiting on them.
  */
-#define DMR_IRQ_EVENT_TIMESLOT  0x01    ///< Slot boundary.
-#define DMR_IRQ_EVENT_SYSTEM    0x02    ///< Frame event, flags in 0x82.
-#define DMR_IRQ_EVENT_WAKE      0x04    ///< Woken by dmrIrq_wakeWaiter.
+#define DMR_IRQ_EVENT_TIMESLOT 0x01 ///< Slot boundary.
+#define DMR_IRQ_EVENT_SYSTEM 0x02   ///< Frame event, flags in 0x82.
+#define DMR_IRQ_EVENT_WAKE 0x04     ///< Woken by dmrIrq_wakeWaiter.
 
 /**
  * Wait until the interrupt lines signal an event, on the platforms which
