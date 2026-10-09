@@ -328,3 +328,11 @@ void HR_C6000::dmrArmReceiver()
     setDmrSlotAction(C6000_DmrSlotAction::NEXT);
     setDmrTiming(C6000_DmrTiming::RX_IDLE);
 }
+
+/*
+ * The Connect Systems firmware transmits in the direct mode setting it
+ * receives with.
+ */
+void HR_C6000::dmrTransmitMode()
+{
+}

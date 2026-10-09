@@ -254,3 +254,12 @@ void HR_C6000::dmrArmReceiver()
     setDmrSlotAction(C6000_DmrSlotAction::NEXT);
     clearDmrInterrupts(0xFF);
 }
+
+/*
+ * The TYT firmware switches the DMR mode to 0x6C while it transmits, and back
+ * to 0x6B (0x4F in repeater mode) once the transmission is over.
+ */
+void HR_C6000::dmrTransmitMode()
+{
+    writeCfgRegister(0x10, 0x6C);
+}

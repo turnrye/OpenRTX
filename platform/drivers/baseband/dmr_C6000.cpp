@@ -715,6 +715,7 @@ static void keyUp()
 
     C6000.setDmrPrivacy(false);
     C6000.setDmrOwnId(txSrcId);
+    C6000.dmrTransmitMode();
     C6000.setDmrTiming(C6000_DmrTiming::TRANSMIT);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 

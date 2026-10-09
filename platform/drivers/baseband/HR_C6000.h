@@ -330,6 +330,13 @@ public:
     void dmrArmReceiver();
 
     /**
+     * Put the chip's DMR mode in the setting the radio's stock firmware
+     * transmits with, at key-up. The direct mode setup puts it back after the
+     * transmission where the stock firmware does so.
+     */
+    void dmrTransmitMode();
+
+    /**
      * Read the status and colour code of the last burst, as the slot handler
      * samples them.
      *
