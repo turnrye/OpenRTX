@@ -229,7 +229,7 @@ public:
         spi_send(uSpi, audio, 64);
     }
 
-private:
+protected:
 
     /**
      * Helper function for register writing.
