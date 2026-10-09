@@ -296,7 +296,12 @@ void harness::waitIdle()
 
 void harness::timeslot()
 {
-    counters.timeslot += 1;
+    timeslot(1);
+}
+
+void harness::timeslot(int count)
+{
+    counters.timeslot += count;
     post(DMR_IRQ_EVENT_TIMESLOT);
     waitIdle();
 }

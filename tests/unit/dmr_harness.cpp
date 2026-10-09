@@ -277,6 +277,51 @@ TEST_CASE("DMR call is lost after 25 slots without a voice sync",
     REQUIRE(audioRxStops() == 1);
 }
 
+/* The slot action written at each slot boundary from now on. */
+static std::vector<uint8_t> slotActions()
+{
+    std::vector<uint8_t> v;
+    for (const Write &w : writes(CONFIG, 0x41))
+        v.push_back(w.value);
+    return v;
+}
+
+TEST_CASE("DMR call receives only its own slot", "[dmr][harness]")
+{
+    Driver d;
+    startCall(); // The header was read at the last slot boundary
+    clearWrites();
+
+    // The boundaries alternate between reading the other slot and the call's
+    for (int n = 0; n < 3; n++) {
+        setReg(CONFIG, 0x51, NOISE);
+        setReg(CONFIG, 0x52, 0x50);
+        timeslot();
+        setReg(CONFIG, 0x51, FRAME_B);
+        setReg(CONFIG, 0x52, CC << 4);
+        timeslot();
+    }
+
+    std::vector<uint8_t> expected = { 0x00, 0x50, 0x00, 0x50, 0x00, 0x50 };
+    REQUIRE(slotActions() == expected);
+}
+
+TEST_CASE("DMR call slot survives a slot read late", "[dmr][harness]")
+{
+    Driver d;
+    startCall();
+    clearWrites();
+
+    setReg(CONFIG, 0x51, NOISE);
+    timeslot();  // The other slot
+    timeslot(2); // Two boundaries, one read: the other slot again
+    setReg(CONFIG, 0x51, FRAME_B);
+    timeslot();  // The call's slot
+
+    std::vector<uint8_t> expected = { 0x00, 0x00, 0x50 };
+    REQUIRE(slotActions() == expected);
+}
+
 TEST_CASE("DMR slot is read straight away during a call", "[dmr][harness]")
 {
     Driver d;

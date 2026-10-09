@@ -57,6 +57,10 @@ void waitIdle();
 /** Raise the timeslot interrupt and wait for the driver to handle it. */
 void timeslot();
 
+/** Raise the timeslot interrupt several times before the driver gets to run,
+ * as when its thread is woken late. */
+void timeslot(int count);
+
 /** Raise the system interrupt and wait for the driver to handle it. */
 void system();
 

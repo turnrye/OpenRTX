@@ -553,11 +553,22 @@ static void handleSlot()
 
 #else
 
+static bool slotParity;        // Set after the station's slots
+static uint32_t lastSlotCount; // Timeslot interrupts at the last slot read
+
 /**
  * Run the Connect Systems firmware's slot handler, once per slot: lock to a
  * transmission on a frame sync, or on a data sync with the configured colour
  * code, keep receiving both slots while locked, and restart the search once
- * the lock is lost or nothing shows up for a while.
+ * the lock is lost or nothing shows up for a while. Once a call is accepted,
+ * receive only the slot it is sent in.
+ *
+ * Which slot that is comes from a parity the stock firmware toggles at every
+ * slot boundary and sets whenever the slot just gone carried the station's
+ * sync: from then on it is set at the boundaries that follow the station's
+ * slots, where the slot action written applies to the station's next slot.
+ * It advances here by the number of slot interrupts since the last read, so
+ * that a slot handled late cannot swap the two.
  */
 static void handleSlot()
 {
@@ -565,6 +576,14 @@ static void handleSlot()
     C6000.readDmrBurst(&status, &cc);
     uint8_t sync = status & C6000_DMR_SYNC_MASK;
     bool ccOk = (cc == configuredCc);
+    bool stationSync = (sync == C6000_DMR_CLASS_VOICE_SYNC)
+                    || ((sync == C6000_DMR_CLASS_DATA) && ccOk);
+
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+    if (((counters.timeslot - lastSlotCount) & 1) != 0)
+        slotParity = !slotParity;
+    lastSlotCount = counters.timeslot;
 
     /*
      * During a call only the frame A sync counts: the call is lost after two
@@ -581,17 +600,18 @@ static void handleSlot()
             }
         }
 
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+        C6000.setDmrSlotAction(slotParity ? C6000_DmrSlotAction::RECEIVE :
+                                            C6000_DmrSlotAction::IDLE);
         return;
     }
 
     if (rxLocked == false) {
-        if ((sync == C6000_DMR_CLASS_VOICE_SYNC)
-            || ((sync == C6000_DMR_CLASS_DATA) && ccOk)) {
+        if (stationSync) {
             dmrDebug_log(DMR_DBG_LC, "slot: locked, status %02X cc %u", status,
                          cc);
             rxLocked = true;
             rxMisses = 0;
+            slotParity = true;
             C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
         } else if (sync == C6000_DMR_CLASS_VOICE) {
             rxMisses += 1;
@@ -604,10 +624,7 @@ static void handleSlot()
         return;
     }
 
-    bool good =
-        (sync == C6000_DMR_CLASS_VOICE_SYNC)
-        || (((sync == C6000_DMR_CLASS_VOICE) || (sync == C6000_DMR_CLASS_DATA))
-            && ccOk);
+    bool good = stationSync || ((sync == C6000_DMR_CLASS_VOICE) && ccOk);
 
     if (good) {
         rxMisses = 0;
@@ -616,14 +633,13 @@ static void handleSlot()
         if (rxMisses >= LOCKED_MISS_LIMIT) {
             dmrDebug_log(DMR_DBG_LC, "slot: lock lost, status %02X cc %u",
                          status, cc);
-            if (rxCall.active)
-                endCall("carrier lost");
-            else
-                armReceiver();
-
+            armReceiver();
             return;
         }
     }
+
+    if (stationSync)
+        slotParity = true;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 }
