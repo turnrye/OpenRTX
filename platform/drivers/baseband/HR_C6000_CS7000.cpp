@@ -265,3 +265,66 @@ void HR_Cx000< M >::stopAnalogTx()
     writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
     writeReg(M::CONFIG, 0x34, 0x98);    // FM bpf enabled, 25kHz bandwidth
 }
+
+/*
+ * The Connect Systems firmware's direct mode load: clear the vocoder buffers,
+ * restart the slot state machine, reset the DMR and physical layers, load the
+ * MS sourced data sync pattern, select direct mode with every interrupt
+ * enabled, then restart reception.
+ */
+void HR_C6000::dmrDirectMode()
+{
+    using M = C6000_SpiOpModes;
+
+    writeReg(M::CONFIG, 0x20, 0x00); // Local access policy
+    writeReg(M::CONFIG, 0x21, 0x01); // Clear the vocoder decoding buffer
+    writeReg(M::CONFIG, 0x21, 0x02); // Clear the vocoder encoding buffer
+    writeReg(M::CONFIG, 0x22, 0x16); // Vocoder off
+    writeReg(M::CONFIG, 0x22, 0x46); // Vocoder idle
+    writeReg(M::CONFIG, 0x40, 0x03); // Decode mode = non test mode
+    writeReg(M::CONFIG, 0x41, 0x20); // SyncFail = 1, search for sync again
+    writeReg(M::CONFIG, 0x41, 0x00); // SyncFail = 0
+    writeReg(M::CONFIG, 0x41, 0x40); // Receive the upcoming time slot
+    writeReg(M::CONFIG, 0x40, 0x43); // RxEn = 1, receive synchronization
+    writeReg(M::CONFIG, 0x11, 0x80); // LocalChanMode = 1
+    writeReg(M::CONFIG, 0xA1, 0x00); // No FM tone modulation
+
+    writeReg(M::CONFIG, 0x00, 0x3F); // Reset DMR and physical layer
+
+    // Frame sync pattern, MS sourced data
+    writeReg(M::AUX, 0x04, 0xD5);
+    writeReg(M::AUX, 0x05, 0xD7);
+    writeReg(M::AUX, 0x06, 0xF7);
+    writeReg(M::AUX, 0x07, 0x7F);
+    writeReg(M::AUX, 0x08, 0xD7);
+    writeReg(M::AUX, 0x09, 0x57);
+
+    writeReg(M::CONFIG, 0x10, 0x6A); // DMR, direct mode
+    writeReg(M::CONFIG, 0x5F, 0xC0); // Frame sync detection for direct mode
+    writeReg(M::CONFIG, 0x81, 0xFF); // All interrupts enabled
+
+    writeReg(M::CONFIG, 0x40, 0x03); // Decode mode = non test mode
+    writeReg(M::CONFIG, 0x41, 0x20); // SyncFail = 1, search for sync again
+    writeReg(M::CONFIG, 0x41, 0x00); // SyncFail = 0
+    writeReg(M::CONFIG, 0x41, 0x40); // Receive the upcoming time slot
+    writeReg(M::CONFIG, 0x40, 0x43); // RxEn = 1, receive synchronization
+
+    writeReg(M::AUX, 0x24, 0x00); // Privacy key, cleared
+    writeReg(M::AUX, 0x25, 0x00);
+    writeReg(M::AUX, 0x26, 0x00);
+    writeReg(M::AUX, 0x27, 0x00);
+    writeReg(M::CONFIG, 0x64, 0x10); // Privacy control, clear voice
+}
+
+/*
+ * The Connect Systems firmware's receiver arm: stop reception, reset the slot
+ * state machine, ask for the next slot and start reception again.
+ */
+void HR_C6000::dmrArmReceiver()
+{
+    setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    setDmrTiming(C6000_DmrTiming::OFF);
+    setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+    setDmrTiming(C6000_DmrTiming::RX_IDLE);
+}

@@ -1282,6 +1282,12 @@ void dmr_init(const uint8_t colorCode)
     dmrPayload_init();
 
     /*
+     * The protocol side of the chip, set up the way the radio's stock firmware
+     * does it; the radio driver has already set up the board's front end.
+     */
+    C6000.dmrDirectMode();
+
+    /*
      * The receiver idles in passive timing so the chip can lock to the slot
      * clock of whoever transmits. Active timing made it free run instead:
      * the timeslot line ticked at a steady 33Hz while a transmission on

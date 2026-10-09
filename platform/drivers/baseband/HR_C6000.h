@@ -322,18 +322,12 @@ public:
     }
 
     /**
-     * Restart the receiver's search for a transmission, as the stock firmware
-     * does when it loses the lock or a call ends: stop reception, reset the
-     * slot state machine, ask for the next slot and start reception again.
+     * Restart the receiver's search for a transmission, as the radio's stock
+     * firmware does when it loses the lock or a call ends: stop reception,
+     * reset the slot state machine, ask for the next slot and start reception
+     * again. The order of these steps differs between the radios.
      */
-    inline void dmrArmReceiver()
-    {
-        setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-        setDmrTiming(C6000_DmrTiming::OFF);
-        setDmrSlotAction(C6000_DmrSlotAction::RESET);
-        setDmrSlotAction(C6000_DmrSlotAction::NEXT);
-        setDmrTiming(C6000_DmrTiming::RX_IDLE);
-    }
+    void dmrArmReceiver();
 
     /**
      * Read the status and colour code of the last burst, as the slot handler
@@ -444,6 +438,15 @@ public:
      * @param payload: destination buffer, C6000_VOICE_PAYLOAD_LENGTH bytes.
      */
     void readDmrVoicePayload(uint8_t *payload);
+
+    /**
+     * Set up the DMR protocol side of the chip for direct mode, the way the
+     * radio's stock firmware does when it loads a digital channel. The radios
+     * differ here: each one's stock firmware sets the mode, interrupt and
+     * receive registers its own way. The board's front end (IQ routing,
+     * filters, codec and gains) is left to dmrMode().
+     */
+    void dmrDirectMode();
 
 private:
 

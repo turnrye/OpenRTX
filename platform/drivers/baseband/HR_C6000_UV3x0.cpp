@@ -125,8 +125,10 @@ void HR_Cx000< M >::setModOffset(const uint16_t offset)
 template< class M >
 void HR_Cx000< M >::dmrMode()
 {
-    writeReg(M::CONFIG, 0x10, 0x6E);    // DMR mode, Tier II, timeslot mode, 2nd layer mode, relay, aligned
-    writeReg(M::CONFIG, 0x81, 0x19);    // Interrupt mask
+    /*
+     * The board's front end for DMR. The protocol side of the chip, shared
+     * with the other radios, is set up by the DMR driver (dmrDirectMode).
+     */
     writeReg(M::CONFIG, 0x01, 0xF0);    // Swap TX IQ, swap RX IQ, two point mode for TX, IF mode for RX
     writeReg(M::CONFIG, 0xE4, 0x27);    // Lineout gain, first and second stage mic gain
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Undocumented register
@@ -136,18 +138,6 @@ void HR_Cx000< M >::dmrMode()
     writeReg(M::CONFIG, 0x49, 0xFF);    // Modulation limit, maximum
     writeReg(M::CONFIG, 0x4A, 0xFF);    // Modulation limit, maximum
     writeReg(M::AUX,    0x54, 0x78);
-    writeReg(M::CONFIG, 0x1F, 0x10);    // Color code, encryption disabled
-    writeReg(M::AUX,    0x24, 0x00);
-    writeReg(M::AUX,    0x25, 0x00);
-    writeReg(M::AUX,    0x26, 0x00);
-    writeReg(M::AUX,    0x27, 0x00);
-    writeReg(M::CONFIG, 0x41, 0x40);    // Start RX for upcoming time slot interrupt
-    writeReg(M::CONFIG, 0x56, 0x00);    // Undocumented register
-    writeReg(M::CONFIG, 0x41, 0x40);    // Start RX for upcoming time slot interrupt
-    writeReg(M::CONFIG, 0x5C, 0x09);    // Undocumented register
-    writeReg(M::CONFIG, 0x5F, 0xF0);    // Detect MS, BS, TDMA1 and TDMA2 frame sequences
-    sendSequence(initSeq7, sizeof(initSeq7));
-    writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
 }
 
 template< class M >
@@ -209,4 +199,58 @@ void HR_Cx000< M >::stopAnalogTx()
     writeReg(M::CONFIG, 0x60, 0x00);    // Stop analog transmission
     writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
     writeReg(M::CONFIG, 0x34, 0x98);    // FM bpf enabled, 25kHz bandwidth
+}
+
+/*
+ * The TYT firmware's direct mode load, from its digital channel mode set:
+ * direct mode with the embedded LC, burst and BER interrupts, baseband receive
+ * (0xA1 bit 7, which overrides the IF selection of 0x01 and has to stay set
+ * for any sync to be detected), clear voice, and the MS sourced data sync
+ * pattern. Unlike the Connect Systems firmware it neither resets the DMR
+ * layers nor touches the vocoder registers here.
+ */
+void HR_C6000::dmrDirectMode()
+{
+    using M = C6000_SpiOpModes;
+
+    writeCfgRegister(0x10, 0x6B); // DMR, direct mode
+    writeCfgRegister(0x81, 0x19); // Interrupts: embedded LC, burst, BER
+    writeCfgRegister(0x85, 0x00);
+    writeCfgRegister(0xA1, 0x80); // Baseband receive mode, no FM tones
+
+    writeReg(M::AUX, 0x24, 0x00); // Privacy key, cleared
+    writeReg(M::AUX, 0x25, 0x00);
+    writeReg(M::AUX, 0x26, 0x00);
+    writeReg(M::AUX, 0x27, 0x00);
+
+    writeCfgRegister(0x41, 0x40); // Receive the upcoming time slot
+    writeCfgRegister(0x56, 0x00);
+    writeCfgRegister(0x41, readCfgRegister(0x41) & 0xF0);
+    writeCfgRegister(0x5C, readCfgRegister(0x5C) & ~0x10);
+    writeCfgRegister(0x5F, 0xC0); // Frame sync detection for direct mode
+
+    // Frame sync pattern, MS sourced data
+    writeReg(M::AUX, 0x04, 0xD5);
+    writeReg(M::AUX, 0x05, 0xD7);
+    writeReg(M::AUX, 0x06, 0xF7);
+    writeReg(M::AUX, 0x07, 0x7F);
+    writeReg(M::AUX, 0x08, 0xD7);
+    writeReg(M::AUX, 0x09, 0x57);
+
+    writeCfgRegister(0x11, readCfgRegister(0x11) & ~0x01);
+}
+
+/*
+ * The TYT firmware's receiver arm: stop reception, reset the slot state
+ * machine, start reception, ask for the next slot, then acknowledge every
+ * pending interrupt.
+ */
+void HR_C6000::dmrArmReceiver()
+{
+    setDmrTiming(C6000_DmrTiming::OFF);
+    setDmrSlotAction(C6000_DmrSlotAction::RESET);
+    setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    setDmrTiming(C6000_DmrTiming::RX_IDLE);
+    setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+    clearDmrInterrupts(0xFF);
 }
