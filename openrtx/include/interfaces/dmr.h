@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#ifndef DMR_H
-#define DMR_H
+#ifndef INTERFACES_DMR_H
+#define INTERFACES_DMR_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -13,6 +13,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * The DMR baseband: what the rtx layer's DMR operating mode drives. Each radio
+ * with DMR provides it, receiving and transmitting direct mode voice calls
+ * through its baseband chip; the DMR protocol layer decides about the calls.
+ */
 
 /**
  * Information carried by the link control of the last accepted burst, which is
@@ -87,27 +93,8 @@ void dmr_txTask();
  */
 bool dmr_txActive();
 
-/**
- * Advance the transmit slot state machine by one slot. Called from the
- * timeslot interrupt handler while a transmission is active, it must not be
- * used from a thread as it drives the chip without taking the SPI mutex.
- */
-void dmr_txTimeslotIsr();
-
-/**
- * Send a test pattern in place of the voice: each burst's payload carries a
- * sequence number, so a receiver on the bench can tell whether every payload
- * handed to the baseband went out on air exactly once. Chip select timing
- * on the vocoder bus once lost a share of them, each going out as a repeat
- * of the previous burst; this is how that is checked after a change to the
- * transmit path. Toggled from the debug tap.
- *
- * @param enable: true to send the pattern, false for the voice.
- */
-void dmr_setPayloadMarker(const bool enable);
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* DMR_H */
+#endif /* INTERFACES_DMR_H */

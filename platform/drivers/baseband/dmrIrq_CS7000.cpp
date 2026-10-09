@@ -7,7 +7,6 @@
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
-#include "dmr.h"
 #include "paRamp_CS7000.h"
 #include <kernel/scheduler/scheduler.h>
 #include <miosix.h>

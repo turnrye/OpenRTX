@@ -6,7 +6,7 @@
 
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
-#include "drivers/baseband/dmr.h"
+#include "interfaces/dmr.h"
 #include "core/dmr_debug.h"
 #include "rtx/OpMode_DMR.hpp"
 

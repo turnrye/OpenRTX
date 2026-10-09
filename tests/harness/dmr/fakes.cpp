@@ -15,10 +15,10 @@
 #include "peripherals/gpio.h"
 #include "interfaces/delays.h"
 #include "core/dmr_debug.h"
-#include "drivers/baseband/dmr.h"
+#include "interfaces/dmr.h"
 #include "drivers/baseband/dmrIrq.h"
 #include "drivers/baseband/dmrPayload.h"
-#include "drivers/baseband/dmr_audio.h"
+#include "core/dmr_audio.h"
 #include <pthread.h>
 #include <cstdarg>
 #include <cstdio>

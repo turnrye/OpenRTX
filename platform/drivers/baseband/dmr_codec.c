@@ -18,7 +18,7 @@
  * HR-C6000 register map, not copied code.
  */
 
-#include "dmr_codec.h"
+#include "interfaces/dmr_codec.h"
 #include "core/dmr_debug.h"
 #include <pthread.h>
 #include <string.h>

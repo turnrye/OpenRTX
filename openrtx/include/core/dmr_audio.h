@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "dmr_codec.h"
+#include "interfaces/dmr_codec.h"
 
 #ifdef __cplusplus
 extern "C" {

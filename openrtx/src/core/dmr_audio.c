@@ -5,7 +5,7 @@
  */
 
 #include "hwconfig.h"
-#include "dmr_audio.h"
+#include "core/dmr_audio.h"
 #include "core/mic_frame.h"
 #include "protocols/DMR/VoiceFrame.h"
 #include "core/audio_stream.h"

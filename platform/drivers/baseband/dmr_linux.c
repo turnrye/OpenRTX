@@ -6,7 +6,7 @@
 
 #include "core/dmr_debug.h"
 #include "hwconfig.h"
-#include "dmr.h"
+#include "interfaces/dmr.h"
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -62,10 +62,6 @@ void dmr_txTask()
 bool dmr_txActive()
 {
     return false;
-}
-
-void dmr_txTimeslotIsr()
-{
 }
 
 #endif /* CONFIG_DMR */

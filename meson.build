@@ -469,7 +469,7 @@ mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/drivers/baseband/dmrPayload_UV3x0.cpp',
                'platform/drivers/baseband/dmr_C6000.cpp',
                'platform/drivers/baseband/dmr_codec.c',
-               'platform/drivers/baseband/dmr_audio.c']
+               'openrtx/src/core/dmr_audio.c']
 
 mduv3x0_inc = ['platform/targets/MD-UV3x0']
 mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'timegm': 'mktime'}
@@ -607,7 +607,7 @@ cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
                'platform/drivers/baseband/paRamp_CS7000.cpp',
                'platform/drivers/baseband/paRampShape_CS7000.cpp',
                'platform/drivers/baseband/dmr_codec.c',
-               'platform/drivers/baseband/dmr_audio.c']
+               'openrtx/src/core/dmr_audio.c']
 
 cs7000p_inc = ['platform/targets/CS7000-PLUS',
                'platform/drivers/USB']

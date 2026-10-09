@@ -7,7 +7,7 @@
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
-#include "dmr.h"
+#include "dmr_C6000.h"
 
 #if defined(CONFIG_DMR)
 
