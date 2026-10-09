@@ -291,8 +291,9 @@ void radio_disableRtx()
     gpio_clearPin(RF_APC_SW);
     DAC->DHR12L1 = 0;
 
-    // If we are currently transmitting, stop tone and C6000 TX
-    if(radioStatus == TX)
+    // If we are currently transmitting, stop tone and C6000 TX. DMR
+    // transmits through the slot machine, not the analog path.
+    if((radioStatus == TX) && (config->opMode != OPMODE_DMR))
     {
         C6000.stopAnalogTx();
     }
