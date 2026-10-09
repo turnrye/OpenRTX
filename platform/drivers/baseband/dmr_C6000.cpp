@@ -261,6 +261,14 @@ static void reportIrqActivity()
 #define LOCKED_MISS_LIMIT 4
 #define UNLOCKED_MISS_LIMIT 12
 
+/*
+ * Slots in a row without a voice sync after which a call is lost: once a call
+ * is accepted the stock firmware judges the slots on the frame A sync alone,
+ * which comes once per superframe, every twelve slots. Twenty-five slots, about
+ * 750ms, are two superframes without one.
+ */
+#define CALL_SYNC_MISS_LIMIT 25
+
 #endif
 
 #define RX_THREAD_STKSIZE 4096
@@ -270,6 +278,7 @@ static pthread_mutex_t rxMutex = PTHREAD_MUTEX_INITIALIZER; // Guards rxState
 static volatile bool rxThreadRun;
 static bool rxLocked;           // Receiver locked to a transmission
 static uint8_t rxMisses;        // Bad or empty slots in a row
+static uint8_t callSyncMisses;  // Call slots in a row without a voice sync
 static struct dmrRxCall rxCall; // The call being received
 
 /**
@@ -356,6 +365,8 @@ static void takeCallLc(const uint8_t cc)
 
     if (dmrCall_takeLc(&rxCall, lc, cc, getTick()) != DMR_CALL_STARTED)
         return;
+
+    callSyncMisses = 0;
 
     /*
      * A new call: clear the chip's decode buffer as the stock firmware does
@@ -554,6 +565,25 @@ static void handleSlot()
     C6000.readDmrBurst(&status, &cc);
     uint8_t sync = status & C6000_DMR_SYNC_MASK;
     bool ccOk = (cc == configuredCc);
+
+    /*
+     * During a call only the frame A sync counts: the call is lost after two
+     * superframes without one, however the other slots read.
+     */
+    if (rxCall.active) {
+        if (sync == C6000_DMR_CLASS_VOICE_SYNC) {
+            callSyncMisses = 0;
+        } else {
+            callSyncMisses += 1;
+            if (callSyncMisses >= CALL_SYNC_MISS_LIMIT) {
+                endCall("no voice sync");
+                return;
+            }
+        }
+
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+        return;
+    }
 
     if (rxLocked == false) {
         if ((sync == C6000_DMR_CLASS_VOICE_SYNC)
@@ -813,8 +843,12 @@ static void *rxThreadFunc(void *arg)
         if ((events & DMR_IRQ_EVENT_SYSTEM) != 0)
             handleSystemEvent();
 
+        /*
+         * Once a call is accepted the stock firmware reads the slot straight
+         * away, without the delay it waits before then.
+         */
         if ((events & DMR_IRQ_EVENT_TIMESLOT) != 0)
-            slotDue = getTick() + SLOT_READ_DELAY;
+            slotDue = getTick() + (rxCall.active ? 0 : SLOT_READ_DELAY);
 
         if ((slotDue >= 0) && (getTick() >= slotDue)) {
             handleSlot();

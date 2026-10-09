@@ -217,12 +217,10 @@ TEST_CASE("DMR header with another colour code is ignored", "[dmr][harness]")
     REQUIRE_FALSE(poll().valid);
 }
 
-TEST_CASE("DMR lock drops after four bad slots and the call ends",
-          "[dmr][harness]")
+TEST_CASE("DMR lock drops after four bad slots before a call", "[dmr][harness]")
 {
     Driver d;
-    startCall();
-    REQUIRE(poll().valid);
+    lockOnHeader();
     clearWrites();
 
     // While locked every slot asks for the next one
@@ -234,15 +232,69 @@ TEST_CASE("DMR lock drops after four bad slots and the call ends",
     // The carrier goes: noise on every slot
     setReg(CONFIG, 0x51, NOISE);
     setReg(CONFIG, 0x52, 0x50);
-    for (int n = 0; n < 3; n++) {
+    for (int n = 0; n < 3; n++)
         timeslot();
-        REQUIRE(poll().valid); // Not yet
-    }
+    REQUIRE_FALSE(rearmSequenceIn(writes()));
     clearWrites();
     timeslot(); // The fourth
+    REQUIRE(rearmSequenceIn(writes()));
+}
+
+TEST_CASE("DMR call holds across superframes whatever the other slots read",
+          "[dmr][harness]")
+{
+    Driver d;
+    startCall();
+    REQUIRE(poll().valid);
+
+    // Five superframes: frame A on one slot in twelve, noise on the rest
+    for (int n = 0; n < 60; n++) {
+        setReg(CONFIG, 0x51, (n % 12 == 0) ? FRAME_A : NOISE);
+        setReg(CONFIG, 0x52, 0x50);
+        timeslot();
+    }
+    REQUIRE(poll().valid);
+}
+
+TEST_CASE("DMR call is lost after 25 slots without a voice sync",
+          "[dmr][harness]")
+{
+    Driver d;
+    startCall();
+    REQUIRE(poll().valid);
+    clearWrites();
+
+    setReg(CONFIG, 0x51, FRAME_B);
+    setReg(CONFIG, 0x52, CC << 4);
+    for (int n = 0; n < 24; n++)
+        timeslot();
+    REQUIRE(poll().valid);
+    REQUIRE_FALSE(rearmSequenceIn(writes()));
+
+    timeslot(); // The 25th
     REQUIRE_FALSE(poll().valid);
     REQUIRE(rearmSequenceIn(writes()));
     REQUIRE(audioRxStops() == 1);
+}
+
+TEST_CASE("DMR slot is read straight away during a call", "[dmr][harness]")
+{
+    Driver d;
+    lockOnHeader();
+
+    // Before a call the slot is read 10ms after the interrupt
+    long long t = now();
+    timeslot();
+    REQUIRE(now() - t >= 10);
+
+    setLinkControl(groupLc(9, 3101003));
+    burst(HEADER, CC);
+    REQUIRE(poll().valid);
+
+    t = now();
+    setReg(CONFIG, 0x51, FRAME_A);
+    timeslot();
+    REQUIRE(now() == t);
 }
 
 TEST_CASE("DMR search restarts after twelve empty slots", "[dmr][harness]")
