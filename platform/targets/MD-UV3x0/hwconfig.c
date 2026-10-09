@@ -20,12 +20,12 @@ static pthread_mutex_t adcMutex;
 /**
  * SPI bitbang function for HR_C6000 command interface (U_SPI).
  *
- * Hand-tuned to be as fast as possible, gives the following clock performance
- * when compiled with -Os and run on STM32F405 at 168MHz:
- *
- * - Freq 6.46MHz
- * - Pos. width 71ns
- * - Neg. with 83ns
+ * The chip drives MISO on the rising edge of the clock and the bit is read
+ * just after the falling one, so the high phase is how long the chip has to
+ * drive it. At the hand-tuned 71ns the first bit of a register read, bit 7,
+ * often came back wrong; the HR_C6000 also corrupts reads at 12.5MHz on the
+ * CS7000 Plus, which runs its bus at 1.6MHz. The high phase is now about
+ * 330ns, the same as there; the low phase is unchanged at about 83ns.
  */
 static uint8_t spiC6000_func(const void *priv, uint8_t value)
 {
@@ -43,8 +43,8 @@ static uint8_t spiC6000_func(const void *priv, uint8_t value)
         else
             GPIOE->BSRR = 1 << 20;  // Clear PE4 (MOSI)
 
-        // ~70ns delay
-        asm volatile("           mov   r1, #1     \n"
+        // ~330ns delay
+        asm volatile("           mov   r1, #9     \n"
                      "___loop_1: cmp   r1, #0     \n"
                      "           itt   ne         \n"
                      "           subne r1, r1, #1 \n"
