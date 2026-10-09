@@ -93,6 +93,13 @@ void OpMode_DMR::update(rtxStatus_t *const status, const bool newCfg)
 
 void OpMode_DMR::offState(rtxStatus_t *const status)
 {
+    /*
+     * Switch the radio off between receiving and transmitting, as the FM and
+     * M17 modes do: it takes the transceiver through its off state and clears
+     * any tone or CTCSS the previous direction set up.
+     */
+    radio_disableRtx();
+
     if (startRx) {
         status->opStatus = RX;
         return;
