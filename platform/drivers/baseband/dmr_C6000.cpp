@@ -243,7 +243,29 @@ static void reportIrqActivity()
 #define SLOT_READ_DELAY 0
 #define SLOT_MISS_LIMIT 8
 
+/*
+ * The TYT firmware sets the DMR mode up again at the end of every
+ * transmission: left as the transmission leaves it, the chip detects no sync
+ * until the mode is written again. On the bench the protocol half alone was
+ * not enough: the board's front end has to be written again too, as leaving
+ * DMR mode and coming back does.
+ */
+#define MODE_SETUP_AFTER_TX true
+
+/*
+ * The TYT firmware leaves the chip's vocoder registers, 0x20 to 0x22, as its
+ * initialisation set them for the whole of DMR reception, and reads the clear
+ * voice payload whatever colour code the burst carrying it reported: only the
+ * slots are judged on the colour code.
+ */
+#define RX_VOCODER_CONTROL false
+#define VOICE_NEEDS_COLOR_CODE false
+
 #else
+
+#define MODE_SETUP_AFTER_TX false
+#define RX_VOCODER_CONTROL true
+#define VOICE_NEEDS_COLOR_CODE true
 
 /*
  * Delay between the timeslot interrupt and the read of the slot status, by
@@ -317,10 +339,15 @@ static void armReceiver()
  */
 static void endCall(const char *reason)
 {
-    C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
+    if (RX_VOCODER_CONTROL)
+        C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
+
     armReceiver();
-    C6000.resetDmrVoiceControl();
-    C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
+
+    if (RX_VOCODER_CONTROL) {
+        C6000.resetDmrVoiceControl();
+        C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
+    }
 
     rxCall.active = false;
     publishCall();
@@ -372,7 +399,8 @@ static void takeCallLc(const uint8_t cc)
      * A new call: clear the chip's decode buffer as the stock firmware does
      * when it accepts one, and restart the playback on a clean queue.
      */
-    C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
+    if (RX_VOCODER_CONTROL)
+        C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
 
     if (dmrAudio_running())
         dmrAudio_stopRx();
@@ -467,7 +495,9 @@ static void handleBurstEvent(const uint8_t status, const uint8_t cc)
             return;
     }
 
-    if (dmr_burstHasColorCode(kind) && (cc != configuredCc))
+    bool ccChecked = dmr_burstHasColorCode(kind)
+                  && ((kind == DMR_BURST_DATA) || VOICE_NEEDS_COLOR_CODE);
+    if (ccChecked && (cc != configuredCc))
         return;
 
     if (kind == DMR_BURST_DATA) {
@@ -788,17 +818,24 @@ static void acknowledgeFlags()
 
 /**
  * Bring the receiver back after a transmission, as the stock firmware does:
- * clear the vocoder buffers, reset its decode, then restart the search for a
- * transmission.
+ * clear the vocoder buffers and reset its decode, or on the MD-UV3x0 set the
+ * DMR mode up again, then restart the search for a transmission.
  */
 static void restoreAfterTx()
 {
     rxRestoreNeeded = false;
 
-    C6000.resetDmrVoiceControl();
-    C6000.clearDmrBuffers(C6000_DmrBuffers::ENCODE);
-    C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
-    C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
+    if (MODE_SETUP_AFTER_TX) {
+        C6000.dmrMode();
+        C6000.dmrDirectMode();
+        C6000.setDmrColorCode(configuredCc);
+    } else {
+        C6000.resetDmrVoiceControl();
+        C6000.clearDmrBuffers(C6000_DmrBuffers::ENCODE);
+        C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
+        C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
+    }
+
     armReceiver();
     acknowledgeFlags();
 
