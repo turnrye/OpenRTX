@@ -205,7 +205,15 @@ int vcom_init()
     return 0;
 }
 
-ssize_t vcom_writeBlock(const void* buf, size_t len)
+/**
+ * \internal
+ * Send a block on the IN endpoint and wait for the host to take it.
+ *
+ * @param buf: data to send.
+ * @param len: number of bytes, zero for a zero length packet.
+ * @return true on success, false if the host did not take it in time.
+ */
+static bool sendBlock(const void* buf, size_t len)
 {
     txDone = false;
     DCD_EP_Tx (&USB_OTG_dev, CDC_IN_EP, (uint8_t*) buf, len);
@@ -219,8 +227,27 @@ ssize_t vcom_writeBlock(const void* buf, size_t len)
         if(timeout > 500)
         {
             DCD_EP_Flush(&USB_OTG_dev, CDC_IN_EP);
-            return -1;
+            return false;
         }
+    }
+
+    return true;
+}
+
+ssize_t vcom_writeBlock(const void* buf, size_t len)
+{
+    if(sendBlock(buf, len) == false)
+        return -1;
+
+    /*
+     * A transfer ending on a full packet is only over for the host once a
+     * shorter one follows: close it with a zero length packet, otherwise the
+     * host holds the data back until the next write comes along.
+     */
+    if((len > 0) && ((len % CDC_DATA_IN_PACKET_SIZE) == 0))
+    {
+        if(sendBlock(buf, 0) == false)
+            return -1;
     }
 
     return len;
