@@ -43,6 +43,39 @@ extern "C" {
 void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
                       const uint32_t srcId);
 
+/**
+ * A voice call, as its full link control describes it.
+ */
+struct dmrVoiceCall
+{
+    uint32_t dstId;      ///< Talkgroup, or the called station for a private call.
+    uint32_t srcId;      ///< Calling station.
+    bool     groupCall;  ///< Group call, or private.
+    bool     encrypted;  ///< Privacy set in the service options.
+};
+
+/**
+ * Read the voice call a full link control describes, as received from a voice
+ * header, a terminator or the embedded signalling of a superframe.
+ *
+ * @param lc: full link control, at least 9 bytes.
+ * @param call: destination for the call.
+ * @return true for the link control of a group or private voice call, false
+ * for any other kind, leaving the call untouched.
+ */
+bool dmr_parseVoiceLc(const uint8_t *lc, struct dmrVoiceCall *call);
+
+/**
+ * Get the opcode of a full link control.
+ *
+ * @param lc: full link control.
+ * @return the full link control opcode, FLCO.
+ */
+static inline uint8_t dmr_lcOpcode(const uint8_t *lc)
+{
+    return lc[0] & 0x3F;
+}
+
 #ifdef __cplusplus
 }
 #endif
