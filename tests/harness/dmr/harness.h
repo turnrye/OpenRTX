@@ -33,6 +33,9 @@ struct Write {
 /** Reset every fake and the clock, before a scenario. */
 void reset();
 
+/** Append the scenario's writes and log to the DMR_HARNESS_TRACE file. */
+void trace();
+
 /** Start the driver with a colour code, as the rtx layer does. */
 void start(uint8_t colorCode);
 

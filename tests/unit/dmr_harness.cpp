@@ -107,6 +107,7 @@ struct Driver {
     ~Driver()
     {
         stop();
+        trace();
     }
 };
 

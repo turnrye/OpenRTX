@@ -23,6 +23,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
@@ -459,6 +460,40 @@ std::vector<std::string> harness::logLines()
 }
 
 /* ---------------------------------------------------------------- control */
+
+/*
+ * With DMR_HARNESS_TRACE set to a file name, every write the driver makes to
+ * the chip and the payload bus, and every log line, is appended to it, one per
+ * line, scenario by scenario: a refactor of the driver can then be checked to
+ * leave its behaviour exactly as it was.
+ */
+void harness::trace()
+{
+    const char *path = getenv("DMR_HARNESS_TRACE");
+    if (path == NULL)
+        return;
+
+    FILE *f = fopen(path, "a");
+    if (f == NULL)
+        return;
+
+    std::lock_guard<std::mutex> lk(chipMutex);
+    fprintf(f, "--- scenario\n");
+    for (const auto &w : writeLog)
+        fprintf(f, "w %lld %u %03X %02X\n", w.tick, w.page, w.addr, w.value);
+    for (const auto &p : payloadLog) {
+        fprintf(f, "p");
+        for (uint8_t b : p)
+            fprintf(f, " %02X", b);
+        fprintf(f, "\n");
+    }
+    {
+        std::lock_guard<std::mutex> lk2(logMutex);
+        for (const auto &l : lines)
+            fprintf(f, "l %s\n", l.c_str());
+    }
+    fclose(f);
+}
 
 void harness::reset()
 {
