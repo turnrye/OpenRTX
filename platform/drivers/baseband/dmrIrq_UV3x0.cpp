@@ -8,6 +8,10 @@
 #include "hwconfig.h"
 #include "dmrIrq.h"
 #include "dmr_C6000.h"
+#include <kernel/scheduler/scheduler.h>
+#include <miosix.h>
+
+using namespace miosix;
 
 #if defined(CONFIG_DMR)
 
@@ -41,6 +45,9 @@ static volatile bool stormSeen;      /* Lines shut down by the guard */
 static volatile uint8_t rxColorCode = CC_NONE; /* CC of the last frame event */
 static volatile uint8_t rxBurstStatus; /* 0x51 of the last frame event */
 static volatile bool busBusy;          /* A thread is on the SPI bus  */
+static volatile uint32_t
+    pendingEvents;      /* Events not yet taken, DMR_IRQ_EVENT_* */
+static Thread *waiting; /* Thread waiting for an event, if any */
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -57,14 +64,36 @@ static inline void stormGuard()
     }
 }
 
+/**
+ * Record an event and wake the thread waiting for one, if any. Called with the
+ * interrupts disabled.
+ *
+ * @param event: DMR_IRQ_EVENT_* bit to record.
+ * @return true if the woken thread should preempt the current one.
+ */
+static inline bool IRQsignal(const uint32_t event)
+{
+    pendingEvents |= event;
+
+    if (waiting == nullptr)
+        return false;
+
+    Thread *woken = waiting;
+    waiting = nullptr;
+    woken->IRQwakeup();
+
+    return woken->IRQgetPriority()
+         > Thread::IRQgetCurrentThread()->IRQgetPriority();
+}
+
 /*
  * The three interrupt lines have one EXTI line each, so the handlers do not
- * have to tell apart which pin fired. Incrementing the counter is all they do:
- * anything reading the chip has to go through the bitbanged SPI, which is not
- * usable from an interrupt context.
+ * have to tell apart which pin fired. The timeslot and system handlers can
+ * wake a thread and switch to it on the way out, so they run behind naked
+ * wrappers saving and restoring the full context.
  */
 
-void __attribute__((used)) EXTI0_IRQHandler()
+void __attribute__((used)) dmrTimeslotIrqImpl()
 {
     EXTI->PR = EXTI_PR_PR0;
     tsCount += 1;
@@ -78,10 +107,20 @@ void __attribute__((used)) EXTI0_IRQHandler()
     if (dmr_txActive() && (busBusy == false))
         dmr_txTimeslotIsr();
 
+    if (IRQsignal(DMR_IRQ_EVENT_TIMESLOT))
+        Scheduler::IRQfindNextThread();
+
     stormGuard();
 }
 
-void __attribute__((used)) EXTI1_IRQHandler()
+void __attribute__((naked)) EXTI0_IRQHandler()
+{
+    saveContext();
+    asm volatile("bl _Z18dmrTimeslotIrqImplv");
+    restoreContext();
+}
+
+void __attribute__((used)) dmrSystemIrqImpl()
 {
     EXTI->PR = EXTI_PR_PR1;
     sysCount += 1;
@@ -100,7 +139,17 @@ void __attribute__((used)) EXTI1_IRQHandler()
                     & 0x0F;
     }
 
+    if (IRQsignal(DMR_IRQ_EVENT_SYSTEM))
+        Scheduler::IRQfindNextThread();
+
     stormGuard();
+}
+
+void __attribute__((naked)) EXTI1_IRQHandler()
+{
+    saveContext();
+    asm volatile("bl _Z16dmrSystemIrqImplv");
+    restoreContext();
 }
 
 void __attribute__((used)) EXTI2_IRQHandler()
@@ -113,6 +162,7 @@ void __attribute__((used)) EXTI2_IRQHandler()
 void dmrIrq_init()
 {
     dmrIrq_clearCounters();
+    pendingEvents = 0;
 
     /*
      * The lines are active on the falling edge, so they idle high: pulling
@@ -205,6 +255,51 @@ uint8_t dmrIrq_getRxBurstStatus()
 void dmrIrq_setBusBusy(bool busy)
 {
     busBusy = busy;
+}
+
+uint32_t dmrIrq_waitEvents()
+{
+    FastInterruptDisableLock dLock;
+
+    while (pendingEvents == 0) {
+        waiting = Thread::IRQgetCurrentThread();
+        Thread::IRQwait();
+        {
+            FastInterruptEnableLock eLock(dLock);
+            Thread::yield();
+        }
+    }
+
+    uint32_t events = pendingEvents;
+    pendingEvents = 0;
+
+    return events;
+}
+
+uint32_t dmrIrq_takeEvents()
+{
+    FastInterruptDisableLock dLock;
+
+    uint32_t events = pendingEvents;
+    pendingEvents = 0;
+
+    return events;
+}
+
+void dmrIrq_wakeWaiter()
+{
+    /*
+     * From a thread the switch cannot be made with the interrupts disabled:
+     * wake the waiter, then yield to it once they are enabled again.
+     */
+    bool preempt;
+    {
+        FastInterruptDisableLock dLock;
+        preempt = IRQsignal(DMR_IRQ_EVENT_WAKE);
+    }
+
+    if (preempt)
+        Thread::yield();
 }
 
 #endif /* CONFIG_DMR */
