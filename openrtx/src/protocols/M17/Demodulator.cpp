@@ -327,6 +327,12 @@ void Demodulator::reset()
     initCount   = RX_SAMPLE_RATE / 50;  // 50ms of init time
 
     dsp_resetState(dcBlock);
+    /*
+     * Use a slower DC block pole (0.9995) for M17 baseband to reduce
+     * baseline wander caused by the 4800 Bd 4FSK data spectrum. The
+     * microphone path keeps the default pole (0.995) via dsp_resetState.
+     */
+    dcBlock.pole = 32752;  // 0.9995 * 32768
 }
 
 void Demodulator::unlockedState()

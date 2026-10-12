@@ -30,11 +30,15 @@ extern "C" {
 
 /**
  * Data structure holding the internal state of a DC blocking filter.
+ *
+ * The pole is stored as a fixed-point value scaled by 32768 (pole * 32768).
+ * A value of zero means "use the default pole" (0.995, K = 164).
  */
 struct dcBlock {
     int32_t accum;
     int32_t prevIn;
     int32_t prevOut;
+    int32_t pole; // fixed-point, scaled by 32768
 };
 
 /**
