@@ -609,6 +609,17 @@ static void handleSlot()
     bool stationSync = (sync == C6000_DMR_CLASS_VOICE_SYNC)
                     || ((sync == C6000_DMR_CLASS_DATA) && ccOk);
 
+    /*
+     * The slot a call goes out in is told by its own bursts: its frame A, its
+     * voice header or its terminator. A repeater's downlink also carries idle
+     * data bursts, with the same colour code, on the other slot.
+     */
+    uint8_t dataType = status >> 4;
+    bool callSync = (sync == C6000_DMR_CLASS_VOICE_SYNC)
+                 || ((sync == C6000_DMR_CLASS_DATA) && ccOk
+                     && ((dataType == C6000_DMR_DATA_VOICE_HEADER)
+                         || (dataType == C6000_DMR_DATA_TERMINATOR)));
+
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
     if (((counters.timeslot - lastSlotCount) & 1) != 0)
@@ -668,7 +679,7 @@ static void handleSlot()
         }
     }
 
-    if (stationSync)
+    if (callSync)
         slotParity = true;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
