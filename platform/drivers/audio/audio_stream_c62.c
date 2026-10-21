@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/sys_io.h>
+#include <hwconfig.h>
 #include "audio_stream_c62.h"
 #include "AudioSystem.h"
 #include "AudioTrack.h"
@@ -178,14 +179,51 @@ static void disable_adc_hpf2(void)
         LOG_ERR("ADC01 HPF2 bypass readback mismatch");
 }
 
-static int configure_adc_gain(void)
+/**
+ * Send a key=value parameter string to the DSP.
+ *
+ * @param kv: parameters, separated by ';'.
+ * @return 0 on success.
+ */
+static int set_dsp_param(const char *kv)
 {
     String8 param;
-    String8_ctor_char(&param, "ADC_PDM_GAIN_A_LEFT=6;ADC_PDM_GAIN_D_LEFT=20;"
-                              "ADC_PDM_GAIN_A_RIGHT=6;ADC_PDM_GAIN_D_RIGHT=20");
+    String8_ctor_char(&param, kv);
     int ret = AudioSystem_setParameters(0, &param);
     String8_dtor(&param);
     return ret;
+}
+
+/**
+ * Set the mic (left) and BK4819 RX audio (right) ADC gains from hwconfig.h.
+ *
+ * @return 0 on success.
+ */
+static int configure_adc_gain(void)
+{
+    char kv[128];
+    snprintf(kv, sizeof(kv),
+             "ADC_PDM_GAIN_A_LEFT=%d;ADC_PDM_GAIN_D_LEFT=%d;"
+             "ADC_PDM_GAIN_A_RIGHT=%d;ADC_PDM_GAIN_D_RIGHT=%d",
+             C62_ADC_MIC_GAIN_A, C62_ADC_MIC_GAIN_D, C62_ADC_RX_GAIN_A,
+             C62_ADC_RX_GAIN_D);
+    return set_dsp_param(kv);
+}
+
+/**
+ * Set the speaker (left) and BK4819 TX (right) DAC gains from hwconfig.h.
+ *
+ * @return 0 on success.
+ */
+static int configure_dac_gain(void)
+{
+    char kv[128];
+    snprintf(kv, sizeof(kv),
+             "DAC_GAIN_A_LEFT=%d;DAC_GAIN_D_LEFT=%d;"
+             "DAC_GAIN_A_RIGHT=%d;DAC_GAIN_D_RIGHT=%d",
+             C62_DAC_SPK_GAIN_A, C62_DAC_SPK_GAIN_D, C62_DAC_TX_GAIN_A,
+             C62_DAC_TX_GAIN_D);
+    return set_dsp_param(kv);
 }
 
 /* Worker-only DSP construction; failure unwinds partially opened devices. */
@@ -240,6 +278,10 @@ static int open_dsp(void)
         ret = -ENOTSUP;
         goto fail_playback;
     }
+    stage = "DAC gain";
+    ret = configure_dac_gain();
+    if (ret != 0)
+        goto fail_playback;
     return 0;
 fail_playback:
     AudioTrack_dtor(&playback_track);
@@ -345,7 +387,7 @@ fail:
 }
 
 /* FM samples pass through unchanged. Application samples are repeated to
- * reach 48 kHz; only application-to-radio output gets TX level scaling.
+ * reach 48 kHz; TX levels are set by the codec gains in hwconfig.h.
  * Inactive, empty or draining channels contribute silence to the stereo frame.
  */
 static int16_t output_sample(unsigned int channel)
@@ -358,9 +400,7 @@ static int16_t output_sample(unsigned int channel)
         return out->fm_queue.count ? queue_pop(&out->fm_queue) : 0;
     if (ep->ctx == NULL || !ep->ctx->running || out->draining)
         return 0;
-    int32_t sample = ep->ctx->buffer[ep->position];
-    if (channel == SINK_RTX)
-        sample = sample / 2; /* C62 TX: 50% amplitude. */
+    int16_t sample = ep->ctx->buffer[ep->position];
     if (++out->phase == ep->divisor) {
         out->phase = 0;
         ep->position++;

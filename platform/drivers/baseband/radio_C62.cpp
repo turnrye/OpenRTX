@@ -98,8 +98,9 @@ static const struct {
     { BK4819_REG_19, 0x8000, 0x8000 }, // Disable microphone AGC
     { BK4819_REG_2B, 0x0707, 0x0707 }, // Bypass speech filters and emphasis
     { BK4819_REG_31, 0x000c, 0x0000 }, // Disable compander and VOX
-    // Enable modulation with raw deviation field 0x04d2 (not Hz).
-    { BK4819_REG_40, 0x1fff, 0x14d2 },
+    // Enable modulation with raw deviation field 0x0582 (not Hz), set for
+    // the TX DAC gain in hwconfig.h.
+    { BK4819_REG_40, 0x1fff, 0x1582 },
     // 4.5 kHz RF / 3.75 kHz weak-signal filter, 12.5 kHz channel
     { BK4819_REG_43, 0x7ffc, 0x7808 },
     { BK4819_REG_47, 0x0003, 0x0001 },   // Save bit 1; bypass TX filter
