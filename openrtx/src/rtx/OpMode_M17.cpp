@@ -90,6 +90,8 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
     #elif defined(PLATFORM_DM1701)
     invertTxPhase = true;
     invertRxPhase = true;
+    #elif defined(PLATFORM_C62)
+    invertTxPhase = true;
     #endif
 
     // Main FSM logic

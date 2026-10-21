@@ -345,7 +345,7 @@ fail:
 }
 
 /* FM samples pass through unchanged. Application samples are repeated to
- * reach 48 kHz; only application-to-radio output gets TX level/polarity scaling.
+ * reach 48 kHz; only application-to-radio output gets TX level scaling.
  * Inactive, empty or draining channels contribute silence to the stereo frame.
  */
 static int16_t output_sample(unsigned int channel)
@@ -360,7 +360,7 @@ static int16_t output_sample(unsigned int channel)
         return 0;
     int32_t sample = ep->ctx->buffer[ep->position];
     if (channel == SINK_RTX)
-        sample = -(sample / 2); /* C62 TX: 50% amplitude, inverted polarity. */
+        sample = sample / 2; /* C62 TX: 50% amplitude. */
     if (++out->phase == ep->divisor) {
         out->phase = 0;
         ep->position++;
