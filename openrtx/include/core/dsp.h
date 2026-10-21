@@ -83,6 +83,25 @@ struct decimatorState {
 bool dsp_decimator(struct decimatorState *state, int16_t *sample,
                    uint16_t ratio);
 
+/**
+ * Multiply a sample by an integer gain, saturating at the int16 limits.
+ *
+ * @param sample: input sample.
+ * @param gain: integer gain.
+ * @return scaled sample, clipped to the int16 range.
+ */
+static inline int16_t dsp_applyGain(int16_t sample, int32_t gain)
+{
+    int32_t out = (int32_t)sample * gain;
+
+    if (out > INT16_MAX)
+        return INT16_MAX;
+    if (out < INT16_MIN)
+        return INT16_MIN;
+
+    return (int16_t)out;
+}
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus
