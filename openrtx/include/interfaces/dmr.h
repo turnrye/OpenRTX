@@ -29,6 +29,7 @@ struct dmrRxState {
     uint32_t dstId;    ///< Talkgroup or destination the call is sent to.
     uint8_t colorCode; ///< Color code the burst was received with.
     bool groupCall;    ///< True for a group call, false for a private one.
+    bool encrypted;    ///< The call's voice is encrypted.
     bool valid;        ///< True once the link control has been confirmed.
 };
 

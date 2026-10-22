@@ -609,7 +609,8 @@ RxState harness::poll()
 {
     struct dmrRxState rx;
     dmr_task(&rx);
-    return { rx.srcId, rx.dstId, rx.colorCode, rx.groupCall, rx.valid };
+    return { rx.srcId,     rx.dstId,     rx.colorCode,
+             rx.groupCall, rx.encrypted, rx.valid };
 }
 
 void harness::keyUp(bool group, uint32_t dst, uint32_t src)

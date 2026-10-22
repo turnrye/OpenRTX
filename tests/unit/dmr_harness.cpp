@@ -124,6 +124,7 @@ TEST_CASE("DMR call starts from a header and ends on its terminator",
     REQUIRE(rx.dstId == 9);
     REQUIRE(rx.srcId == 3101003);
     REQUIRE(rx.colorCode == CC);
+    REQUIRE_FALSE(rx.encrypted);
     REQUIRE(audioRxStarts() == 1);
     // The decode buffer is cleared when a call is accepted
     REQUIRE_FALSE(writes(CONFIG, 0x21).empty());
@@ -171,6 +172,26 @@ TEST_CASE("DMR voice reaches playback, except from the wrong colour code",
                  0xCC, 0x88, 0xA0, 0x54, 0xC0, 0xC5, 0x3C, 0x6F, 0x81 });
     burst(FRAME_B, 7);
     REQUIRE(audioFramesPushed() == 6);
+}
+
+TEST_CASE("DMR encrypted call is reported but its voice is not played",
+          "[dmr][harness]")
+{
+    Driver d;
+    lockOnHeader();
+    Bytes lc = groupLc(9, 3101003);
+    lc[2] = 0x40; // Privacy in the service options
+    setLinkControl(lc);
+    burst(HEADER, CC);
+
+    RxState rx = poll();
+    REQUIRE(rx.valid);
+    REQUIRE(rx.encrypted);
+
+    setPayload(voicePayload());
+    burst(FRAME_B, CC);
+    REQUIRE(poll().valid);
+    REQUIRE(audioFramesPushed() == 0);
 }
 
 TEST_CASE("DMR slot ticks alone neither start nor hold a call",

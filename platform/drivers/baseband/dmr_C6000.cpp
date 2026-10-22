@@ -241,6 +241,7 @@ static void publishCall()
     rxState.srcId = rxCall.call.srcId;
     rxState.colorCode = rxCall.colorCode;
     rxState.groupCall = rxCall.call.groupCall;
+    rxState.encrypted = rxCall.call.encrypted;
     rxState.valid = rxCall.active;
     pthread_mutex_unlock(&rxMutex);
 }

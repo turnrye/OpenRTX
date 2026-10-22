@@ -106,6 +106,7 @@ struct RxState {
     uint32_t dstId;
     uint8_t colorCode;
     bool groupCall;
+    bool encrypted;
     bool valid;
 };
 RxState poll();
