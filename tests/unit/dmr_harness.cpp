@@ -13,26 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <vector>
-#include "harness.h"
-
-using namespace harness;
-using Bytes = std::vector<uint8_t>;
-
-/* Register pages on the bus. */
-static const uint8_t AUX = 1, DATA = 2, CONFIG = 4;
-
-/* Burst status: sync class in bits 1:0, data type or frame number above. */
-static const uint8_t HEADER = 0x12; // Voice LC header
-static const uint8_t TERMINATOR = 0x22;
-static const uint8_t FRAME_A = 0x11;
-static const uint8_t FRAME_B = 0x20;
-static const uint8_t EMPTY = 0x00; // Class 0 with nothing decoded
-static const uint8_t NOISE = 0x03; // Class 3: nothing recognisable
-
-/* Interrupt flags of register 0x82. */
-static const uint8_t FLAG_BURST = 0x08, FLAG_LC = 0x10, FLAG_TICK = 0x20;
-
-static const uint8_t CC = 1;
+#include "scenario.h"
 
 /* The stock re-arm sequence: 41=00 40=03 41=20 41=40 40=43. */
 static bool rearmSequenceIn(const std::vector<Write> &ws, size_t from = 0)
@@ -55,32 +36,6 @@ static bool rearmSequenceIn(const std::vector<Write> &ws, size_t from = 0)
     return false;
 }
 
-static Bytes groupLc(uint32_t dst, uint32_t src)
-{
-    return { 0x00,
-             0x00,
-             0x00,
-             (uint8_t)(dst >> 16),
-             (uint8_t)(dst >> 8),
-             (uint8_t)dst,
-             (uint8_t)(src >> 16),
-             (uint8_t)(src >> 8),
-             (uint8_t)src,
-             0x00,
-             0x00,
-             0x00 };
-}
-
-/* A voice frame received over the air, three times over: a voice payload. */
-static Bytes voicePayload()
-{
-    Bytes f = { 0xB9, 0xCE, 0xA3, 0x76, 0x8F, 0xBB, 0x69, 0xCA, 0xCD };
-    Bytes p;
-    for (int i = 0; i < 3; i++)
-        p.insert(p.end(), f.begin(), f.end());
-    return p;
-}
-
 /* Bring the receiver to locked, as a header with the right colour code does
  * at the slot handler. */
 static void lockOnHeader()
@@ -97,19 +52,6 @@ static void startCall(uint32_t dst = 9, uint32_t src = 3101003)
     setLinkControl(groupLc(dst, src));
     burst(HEADER, CC);
 }
-
-struct Driver {
-    Driver(uint8_t cc = CC)
-    {
-        reset();
-        start(cc);
-    }
-    ~Driver()
-    {
-        stop();
-        trace();
-    }
-};
 
 TEST_CASE("DMR driver arms the receiver as the stock firmware does",
           "[dmr][harness]")
@@ -275,15 +217,6 @@ TEST_CASE("DMR call is lost after 25 slots without a voice sync",
     REQUIRE_FALSE(poll().valid);
     REQUIRE(rearmSequenceIn(writes()));
     REQUIRE(audioRxStops() == 1);
-}
-
-/* The slot action written at each slot boundary from now on. */
-static std::vector<uint8_t> slotActions()
-{
-    std::vector<uint8_t> v;
-    for (const Write &w : writes(CONFIG, 0x41))
-        v.push_back(w.value);
-    return v;
 }
 
 TEST_CASE("DMR call receives only its own slot", "[dmr][harness]")
