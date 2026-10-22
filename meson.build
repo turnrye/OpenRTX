@@ -57,6 +57,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/voicePromptData.S',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/dmr_debug.c',
+               'openrtx/src/core/dmr_audio.c',
                'openrtx/src/core/mic_frame.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
@@ -468,8 +469,7 @@ mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/drivers/baseband/dmrIrq_UV3x0.cpp',
                'platform/drivers/baseband/dmrPayload_UV3x0.cpp',
                'platform/drivers/baseband/dmr_C6000.cpp',
-               'platform/drivers/baseband/dmr_codec.c',
-               'openrtx/src/core/dmr_audio.c']
+               'platform/drivers/baseband/dmr_codec.c']
 
 mduv3x0_inc = ['platform/targets/MD-UV3x0']
 mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'timegm': 'mktime'}
@@ -606,8 +606,7 @@ cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
                'platform/drivers/baseband/dmrPayload_CS7000.cpp',
                'platform/drivers/baseband/paRamp_CS7000.cpp',
                'platform/drivers/baseband/paRampShape_CS7000.cpp',
-               'platform/drivers/baseband/dmr_codec.c',
-               'openrtx/src/core/dmr_audio.c']
+               'platform/drivers/baseband/dmr_codec.c']
 
 cs7000p_inc = ['platform/targets/CS7000-PLUS',
                'platform/drivers/USB']
