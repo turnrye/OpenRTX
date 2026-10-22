@@ -146,9 +146,8 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
     }
 
     /*
-     * Polled faster than the 30ms slot period so the receiver can be re-armed
-     * within each slot: the chip only receives one slot per request and the
-     * re-arming happens from this loop, not from the timeslot interrupt.
+     * Reception runs on the baseband's own thread: this step only hands its
+     * state over and lets it notice a call or a transmission winding down.
      */
     sleepFor(0u, 10u);
 }
@@ -181,7 +180,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
 
     /*
      * Periodic transmit housekeeping: keeps the interrupt watchdog fed while
-     * the receive poll, which normally feeds it, is not running.
+     * dmr_task(), which normally feeds it, is not called.
      */
     dmr_txTask();
 
@@ -189,9 +188,9 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         dmr_stopTx();
 
     /*
-     * The state machine sends the terminator and returns the chip to reception
-     * on its own; wait for it to finish before handing back so the terminator
-     * is not cut off.
+     * The baseband sends the terminator and returns the chip to reception on
+     * its own; wait for it to finish before handing back so the terminator is
+     * not cut off.
      */
     if (dmr_txActive() == false) {
         platform_ledOff(RED);
