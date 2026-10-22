@@ -7,6 +7,7 @@
 #include "core/dmr_debug.h"
 #include "hwconfig.h"
 #include "interfaces/dmr.h"
+#include "interfaces/dmr_codec.h"
 #include <string.h>
 
 #if defined(CONFIG_DMR)
@@ -60,6 +61,43 @@ void dmr_txTask()
 bool dmr_txActive()
 {
     return false;
+}
+
+/*
+ * Nor has it the vocoder: the voice pipeline finds it missing, as on a radio
+ * whose image carries no codec, and neither plays nor captures.
+ */
+
+bool dmr_codec_available(void)
+{
+    return false;
+}
+
+bool dmr_codec_init(void)
+{
+    return false;
+}
+
+void dmr_codec_terminate(void)
+{
+}
+
+void dmr_codec_encode(uint8_t frame[DMR_CODEC_FRAME_BYTES],
+                      const int16_t pcm[DMR_CODEC_PCM_SAMPLES])
+{
+    (void)pcm;
+    memset(frame, 0, DMR_CODEC_FRAME_BYTES);
+}
+
+void dmr_codec_decode(int16_t pcm[DMR_CODEC_PCM_SAMPLES],
+                      const uint8_t frame[DMR_CODEC_FRAME_BYTES])
+{
+    (void)frame;
+    memset(pcm, 0, DMR_CODEC_PCM_SAMPLES * sizeof(int16_t));
+}
+
+void dmr_codec_selfTest(void)
+{
 }
 
 #endif /* CONFIG_DMR */
