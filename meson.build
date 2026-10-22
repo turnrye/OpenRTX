@@ -1412,5 +1412,7 @@ test('DMR Driver Harness, MD-UV3x0', dmr_harness_uv3x0_test)
 test('DMR Operating Mode Test', opmode_dmr_test)
 test('DMR Voice Pipeline Test', dmr_audio_test)
 test('DMR Debug Tap Test', dmr_debug_test)
+test('DMR Installer Test', find_program('python3'),
+     args : files('tests/unit/dmr_installer.py'))
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)
