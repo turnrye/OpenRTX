@@ -57,6 +57,14 @@ void waitIdle();
 /** Raise the timeslot interrupt and wait for the driver to handle it. */
 void timeslot();
 
+/**
+ * A slot boundary, the slot just ended carrying a burst with this status and
+ * colour code. If the slot action the driver wrote for that slot silenced it
+ * (0x41 = 0x00), the chip did not receive it and its status registers keep
+ * what the slot before left there, as seen on the bench.
+ */
+void slot(uint8_t status, uint8_t colorCode);
+
 /** Raise the timeslot interrupt several times before the driver gets to run,
  * as when its thread is woken late. */
 void timeslot(int count);

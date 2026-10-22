@@ -9,6 +9,7 @@
  * lines, the payload bus, the audio, the debug log and time.
  */
 
+#include <map>
 #include "harness.h"
 #include "hwconfig.h"
 #include "peripherals/spi.h"
@@ -308,11 +309,43 @@ void harness::timeslot()
     timeslot(1);
 }
 
+/*
+ * The slot action in force after each slot boundary, register 0x41 once the
+ * driver has handled the boundary. Written at a boundary, it applies to the
+ * slot after the one starting there: the bench showed the chip receiving the
+ * slot two boundaries on.
+ */
+static std::map<uint32_t, uint8_t> slotActionAt;
+
 void harness::timeslot(int count)
 {
     counters.timeslot += count;
     post(DMR_IRQ_EVENT_TIMESLOT);
     waitIdle();
+
+    std::lock_guard<std::mutex> lk(chipMutex);
+    slotActionAt[counters.timeslot] = regs[4][0x41];
+}
+
+void harness::slot(uint8_t status, uint8_t colorCode)
+{
+    /*
+     * The slot ending at this boundary started at the previous one, and its
+     * action was written at the boundary before that. With 0x41 = 0x00 the
+     * chip did not receive it and its status register still holds what the
+     * slot before left there.
+     */
+    {
+        std::lock_guard<std::mutex> lk(chipMutex);
+        auto it = slotActionAt.find(counters.timeslot - 1);
+        bool silenced = (it != slotActionAt.end()) && (it->second == 0x00);
+        if (silenced == false) {
+            regs[4][0x51] = status;
+            regs[4][0x52] = colorCode << 4;
+        }
+    }
+
+    timeslot();
 }
 
 void harness::system()
@@ -527,6 +560,7 @@ void harness::reset()
         memset(regs, 0, sizeof(regs));
         writeLog.clear();
         payloadLog.clear();
+        slotActionAt.clear();
     }
     {
         std::lock_guard<std::mutex> lk(logMutex);

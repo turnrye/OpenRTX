@@ -329,6 +329,41 @@ TEST_CASE("DMR repeater idle bursts do not take the call's slot",
     REQUIRE(slotActions() == expected);
 }
 
+TEST_CASE("DMR call slot ignores what the silenced slot still reads",
+          "[dmr][harness]")
+{
+    // A repeater's downlink, the call on one slot and idle data bursts on
+    // the other, with the chip silencing the slot the driver asks it not to
+    // receive: that slot's status then repeats the call slot's, its frame A
+    // included, as on the bench.
+    static const uint8_t IDLE = 0x02;
+
+    Driver d;
+    slot(IDLE, CC); // Locked on an idle burst
+    for (int n = 0; n < 12; n++)
+        slot(((n % 2) == 0) ? ((n == 0) ? FRAME_A : FRAME_B) : IDLE, CC);
+
+    // Late entry on the voice slot
+    setLinkControl(groupLc(31471, 3147073));
+    setReg(CONFIG, 0x51, FRAME_B);
+    raiseFlags(FLAG_LC);
+    system();
+    REQUIRE(poll().valid);
+    clearWrites();
+
+    // Three superframes: frame A then B..F on the voice slot
+    std::vector<uint8_t> expected;
+    for (int n = 0; n < 36; n++) {
+        bool voiceSlot = (n % 2) == 0;
+        uint8_t status = (((n / 2) % 6) == 0) ? FRAME_A : FRAME_B;
+        slot(voiceSlot ? status : IDLE, CC);
+        expected.push_back(voiceSlot ? 0x50 : 0x00);
+    }
+
+    REQUIRE(slotActions() == expected);
+    REQUIRE(poll().valid);
+}
+
 TEST_CASE("DMR call slot survives a slot read late", "[dmr][harness]")
 {
     Driver d;
