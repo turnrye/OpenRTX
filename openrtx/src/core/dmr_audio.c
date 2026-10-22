@@ -311,6 +311,9 @@ void dmrAudio_stopTx(void)
     txReqStop = true;
     pthread_join(txThread, NULL);
     audioPath_release(txPath);
+
+    /* Frames encoded for a transmission that is over are not handed out. */
+    txTail = txHead;
     txRunning = false;
 }
 
