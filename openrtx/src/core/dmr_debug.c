@@ -121,16 +121,6 @@ static void tapPushLocked(const char *data, const size_t len)
 }
 
 /**
- * Append a message to the buffer, taking the lock around it.
- */
-static void tapPush(const char *data, const size_t len)
-{
-    pthread_mutex_lock(&mutex);
-    tapPushLocked(data, len);
-    pthread_mutex_unlock(&mutex);
-}
-
-/**
  * Handle the single character commands sent by the host, allowing the message
  * categories to be turned on and off from a plain terminal emulator. The linux
  * target has no command channel, as its standard input is used elsewhere.
