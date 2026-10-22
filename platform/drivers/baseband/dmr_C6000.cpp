@@ -361,8 +361,13 @@ static void takeTerminator()
  */
 static void takeVoicePayload(const uint8_t status)
 {
+    /*
+     * Received voice is read from the chip's data page on both radios, as
+     * their stock firmwares do in clear voice: the payload bus returns zeros
+     * on the CS7000 Plus and a stale payload on the MD-UV3x0.
+     */
     uint8_t payload[VP_LENGTH];
-    dmrPayload_read(payload);
+    C6000.readDmrVoicePayload(payload);
 
     if (dmrDebug_channelEnabled(DMR_DBG_VP)) {
         uint8_t record[1 + VP_LENGTH];

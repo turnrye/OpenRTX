@@ -366,10 +366,6 @@ void dmrPayload_init()
 void dmrPayload_terminate()
 {
 }
-void dmrPayload_read(uint8_t *payload)
-{
-    C6000.readDmrVoicePayload(payload);
-}
 void dmrPayload_write(const uint8_t *payload)
 {
     std::lock_guard<std::mutex> lk(chipMutex);

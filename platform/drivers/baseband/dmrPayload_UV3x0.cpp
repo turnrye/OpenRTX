@@ -14,11 +14,9 @@
 #if defined(CONFIG_DMR)
 
 /*
- * The MD-UV3x0 voice payload bus. The read command is the page number with the
- * read flag set, followed by the register offset; the payload comes back after
- * those two command bytes, so the transfer is two bytes longer than the data.
+ * The MD-UV3x0 voice payload bus. The write command is the page number
+ * followed by the register offset, then the payload.
  */
-#define VP_PAGE_READ 0x83
 #define VP_PAGE_WRITE 0x03
 #define VP_REGISTER 0x00
 
@@ -51,29 +49,6 @@ void dmrPayload_terminate()
     gpio_setMode(DMR_V_MISO, INPUT);
     gpio_setMode(DMR_V_MOSI, INPUT);
     gpio_setMode(DMR_V_CS, INPUT);
-}
-
-/**
- * Read the raw voice payload of the burst the chip has just decoded. The two
- * command bytes are clocked out first and their returned bytes discarded, the
- * payload follows.
- *
- * @param payload: destination buffer, DMR_PAYLOAD_LENGTH bytes long.
- */
-void dmrPayload_read(uint8_t *payload)
-{
-    uint8_t tx[2 + DMR_PAYLOAD_LENGTH];
-    uint8_t rx[2 + DMR_PAYLOAD_LENGTH];
-
-    memset(tx, 0, sizeof(tx));
-    tx[0] = VP_PAGE_READ;
-    tx[1] = VP_REGISTER;
-
-    gpio_clearPin(DMR_V_CS);
-    spi_transfer(&payload_spi, tx, rx, sizeof(tx));
-    gpio_setPin(DMR_V_CS);
-
-    memcpy(payload, &rx[2], DMR_PAYLOAD_LENGTH);
 }
 
 /**
