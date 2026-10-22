@@ -1304,6 +1304,28 @@ dmr_harness_test = executable('dmr_harness_test',
                               dependencies: [threads_dep, catch2_dep],
                               link_args: linux_l_args)
 
+dmr_harness_uv3x0_src = ['tests/unit/dmr_harness_uv3x0.cpp',
+                         'tests/harness/dmr/fakes.cpp',
+                         'platform/drivers/baseband/dmr_C6000.cpp',
+                         'platform/drivers/baseband/HR_C6000.cpp',
+                         'platform/drivers/baseband/HR_C6000_UV3x0.cpp',
+                         'platform/drivers/baseband/HR_Cx000.cpp',
+                         'openrtx/src/protocols/DMR/LinkControl.c',
+                         'openrtx/src/protocols/DMR/VoiceFrame.c',
+                         'openrtx/src/protocols/DMR/CallControl.c',
+                         'openrtx/src/protocols/DMR/VoiceSequence.c']
+
+dmr_harness_uv3x0_test = executable('dmr_harness_uv3x0_test',
+                                    sources : dmr_harness_uv3x0_src,
+                                    c_args  : linux_c_args + ['-DPLATFORM_MDUV3x0'],
+                                    cpp_args: linux_cpp_args + ['-DPLATFORM_MDUV3x0'],
+                                    include_directories: ['tests/harness/dmr',
+                                                          'openrtx/include',
+                                                          'platform',
+                                                          'platform/drivers/baseband'],
+                                    dependencies: [threads_dep, catch2_dep],
+                                    link_args: linux_l_args)
+
 dsp_oversampling_test = executable('dsp_oversampling_test',
                                     sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1353,5 +1375,6 @@ test('DMR Call Control Test', dmr_call_test)
 test('DMR Voice Sequence Test', dmr_voice_sequence_test)
 test('Settings Layout Test', settings_layout_test)
 test('DMR Driver Harness', dmr_harness_test)
+test('DMR Driver Harness, MD-UV3x0', dmr_harness_uv3x0_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)

@@ -86,6 +86,27 @@ static const struct gpioApi fakeGpioApi = { fakeGpioMode, fakeGpioSet,
                                             fakeGpioClear, fakeGpioRead };
 static const struct gpioDev fakeGpioDev = { &fakeGpioApi, NULL };
 
+/* Pin setup only happens in the chip bring-up, which no scenario runs. */
+extern "C" void gpio_setMode(const void *port, const uint8_t pin,
+                             const uint16_t mode)
+{
+    (void)port;
+    (void)pin;
+    (void)mode;
+}
+
+extern "C" void gpio_setPin(const void *port, const uint8_t pin)
+{
+    (void)port;
+    (void)pin;
+}
+
+extern "C" void gpio_clearPin(const void *port, const uint8_t pin)
+{
+    (void)port;
+    (void)pin;
+}
+
 extern "C" uint8_t gpio_readPin(const void *port, const uint8_t pin)
 {
     (void)port;
