@@ -34,7 +34,6 @@ static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool stormSeen;      /* Lines shut down by the guard */
-static volatile bool busBusy;        /* The DMR thread is on the SPI bus */
 static volatile uint32_t
     pendingEvents;                   /* Events not yet taken, DMR_IRQ_EVENT_* */
 static Thread *waiting;              /* Thread waiting for an event, if any */
@@ -210,11 +209,6 @@ void dmrIrq_feedWatchdog()
 bool dmrIrq_stormDetected()
 {
     return stormSeen;
-}
-
-void dmrIrq_setBusBusy(bool busy)
-{
-    busBusy = busy;
 }
 
 uint32_t dmrIrq_waitEvents()

@@ -7,27 +7,12 @@
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
-#include "dmr_C6000.h"
 #include <kernel/scheduler/scheduler.h>
 #include <miosix.h>
 
 using namespace miosix;
 
 #if defined(CONFIG_DMR)
-
-/* Register holding the received colour code in its upper nibble. */
-#define C6000_REG_CACH 0x52
-
-/*
- * Register holding the status of the burst just decoded: bits 7..4 the data
- * type or voice frame sequence number, bit 2 the CRC result, bits 1..0 the
- * sync class (1 = voice). Like the colour code it is only valid at the frame
- * event, so it is sampled here rather than from the consuming thread.
- */
-#define C6000_REG_RX_STATUS 0x51
-
-/* Colour code value standing for "nothing received yet". */
-#define CC_NONE 0xFF
 
 /*
  * Events tolerated between two watchdog feeds before the lines are considered
@@ -42,12 +27,9 @@ static volatile uint32_t sysCount;   /* System interrupt counter    */
 static volatile uint32_t txCount;    /* Transmit interrupt counter  */
 static volatile uint32_t stormCount; /* Events since the last feed  */
 static volatile bool stormSeen;      /* Lines shut down by the guard */
-static volatile uint8_t rxColorCode = CC_NONE; /* CC of the last frame event */
-static volatile uint8_t rxBurstStatus; /* 0x51 of the last frame event */
-static volatile bool busBusy;          /* A thread is on the SPI bus  */
 static volatile uint32_t
-    pendingEvents;      /* Events not yet taken, DMR_IRQ_EVENT_* */
-static Thread *waiting; /* Thread waiting for an event, if any */
+    pendingEvents;                   /* Events not yet taken, DMR_IRQ_EVENT_* */
+static Thread *waiting;              /* Thread waiting for an event, if any */
 
 /**
  * Shut the interrupt lines down when they fire far too often to be real. A
@@ -213,8 +195,6 @@ void dmrIrq_clearCounters()
     tsCount = 0;
     sysCount = 0;
     txCount = 0;
-    rxColorCode = CC_NONE;
-    rxBurstStatus = 0;
 }
 
 void dmrIrq_feedWatchdog()
@@ -225,21 +205,6 @@ void dmrIrq_feedWatchdog()
 bool dmrIrq_stormDetected()
 {
     return stormSeen;
-}
-
-uint8_t dmrIrq_getRxColorCode()
-{
-    return rxColorCode;
-}
-
-uint8_t dmrIrq_getRxBurstStatus()
-{
-    return rxBurstStatus;
-}
-
-void dmrIrq_setBusBusy(bool busy)
-{
-    busBusy = busy;
 }
 
 uint32_t dmrIrq_waitEvents()

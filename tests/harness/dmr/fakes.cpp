@@ -240,18 +240,6 @@ bool dmrIrq_stormDetected()
 {
     return false;
 }
-uint8_t dmrIrq_getRxColorCode()
-{
-    return 0xFF;
-}
-uint8_t dmrIrq_getRxBurstStatus()
-{
-    return 0;
-}
-void dmrIrq_setBusBusy(bool busy)
-{
-    (void)busy;
-}
 
 uint32_t dmrIrq_waitEvents()
 {

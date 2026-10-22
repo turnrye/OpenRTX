@@ -367,47 +367,10 @@ public:
     void readDmrStatus(struct C6000_DmrStatus *status);
 
     /**
-     * Read a configuration register from an interrupt handler.
-     *
-     * Unlike readCfgRegister this does NOT take the SPI mutex, so it can run in
-     * interrupt context. The caller must guarantee that no thread is part way
-     * through a transaction on the same bus, otherwise the two accesses corrupt
-     * each other; see dmrIrq_setBusBusy.
-     *
-     * @param addr: register number.
-     * @return current value of the addressed register.
-     */
-    uint8_t readCfgRegisterFromIsr(const uint8_t addr);
-
-    /**
-     * Write a configuration register from an interrupt handler.
-     *
-     * Unlike writeCfgRegister this does NOT take the SPI mutex, so it can run in
-     * interrupt context. It is the write counterpart of readCfgRegisterFromIsr
-     * and shares its constraint: the caller must guarantee that no thread is
-     * part way through a transaction on the same bus. This is what drives the
-     * slot action and burst type registers within the 30ms transmit slot
-     * deadline, which the thread cannot meet through the mutex-guarded path.
-     *
-     * @param addr: register number.
-     * @param value: value to be written.
-     */
-    void writeCfgRegisterFromIsr(const uint8_t addr, const uint8_t value);
-
-    /**
-     * Hand the transmit link control to the chip from an interrupt handler, so
-     * that it can build the voice header and terminator bursts around it. The
-     * chip performs the error correction and interleaving itself, so the bytes
-     * written here are the plain link control. Like writeCfgRegisterFromIsr this
-     * bypasses the SPI mutex and must not overlap a thread-side transaction.
-     *
-     * @param lc: link control to transmit, C6000_LC_LENGTH bytes long.
-     */
-    void writeDmrLinkControlFromIsr(const uint8_t *lc);
-
-    /**
-     * Hand the transmit link control to the chip, as writeDmrLinkControlFromIsr
-     * does, from a thread: the access goes through the SPI mutex.
+     * Hand the transmit link control to the chip, so that it can build the
+     * voice header and terminator bursts around it. The chip performs the error
+     * correction and interleaving itself, so the bytes written here are the
+     * plain link control.
      *
      * @param lc: link control to transmit, C6000_LC_LENGTH bytes long.
      */

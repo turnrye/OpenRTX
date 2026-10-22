@@ -9,7 +9,7 @@
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "dmrIrq.h"
-#include "dmr_C6000.h"
+#include "interfaces/dmr.h"
 #include "core/dmr_audio.h"
 #include "interfaces/dmr_codec.h"
 #include "dmrPayload.h"
@@ -25,79 +25,14 @@
 
 /*
  * DMR runs from a thread of its own, woken by the chip's interrupt lines,
- * receiving and transmitting the way the CS7000 Plus stock firmware does.
+ * receiving and transmitting the way each radio's stock firmware does.
  */
-#define DMR_THREAD
-
-/*
- * Bits of the receive status register, 0x51: the CRC bit is set when the check
- * failed, so a burst is good when it reads back as zero.
- */
-#define RX_STATUS_CRC_ERROR 0x04
-#define RX_STATUS_PRIVACY 0x08
-
-/*
- * Interrupt flag the chip raises on every slot once its slot clock runs,
- * whether or not anything was received; any other flag is a received event.
- */
-#define INT_FLAG_SLOT 0x20
-
-/* Full link control frames of a group and of a private call */
-#define LC_FLCO_GROUP 0x00
-#define LC_FLCO_PRIVATE 0x03
 
 /*
  * The voice payload of a burst: three 9-byte AMBE frames the chip hands over
  * on its second SPI bus, reached through the board's payload bus driver.
  */
 #define VP_LENGTH DMR_PAYLOAD_LENGTH
-
-/*
- * The chip hands back the link control of the previous transmission until it
- * has decoded the current one, so the same content has to show up in more than
- * one burst before it can be trusted.
- */
-#define LC_CONFIRM_COUNT 2
-
-/*
- * Registers and values driving the transmit slot, written from the timeslot
- * interrupt. Register 0x41 says what the chip does in the upcoming slot, 0x50
- * the type of burst it builds. The burst types are a voice link control
- * header, a voice frame carrying its sequence number in the high nibble, and a
- * terminator with link control.
- */
-#define TX_REG_SLOT_ACTION 0x41
-#define TX_REG_BURST_TYPE 0x50
-#define TX_SLOT_IDLE 0x00
-#define TX_SLOT_TRANSMIT 0x80
-#define TX_BURST_VOICE_HEADER 0x10
-#define TX_BURST_VOICE 0x08
-#define TX_BURST_TERMINATOR 0x20
-
-/* Number of voice frames in a superframe, the burst sequence cycles 0..5. */
-#define TX_SUPERFRAME_FRAMES 6
-
-/*
- * The transmit slot state machine, advanced one step per timeslot interrupt.
- * The call opens with three voice link control headers on alternating slots,
- * then voice superframes carrying the silence payload, and closes on a
- * terminator once the transmission has been asked to stop at a superframe
- * boundary. The gap steps leave the other slot idle, as a direct mode station
- * transmits on a single slot.
- */
-enum dmrTxState {
-    TX_IDLE = 0, ///< Not transmitting.
-    TX_START_1,  ///< First header burst.
-    TX_START_2,  ///< Idle slot.
-    TX_START_3,  ///< Second header burst.
-    TX_START_4,  ///< Idle slot.
-    TX_START_5,  ///< Third header burst.
-    TX_GAP,      ///< Idle slot between voice frames.
-    TX_VOICE,    ///< Voice frame carrying the silence payload.
-    TX_END_1,    ///< Terminator burst.
-    TX_END_2,    ///< Terminator going out on air.
-    TX_END_3     ///< Return to reception.
-};
 
 /* Interval between two interrupt activity reports, in milliseconds */
 #define IRQ_REPORT_INTERVAL 1000
@@ -113,22 +48,11 @@ enum dmrTxState {
 static struct dmrRxState rxState;
 static struct dmrConfig config; // Channel and radio configuration
 static uint8_t configuredCc;    // Colour code of the configuration
-static uint8_t prevLc[C6000_LC_LENGTH];
-static uint8_t lcMatches;
-static uint32_t lastSysCount;
-static uint32_t lastTsCount;
-static long long lastBurstTick;
 static uint32_t reportedTs;
 static uint32_t reportedSys;
 static uint32_t reportedTx;
 static long long reportTick;
 
-/*
- * Chip interrupt flags (register 0x82) and burst status (register 0x51) seen
- * by polling since the last activity report, and which interrupt lines were
- * seen low. They tell a chip that detects nothing apart from interrupts that
- * never reach the processor.
- */
 /*
  * Payload last handed to playback. The chip keeps a burst's payload until the
  * next burst replaces it and may raise more than one event per burst, so the
@@ -137,13 +61,19 @@ static long long reportTick;
 static uint8_t lastPayload[VP_LENGTH];
 static bool lastPayloadValid;
 
+/*
+ * Chip interrupt flags (register 0x82) and burst status (register 0x51) seen
+ * since the last activity report, and which interrupt lines were seen low.
+ * They tell a chip that detects nothing apart from interrupts that never
+ * reach the processor.
+ */
 static uint8_t seenFlags;
 static uint8_t seenStatus;
 static uint8_t seenLinesLow;
 
-static volatile uint8_t txState; // Current transmit slot state
-static volatile bool txMarker;   // Test pattern in place of the voice
-static uint8_t txMarkerSeq;      // Sequence number of the next pattern
+static volatile bool txRunning; // A transmission is in progress
+static volatile bool txMarker;  // Test pattern in place of the voice
+static uint8_t txMarkerSeq;     // Sequence number of the next pattern
 
 static void nextVoicePayload(uint8_t *payload);
 static volatile uint8_t txSequence;   // Voice frame sequence, 0..5
@@ -228,8 +158,6 @@ static void reportIrqActivity()
     reportedTx = counters.transmit;
     reportTick = now;
 }
-
-#if defined(DMR_THREAD)
 
 #if defined(PLATFORM_MDUV3x0)
 
@@ -757,7 +685,7 @@ static void endTransmission(const char *reason)
     C6000.clearDmrBuffers(C6000_DmrBuffers::ALL);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
-    txState = TX_IDLE;
+    txRunning = false;
     rxRestoreNeeded = true;
 
     dmrDebug_log(DMR_DBG_INFO, "tx: ended, %s", reason);
@@ -934,172 +862,6 @@ static void *rxThreadFunc(void *arg)
     return NULL;
 }
 
-#else  /* DMR_THREAD */
-
-/**
- * Read out a burst the chip has signalled and, if it passes the filters,
- * extract the identities it carries.
- *
- * @return true if the chip reported something received, false if the event
- * was only the slot clock ticking.
- */
-static bool handleBurst()
-{
-    struct C6000_DmrStatus status;
-    C6000.readDmrStatus(&status);
-    C6000.clearDmrInterrupts(status.intFlags);
-
-    bool received = (status.intFlags & ~INT_FLAG_SLOT) != 0;
-
-    /*
-     * An event that is only the slot clock ticking carries nothing to read: the
-     * chip still hands back the previous call's link control and payload, which
-     * would bring a call that is over straight back.
-     */
-    if (received == false)
-        return false;
-
-    bool crcOk = (status.rxStatus & RX_STATUS_CRC_ERROR) == 0;
-    uint8_t code = (status.cach >> 4) & 0x0F;
-
-    /*
-     * The burst status read here from the thread arrives too late to describe
-     * the burst that raised the frame event, so a copy sampled in the system
-     * interrupt is used to classify it. Both are logged side by side, together
-     * with the two colour code reads, so the bench can confirm the sampled one
-     * is trustworthy: "status" is the thread read of 0x51, "isrbs" the same
-     * register sampled at the event.
-     */
-    uint8_t burstStatus = dmrIrq_getRxBurstStatus();
-
-    dmrDebug_log(DMR_DBG_LC,
-                 "burst: flags %02X status %02X isrbs %02X cach %02X sync %02X "
-                 "cc %u isrcc %u crc %s",
-                 status.intFlags, status.rxStatus, burstStatus, status.cach,
-                 status.syncStatus, code, dmrIrq_getRxColorCode(),
-                 crcOk ? "ok" : "bad");
-
-    /*
-     * Stream every burst's payload for the host-side capture harness, tagged
-     * with the interrupt-sampled status byte so the host can pick out the voice
-     * frames from it: the data type or voice sequence number is in the high
-     * nibble, the sync class in the low bits. The capture cannot be gated on
-     * the CRC check, which every voice burst fails for lack of fresh link
-     * control. Classifying voice on the radio is deferred until the exact rule
-     * is confirmed against a full capture; gating on the sync class alone
-     * wrongly dropped almost every burst.
-     */
-    if (dmrDebug_channelEnabled(DMR_DBG_VP) || dmrAudio_running()) {
-        uint8_t payload[VP_LENGTH];
-        dmrPayload_read(payload);
-
-        if (dmrDebug_channelEnabled(DMR_DBG_VP)) {
-            uint8_t record[1 + VP_LENGTH];
-            record[0] = burstStatus;
-            memcpy(&record[1], payload, VP_LENGTH);
-            dmrDebug_record(DMR_DBG_VP, "VP", record, sizeof(record));
-        }
-
-        /*
-         * Feed the three AMBE frames of a voice burst to playback, but only the
-         * ones that pass the voice check: in direct mode the receiver hears both
-         * timeslots, and the empty one decodes to noise. Gating on each frame's
-         * Golay error count keeps the call's slot and drops the other.
-         */
-        bool repeated = lastPayloadValid
-                     && (memcmp(payload, lastPayload, VP_LENGTH) == 0);
-        memcpy(lastPayload, payload, VP_LENGTH);
-        lastPayloadValid = true;
-
-        if (dmrAudio_running() && (repeated == false)) {
-            for (int f = 0; f < 3; f++) {
-                const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-                if (dmr_isVoiceFrame(frame))
-                    dmrAudio_pushFrame(frame);
-            }
-        }
-    }
-
-    if (crcOk == false)
-        return received;
-
-    if ((status.rxStatus & RX_STATUS_PRIVACY) != 0) {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, encrypted");
-        return received;
-    }
-
-    /*
-     * Colour code is not filtered: on the bench register 0x52 read back the
-     * same value whether read here or in the interrupt (0 for a signal that
-     * should have been CC1, with occasional 8 and 2), so it does not carry a
-     * usable colour code in direct mode - it is the CACH register, and direct
-     * mode has no CACH. The interrupt-sampled value is still read and shown
-     * for diagnosis, but filtering on it would reject every call. Getting a
-     * real direct-mode colour code needs the embedded signalling decoded,
-     * which is a separate task.
-     */
-    uint8_t rxCc = dmrIrq_getRxColorCode();
-
-    uint8_t lc[C6000_LC_LENGTH];
-    C6000.readDmrLinkControl(lc);
-    dmrDebug_record(DMR_DBG_LC, "LC", lc, sizeof(lc));
-
-    if ((lc[0] != LC_FLCO_GROUP) && (lc[0] != LC_FLCO_PRIVATE)) {
-        dmrDebug_log(DMR_DBG_LC, "burst: rejected, unhandled FLCO %02X", lc[0]);
-        return received;
-    }
-
-    if (memcmp(lc, prevLc, sizeof(lc)) != 0) {
-        memcpy(prevLc, lc, sizeof(lc));
-        lcMatches = 1;
-        return received;
-    }
-
-    /*
-     * Confirmed once the same link control has been seen enough times. The
-     * counter is held at the threshold afterwards: it used to grow with every
-     * burst and, being a byte, wrapped back through zero during a long call,
-     * dropping the receive state for a burst or two each time round.
-     */
-    if (lcMatches < LC_CONFIRM_COUNT) {
-        lcMatches += 1;
-        if (lcMatches < LC_CONFIRM_COUNT)
-            return received;
-    }
-
-    uint32_t dstId = (lc[3] << 16) | (lc[4] << 8) | lc[5];
-    uint32_t srcId = (lc[6] << 16) | (lc[7] << 8) | lc[8];
-    bool group = (lc[0] == LC_FLCO_GROUP);
-
-    /*
-     * Only the start of a call is announced, not every burst of it: the tap
-     * link is far slower than the burst rate and logging each one floods it,
-     * which stalls the thread doing the logging.
-     */
-    bool newCall = (rxState.valid == false) || (rxState.srcId != srcId)
-                || (rxState.dstId != dstId);
-
-    rxState.dstId = dstId;
-    rxState.srcId = srcId;
-    rxState.colorCode = rxCc;
-    rxState.groupCall = group;
-    rxState.valid = true;
-
-    if (newCall) {
-        dmrDebug_log(DMR_DBG_INFO, "call: from %lu to %s %lu, color code %u",
-                     (unsigned long)srcId, group ? "TG" : "ID",
-                     (unsigned long)dstId, rxCc);
-
-        /* Start voice playback, if the vocoder is installed. */
-        if (dmrAudio_startRx())
-            dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
-    }
-
-    return received;
-}
-
-#endif /* DMR_THREAD */
-
 /**
  * Build the payload of the next voice burst: three encoded AMBE frames from
  * the microphone, any not yet available falling back to silence; or, on the
@@ -1147,139 +909,13 @@ static void toggleMarker()
 
 bool dmr_txActive()
 {
-    return txState != TX_IDLE;
-}
-
-void dmr_txTimeslotIsr()
-{
-    switch (txState) {
-        /*
-         * The three link control headers go out on the transmit slots, with an
-         * idle slot in between each. The link control is handed to the chip
-         * once, on the first header; it holds onto it for the following two.
-         */
-        case TX_START_1:
-            C6000.writeDmrLinkControlFromIsr(txLc);
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_VOICE_HEADER);
-            txState = TX_START_2;
-            break;
-
-        case TX_START_2:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_START_3;
-            break;
-
-        case TX_START_3:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_VOICE_HEADER);
-            txState = TX_START_4;
-            break;
-
-        case TX_START_4:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_START_5;
-            break;
-
-        case TX_START_5:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_VOICE_HEADER);
-            txState = TX_GAP;
-            break;
-
-        /*
-         * The idle slot preceding each voice frame. Leaving the transmission at
-         * a superframe boundary, when the next frame would be the first of a
-         * superframe, keeps the terminator on the correct slot.
-         */
-        case TX_GAP:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            if (txStopRequested && (txSequence == 0))
-                txState = TX_END_1;
-            else
-                txState = TX_VOICE;
-            break;
-
-        /*
-         * A voice frame: load the payload on the second bus, then set the slot
-         * to transmit it with the current sequence number in the burst type high
-         * nibble, and advance the sequence. The payload is three encoded AMBE
-         * frames from the microphone; any not yet available (start-up, underrun,
-         * or no vocoder installed) fall back to silence, so the call is always
-         * on-air even before audio flows.
-         */
-        case TX_VOICE: {
-            uint8_t payload[VP_LENGTH];
-            nextVoicePayload(payload);
-            dmrPayload_write(payload);
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_VOICE | (txSequence << 4));
-            txSequence = (txSequence + 1) % TX_SUPERFRAME_FRAMES;
-            txState = TX_GAP;
-            break;
-        }
-
-        /*
-         * The terminator carries the link control again so a late listener can
-         * still identify the call as it ends.
-         */
-        case TX_END_1:
-            C6000.writeDmrLinkControlFromIsr(txLc);
-            {
-                uint8_t silence[VP_LENGTH];
-                for (int f = 0; f < 3; f++)
-                    memcpy(&silence[f * DMR_CODEC_FRAME_BYTES],
-                           DMR_VOICE_SILENCE_FRAME, DMR_CODEC_FRAME_BYTES);
-                dmrPayload_write(silence);
-            }
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_TRANSMIT);
-            C6000.writeCfgRegisterFromIsr(TX_REG_BURST_TYPE,
-                                          TX_BURST_TERMINATOR);
-            txState = TX_END_2;
-            break;
-
-        /*
-         * This interrupt marks the start of the slot carrying the terminator,
-         * which must play out untouched: rewriting the timing register here
-         * cut the burst short - the far end never saw the call end - and left
-         * the chip wedged mid-transmission. Only queue an idle slot and wait
-         * out the burst; the reference firmware holds off the teardown for a
-         * slot time at this exact point for the same reason.
-         */
-        case TX_END_2:
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            txState = TX_END_3;
-            break;
-
-        /*
-         * The terminator has been sent, so put the slot timing back to
-         * reception and stop driving the slot. Going idle here is what the
-         * transmitting thread waits on to hand back to the receiver; the full
-         * receive bring-up, which needs more than an idle slot action, is left
-         * to the thread and flagged here.
-         */
-        case TX_END_3:
-            C6000.writeCfgRegisterFromIsr(
-                0x40, static_cast<uint8_t>(C6000_DmrTiming::RX_IDLE));
-            C6000.writeCfgRegisterFromIsr(TX_REG_SLOT_ACTION, TX_SLOT_IDLE);
-            rxRestoreNeeded = true;
-            txState = TX_IDLE;
-            break;
-
-        default:
-            break;
-    }
+    return txRunning;
 }
 
 void dmr_startTx(const bool groupCall, const uint32_t dstId)
 {
     const uint32_t srcId = config.ownId;
 
-#if defined(DMR_THREAD)
     /*
      * The key-up itself is left to the DMR thread, which runs the whole
      * transmission, so that it never interleaves with reception.
@@ -1287,7 +923,7 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId)
     dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
     txSrcId = srcId;
     txStopRequested = false;
-    txState = TX_START_1;
+    txRunning = true;
 
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
@@ -1301,63 +937,6 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId)
     dmrDebug_log(DMR_DBG_INFO, "tx: keying, to %s %lu from %lu",
                  groupCall ? "TG" : "ID", (unsigned long)dstId,
                  (unsigned long)srcId);
-#else
-    /*
-     * Everything the transmit setup touches on the control bus is fenced off
-     * from the interrupt for the duration: the state and link control are set
-     * up, the vocoder pipeline started and the slot clock switched to active
-     * timing, which is what makes the chip raise the timeslot interrupt that
-     * drives the state machine. Only once the bus is released does the next
-     * interrupt find a valid state to act on.
-     */
-    dmrIrq_setBusBusy(true);
-
-    dmr_buildVoiceLc(txLc, groupCall, dstId, srcId);
-    txSequence = 0;
-    txStopRequested = false;
-    txState = TX_START_1;
-
-    struct dmrIrqCounters counters;
-    dmrIrq_getCounters(&counters);
-    txReportedTs = counters.timeslot;
-    txReportedTx = counters.transmit;
-    txReportTick = getTick();
-
-    C6000.writeCfgRegister(0x21, 0xA2); // Polite to color code, reset vocoder
-    C6000.writeCfgRegister(0x22, 0x86); // Start vocoder encode, I2S mode
-    C6000.setDmrTiming(C6000_DmrTiming::ACTIVE); // 0x40 = 0xE3, active timing
-
-    /*
-     * Read back the registers that shape the transmit modulation, so a signal
-     * that goes out as bare carrier can be told apart from wrong deviation or a
-     * misrouted modulator. Done while the bus is still fenced off the interrupt.
-     * Some of these may be write-only and read back as zero regardless.
-     */
-    dmrDebug_log(DMR_DBG_INFO,
-                 "tx regs: 01=%02X 10=%02X 40=%02X 45=%02X 46=%02X 49=%02X "
-                 "4A=%02X 60=%02X E0=%02X",
-                 C6000.readCfgRegister(0x01), C6000.readCfgRegister(0x10),
-                 C6000.readCfgRegister(0x40), C6000.readCfgRegister(0x45),
-                 C6000.readCfgRegister(0x46), C6000.readCfgRegister(0x49),
-                 C6000.readCfgRegister(0x4A), C6000.readCfgRegister(0x60),
-                 C6000.readCfgRegister(0xE0));
-
-    dmrIrq_setBusBusy(false);
-
-    /*
-     * Start capturing and encoding the microphone. Stop any receive playback
-     * first: the two share the vocoder state and the radio is never receiving
-     * and transmitting at once. Without a vocoder installed this does nothing
-     * and the transmit slot machine sends silence, as before.
-     */
-    dmrAudio_stopRx();
-    if (dmrAudio_startTx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
-
-    dmrDebug_log(DMR_DBG_INFO, "tx: keyed, to %s %lu from %lu",
-                 groupCall ? "TG" : "ID", (unsigned long)dstId,
-                 (unsigned long)srcId);
-#endif
 }
 
 void dmr_stopTx()
@@ -1375,28 +954,26 @@ void dmr_txTask()
      * The storm guard shuts the interrupt lines down when too many events pile
      * up between two feeds. During a transmission the timeslot interrupt runs
      * the slot clock at its normal rate, which is well within the limit, but
-     * the receive poll that usually feeds the guard is not running, so it is
-     * fed from here instead.
+     * dmr_task(), which usually feeds the guard, is not called, so it is fed
+     * from here instead.
      */
     dmrIrq_feedWatchdog();
 
     long long now = getTick();
 
-#if defined(DMR_THREAD)
     /* Let the thread check its wind down even if the slot clock stopped. */
     if (dmr_txActive() && txStopRequested
         && ((now - txStopTick) > TX_STOP_TIMEOUT))
         dmrIrq_wakeWaiter();
-#endif
 
     if ((now - txReportTick) < TX_REPORT_INTERVAL)
         return;
 
     /*
-     * Report the slot clock and the state machine's progress while sending. A
+     * Report the slot clock and the transmission's progress while sending. A
      * timeslot rate around 33Hz says the chip is driving the slots and the
-     * state cycling through the gap and voice steps says the bursts are being
-     * set up; either sitting still is the failure signature.
+     * voice frame sequence moving says the bursts are being set up; either
+     * sitting still is the failure signature.
      */
     struct dmrIrqCounters counters;
     dmrIrq_getCounters(&counters);
@@ -1404,7 +981,7 @@ void dmr_txTask()
     dmrDebug_log(DMR_DBG_IRQ,
                  "tx: state %u seq %u, timeslot %lu transmit %lu "
                  "in %lums",
-                 txState, txSequence,
+                 txRunning ? 1u : 0u, txSequence,
                  (unsigned long)(counters.timeslot - txReportedTs),
                  (unsigned long)(counters.transmit - txReportedTx),
                  (unsigned long)(now - txReportTick));
@@ -1432,18 +1009,13 @@ void dmr_init(const struct dmrConfig *cfg)
     config = *cfg;
 
     memset(&rxState, 0, sizeof(rxState));
-    memset(prevLc, 0, sizeof(prevLc));
     lastPayloadValid = false;
 
-    txState = TX_IDLE;
+    txRunning = false;
     txStopRequested = false;
     rxRestoreNeeded = false;
 
     configuredCc = config.colorCode & 0x0F;
-    lcMatches = 0;
-    lastSysCount = 0;
-    lastTsCount = 0;
-    lastBurstTick = 0;
     reportedTs = 0;
     reportedSys = 0;
     reportedTx = 0;
@@ -1473,19 +1045,8 @@ void dmr_init(const struct dmrConfig *cfg)
     C6000.setDmrColorCode(configuredCc);
     C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
 
-#if defined(DMR_THREAD)
     armReceiver();
     dmrCall_reset(&rxCall);
-#else
-    /*
-     * Restarting the slot state machine takes the reset twice before asking
-     * for a receive, anything less leaves the chip ignoring the next slot.
-     */
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
-    C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
-#endif
 
     dmrDebug_mark("dmr: baseband configured");
     checkInitRegisters();
@@ -1493,7 +1054,6 @@ void dmr_init(const struct dmrConfig *cfg)
     dmrDebug_mark("dmr: enabling interrupt lines");
     dmrIrq_init();
 
-#if defined(DMR_THREAD)
     rxThreadRun = true;
 
     pthread_attr_t attr;
@@ -1509,7 +1069,6 @@ void dmr_init(const struct dmrConfig *cfg)
         rxThreadRun = false;
         dmrDebug_log(DMR_DBG_INFO, "dmr: reception thread not started");
     }
-#endif
 
     dmrDebug_setCommand('c', dmr_codec_selfTest, "vocoder self-test");
     dmrDebug_setCommand('m', toggleMarker, "tx test pattern on/off");
@@ -1520,19 +1079,17 @@ void dmr_init(const struct dmrConfig *cfg)
 
 void dmr_terminate()
 {
-#if defined(DMR_THREAD)
     if (rxThreadRun) {
         rxThreadRun = false;
         dmrIrq_wakeWaiter();
         pthread_join(rxThread, NULL);
     }
-#endif
 
     dmrAudio_stopRx();
     dmrAudio_stopTx();
     dmrIrq_terminate();
 
-    txState = TX_IDLE;
+    txRunning = false;
     txStopRequested = false;
     rxRestoreNeeded = false;
 
@@ -1561,15 +1118,11 @@ void dmr_configure(const struct dmrConfig *cfg)
     configuredCc = config.colorCode & 0x0F;
     C6000.setDmrColorCode(configuredCc);
 
-    memset(prevLc, 0, sizeof(prevLc));
-    lcMatches = 0;
-
     dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", configuredCc);
 }
 
 void dmr_task(struct dmrRxState *rx)
 {
-#if defined(DMR_THREAD)
     /*
      * Reception runs on its own thread: this hands its state out, keeps the
      * diagnostics going and wakes the thread for the work it would otherwise
@@ -1592,135 +1145,6 @@ void dmr_task(struct dmrRxState *rx)
     pthread_mutex_lock(&rxMutex);
     *rx = rxState;
     pthread_mutex_unlock(&rxMutex);
-#else
-    struct dmrIrqCounters counters;
-    dmrIrq_getCounters(&counters);
-
-    /*
-     * A RECEIVE request only covers a single slot: the chip receives one and
-     * falls idle unless a fresh request is queued before the next boundary.
-     * OpenGD77 rewrites the slot action from the timeslot interrupt every
-     * 30ms; the interrupt cannot touch the bitbanged SPI here, so it is done
-     * on the slot boundary detected through the timeslot counter instead. The
-     * caller polls fast enough (see OpMode_DMR) to hit the window. Receiving
-     * on both slots picks up noise on the unused one, but that noise fails the
-     * colour code and CRC filters, so it costs an ignored burst rather than a
-     * false decode.
-     */
-    /*
-     * The chip is reached over the bitbanged SPI here, which the system
-     * interrupt handler also uses to read the colour code. Tell the handler to
-     * stand off the bus for the duration so the two never drive it at once.
-     */
-    dmrIrq_setBusBusy(true);
-
-    /*
-     * After a transmission the receiver does not come back on the reset dance
-     * alone: the transmission leaves the chip's receive path, its frame sync
-     * detection above all, needing the whole DMR mode configuration written
-     * again. Re-running that configuration by hand - by leaving DMR mode and
-     * coming back - was the workaround found on the bench; doing the chip half
-     * of it here has the same effect without dropping out of the mode. The
-     * colour code, which the mode configuration sets to a fixed value, is put
-     * back afterwards, then the usual receive bring-up follows.
-     */
-    if (rxRestoreNeeded) {
-        rxRestoreNeeded = false;
-
-        /* The transmission is over; stop capturing the microphone. */
-        dmrAudio_stopTx();
-
-        C6000.dmrMode();
-        C6000.setDmrColorCode(configuredCc);
-        C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::RESET);
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
-
-        memset(prevLc, 0, sizeof(prevLc));
-        lcMatches = 0;
-        lastBurstTick = getTick();
-
-        /*
-         * The timing register is read back so the log says whether the chip
-         * actually took the receive configuration: 43 here is a receiver in
-         * passive timing, anything else means the restore did not stick.
-         */
-        dmrDebug_log(DMR_DBG_INFO,
-                     "dmr: receiver restarted after tx, "
-                     "timing %02X",
-                     C6000.getDmrTiming());
-    }
-
-    if (lastTsCount != counters.timeslot) {
-        lastTsCount = counters.timeslot;
-        C6000.setDmrSlotAction(C6000_DmrSlotAction::RECEIVE);
-    }
-
-    /* Diagnostics for the activity report, see seenFlags. */
-    seenFlags |= C6000.readCfgRegister(0x82);
-    seenStatus |= C6000.readCfgRegister(0x51);
-    if (gpio_readPin(DMR_TS_INT) == 0)
-        seenLinesLow |= 0x01;
-    if (gpio_readPin(DMR_SYS_INT) == 0)
-        seenLinesLow |= 0x02;
-    if (gpio_readPin(DMR_TX_INT) == 0)
-        seenLinesLow |= 0x04;
-
-    /*
-     * The chip signals a frame event on the system interrupt line, but reading
-     * the burst out has to happen here: only the colour code is read from the
-     * handler, the rest of the chip access cannot be done from an interrupt.
-     */
-    if (lastSysCount != counters.system) {
-        uint32_t missed = counters.system - lastSysCount - 1;
-        lastSysCount = counters.system;
-
-        /*
-         * Only the state of the most recent burst is still in the chip, so
-         * several events collapse into a single read. Say so rather than
-         * pretending every burst was seen.
-         */
-        if (missed > 0)
-            dmrDebug_log(DMR_DBG_IRQ, "dmr: %lu bursts not read in time",
-                         (unsigned long)missed);
-
-        /*
-         * A received frame means a DMR carrier is present. This keeps an
-         * established call alive across the voice bursts that sit between the
-         * link control updates: those bursts carry no fresh CRC-valid link
-         * control, so gating the call on link control alone drops it every
-         * few hundred milliseconds during a steady transmission. The identity
-         * of the call still comes from handleBurst; this only holds it up.
-         * Events which are only the slot clock ticking - it keeps running
-         * after a call once the chip has locked to it - do not count.
-         */
-        if (handleBurst())
-            lastBurstTick = getTick();
-    }
-
-    dmrIrq_setBusBusy(false);
-
-    /*
-     * The chip does not say when a call is over: a terminator burst is not
-     * guaranteed to arrive, so the receive state is dropped once no burst
-     * has passed the filters for a while.
-     */
-    if (rxState.valid && ((getTick() - lastBurstTick) > RX_HOLD_TIMEOUT)) {
-        rxState.valid = false;
-        memset(prevLc, 0, sizeof(prevLc));
-        lastPayloadValid = false;
-        lcMatches = 0;
-
-        dmrAudio_stopRx();
-        dmrDebug_log(DMR_DBG_INFO, "call: ended");
-    }
-
-    reportIrqActivity();
-
-    *rx = rxState;
-#endif
 }
 
 #endif /* CONFIG_DMR */

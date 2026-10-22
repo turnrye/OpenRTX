@@ -97,8 +97,8 @@ void dmr_stopTx();
 
 /**
  * Periodic transmit-side housekeeping, called from a thread while a
- * transmission is in progress. It keeps the interrupt watchdog fed, which the
- * receive poll normally does but cannot while transmitting.
+ * transmission is in progress, in place of dmr_task(). It keeps the interrupt
+ * watchdog fed, which dmr_task() normally does.
  */
 void dmr_txTask();
 
