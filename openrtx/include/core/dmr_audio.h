@@ -67,8 +67,8 @@ void dmrAudio_stopTx(void);
 bool dmrAudio_txRunning(void);
 
 /**
- * Take the next encoded AMBE frame for transmission. Safe to call from the
- * timeslot interrupt (lock-free single-consumer).
+ * Take the next encoded AMBE frame for transmission. Lock-free, for the single
+ * consumer that the baseband is, and only while capture is running.
  *
  * @param frame: destination, DMR_CODEC_FRAME_BYTES (9) bytes.
  * @return true if a frame was returned, false if none is ready.

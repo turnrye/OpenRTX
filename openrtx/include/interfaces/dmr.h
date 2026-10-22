@@ -18,6 +18,11 @@ extern "C" {
  * The DMR baseband: what the rtx layer's DMR operating mode drives. Each radio
  * with DMR provides it, receiving and transmitting direct mode voice calls
  * through its baseband chip; the DMR protocol layer decides about the calls.
+ *
+ * The voice frames go through the DMR voice pipeline (core/dmr_audio.h): the
+ * baseband queues those it receives for playback and takes those it sends from
+ * the microphone, as each burst comes. Starting and stopping the playback and
+ * the microphone is left to the operating mode.
  */
 
 /**

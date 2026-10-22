@@ -13,9 +13,11 @@
  * Operating mode for DMR.
  *
  * Receiving surfaces the link control of the decoded calls, which is what the
- * user interface shows as "last heard". Transmitting keys a direct mode group
- * call carrying a constant silence payload: it exercises the whole outbound air
- * interface with no vocoder, the actual voice path is a later step.
+ * user interface shows as "last heard", and plays their voice. Transmitting
+ * keys a call from the radio's own DMR ID carrying the microphone's voice. The
+ * baseband runs the calls on a thread of its own; this mode hands their state
+ * to the rtx status and starts and stops the audio: the playback while a call
+ * is received, the microphone while transmitting.
  */
 class OpMode_DMR : public OpMode
 {
@@ -52,14 +54,15 @@ private:
     void offState(rtxStatus_t *const status);
 
     /**
-     * Receive handling: run the receiver update and surface the decoded call,
-     * handing over to transmission when the PTT is pressed.
+     * Receive handling: run the receiver update, surface the decoded call and
+     * play its voice, handing over to transmission when the PTT is pressed.
      */
     void rxState(rtxStatus_t *const status);
 
     /**
-     * Transmit handling: key the call, hold it while the PTT is down, and let
-     * the terminator play out before returning to reception on release.
+     * Transmit handling: key the call and the microphone, hold it while the
+     * PTT is down, and let the terminator play out before returning to
+     * reception on release.
      */
     void txState(rtxStatus_t *const status);
 

@@ -7,6 +7,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include "interfaces/dmr.h"
+#include "core/dmr_audio.h"
 #include "core/dmr_debug.h"
 #include "rtx/OpMode_DMR.hpp"
 
@@ -28,6 +29,13 @@ void OpMode_DMR::disable()
         dmr_terminate();
         enabled = false;
     }
+
+    /*
+     * The baseband is stopped first, so that it hands no more voice frames
+     * over while the audio stops.
+     */
+    dmrAudio_stopRx();
+    dmrAudio_stopTx();
 
     platform_ledOff(GREEN);
     platform_ledOff(RED);
@@ -137,10 +145,25 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
         platform_ledOff(GREEN);
 
     /*
+     * Play the voice of the call being received, unless it is encrypted, as in
+     * OpenGD77. Playback is asked for on every step until it starts, as a
+     * voice prompt may hold the speaker when the call comes in.
+     */
+    bool play = rx.valid && (rx.encrypted == false);
+    if (play && (dmrAudio_running() == false)) {
+        if (dmrAudio_startRx())
+            dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
+    } else if ((play == false) && dmrAudio_running()) {
+        dmrAudio_stopRx();
+    }
+
+    /*
      * Pressing the PTT hands over through the OFF state, as the M17 mode does,
-     * so the transition into transmission goes through a single place.
+     * so the transition into transmission goes through a single place. The
+     * call being received is no longer played.
      */
     if (platform_getPttStatus() && (status->txDisable == 0)) {
+        dmrAudio_stopRx();
         status->opStatus = OFF;
         return;
     }
@@ -174,6 +197,14 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         platform_ledOff(GREEN);
         platform_ledOn(RED);
 
+        /*
+         * Capture and encode the microphone from now on, so the first voice
+         * frames are ready when the headers are over. The capture starts before
+         * the key-up, so the baseband only ever takes frames from a running one.
+         */
+        if (dmrAudio_startTx())
+            dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+
         radio_enableTx();
         dmr_startTx(status->dmrPrivateCall == 0, status->dmrTalkgroup);
     }
@@ -190,9 +221,10 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
     /*
      * The baseband sends the terminator and returns the chip to reception on
      * its own; wait for it to finish before handing back so the terminator is
-     * not cut off.
+     * not cut off. It takes no more frames from then on, so the capture stops.
      */
     if (dmr_txActive() == false) {
+        dmrAudio_stopTx();
         platform_ledOff(RED);
         startRx = true;
         status->opStatus = OFF;

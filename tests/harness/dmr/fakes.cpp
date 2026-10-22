@@ -385,45 +385,13 @@ std::vector<std::vector<uint8_t>> harness::payloadsWritten()
 
 /* ---------------------------------------------------------------- audio */
 
-static std::atomic<int> rxStarts{ 0 }, rxStops{ 0 }, framesPushed{ 0 },
-    txStarts{ 0 };
-static std::atomic<bool> rxRunning{ false }, txRunning{ false };
+static std::atomic<int> framesPushed{ 0 };
 
 extern "C" {
-bool dmrAudio_startRx(void)
-{
-    rxStarts++;
-    rxRunning = true;
-    return true;
-}
-void dmrAudio_stopRx(void)
-{
-    if (rxRunning)
-        rxStops++;
-    rxRunning = false;
-}
-bool dmrAudio_running(void)
-{
-    return rxRunning;
-}
 void dmrAudio_pushFrame(const uint8_t *frame)
 {
     (void)frame;
     framesPushed++;
-}
-bool dmrAudio_startTx(void)
-{
-    txStarts++;
-    txRunning = true;
-    return true;
-}
-void dmrAudio_stopTx(void)
-{
-    txRunning = false;
-}
-bool dmrAudio_txRunning(void)
-{
-    return txRunning;
 }
 bool dmrAudio_popFrame(uint8_t *frame)
 {
@@ -432,21 +400,9 @@ bool dmrAudio_popFrame(uint8_t *frame)
 }
 }
 
-int harness::audioRxStarts()
-{
-    return rxStarts;
-}
-int harness::audioRxStops()
-{
-    return rxStops;
-}
 int harness::audioFramesPushed()
 {
     return framesPushed;
-}
-int harness::audioTxStarts()
-{
-    return txStarts;
 }
 
 /* ---------------------------------------------------------------- debug log */
@@ -567,8 +523,7 @@ void harness::reset()
         lines.clear();
     }
     clockMs = 0;
-    rxStarts = rxStops = framesPushed = txStarts = 0;
-    rxRunning = txRunning = false;
+    framesPushed = 0;
     memset(&counters, 0, sizeof(counters));
     pendingEvents = 0;
 }

@@ -88,11 +88,8 @@ std::vector<Write> writes();
 std::vector<Write> writes(uint8_t page, uint16_t addr);
 void clearWrites();
 
-/** What the audio fake saw. */
-int audioRxStarts();
-int audioRxStops();
+/** Voice frames handed to playback. */
 int audioFramesPushed();
-int audioTxStarts();
 
 /** Payloads written to the payload bus, 27 bytes each. */
 std::vector<std::vector<uint8_t>> payloadsWritten();

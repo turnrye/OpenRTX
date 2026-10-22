@@ -262,7 +262,7 @@ static void armReceiver()
 /**
  * End the call in progress, in the order the stock firmware does at a
  * terminator: stop the chip's vocoder decode, restart the search for a
- * transmission, clear the decode buffer, then stop the playback.
+ * transmission, then clear the decode buffer.
  *
  * @param reason: what ended the call, for the log.
  */
@@ -282,7 +282,6 @@ static void endCall(const char *reason)
     publishCall();
     lastPayloadValid = false;
 
-    dmrAudio_stopRx();
     dmrDebug_log(DMR_DBG_INFO, "call: ended, %s", reason);
 }
 
@@ -326,13 +325,10 @@ static void takeCallLc(const uint8_t cc)
 
     /*
      * A new call: clear the chip's decode buffer as the stock firmware does
-     * when it accepts one, and restart the playback on a clean queue.
+     * when it accepts one.
      */
     if (RX_VOCODER_CONTROL)
         C6000.clearDmrBuffers(C6000_DmrBuffers::DECODE);
-
-    if (dmrAudio_running())
-        dmrAudio_stopRx();
 
     publishCall();
     lastPayloadValid = false;
@@ -342,13 +338,6 @@ static void takeCallLc(const uint8_t cc)
                  (unsigned long)call->srcId, call->groupCall ? "TG" : "ID",
                  (unsigned long)call->dstId, cc,
                  call->encrypted ? ", encrypted" : "");
-
-    /* Encrypted voice is not played, as in OpenGD77. */
-    if (call->encrypted)
-        return;
-
-    if (dmrAudio_startRx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
 }
 
 /**
@@ -387,7 +376,7 @@ static void takeVoicePayload(const uint8_t status)
     memcpy(lastPayload, payload, VP_LENGTH);
     lastPayloadValid = true;
 
-    if (repeated || (dmrAudio_running() == false))
+    if (repeated)
         return;
 
     for (int f = 0; f < 3; f++) {
@@ -440,6 +429,7 @@ static void handleBurstEvent(const uint8_t status, const uint8_t cc)
     if (dmrCall_takeVoice(&rxCall, getTick()) == false)
         return;
 
+    /* Encrypted voice is not played, as in OpenGD77. */
     if (rxCall.call.encrypted == false)
         takeVoicePayload(status);
 }
@@ -648,8 +638,6 @@ static void keyUp()
         dmrDebug_log(DMR_DBG_INFO, "call: ended, transmitting");
     }
 
-    dmrAudio_stopRx();
-
     dmrTx_start(&txSeq, TX_HEADERS);
     txSequence = 0;
 
@@ -662,27 +650,19 @@ static void keyUp()
     rxLocked = false;
     rxMisses = 0;
 
-    /*
-     * Capture and encode the microphone from now on, so the first voice
-     * frames are ready when the headers are over.
-     */
-    if (dmrAudio_startTx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
-
     dmrDebug_log(DMR_DBG_INFO, "tx: keyed, timing %02X", C6000.getDmrTiming());
 }
 
 /**
  * End the transmission, in the slot after the one following the terminator:
- * stop the vocoder encode and the microphone, clear the vocoder buffers and
- * stop transmitting. The receiver comes back on the next event.
+ * stop the vocoder encode, clear the vocoder buffers and stop transmitting.
+ * The receiver comes back on the next event.
  *
  * @param reason: what ended it, for the log.
  */
 static void endTransmission(const char *reason)
 {
     C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
-    dmrAudio_stopTx();
     C6000.clearDmrBuffers(C6000_DmrBuffers::ALL);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
@@ -1086,8 +1066,6 @@ void dmr_terminate()
         pthread_join(rxThread, NULL);
     }
 
-    dmrAudio_stopRx();
-    dmrAudio_stopTx();
     dmrIrq_terminate();
 
     txRunning = false;

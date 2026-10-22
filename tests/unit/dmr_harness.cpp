@@ -12,6 +12,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "scenario.h"
 
@@ -125,7 +126,6 @@ TEST_CASE("DMR call starts from a header and ends on its terminator",
     REQUIRE(rx.srcId == 3101003);
     REQUIRE(rx.colorCode == CC);
     REQUIRE_FALSE(rx.encrypted);
-    REQUIRE(audioRxStarts() == 1);
     // The decode buffer is cleared when a call is accepted
     REQUIRE_FALSE(writes(CONFIG, 0x21).empty());
 
@@ -133,7 +133,6 @@ TEST_CASE("DMR call starts from a header and ends on its terminator",
     burst(TERMINATOR, CC);
     rx = poll();
     REQUIRE_FALSE(rx.valid);
-    REQUIRE(audioRxStops() == 1);
 
     // Stock call end: 22=16, re-arm, 20=00, 21=01
     auto ws = writes();
@@ -205,7 +204,6 @@ TEST_CASE("DMR slot ticks alone neither start nor hold a call",
     for (int n = 0; n < 20; n++)
         burst(HEADER, CC, FLAG_TICK);
     REQUIRE_FALSE(poll().valid);
-    REQUIRE(audioRxStarts() == 0);
 }
 
 TEST_CASE("DMR bursts are ignored until the receiver has locked",
@@ -285,7 +283,6 @@ TEST_CASE("DMR call is lost after 25 slots without a voice sync",
     timeslot(); // The 25th
     REQUIRE_FALSE(poll().valid);
     REQUIRE(rearmSequenceIn(writes()));
-    REQUIRE(audioRxStops() == 1);
 }
 
 TEST_CASE("DMR call receives only its own slot", "[dmr][harness]")
@@ -469,7 +466,12 @@ TEST_CASE("DMR stale link control does not bring a call back", "[dmr][harness]")
     for (int n = 0; n < 30; n++)
         burst(NOISE, 0x0A, FLAG_BURST);
     REQUIRE_FALSE(poll().valid);
-    REQUIRE(audioRxStarts() == 1);
+
+    int starts = 0;
+    for (const std::string &line : logLines())
+        if (line.find("call: from") != std::string::npos)
+            starts++;
+    REQUIRE(starts == 1);
 }
 
 TEST_CASE("DMR transmission follows the stock slot sequence", "[dmr][harness]")
@@ -482,7 +484,6 @@ TEST_CASE("DMR transmission follows the stock slot sequence", "[dmr][harness]")
     REQUIRE(writes(CONFIG, 0x14).back().value == (3101003 & 0xFF));
     REQUIRE(writes(CONFIG, 0x40).back().value == 0xA3);
     REQUIRE(writes(CONFIG, 0x41).back().value == 0x40);
-    REQUIRE(audioTxStarts() == 1);
     REQUIRE(txActive());
 
     // Three headers on alternate slots, the last starting the encoder

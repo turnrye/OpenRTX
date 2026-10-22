@@ -188,10 +188,12 @@ void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
 
 /*
  * Transmit side: capture the microphone, encode it and hand the AMBE frames to
- * the transmit slot state machine. The state machine reads them from the
- * timeslot interrupt, so this queue is a single-producer/single-consumer ring
- * with no lock - the interrupt cannot take a mutex. head is written only by the
- * encode thread, tail only by the interrupt; both are word-aligned reads/writes.
+ * the baseband, which takes them on its own thread as each voice burst goes
+ * out. The queue is a single-producer/single-consumer ring with no lock, so
+ * that taking a frame never holds the baseband up: head is written only by the
+ * encode thread, tail only by the baseband; both are word-aligned reads and
+ * writes. The baseband takes frames only while capture runs, so starting and
+ * stopping it can reset the queue.
  */
 #define TX_QUEUE_FRAMES 8
 
