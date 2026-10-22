@@ -64,6 +64,54 @@ TEST_CASE("DMR driver arms the receiver as the stock firmware does",
     REQUIRE(cc.back().value == (CC << 4));
 }
 
+/* The registers the Connect Systems direct mode setup writes, in its order. */
+static const std::vector<uint16_t> CS_SETUP_REGS = { 0x00, 0x10, 0x11, 0x20,
+                                                     0x21, 0x22, 0x40, 0x41,
+                                                     0x5F, 0x64, 0x81, 0xA1 };
+
+TEST_CASE("DMR sets direct mode up the way the Connect Systems firmware does",
+          "[dmr][harness]")
+{
+    Driver d;
+
+    // Buffers and slot machine reset, DMR layers reset, then direct mode with
+    // every interrupt and the receiver restarted
+    const std::vector<RegWrite> setup = {
+        { 0x20, 0x00 }, { 0x21, 0x01 }, { 0x21, 0x02 }, { 0x22, 0x16 },
+        { 0x22, 0x46 }, { 0x40, 0x03 }, { 0x41, 0x20 }, { 0x41, 0x00 },
+        { 0x41, 0x40 }, { 0x40, 0x43 }, { 0x11, 0x80 }, { 0xA1, 0x00 },
+        { 0x00, 0x3F }, { 0x10, 0x6A }, { 0x5F, 0xC0 }, { 0x81, 0xFF },
+        { 0x40, 0x03 }, { 0x41, 0x20 }, { 0x41, 0x00 }, { 0x41, 0x40 },
+        { 0x40, 0x43 }, { 0x64, 0x10 }
+    };
+    REQUIRE(containsSequence(configWrites(writes(), CS_SETUP_REGS), setup));
+    REQUIRE(lastWrite(CONFIG, 0x1F) == (CC << 4));
+
+    std::vector<uint8_t> sync;
+    for (uint16_t a = 0x04; a <= 0x09; a++)
+        sync.push_back(lastWrite(AUX, a));
+    REQUIRE(sync
+            == std::vector<uint8_t>({ 0xD5, 0xD7, 0xF7, 0x7F, 0xD7, 0x57 }));
+}
+
+TEST_CASE("DMR call end follows the Connect Systems order", "[dmr][harness]")
+{
+    Driver d;
+    startCall();
+    clearWrites();
+
+    burst(TERMINATOR, CC);
+    REQUIRE_FALSE(poll().valid);
+
+    // Vocoder off, receiver re-armed, voice control reset, decode buffer clear
+    const std::vector<RegWrite> end = { { 0x22, 0x16 }, { 0x41, 0x00 },
+                                        { 0x40, 0x03 }, { 0x41, 0x20 },
+                                        { 0x41, 0x40 }, { 0x40, 0x43 },
+                                        { 0x20, 0x00 }, { 0x21, 0x01 } };
+    REQUIRE(containsSequence(
+        configWrites(writes(), { 0x20, 0x21, 0x22, 0x40, 0x41 }), end));
+}
+
 TEST_CASE("DMR call starts from a header and ends on its terminator",
           "[dmr][harness]")
 {
@@ -441,11 +489,17 @@ TEST_CASE("DMR transmission follows the stock slot sequence", "[dmr][harness]")
     REQUIRE(writes(CONFIG, 0x21).back().value == 0x03);
     REQUIRE(writes(CONFIG, 0x41).back().value == 0x40);
 
-    // The receiver comes back on the next event, with the stock sequence
+    // The receiver comes back on the next event, with the stock sequence:
+    // voice control reset, encode buffer clear, vocoder off then idle, re-arm
     clearWrites();
     timeslot();
-    REQUIRE(rearmSequenceIn(writes()));
-    REQUIRE(writes(CONFIG, 0x21).front().value == 0x02);
+    const std::vector<RegWrite> restore = { { 0x20, 0x00 }, { 0x21, 0x02 },
+                                            { 0x22, 0x16 }, { 0x22, 0x46 },
+                                            { 0x41, 0x00 }, { 0x40, 0x03 },
+                                            { 0x41, 0x20 }, { 0x41, 0x40 },
+                                            { 0x40, 0x43 } };
+    REQUIRE(containsSequence(
+        configWrites(writes(), { 0x20, 0x21, 0x22, 0x40, 0x41 }), restore));
 }
 
 TEST_CASE("DMR sent slots never follow each other", "[dmr][harness]")
