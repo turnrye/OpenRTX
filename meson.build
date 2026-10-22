@@ -1349,6 +1349,16 @@ dmr_audio_test = executable('dmr_audio_test',
                             dependencies: [threads_dep, catch2_dep],
                             link_args: linux_l_args)
 
+dmr_debug_test = executable('dmr_debug_test',
+                            sources : ['tests/unit/dmr_debug.cpp',
+                                       'openrtx/src/core/dmr_debug.c'],
+                            c_args  : ['-std=gnu17', '-Dsniprintf=snprintf',
+                                       '-Dvsniprintf=vsnprintf'],
+                            cpp_args: ['-std=c++14'],
+                            include_directories: ['tests/harness/dmr_debug',
+                                                  'openrtx/include'],
+                            dependencies: [threads_dep, catch2_dep])
+
 dsp_oversampling_test = executable('dsp_oversampling_test',
                                     sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1401,5 +1411,6 @@ test('DMR Driver Harness', dmr_harness_test)
 test('DMR Driver Harness, MD-UV3x0', dmr_harness_uv3x0_test)
 test('DMR Operating Mode Test', opmode_dmr_test)
 test('DMR Voice Pipeline Test', dmr_audio_test)
+test('DMR Debug Tap Test', dmr_debug_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)
