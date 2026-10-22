@@ -33,8 +33,6 @@ static const uint8_t initSeq5[] = { 0x01, 0x40, 0x00, 0x01, 0x01, 0x02, 0x01, 0x
 static const uint8_t initSeq6[] = { 0x01, 0x50, 0x00, 0x08, 0xEB, 0x78, 0x67 };
 static const uint8_t initSeq7[] = { 0x01, 0x04, 0xD5, 0xD7, 0xF7, 0x7F, 0xD7, 0x57 };
 
-template class HR_Cx000 < C6000_SpiOpModes >;
-
 template< class M >
 void HR_Cx000< M >::init()
 {
@@ -200,6 +198,12 @@ void HR_Cx000< M >::stopAnalogTx()
     writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
     writeReg(M::CONFIG, 0x34, 0x98);    // FM bpf enabled, 25kHz bandwidth
 }
+
+/*
+ * Instantiated after the member definitions above, so that every one of them
+ * is emitted whichever compiler builds this file.
+ */
+template class HR_Cx000< C6000_SpiOpModes >;
 
 /*
  * The TYT firmware's direct mode load, from its digital channel mode set:
