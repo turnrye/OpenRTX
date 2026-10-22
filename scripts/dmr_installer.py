@@ -36,7 +36,7 @@ import tempfile
 DONOR_BASE   = 0x0800C000            # donor (TYT) application load address
 CODEC_ADDR   = 0x0807537C            # where the codec runs
 CODEC_OFFSET = CODEC_ADDR - DONOR_BASE   # 0x6937C, offset within the donor
-CODEC_LEN    = 0x48BB0               # 298928 bytes
+CODEC_LEN    = 0x48BB0               # 297904 bytes
 CODEC_MAGIC  = bytes.fromhex("2de9f04f")  # first word, "push {r4-r11,lr}"
 WRAP_MODEL   = "UV3X0"               # radio_tool wrap type for MD-UV380/390
 OUTSEC_MAGIC = b"OutSecurityBin"     # TYT wrapped-firmware header
