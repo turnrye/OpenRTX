@@ -1274,6 +1274,10 @@ dmr_voice_sequence_test = executable('dmr_voice_sequence_test',
                                      sources : unit_test_src + ['tests/unit/DMR_voiceSequence.cpp'],
                                      kwargs  : unit_test_opts)
 
+settings_layout_test = executable('settings_layout_test',
+                                  sources : unit_test_src + ['tests/unit/settings_layout.cpp'],
+                                  kwargs  : unit_test_opts)
+
 mic_frame_test = executable('mic_frame_test',
                             sources : unit_test_src + ['tests/unit/mic_frame.cpp'],
                             kwargs  : unit_test_opts)
@@ -1347,6 +1351,7 @@ test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('Mic Frame Test', mic_frame_test)
 test('DMR Call Control Test', dmr_call_test)
 test('DMR Voice Sequence Test', dmr_voice_sequence_test)
+test('Settings Layout Test', settings_layout_test)
 test('DMR Driver Harness', dmr_harness_test)
 test('GFX Text Test',        gfx_text_test)
 test('M17 Baseband Replay Test', m17_replay_test)
