@@ -111,3 +111,20 @@ void HR_C6000::readDmrVoicePayload(uint8_t *payload)
 {
     readPage(C6000_SpiOpModes::DATA, 0x66, payload, C6000_VOICE_PAYLOAD_LENGTH);
 }
+
+/* The sync of a voice frame A sent by a repeater. */
+static const uint8_t repeaterVoiceSync[6] = {0x75, 0x5F, 0xD7, 0xDF, 0x75, 0xF7};
+
+void HR_C6000::readDmrRepeaterPayload(uint8_t *payload, const uint8_t block)
+{
+    uint8_t addr = (block == 0) ? 0x39 : 0x69;
+    readPage(C6000_SpiOpModes::DATA, addr, payload, C6000_VOICE_PAYLOAD_LENGTH);
+}
+
+bool HR_C6000::dmrRepeaterVoiceSync(const uint8_t block)
+{
+    uint8_t sync[sizeof(repeaterVoiceSync)];
+    uint8_t addr = (block == 0) ? 0x33 : 0x63;
+    readPage(C6000_SpiOpModes::DATA, addr, sync, sizeof(sync));
+    return memcmp(sync, repeaterVoiceSync, sizeof(sync)) == 0;
+}

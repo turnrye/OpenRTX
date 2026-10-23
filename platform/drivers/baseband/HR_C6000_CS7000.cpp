@@ -266,13 +266,24 @@ void HR_Cx000< M >::stopAnalogTx()
     writeReg(M::CONFIG, 0x34, 0x98);    // FM bpf enabled, 25kHz bandwidth
 }
 
-/*
- * The Connect Systems firmware's direct mode load: clear the vocoder buffers,
- * restart the slot state machine, reset the DMR and physical layers, load the
- * MS sourced data sync pattern, select direct mode with every interrupt
- * enabled, then restart reception.
- */
 void HR_C6000::dmrDirectMode()
+{
+    dmrSetup(0x6A, false);  // DMR, direct mode
+}
+
+void HR_C6000::dmrRepeaterMode(const uint8_t timeslot)
+{
+    dmrSetup((timeslot == 2) ? 0x6D : 0x6C, true);  // DMR, repeater mode
+}
+
+/*
+ * The Connect Systems firmware's digital channel load: clear the vocoder
+ * buffers, restart the slot state machine, reset the DMR and physical layers,
+ * load the MS sourced data sync pattern and the DMR mode, with every interrupt
+ * enabled, then restart reception. For a repeater the mode goes in before the
+ * sync pattern, for direct mode after it.
+ */
+void HR_C6000::dmrSetup(const uint8_t mode, const bool modeFirst)
 {
     using M = C6000_SpiOpModes;
 
@@ -291,6 +302,9 @@ void HR_C6000::dmrDirectMode()
 
     writeReg(M::CONFIG, 0x00, 0x3F); // Reset DMR and physical layer
 
+    if(modeFirst)
+        writeReg(M::CONFIG, 0x10, mode);
+
     // Frame sync pattern, MS sourced data
     writeReg(M::AUX, 0x04, 0xD5);
     writeReg(M::AUX, 0x05, 0xD7);
@@ -299,8 +313,10 @@ void HR_C6000::dmrDirectMode()
     writeReg(M::AUX, 0x08, 0xD7);
     writeReg(M::AUX, 0x09, 0x57);
 
-    writeReg(M::CONFIG, 0x10, 0x6A); // DMR, direct mode
-    writeReg(M::CONFIG, 0x5F, 0xC0); // Frame sync detection for direct mode
+    if(modeFirst == false)
+        writeReg(M::CONFIG, 0x10, mode);
+
+    writeReg(M::CONFIG, 0x5F, 0xC0); // Frame sync detection
     writeReg(M::CONFIG, 0x81, 0xFF); // All interrupts enabled
 
     writeReg(M::CONFIG, 0x40, 0x03); // Decode mode = non test mode

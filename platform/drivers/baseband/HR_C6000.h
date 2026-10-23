@@ -418,7 +418,47 @@ public:
      */
     void dmrDirectMode();
 
+    /**
+     * Set up the DMR protocol side of the chip for reception through a
+     * repeater, the way the radio's stock firmware does: as for direct mode,
+     * with the repeater mode of the channel's timeslot. Only the CS7000 Plus
+     * has it so far.
+     *
+     * @param timeslot: the channel's timeslot, 1 or 2.
+     */
+    void dmrRepeaterMode(const uint8_t timeslot);
+
+    /**
+     * Read the voice payload of the last burst received through a repeater.
+     * The chip keeps a block per timeslot of the downlink on the data page,
+     * at offsets 0x30 and 0x60: three bytes, the burst's sync, then the
+     * payload.
+     *
+     * @param payload: destination buffer, C6000_VOICE_PAYLOAD_LENGTH bytes.
+     * @param block: 0 for the block at 0x30, 1 for the one at 0x60.
+     */
+    void readDmrRepeaterPayload(uint8_t *payload, const uint8_t block);
+
+    /**
+     * Tell whether a block holds a repeater's voice sync, as the block a
+     * voice frame A was just received into does.
+     *
+     * @param block: 0 for the block at 0x30, 1 for the one at 0x60.
+     * @return true if the block's sync is the repeater voice sync.
+     */
+    bool dmrRepeaterVoiceSync(const uint8_t block);
+
 private:
+
+    /**
+     * Set up the DMR protocol side of the chip, as the radio's stock firmware
+     * loads a digital channel.
+     *
+     * @param mode: DMR mode, register 0x10.
+     * @param modeFirst: write the mode before the sync pattern, as for a
+     * repeater, rather than after it.
+     */
+    void dmrSetup(const uint8_t mode, const bool modeFirst);
 
     /**
      * Write a register with 16-bit address.
