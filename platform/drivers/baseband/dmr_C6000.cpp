@@ -929,11 +929,13 @@ void dmr_startTx(const bool groupCall, const uint32_t dstId)
 
 void dmr_stopTx()
 {
-    if (txStopRequested == false)
+    /* The rtx layer asks on every step until the transmission is over. */
+    if (txStopRequested == false) {
         txStopTick = getTick();
+        dmrDebug_log(DMR_DBG_INFO, "tx: unkey requested");
+    }
 
     txStopRequested = true;
-    dmrDebug_log(DMR_DBG_INFO, "tx: unkey requested");
 }
 
 void dmr_txTask()
