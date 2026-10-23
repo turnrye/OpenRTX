@@ -58,6 +58,11 @@ void dmr_txTask()
 {
 }
 
+bool dmr_txReady()
+{
+    return true;
+}
+
 bool dmr_txActive()
 {
     return false;

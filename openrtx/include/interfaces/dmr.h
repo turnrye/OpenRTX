@@ -109,6 +109,15 @@ void dmr_stopTx();
 void dmr_txTask();
 
 /**
+ * Check whether a transmission can start on the configured channel. Direct
+ * mode transmits at any time; through a repeater, the bursts have to follow the
+ * repeater's timing, which the baseband may not have.
+ *
+ * @return true if dmr_startTx would key up.
+ */
+bool dmr_txReady();
+
+/**
  * Check whether a transmission is still in progress.
  *
  * @return true until the terminator has been sent and the chip handed back to

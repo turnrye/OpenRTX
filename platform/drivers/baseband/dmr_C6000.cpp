@@ -1098,6 +1098,12 @@ static void toggleMarker()
     dmrDebug_log(DMR_DBG_INFO, "tx: test pattern %s", txMarker ? "on" : "off");
 }
 
+bool dmr_txReady()
+{
+    /* Repeater channels are not transmitted on yet. */
+    return config.access != DMR_ACCESS_REPEATER;
+}
+
 bool dmr_txActive()
 {
     return txRunning;
