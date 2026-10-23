@@ -623,9 +623,6 @@ static void handleRepeaterSlot()
     lastSlotCount = counters.timeslot;
     lastSlotTick = getTick();
 
-    dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X",
-                 (unsigned long)counters.timeslot, status, cach, syncSource);
-
     if (rxCall.active) {
         if ((status & C6000_DMR_SYNC_MASK) == C6000_DMR_CLASS_VOICE_SYNC) {
             callSyncMisses = 0;
@@ -638,6 +635,9 @@ static void handleRepeaterSlot()
         }
 
         bool ours = (dmrRpt_advance(&rpt, slots) == DMR_RPT_TAKE);
+        dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X call %c",
+                     (unsigned long)counters.timeslot, status, cach, syncSource,
+                     ours ? 'T' : '-');
         C6000.setDmrSlotAction(ours ? C6000_DmrSlotAction::RECEIVE :
                                       C6000_DmrSlotAction::IDLE);
         return;
@@ -649,8 +649,16 @@ static void handleRepeaterSlot()
     sample.colorCode = (cach >> 4) & 0x0F;
     sample.tc = (cach >> 2) & 1;
 
+    /* Searching, skip, take, lost: what was decided for the slot coming next */
+    static const char marks[] = { '.', '-', 'T', 'L' };
+
     bool wasAligned = rpt.aligned;
-    switch (dmrRpt_takeSlot(&rpt, &sample, slots)) {
+    enum dmrRptAction action = dmrRpt_takeSlot(&rpt, &sample, slots);
+    dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X %c",
+                 (unsigned long)counters.timeslot, status, cach, syncSource,
+                 marks[action]);
+
+    switch (action) {
         case DMR_RPT_LOST:
             if (wasAligned)
                 restartRepeater(sample.repeater ? "no colour code" :
