@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The DMR codec installer (scripts/dmr_installer.py) against a made-up donor
-# and fakes of radio_tool and dfu-util: where the codec lands in each radio's
+# and fakes of radio_tool and dfu-util: where the codec lands in the MD-UV3x0
 # image, how that image comes out and is flashed, and the donors and images it
 # turns away. The made-up donor carries the codec's first word followed by a
 # pattern; there are no codec bytes here.
@@ -29,12 +29,11 @@ SCRIPT = os.path.join(ROOT, "scripts", "dmr_installer.py")
 CODEC_ADDR = 0x0807537C
 CODEC_LEN = 0x48BB0
 
-# The image load address of each radio.
+# The MD-UV3x0 image load address, and an initial stack pointer in its RAM.
 UV3X0_BASE = 0x0800C000
-CS7000P_BASE = 0x08000000
-
-# An initial stack pointer in each radio's RAM.
 UV3X0_SP = 0x20020000
+
+# A stack pointer in the CS7000 Plus's RAM, for an image of the wrong radio.
 CS7000P_SP = 0x24010000
 
 # The donor application starts at 0x0800C000, like the MD-UV3x0 image.
@@ -44,6 +43,9 @@ DONOR_CODEC_OFFSET = CODEC_ADDR - 0x0800C000
 # unwraps, then the application.
 DONOR_MAGIC = b"OutSecurityBin"
 DONOR_HEADER = 0x100
+
+# What the fake radio_tool puts in front of an image it wraps.
+WRAP_HEADER = b"WRAP UV3X0 0x800C000\n"
 
 CODEC = bytes.fromhex("2de9f04f") + bytes((i * 7 + 3) & 0xFF
                                           for i in range(CODEC_LEN - 4))
@@ -82,7 +84,7 @@ def donor(codec=CODEC, magic=DONOR_MAGIC):
     return magic.ljust(DONOR_HEADER, b"\0") + bytes(app)
 
 
-def firmware(sp, length=4096):
+def firmware(sp=UV3X0_SP, length=4096):
     return sp.to_bytes(4, "little") + bytes((i * 13 + 1) & 0x7F
                                             for i in range(length - 4))
 
@@ -130,8 +132,8 @@ class Installer(unittest.TestCase):
             return f.read().splitlines()
 
     # Only the fakes are on the path, so no real flasher can ever run.
-    def install(self, target, fw, donor_data=None, *extra):
-        args = [sys.executable, SCRIPT, "--target", target,
+    def install(self, fw, donor_data=None, *extra):
+        args = [sys.executable, SCRIPT,
                 "--firmware", self.file("fw.bin", fw),
                 "--output", self.out, "--radio-tool", self.radio_tool]
         if donor_data is not None:
@@ -145,78 +147,61 @@ class Installer(unittest.TestCase):
         self.assertIn(message, result.stderr)
         self.assertFalse(os.path.exists(self.out))
 
-    # The firmware, erased flash up to the codec, then the codec.
-    def assertMerged(self, image, fw, base):
-        offset = CODEC_ADDR - base
+    # The wrapper, the firmware, erased flash up to the codec, then the codec.
+    def assertMerged(self, image, fw):
+        self.assertEqual(image[:len(WRAP_HEADER)], WRAP_HEADER)
+        image = image[len(WRAP_HEADER):]
+        offset = CODEC_ADDR - UV3X0_BASE
         self.assertEqual(len(image), offset + CODEC_LEN)
         self.assertEqual(image[:len(fw)], fw)
         self.assertEqual(image[len(fw):offset], b"\xFF" * (offset - len(fw)))
         self.assertTrue(image[offset:] == CODEC, "codec not at 0x%X" % offset)
 
     def test_firmware_and_installer_agree_on_the_codec_address(self):
-        found = []
-        for ld in ("platform/mcu/STM32F4xx/linker_script_MDx.ld",
-                   "platform/mcu/STM32H7xx/linker_script_cs7000p.ld"):
-            with open(os.path.join(ROOT, ld)) as f:
-                text = f.read()
-            start = re.search(r"_ambe_blob_start\s*=\s*(0x[0-9A-Fa-f]+)", text)
-            end = re.search(r"_ambe_blob_end\s*=\s*(0x[0-9A-Fa-f]+)", text)
-            found.append((ld, int(start.group(1), 16),
-                          int(end.group(1), 16) - int(start.group(1), 16)))
-        with open(os.path.join(ROOT, "platform/drivers/baseband/dmr_codec.c")) as f:
+        with open(os.path.join(ROOT, "platform/mcu/STM32F4xx/"
+                                     "linker_script_MDx.ld")) as f:
+            text = f.read()
+        start = int(re.search(r"_ambe_blob_start\s*=\s*(0x[0-9A-Fa-f]+)",
+                              text).group(1), 16)
+        end = int(re.search(r"_ambe_blob_end\s*=\s*(0x[0-9A-Fa-f]+)",
+                            text).group(1), 16)
+        self.assertEqual(start, CODEC_ADDR)
+        self.assertEqual(end - start, CODEC_LEN)
+
+        # The codec driver has one address table per radio
+        with open(os.path.join(ROOT,
+                               "platform/drivers/baseband/dmr_codec.c")) as f:
             starts = re.findall(r"#define\s+AMBE_REGION_START\s+(0x[0-9A-Fa-f]+)",
                                 f.read())
         self.assertIn(CODEC_ADDR, [int(a, 16) for a in starts])
 
         installer = load_installer()
-        for where, start, length in found:
-            with self.subTest(where=where):
-                self.assertEqual(start, CODEC_ADDR)
-                self.assertEqual(length, CODEC_LEN)
         self.assertEqual(installer.CODEC_ADDR, CODEC_ADDR)
         self.assertEqual(installer.CODEC_LEN, CODEC_LEN)
 
-    def test_mduv3x0_image_gets_the_codec_and_the_tyt_wrapper(self):
-        fw = firmware(UV3X0_SP)
-        result = self.install("mduv3x0", fw, donor(), "--any-donor")
+    def test_image_gets_the_codec_and_the_tyt_wrapper(self):
+        fw = firmware()
+        result = self.install(fw, donor(), "--any-donor")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        header = b"WRAP UV3X0 0x800C000\n"
-        image = self.output()
-        self.assertEqual(image[:len(header)], header)
-        self.assertMerged(image[len(header):], fw, UV3X0_BASE)
+        self.assertMerged(self.output(), fw)
         self.assertIn("flash with: %s -d 0 -f -i %s"
                       % (self.radio_tool, self.out), result.stdout)
 
-    def test_cs7000p_image_gets_the_codec_and_comes_out_raw(self):
-        fw = firmware(CS7000P_SP)
-        result = self.install("cs7000p", fw, donor(), "--any-donor")
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-        self.assertMerged(self.output(), fw, CS7000P_BASE)
-        self.assertFalse(any("--wrap" in c for c in self.tool_calls()))
-        self.assertIn("flash with: dfu-util -d 0483:df11 -a 0 -s 0x08000000 "
-                      "-D " + self.out, result.stdout)
-
     def test_without_a_donor_the_image_is_left_voiceless(self):
-        fw = firmware(CS7000P_SP)
-        result = self.install("cs7000p", fw)
+        fw = firmware()
+        result = self.install(fw)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("voice-less", result.stdout)
-        self.assertEqual(self.output(), fw)
-        self.assertEqual(self.tool_calls(), [])
-
-        fw = firmware(UV3X0_SP)
-        result = self.install("mduv3x0", fw)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.output(), b"WRAP UV3X0 0x800C000\n" + fw)
+        self.assertEqual(self.output(), WRAP_HEADER + fw)
+        self.assertFalse(any("--unwrap" in c for c in self.tool_calls()))
 
     def test_only_the_reference_donor_is_taken_without_asking(self):
-        fw = firmware(CS7000P_SP)
-        self.assertRefused(self.install("cs7000p", fw, donor()),
+        fw = firmware()
+        self.assertRefused(self.install(fw, donor()),
                            "does not match the reference")
 
-        result = self.install("cs7000p", fw, donor(), "--any-donor")
+        result = self.install(fw, donor(), "--any-donor")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("warning: donor is not the reference", result.stdout)
 
@@ -241,48 +226,40 @@ class Installer(unittest.TestCase):
         ]
         for data, message in cases:
             with self.subTest(message=message):
-                self.assertRefused(self.install("cs7000p", firmware(CS7000P_SP),
-                                                data, "--any-donor"),
-                                   message)
-
-    def test_images_that_are_not_for_the_radio_are_refused(self):
-        cases = [
-            ("mduv3x0", donor(), "looks like a wrapped/donor image"),
-            ("cs7000p", firmware(UV3X0_SP), "valid STM32 stack pointer"),
-            ("mduv3x0", firmware(CS7000P_SP), "valid STM32 stack pointer"),
-            ("mduv3x0", UV3X0_SP.to_bytes(4, "little"), "too small"),
-        ]
-        for target, fw, message in cases:
-            with self.subTest(target=target, message=message):
-                self.assertRefused(self.install(target, fw, donor(),
+                self.assertRefused(self.install(firmware(), data,
                                                 "--any-donor"),
                                    message)
 
+    def test_images_that_are_not_an_mduv3x0_image_are_refused(self):
+        cases = [
+            (donor(), "looks like a wrapped/donor image"),
+            (firmware(CS7000P_SP), "valid STM32 stack pointer"),
+            (UV3X0_SP.to_bytes(4, "little"), "too small"),
+        ]
+        for fw, message in cases:
+            with self.subTest(message=message):
+                self.assertRefused(self.install(fw, donor(), "--any-donor"),
+                                   message)
+
     def test_an_image_reaching_into_the_codec_region_is_refused(self):
-        offset = CODEC_ADDR - CS7000P_BASE
-        fw = firmware(CS7000P_SP, offset + 16)
-        self.assertRefused(self.install("cs7000p", fw, donor(), "--any-donor"),
+        offset = CODEC_ADDR - UV3X0_BASE
+        fw = firmware(UV3X0_SP, offset + 16)
+        self.assertRefused(self.install(fw, donor(), "--any-donor"),
                            "overlaps the codec region")
 
         # Erased padding running into the region is fine
-        fw = firmware(CS7000P_SP) + b"\xFF" * (offset + 16 - 4096)
-        result = self.install("cs7000p", fw, donor(), "--any-donor")
+        fw = firmware() + b"\xFF" * (offset + 16 - 4096)
+        result = self.install(fw, donor(), "--any-donor")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertMerged(self.output(), firmware(CS7000P_SP), CS7000P_BASE)
+        self.assertMerged(self.output(), firmware())
 
-    def test_flash_uses_each_radios_own_tool(self):
-        result = self.install("mduv3x0", firmware(UV3X0_SP), donor(),
-                              "--any-donor", "--flash")
+    def test_flash_uses_radio_tool(self):
+        result = self.install(firmware(), donor(), "--any-donor", "--flash")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.tool_calls()[-1],
                          "radio_tool -d 0 -f -i " + self.out)
-
-        result = self.install("cs7000p", firmware(CS7000P_SP), donor(),
-                              "--any-donor", "--flash")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.tool_calls()[-1],
-                         "dfu-util -d 0483:df11 -a 0 -s 0x08000000 -D "
-                         + self.out)
+        self.assertFalse(any(c.startswith("dfu-util")
+                             for c in self.tool_calls()))
 
 
 if __name__ == "__main__":

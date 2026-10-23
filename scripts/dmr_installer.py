@@ -21,6 +21,9 @@
 # the codec. Obtain it from TYT/Retevis. The codec offsets below are specific to
 # that build, so a different donor version is rejected unless --any-donor is
 # given (and then it must still carry the codec at the expected offset).
+#
+# The CS7000 Plus needs no installer: it runs the codec its own stock firmware
+# keeps in flash.
 
 import argparse
 import glob
@@ -41,17 +44,10 @@ CODEC_MAGIC  = bytes.fromhex("2de9f04f")  # first word, "push {r4-r11,lr}"
 WRAP_MODEL   = "UV3X0"               # radio_tool wrap type for MD-UV380/390
 OUTSEC_MAGIC = b"OutSecurityBin"     # TYT wrapped-firmware header
 
-# Targets: OpenRTX image load address, the RAM an initial stack pointer may
-# point into, and how the result is flashed. The CS7000 Plus entry is for a
-# radio without the OEM bootloader, running OpenRTX from the start of bank 1.
-TARGETS = {
-    "mduv3x0": dict(base=0x0800C000,
-                    sp=((0x10000000, 0x10010000), (0x20000000, 0x20040000)),
-                    wrap=True),
-    "cs7000p": dict(base=0x08000000,
-                    sp=((0x24000000, 0x24080000),),
-                    wrap=False),
-}
+# The OpenRTX image loads where the donor's application does, and its initial
+# stack pointer points into the F405's RAM.
+IMAGE_BASE   = 0x0800C000
+SP_RANGES    = ((0x10000000, 0x10010000), (0x20000000, 0x20040000))
 
 # The reference donor. A matching SHA-256 means the codec is at CODEC_OFFSET.
 DONOR_NAME   = "MD9600-CSV(2571V5)-V26.45.bin"
@@ -87,7 +83,7 @@ def sha256(path):
     return h.hexdigest()
 
 
-def read_firmware(path, target):
+def read_firmware(path):
     with open(path, "rb") as f:
         data = bytearray(f.read())
     # Guard against pointing at a wrapped image or the donor by mistake: the raw
@@ -99,7 +95,7 @@ def read_firmware(path, target):
     if len(data) < 8:
         die("--firmware is too small to be a firmware image")
     sp = int.from_bytes(data[0:4], "little")
-    if not any(lo <= sp < hi for lo, hi in target["sp"]):
+    if not any(lo <= sp < hi for lo, hi in SP_RANGES):
         die("--firmware does not start with a valid STM32 stack pointer; is it "
             "the raw OpenRTX binary?")
     return data
@@ -142,8 +138,8 @@ def extract_codec(radio_tool, donor, any_donor):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def merge(firmware, codec, base):
-    offset = CODEC_ADDR - base
+def merge(firmware, codec):
+    offset = CODEC_ADDR - IMAGE_BASE
     end = offset + CODEC_LEN
     merged = bytearray(firmware)
     if len(merged) > offset:
@@ -157,24 +153,21 @@ def merge(firmware, codec, base):
     return merged
 
 
-def wrap(radio_tool, raw_path, out_path, base):
+def wrap(radio_tool, raw_path, out_path):
     subprocess.run([radio_tool, "--wrap", "-o", out_path, "-r", WRAP_MODEL,
-                    "-s", "0x%X:%s" % (base, raw_path)], check=True)
+                    "-s", "0x%X:%s" % (IMAGE_BASE, raw_path)], check=True)
 
 
 def main():
     ap = argparse.ArgumentParser(description="Merge the DMR AMBE codec from a "
                                  "donor firmware into an OpenRTX image.")
-    ap.add_argument("--target", choices=sorted(TARGETS), default="mduv3x0",
-                    help="radio the image is for (default mduv3x0)")
     ap.add_argument("--firmware", required=True,
                     help="raw OpenRTX binary (e.g. build_cm4/openrtx_mduv3x0_bin)")
     ap.add_argument("--donor",
                     help="TYT donor firmware (%s). Omit to build a voice-less "
                          "image." % DONOR_NAME)
     ap.add_argument("--output", required=True,
-                    help="flashable output image (radio_tool-wrapped for "
-                         "mduv3x0, raw for dfu-util on cs7000p)")
+                    help="flashable output image, wrapped for radio_tool")
     ap.add_argument("--radio-tool", help="path to the radio_tool binary")
     ap.add_argument("--any-donor", action="store_true",
                     help="accept a donor whose SHA-256 does not match the "
@@ -183,36 +176,28 @@ def main():
                     help="flash the result after building it")
     args = ap.parse_args()
 
-    target = TARGETS[args.target]
     radio_tool = find_radio_tool(args.radio_tool)
-    firmware = read_firmware(args.firmware, target)
+    firmware = read_firmware(args.firmware)
 
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tf:
         raw_out = tf.name
     try:
         if args.donor:
             codec = extract_codec(radio_tool, args.donor, args.any_donor)
-            merged = merge(firmware, codec, target["base"])
+            merged = merge(firmware, codec)
             print("codec %d bytes merged at 0x%X (image address 0x%X)"
-                  % (len(codec), CODEC_ADDR - target["base"], CODEC_ADDR))
+                  % (len(codec), CODEC_ADDR - IMAGE_BASE, CODEC_ADDR))
         else:
             merged = firmware
             print("no donor given: building a voice-less DMR image")
         with open(raw_out, "wb") as f:
             f.write(merged)
-        if target["wrap"]:
-            wrap(radio_tool, raw_out, args.output, target["base"])
-        else:
-            shutil.copyfile(raw_out, args.output)
+        wrap(radio_tool, raw_out, args.output)
         print("wrote " + args.output)
     finally:
         os.unlink(raw_out)
 
-    if target["wrap"]:
-        flash = [radio_tool, "-d", "0", "-f", "-i", args.output]
-    else:
-        flash = ["dfu-util", "-d", "0483:df11", "-a", "0",
-                 "-s", "0x%08X" % target["base"], "-D", args.output]
+    flash = [radio_tool, "-d", "0", "-f", "-i", args.output]
     if args.flash:
         print("flashing " + args.output + " ...")
         subprocess.run(flash, check=True)
