@@ -16,14 +16,20 @@ void dmrTx_start(struct dmrTxSequence *seq, const uint8_t headers)
 struct dmrTxBurst dmrTx_nextSlot(struct dmrTxSequence *seq,
                                  const bool stopRequested)
 {
-    struct dmrTxBurst burst = { DMR_TX_IDLE, 0, false };
-
     if (seq->idleNext) {
+        struct dmrTxBurst idle = { DMR_TX_IDLE, 0, false };
         seq->idleNext = false;
-        return burst;
+        return idle;
     }
 
     seq->idleNext = true;
+    return dmrTx_nextBurst(seq, stopRequested);
+}
+
+struct dmrTxBurst dmrTx_nextBurst(struct dmrTxSequence *seq,
+                                  const bool stopRequested)
+{
+    struct dmrTxBurst burst = { DMR_TX_IDLE, 0, false };
 
     if (seq->terminated) {
         burst.type = DMR_TX_END;

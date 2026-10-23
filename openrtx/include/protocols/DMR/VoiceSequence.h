@@ -15,11 +15,12 @@ extern "C" {
 #endif
 
 /**
- * The bursts of a DMR voice transmission in direct mode, slot after slot,
- * independently of the baseband sending them: one slot in two is sent, the
- * other left idle; the call opens with voice link control headers, goes on
- * with superframes of voice frames A to F, and once asked to stop sends a
- * terminator after the next frame F, then ends.
+ * The bursts of a DMR voice transmission, independently of the baseband
+ * sending them: the call opens with voice link control headers, goes on with
+ * superframes of voice frames A to F, and once asked to stop sends a
+ * terminator after the next frame F, then ends. In direct mode one slot in two
+ * is sent, the other left idle; through a repeater the slots sent are those of
+ * the channel's timeslot.
  */
 
 /** Frames in a voice superframe, A to F. */
@@ -73,6 +74,18 @@ void dmrTx_start(struct dmrTxSequence *seq, const uint8_t headers);
  */
 struct dmrTxBurst dmrTx_nextSlot(struct dmrTxSequence *seq,
                                  const bool stopRequested);
+
+/**
+ * Get the burst to send in the next slot of the transmission's own, when
+ * something else, such as a repeater's timeslot, decides which slots those
+ * are.
+ *
+ * @param seq: transmission state.
+ * @param stopRequested: the transmission has been asked to stop.
+ * @return the burst, never DMR_TX_IDLE.
+ */
+struct dmrTxBurst dmrTx_nextBurst(struct dmrTxSequence *seq,
+                                  const bool stopRequested);
 
 #ifdef __cplusplus
 }

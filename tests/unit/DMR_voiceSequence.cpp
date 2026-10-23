@@ -14,14 +14,16 @@
  * and write it down: '.' idle, 'H' header, 'h' last header, A-F voice frames,
  * 'T' terminator, 'E' end.
  */
-static std::string run(int headers, int stopAfter, int maxSlots = 200)
+static std::string run(int headers, int stopAfter, int maxSlots = 200,
+                       bool bursts = false)
 {
     struct dmrTxSequence seq;
     dmrTx_start(&seq, headers);
     std::string out;
 
     for (int n = 0; n < maxSlots; n++) {
-        struct dmrTxBurst b = dmrTx_nextSlot(&seq, n >= stopAfter);
+        struct dmrTxBurst b = bursts ? dmrTx_nextBurst(&seq, n >= stopAfter) :
+                                       dmrTx_nextSlot(&seq, n >= stopAfter);
         switch (b.type) {
             case DMR_TX_IDLE:
                 out += '.';
@@ -71,4 +73,13 @@ TEST_CASE("DMR transmission never sends two slots in a row", "[dmr][tx]")
         REQUIRE_FALSE((sent && next && s[i + 1] != 'E'));
     }
     REQUIRE(s.back() == 'E');
+}
+
+TEST_CASE(
+    "DMR transmission through a repeater takes a burst per slot of its own",
+    "[dmr][tx]")
+{
+    // The same bursts as in direct mode, without the idle slots in between
+    REQUIRE(run(3, 1, 200, true) == "HHhABCDEFTE");
+    REQUIRE(run(3, 11, 200, true) == "HHhABCDEFABCDEFTE");
 }
