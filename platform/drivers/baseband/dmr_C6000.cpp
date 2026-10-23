@@ -262,6 +262,7 @@ static inline bool repeaterMode()
 #define RPT_SILENCE_TIMEOUT 150
 
 static long long lastSlotTick; // When the last slot of the downlink came
+static uint32_t lastSlotCount; // Timeslot interrupts at the last slot read
 
 /**
  * Tell whether the repeater downlink the receiver is aligned to has gone
@@ -271,6 +272,22 @@ static bool repeaterSilent()
 {
     return repeaterMode() && rpt.aligned && (rxCall.active == false)
         && ((getTick() - lastSlotTick) > RPT_SILENCE_TIMEOUT);
+}
+
+/**
+ * Take the downlink's slot boundaries since the last one taken.
+ *
+ * @return how many there were, 1 unless some were missed.
+ */
+static uint32_t takeDownlinkSlots()
+{
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+    uint32_t slots = counters.timeslot - lastSlotCount;
+    lastSlotCount = counters.timeslot;
+    lastSlotTick = getTick();
+
+    return slots;
 }
 
 /**
@@ -601,8 +618,7 @@ static void handleSlot()
 
 #else
 
-static bool slotParity;        // Set after the station's slots
-static uint32_t lastSlotCount; // Timeslot interrupts at the last slot read
+static bool slotParity; // Set after the station's slots
 
 /**
  * Run the Connect Systems firmware's repeater slot handler, once per slot.
@@ -616,12 +632,7 @@ static void handleRepeaterSlot()
     uint8_t status = C6000.readCfgRegister(0x51);
     uint8_t cach = C6000.readCfgRegister(0x52);
     uint8_t syncSource = C6000.readCfgRegister(0x5F);
-
-    struct dmrIrqCounters counters;
-    dmrIrq_getCounters(&counters);
-    uint32_t slots = counters.timeslot - lastSlotCount;
-    lastSlotCount = counters.timeslot;
-    lastSlotTick = getTick();
+    uint32_t slots = takeDownlinkSlots();
 
     if (rxCall.active) {
         if ((status & C6000_DMR_SYNC_MASK) == C6000_DMR_CLASS_VOICE_SYNC) {
@@ -636,7 +647,7 @@ static void handleRepeaterSlot()
 
         bool ours = (dmrRpt_advance(&rpt, slots) == DMR_RPT_TAKE);
         dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X call %c",
-                     (unsigned long)counters.timeslot, status, cach, syncSource,
+                     (unsigned long)lastSlotCount, status, cach, syncSource,
                      ours ? 'T' : '-');
         C6000.setDmrSlotAction(ours ? C6000_DmrSlotAction::RECEIVE :
                                       C6000_DmrSlotAction::IDLE);
@@ -655,7 +666,7 @@ static void handleRepeaterSlot()
     bool wasAligned = rpt.aligned;
     enum dmrRptAction action = dmrRpt_takeSlot(&rpt, &sample, slots);
     dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X %c",
-                 (unsigned long)counters.timeslot, status, cach, syncSource,
+                 (unsigned long)lastSlotCount, status, cach, syncSource,
                  marks[action]);
 
     switch (action) {
@@ -808,17 +819,30 @@ static void handleSlot()
 static volatile bool txKeyupRequested; // Key-up handed to the thread
 static uint32_t txSrcId;               // Own ID, sent as the source
 static struct dmrTxSequence txSeq;     // Bursts of the transmission
+static bool rptTimingPending;          // Downlink timing owed at the next slot
 
 /**
  * Key up, as the stock firmware does: clear voice, transmission with the
  * chip generating its own slot timing and the receiver off, starting on the
  * next slot. A call being received is dropped; direct mode transmission does
  * not wait for the channel in the stock firmware either.
+ *
+ * Through a repeater the slot timing stays the downlink's instead, and the
+ * receiver's alternation of the two timeslots goes on: the chip is switched to
+ * the downlink's timing at the next slot, as in the stock firmware, and the
+ * transmission sent on our timeslot's slots only.
  */
 static void keyUp()
 {
     txKeyupRequested = false;
     rxRestoreNeeded = false;
+
+    /* The downlink can be lost between the rtx layer's check and here. */
+    if (repeaterMode() && (rpt.aligned == false)) {
+        txRunning = false;
+        dmrDebug_log(DMR_DBG_INFO, "tx: refused, repeater timing lost");
+        return;
+    }
 
     if (rxCall.active) {
         rxCall.active = false;
@@ -833,6 +857,14 @@ static void keyUp()
     C6000.setDmrPrivacy(false);
     C6000.setDmrOwnId(txSrcId);
     C6000.dmrTransmitMode();
+
+    if (repeaterMode()) {
+        rptTimingPending = true;
+        dmrDebug_log(DMR_DBG_INFO, "tx: keyed, repeater timeslot %u",
+                     config.timeslot);
+        return;
+    }
+
     C6000.setDmrTiming(C6000_DmrTiming::TRANSMIT);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
@@ -862,25 +894,17 @@ static void endTransmission(const char *reason)
 }
 
 /**
- * Set up the next slot of the transmission, straight after the slot boundary.
- * The link control is written before the burst type, and the voice payload
- * before the burst it goes out in.
+ * Send a burst of the transmission in the slot coming next, or end it. The link
+ * control is written before the burst type, and the voice payload before the
+ * burst it goes out in.
+ *
+ * @param burst: the burst, from the transmission's sequence.
  */
-static void txSlot()
+static void transmitBurst(const struct dmrTxBurst burst)
 {
-    struct dmrTxBurst burst = dmrTx_nextSlot(&txSeq, txStopRequested);
-
-    switch (burst.type) {
-        case DMR_TX_IDLE:
-            C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
-            return;
-
-        case DMR_TX_END:
-            endTransmission("terminator sent");
-            return;
-
-        default:
-            break;
+    if (burst.type == DMR_TX_END) {
+        endTransmission("terminator sent");
+        return;
     }
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::TRANSMIT);
@@ -916,6 +940,47 @@ static void txSlot()
 }
 
 /**
+ * Set up the next slot of a transmission through a repeater, as the stock
+ * firmware does: the chip's slot timing switched to the downlink's at the
+ * first slot, then a burst on each of our timeslot's slots and nothing on the
+ * other's, following the receiver's alternation of the two.
+ */
+static void txRepeaterSlot()
+{
+    uint32_t slots = takeDownlinkSlots();
+
+    if (rptTimingPending) {
+        rptTimingPending = false;
+        C6000.setDmrTiming(C6000_DmrTiming::PASSIVE);
+    }
+
+    if (dmrRpt_advance(&rpt, slots) != DMR_RPT_TAKE) {
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+        return;
+    }
+
+    transmitBurst(dmrTx_nextBurst(&txSeq, txStopRequested));
+}
+
+/**
+ * Set up the next slot of the transmission, straight after the slot boundary:
+ * in direct mode every other slot carries a burst.
+ */
+static void txSlot()
+{
+    if (repeaterMode()) {
+        txRepeaterSlot();
+        return;
+    }
+
+    struct dmrTxBurst burst = dmrTx_nextSlot(&txSeq, txStopRequested);
+    if (burst.type == DMR_TX_IDLE)
+        C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    else
+        transmitBurst(burst);
+}
+
+/**
  * Acknowledge the chip's interrupt flags while transmitting, when they carry
  * nothing to act on.
  */
@@ -927,9 +992,28 @@ static void acknowledgeFlags()
 }
 
 /**
+ * Bring the receiver back after a transmission through a repeater, keeping the
+ * alignment as the stock firmware does: the slot timing stays the downlink's
+ * and the alternation of the two timeslots goes on, so that the reply in the
+ * repeater's hang time is heard.
+ */
+static void resumeRepeater()
+{
+    uint32_t slots = takeDownlinkSlots();
+
+    bool ours = (dmrRpt_advance(&rpt, slots) == DMR_RPT_TAKE);
+    C6000.setDmrSlotAction(ours ? C6000_DmrSlotAction::NEXT :
+                                  C6000_DmrSlotAction::IDLE);
+
+    rxLocked = true;
+    rxMisses = 0;
+}
+
+/**
  * Bring the receiver back after a transmission, as the stock firmware does:
  * clear the vocoder buffers and reset its decode, or on the MD-UV3x0 set the
- * DMR mode up again, then restart the search for a transmission.
+ * DMR mode up again, then restart the search for a transmission, or through a
+ * repeater carry on with the downlink.
  */
 static void restoreAfterTx()
 {
@@ -946,10 +1030,14 @@ static void restoreAfterTx()
         C6000.setDmrVocoder(C6000_DmrVocoder::IDLE);
     }
 
-    armReceiver();
+    if (repeaterMode() && rpt.aligned)
+        resumeRepeater();
+    else
+        armReceiver();
+
     acknowledgeFlags();
 
-    dmrDebug_log(DMR_DBG_INFO, "dmr: receiver restarted after tx, timing %02X",
+    dmrDebug_log(DMR_DBG_INFO, "dmr: receiving after tx, timing %02X",
                  C6000.getDmrTiming());
 }
 
@@ -1100,8 +1188,11 @@ static void toggleMarker()
 
 bool dmr_txReady()
 {
-    /* Repeater channels are not transmitted on yet. */
-    return config.access != DMR_ACCESS_REPEATER;
+    if (config.access != DMR_ACCESS_REPEATER)
+        return true;
+
+    /* Through a repeater, only on the timing of a downlink aligned to. */
+    return repeaterMode() && rpt.aligned;
 }
 
 bool dmr_txActive()

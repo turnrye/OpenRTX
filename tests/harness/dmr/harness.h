@@ -130,9 +130,10 @@ struct RxState {
 };
 RxState poll();
 
-/** Key up and unkey, as the rtx layer does. */
+/** Key up and unkey, as the rtx layer does, and ask whether it may key up. */
 void keyUp(bool group, uint32_t dst, uint32_t src);
 void unkey();
+bool txReady();
 bool txActive();
 
 /** The rtx layer's periodic transmit housekeeping call. */

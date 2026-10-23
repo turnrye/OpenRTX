@@ -640,6 +640,11 @@ void harness::unkey()
     dmr_stopTx();
 }
 
+bool harness::txReady()
+{
+    return dmr_txReady();
+}
+
 bool harness::txActive()
 {
     return dmr_txActive();

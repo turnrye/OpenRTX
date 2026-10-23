@@ -5,12 +5,13 @@
  */
 
 /*
- * Scenarios for the HR_C6000 DMR driver on the CS7000 Plus receiving through a
- * repeater, against the chip model fed a repeater's downlink: both timeslots
- * back to back, base station sourced, the CACH's TC bit alternating. The
- * driver follows the Connect Systems firmware: it aligns on the TC bits, then
- * receives its timeslot only, keeps the alignment through a call's end, and
- * searches again once the downlink is lost.
+ * Scenarios for the HR_C6000 DMR driver on the CS7000 Plus receiving and
+ * transmitting through a repeater, against the chip model fed a repeater's
+ * downlink: both timeslots back to back, base station sourced, the CACH's TC
+ * bit alternating. The driver follows the Connect Systems firmware: it aligns
+ * on the TC bits, then receives its timeslot only, keeps the alignment through
+ * a call's end, and searches again once the downlink is lost. It transmits on
+ * the downlink's timing, on its timeslot only, and only once aligned.
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -346,4 +347,173 @@ TEST_CASE("DMR repeater that falls silent is searched for again",
     poll();
     waitIdle();
     REQUIRE(logged("repeater: downlink lost") == 1);
+}
+
+/* What the driver wrote at slot boundaries while transmitting. */
+struct TxSlot {
+    std::vector<uint8_t> timing;  // 0x40
+    std::vector<uint8_t> actions; // 0x41
+    std::vector<uint8_t> bursts;  // 0x50
+};
+
+/* Raise the timeslot interrupt count times at once, as the driver sees it. */
+static TxSlot txSlot(int count = 1)
+{
+    clearWrites();
+    timeslot(count);
+
+    TxSlot t;
+    for (const Write &w : writes()) {
+        if (w.page != CONFIG)
+            continue;
+        if (w.addr == 0x40)
+            t.timing.push_back(w.value);
+        if (w.addr == 0x41)
+            t.actions.push_back(w.value);
+        if (w.addr == 0x50)
+            t.bursts.push_back(w.value);
+    }
+    return t;
+}
+
+/* Run slots, gathering what was written over all of them. */
+static TxSlot txSlots(int count)
+{
+    TxSlot all;
+    for (int n = 0; n < count; n++) {
+        TxSlot t = txSlot();
+        all.timing.insert(all.timing.end(), t.timing.begin(), t.timing.end());
+        all.actions.insert(all.actions.end(), t.actions.begin(),
+                           t.actions.end());
+        all.bursts.insert(all.bursts.end(), t.bursts.begin(), t.bursts.end());
+    }
+    return all;
+}
+
+TEST_CASE("DMR repeater channel is ready to transmit only while aligned",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    REQUIRE_FALSE(txReady());
+
+    uint8_t tc = idleSlots(7, 1);
+    REQUIRE_FALSE(txReady());
+    tc = idleSlots(1, tc);
+    REQUIRE(txReady());
+
+    downlinkSlot(IDLE_BURST, CC, tc, false);
+    REQUIRE_FALSE(txReady());
+
+    // Direct mode is always ready
+    configure(false, 1, CC);
+    REQUIRE(txReady());
+}
+
+TEST_CASE("DMR repeater key-up without the downlink's timing sends nothing",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    idleSlots(5, 1);
+    clearWrites();
+
+    keyUp(true, 314431, 3101003);
+    REQUIRE_FALSE(txActive());
+    REQUIRE(logged("tx: refused, repeater timing lost") == 1);
+    REQUIRE_FALSE(wroteAny(writes(), { 0x40, 0x41, 0x50 }));
+}
+
+TEST_CASE("DMR repeater transmission goes out on its timeslot, on the "
+          "downlink's timing",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    align(); // The other timeslot comes next
+    clearWrites();
+
+    // Key-up leaves the timing and the slot actions as they are
+    keyUp(true, 314431, 3101003);
+    REQUIRE(txActive());
+    REQUIRE(writes(CONFIG, 0x40).empty());
+    REQUIRE(writes(CONFIG, 0x41).empty());
+
+    // The first slot takes the downlink's timing, then sends on our timeslot
+    clearWrites();
+    timeslot();
+    REQUIRE(configWrites(writes(), { 0x40, 0x41 })
+            == std::vector<RegWrite>({ { 0x40, 0xC3 }, { 0x41, 0x80 } }));
+
+    // Three headers in all, on every other slot, the timing left alone
+    TxSlot t = txSlots(5);
+    REQUIRE(t.timing.empty());
+    REQUIRE(t.actions
+            == std::vector<uint8_t>({ 0x00, 0x80, 0x00, 0x80, 0x00 }));
+    REQUIRE(t.bursts == std::vector<uint8_t>({ 0x10, 0x10 }));
+
+    // Voice A..F
+    t = txSlots(12);
+    REQUIRE(t.bursts
+            == std::vector<uint8_t>({ 0x08, 0x18, 0x28, 0x38, 0x48, 0x58 }));
+    REQUIRE(payloadsWritten().size() == 6);
+
+    // Unkeyed after frame B: voice to frame F, the terminator, the other
+    // slot, the end
+    REQUIRE(txSlots(4).bursts == std::vector<uint8_t>({ 0x08, 0x18 }));
+    unkey();
+    std::vector<uint8_t> bursts;
+    uint8_t lastAction = 0x00;
+    for (int n = 0; txActive() && (n < 40); n++) {
+        t = txSlot();
+        REQUIRE(t.timing.empty());
+        REQUIRE_FALSE(((t.actions.back() == 0x80) && (lastAction == 0x80)));
+        lastAction = t.actions.back();
+        bursts.insert(bursts.end(), t.bursts.begin(), t.bursts.end());
+    }
+    REQUIRE_FALSE(txActive());
+    REQUIRE(bursts == std::vector<uint8_t>({ 0x28, 0x38, 0x48, 0x58, 0x20 }));
+    REQUIRE(lastAction == 0x40);
+
+    // Back to receive still aligned: the vocoder reset, no re-arm, the timing
+    // left on the downlink's and the two timeslots alternating on
+    clearWrites();
+    idleSlots(5, 0);
+    REQUIRE(containsSequence(
+        configWrites(writes(), { 0x20, 0x21, 0x22 }),
+        { { 0x20, 0x00 }, { 0x21, 0x02 }, { 0x22, 0x16 }, { 0x22, 0x46 } }));
+    REQUIRE_FALSE(rearmedIn(writes()));
+    REQUIRE(writes(CONFIG, 0x40).empty());
+    REQUIRE(slotActions()
+            == std::vector<uint8_t>({ 0x00, 0x40, 0x00, 0x40, 0x00 }));
+    REQUIRE(logged("downlink lost") == 0);
+    REQUIRE(txReady());
+}
+
+TEST_CASE("DMR repeater transmission keeps its timeslot over a missed slot "
+          "interrupt",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    align();
+    keyUp(true, 314431, 3101003);
+    REQUIRE(txSlot().actions == std::vector<uint8_t>({ 0x80 }));
+
+    // Two boundaries handled at once: our slot comes next again
+    REQUIRE(txSlot(2).actions == std::vector<uint8_t>({ 0x80 }));
+    REQUIRE(txSlot().actions == std::vector<uint8_t>({ 0x00 }));
+}
+
+TEST_CASE("DMR repeater key-up in the hang time after a call",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    uint8_t tc = alignAndCall();
+    REQUIRE(poll().valid);
+    burst(TERMINATOR, CC);
+    REQUIRE_FALSE(poll().valid);
+    idleSlots(2, tc); // Ours, then the other: ours comes next
+
+    keyUp(true, 314431, 3101003);
+    TxSlot t = txSlot();
+    REQUIRE(t.timing == std::vector<uint8_t>({ 0xC3 }));
+    REQUIRE(t.actions == std::vector<uint8_t>({ 0x80 }));
+    REQUIRE(t.bursts == std::vector<uint8_t>({ 0x10 }));
 }
