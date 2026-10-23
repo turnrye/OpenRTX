@@ -21,6 +21,7 @@ void OpMode_DMR::enable()
     enabled = false;
     startRx = false;
     startTx = false;
+    txRefused = false;
 }
 
 void OpMode_DMR::disable()
@@ -113,7 +114,7 @@ void OpMode_DMR::offState(rtxStatus_t *const status)
         return;
     }
 
-    if (platform_getPttStatus() && (status->txDisable == 0)) {
+    if (pttAsksTx(status)) {
         startTx = true;
         status->opStatus = TX;
         return;
@@ -164,7 +165,7 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * so the transition into transmission goes through a single place. The
      * call being received is no longer played.
      */
-    if (platform_getPttStatus() && (status->txDisable == 0)) {
+    if (pttAsksTx(status)) {
         dmrAudio_stopRx();
         status->opStatus = OFF;
         return;
@@ -175,6 +176,20 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
      * state over and lets it notice a call or a transmission winding down.
      */
     sleepFor(0u, 10u);
+}
+
+/*
+ * A refused key-up is not tried again while the PTT stays down: it would be
+ * refused on every step, and said so on the tap every time.
+ */
+bool OpMode_DMR::pttAsksTx(const rtxStatus_t *const status)
+{
+    if (platform_getPttStatus() == false) {
+        txRefused = false;
+        return false;
+    }
+
+    return (status->txDisable == 0) && (txRefused == false);
 }
 
 void OpMode_DMR::txState(rtxStatus_t *const status)
@@ -191,6 +206,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
             dmrDebug_log(
                 DMR_DBG_INFO,
                 "tx: refused, no DMR ID set (Settings > DMR > DMR ID)");
+            txRefused = true;
             startRx = true;
             status->opStatus = OFF;
             return;
@@ -204,6 +220,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         buildConfig(status, &config);
         if (config.access == DMR_ACCESS_REPEATER) {
             dmrDebug_log(DMR_DBG_INFO, "tx: refused, no repeater transmit yet");
+            txRefused = true;
             startRx = true;
             status->opStatus = OFF;
             return;

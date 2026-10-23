@@ -77,10 +77,13 @@ void sleepFor(unsigned int seconds, unsigned int mseconds)
     (void)mseconds;
 }
 
+static int refusals; // "tx: refused" lines logged
+
 void dmrDebug_log(const enum dmrDebugChannel channel, const char *fmt, ...)
 {
     (void)channel;
-    (void)fmt;
+    if (strstr(fmt, "tx: refused") != NULL)
+        refusals++;
 }
 
 void dmr_init(const struct dmrConfig *config)
@@ -176,6 +179,7 @@ static void resetFakes()
     memset(&basebandRx, 0, sizeof(basebandRx));
     playing = capturing = speakerBusy = false;
     playbackAsks = playbackStops = 0;
+    refusals = 0;
     memset(&lastConfig, 0, sizeof(lastConfig));
     inits = configures = 0;
     startGroup = false;
@@ -336,6 +340,29 @@ TEST_CASE("DMR opmode does not transmit through a repeater yet",
         REQUIRE(c != "startTx");
         REQUIRE(c != "micOn");
     }
+}
+
+TEST_CASE("DMR opmode refuses a key-up once per press of the PTT",
+          "[dmr][opmode]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    // Held down: refused once, then left alone
+    ptt = true;
+    run(mode, s, 20);
+    REQUIRE(refusals == 1);
+    REQUIRE(s.opStatus == RX);
+
+    // Released and pressed again: refused again
+    ptt = false;
+    run(mode, s, 2);
+    ptt = true;
+    run(mode, s, 5);
+    REQUIRE(refusals == 2);
 }
 
 TEST_CASE("DMR opmode plays the call being received, unless it is encrypted",

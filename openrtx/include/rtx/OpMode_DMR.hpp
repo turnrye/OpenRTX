@@ -66,9 +66,16 @@ private:
      */
     void txState(rtxStatus_t *const status);
 
-    bool enabled = false; ///< Baseband brought up.
-    bool startRx = false; ///< Reception has still to be armed.
-    bool startTx = false; ///< A transmission has still to be keyed.
+    /**
+     * Tell whether the PTT asks for a transmission: pressed, transmission
+     * allowed, and not still held down from a key-up that was refused.
+     */
+    bool pttAsksTx(const rtxStatus_t *const status);
+
+    bool enabled = false;   ///< Baseband brought up.
+    bool startRx = false;   ///< Reception has still to be armed.
+    bool startTx = false;   ///< A transmission has still to be keyed.
+    bool txRefused = false; ///< A key-up was refused, the PTT is still held.
 };
 
 #endif /* OPMODE_DMR_H */
