@@ -326,3 +326,24 @@ TEST_CASE("DMR repeater call that goes silent restarts the search",
     REQUIRE(rearmedIn(writes()));
     REQUIRE(logged("downlink lost, timeout") == 1);
 }
+
+TEST_CASE("DMR repeater that falls silent is searched for again",
+          "[dmr][harness][repeater]")
+{
+    Repeater r;
+    align();
+    clearWrites();
+
+    // Slot interrupts stop with the downlink: the alignment is stale
+    advance(200);
+    poll();
+    waitIdle();
+    REQUIRE(rearmedIn(writes()));
+    REQUIRE(logged("repeater: downlink lost, silent") == 1);
+
+    // Polled again, it does not restart twice
+    advance(200);
+    poll();
+    waitIdle();
+    REQUIRE(logged("repeater: downlink lost") == 1);
+}

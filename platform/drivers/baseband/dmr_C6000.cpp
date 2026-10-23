@@ -254,6 +254,25 @@ static inline bool repeaterMode()
     return REPEATER_RX && (config.access == DMR_ACCESS_REPEATER);
 }
 
+/*
+ * Slot interrupts stop when a repeater's downlink does. An alignment left
+ * without them for longer than this, in milliseconds, is stale: the next
+ * downlink comes on its own timing.
+ */
+#define RPT_SILENCE_TIMEOUT 150
+
+static long long lastSlotTick; // When the last slot of the downlink came
+
+/**
+ * Tell whether the repeater downlink the receiver is aligned to has gone
+ * silent outside a call; a call's own timeout covers it during one.
+ */
+static bool repeaterSilent()
+{
+    return repeaterMode() && rpt.aligned && (rxCall.active == false)
+        && ((getTick() - lastSlotTick) > RPT_SILENCE_TIMEOUT);
+}
+
 /**
  * Hand the state of the call being received to the rtx thread.
  */
@@ -602,6 +621,7 @@ static void handleRepeaterSlot()
     dmrIrq_getCounters(&counters);
     uint32_t slots = counters.timeslot - lastSlotCount;
     lastSlotCount = counters.timeslot;
+    lastSlotTick = getTick();
 
     dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X",
                  (unsigned long)counters.timeslot, status, cach, syncSource);
@@ -1015,6 +1035,9 @@ static void *rxThreadFunc(void *arg)
                 endCall("timeout");
         }
 
+        if (repeaterSilent())
+            restartRepeater("silent");
+
         if (slotDue >= 0)
             sleepFor(0u, 1u);
     }
@@ -1332,7 +1355,8 @@ void dmr_task(struct dmrRxState *rx)
     if (gpio_readPin(DMR_TX_INT) == 0)
         seenLinesLow |= 0x04;
 
-    if (rxRestoreNeeded || dmrCall_expired(&rxCall, getTick(), RX_HOLD_TIMEOUT))
+    if (rxRestoreNeeded || dmrCall_expired(&rxCall, getTick(), RX_HOLD_TIMEOUT)
+        || repeaterSilent())
         dmrIrq_wakeWaiter();
 
     reportIrqActivity();
