@@ -118,6 +118,7 @@ static constexpr uint8_t C6000_DMR_SYNC_MASK       = 0x07;
 static constexpr uint8_t C6000_DMR_CLASS_VOICE     = 0x00;  ///< Frames B to F.
 static constexpr uint8_t C6000_DMR_CLASS_VOICE_SYNC = 0x01; ///< Frame A.
 static constexpr uint8_t C6000_DMR_CLASS_DATA      = 0x02;  ///< Data or control.
+static constexpr uint8_t C6000_DMR_CHECK_FAILED    = 0x04;  ///< The check failed.
 static constexpr uint8_t C6000_DMR_DATA_VOICE_HEADER = 0x01;
 static constexpr uint8_t C6000_DMR_DATA_TERMINATOR = 0x02;
 

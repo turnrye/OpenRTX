@@ -17,6 +17,7 @@
 #include "protocols/DMR/VoiceFrame.h"
 #include "protocols/DMR/CallControl.h"
 #include "protocols/DMR/VoiceSequence.h"
+#include "protocols/DMR/RepeaterSlot.h"
 #include "core/threads.h"
 #include <pthread.h>
 #include <string.h>
@@ -76,6 +77,8 @@ static volatile bool txMarker;  // Test pattern in place of the voice
 static uint8_t txMarkerSeq;     // Sequence number of the next pattern
 
 static void nextVoicePayload(uint8_t *payload);
+static void setupChannel();
+static void reportAccess();
 static volatile uint8_t txSequence;   // Voice frame sequence, 0..5
 static volatile bool txStopRequested; // Unkey asked, waiting for a boundary
 static long long txStopTick;          // When the unkey was asked
@@ -189,11 +192,20 @@ static void reportIrqActivity()
 #define RX_VOCODER_CONTROL false
 #define VOICE_NEEDS_COLOR_CODE false
 
+/*
+ * No reception through a repeater yet: the TYT firmware's repeater paths are
+ * not decoded. A repeater channel runs direct mode.
+ */
+#define REPEATER_RX 0
+
 #else
 
 #define MODE_SETUP_AFTER_TX false
 #define RX_VOCODER_CONTROL true
 #define VOICE_NEEDS_COLOR_CODE true
+
+/* Reception through a repeater, the way the Connect Systems firmware does it. */
+#define REPEATER_RX 1
 
 /*
  * Delay between the timeslot interrupt and the read of the slot status, by
@@ -230,6 +242,17 @@ static bool rxLocked;           // Receiver locked to a transmission
 static uint8_t rxMisses;        // Bad or empty slots in a row
 static uint8_t callSyncMisses;  // Call slots in a row without a voice sync
 static struct dmrRxCall rxCall; // The call being received
+static struct dmrRptSlot rpt;   // A repeater's downlink, in repeater mode
+static bool rptBlocksSwapped;   // Our timeslot is in the other payload block
+static volatile bool channelChanged; // Chip set up owed for a new channel
+
+/**
+ * Tell whether the channel goes through a repeater, on a radio that can.
+ */
+static inline bool repeaterMode()
+{
+    return REPEATER_RX && (config.access == DMR_ACCESS_REPEATER);
+}
 
 /**
  * Hand the state of the call being received to the rtx thread.
@@ -271,7 +294,12 @@ static void endCall(const char *reason)
     if (RX_VOCODER_CONTROL)
         C6000.setDmrVocoder(C6000_DmrVocoder::OFF);
 
-    armReceiver();
+    /*
+     * Through a repeater the alignment outlives the call, so that its hang
+     * time is heard: the stock firmware does not restart the receiver here.
+     */
+    if (repeaterMode() == false)
+        armReceiver();
 
     if (RX_VOCODER_CONTROL) {
         C6000.resetDmrVoiceControl();
@@ -283,6 +311,48 @@ static void endCall(const char *reason)
     lastPayloadValid = false;
 
     dmrDebug_log(DMR_DBG_INFO, "call: ended, %s", reason);
+}
+
+/**
+ * Lose a repeater's downlink, as the stock firmware's repeater reset does: end
+ * any call, restart the receiver and search for the downlink's alignment again.
+ *
+ * @param reason: what lost it, for the log.
+ */
+static void restartRepeater(const char *reason)
+{
+    if (rxCall.active)
+        endCall(reason);
+
+    armReceiver();
+    dmrRpt_reset(&rpt, config.timeslot, configuredCc);
+    dmrDebug_log(DMR_DBG_INFO, "repeater: downlink lost, %s", reason);
+}
+
+/**
+ * Read the voice payload of a burst received through a repeater. The chip
+ * keeps a block per timeslot of the downlink, and can keep ours in the other
+ * one: at each frame A, as the stock firmware does, the block holding the
+ * repeater's voice sync tells which.
+ *
+ * @param payload: destination buffer, VP_LENGTH bytes.
+ * @param status: burst status, register 0x51.
+ */
+static void readRepeaterPayload(uint8_t *payload, const uint8_t status)
+{
+    uint8_t block = (config.timeslot == 2) ? 1 : 0;
+    if (rptBlocksSwapped)
+        block ^= 1;
+
+    if (((status & C6000_DMR_SYNC_MASK) == C6000_DMR_CLASS_VOICE_SYNC)
+        && (C6000.dmrRepeaterVoiceSync(block) == false)
+        && C6000.dmrRepeaterVoiceSync(block ^ 1)) {
+        rptBlocksSwapped = !rptBlocksSwapped;
+        block ^= 1;
+        dmrDebug_log(DMR_DBG_LC, "repeater: payload in block %u", block);
+    }
+
+    C6000.readDmrRepeaterPayload(payload, block);
 }
 
 /**
@@ -367,7 +437,10 @@ static void takeVoicePayload(const uint8_t status)
      * on the CS7000 Plus and a stale payload on the MD-UV3x0.
      */
     uint8_t payload[VP_LENGTH];
-    C6000.readDmrVoicePayload(payload);
+    if (repeaterMode())
+        readRepeaterPayload(payload, status);
+    else
+        C6000.readDmrVoicePayload(payload);
 
     if (dmrDebug_channelEnabled(DMR_DBG_VP)) {
         uint8_t record[1 + VP_LENGTH];
@@ -513,6 +586,82 @@ static bool slotParity;        // Set after the station's slots
 static uint32_t lastSlotCount; // Timeslot interrupts at the last slot read
 
 /**
+ * Run the Connect Systems firmware's repeater slot handler, once per slot.
+ * While searching, align on the downlink's CACH TC bits; once aligned,
+ * receive our timeslot and leave the other one out. A call in progress is
+ * judged on its own frame A sync, as in direct mode, and keeps the alignment
+ * when it ends; losing the call, or the downlink, starts the search over.
+ */
+static void handleRepeaterSlot()
+{
+    uint8_t status = C6000.readCfgRegister(0x51);
+    uint8_t cach = C6000.readCfgRegister(0x52);
+    uint8_t syncSource = C6000.readCfgRegister(0x5F);
+
+    struct dmrIrqCounters counters;
+    dmrIrq_getCounters(&counters);
+    uint32_t slots = counters.timeslot - lastSlotCount;
+    lastSlotCount = counters.timeslot;
+
+    dmrDebug_log(DMR_DBG_LC, "slot %lu: 51=%02X 52=%02X 5F=%02X",
+                 (unsigned long)counters.timeslot, status, cach, syncSource);
+
+    if (rxCall.active) {
+        if ((status & C6000_DMR_SYNC_MASK) == C6000_DMR_CLASS_VOICE_SYNC) {
+            callSyncMisses = 0;
+        } else {
+            callSyncMisses += 1;
+            if (callSyncMisses >= CALL_SYNC_MISS_LIMIT) {
+                restartRepeater("no voice sync");
+                return;
+            }
+        }
+
+        bool ours = (dmrRpt_advance(&rpt, slots) == DMR_RPT_TAKE);
+        C6000.setDmrSlotAction(ours ? C6000_DmrSlotAction::RECEIVE :
+                                      C6000_DmrSlotAction::IDLE);
+        return;
+    }
+
+    struct dmrRptSample sample;
+    sample.repeater = (syncSource & 0x03) == 1;
+    sample.checkFailed = (status & C6000_DMR_CHECK_FAILED) != 0;
+    sample.colorCode = (cach >> 4) & 0x0F;
+    sample.tc = (cach >> 2) & 1;
+
+    bool wasAligned = rpt.aligned;
+    switch (dmrRpt_takeSlot(&rpt, &sample, slots)) {
+        case DMR_RPT_LOST:
+            if (wasAligned)
+                restartRepeater(sample.repeater ? "no colour code" :
+                                                  "not a repeater");
+            else
+                armReceiver();
+            return;
+
+        case DMR_RPT_SKIP:
+            C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+            break;
+
+        case DMR_RPT_TAKE:
+            C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
+            break;
+
+        case DMR_RPT_SEARCH:
+            break;
+    }
+
+    if (rpt.aligned && (wasAligned == false)) {
+        rptBlocksSwapped = false;
+        dmrDebug_log(DMR_DBG_INFO, "repeater: aligned on timeslot %u",
+                     config.timeslot);
+    }
+
+    /* Bursts count only once aligned, as the stock firmware's lock does. */
+    rxLocked = rpt.aligned;
+}
+
+/**
  * Run the Connect Systems firmware's slot handler, once per slot: lock to a
  * transmission on a frame sync, or on a data sync with the configured colour
  * code, keep receiving both slots while locked, and restart the search once
@@ -528,6 +677,11 @@ static uint32_t lastSlotCount; // Timeslot interrupts at the last slot read
  */
 static void handleSlot()
 {
+    if (repeaterMode()) {
+        handleRepeaterSlot();
+        return;
+    }
+
     uint8_t status, cc;
     C6000.readDmrBurst(&status, &cc);
     uint8_t sync = status & C6000_DMR_SYNC_MASK;
@@ -795,6 +949,20 @@ static void *rxThreadFunc(void *arg)
             continue;
         }
 
+        if (channelChanged) {
+            channelChanged = false;
+            if (rxCall.active)
+                endCall("channel changed");
+
+            setupChannel();
+            C6000.setDmrColorCode(configuredCc);
+            C6000.setDmrTiming(C6000_DmrTiming::RX_IDLE);
+            armReceiver();
+            reportAccess();
+            slotDue = -1;
+            continue;
+        }
+
         if (rxRestoreNeeded) {
             restoreAfterTx();
             slotDue = -1;
@@ -840,8 +1008,12 @@ static void *rxThreadFunc(void *arg)
          * A call whose bursts stopped without a terminator and without the
          * lock being dropped, which the slot handler normally catches first.
          */
-        if (dmrCall_expired(&rxCall, getTick(), RX_HOLD_TIMEOUT))
-            endCall("timeout");
+        if (dmrCall_expired(&rxCall, getTick(), RX_HOLD_TIMEOUT)) {
+            if (repeaterMode())
+                restartRepeater("timeout");
+            else
+                endCall("timeout");
+        }
 
         if (slotDue >= 0)
             sleepFor(0u, 1u);
@@ -987,11 +1159,37 @@ void dmr_txTask()
  */
 static void reportAccess()
 {
-    if (config.access == DMR_ACCESS_REPEATER)
+    if (config.access != DMR_ACCESS_REPEATER)
+        return;
+
+    if (REPEATER_RX)
+        dmrDebug_log(DMR_DBG_INFO, "dmr: repeater channel, timeslot %u",
+                     config.timeslot);
+    else
         dmrDebug_log(DMR_DBG_INFO,
                      "dmr: repeater channel, timeslot %u: repeater mode is "
                      "not supported yet, running direct mode",
                      config.timeslot);
+}
+
+/**
+ * Set the protocol side of the chip up for the channel, the way the radio's
+ * stock firmware loads it: for direct mode, or for the repeater mode of the
+ * channel's timeslot, and start following the downlink afresh.
+ */
+static void setupChannel()
+{
+#if REPEATER_RX
+    if (config.access == DMR_ACCESS_REPEATER)
+        C6000.dmrRepeaterMode(config.timeslot);
+    else
+        C6000.dmrDirectMode();
+#else
+    C6000.dmrDirectMode();
+#endif
+
+    dmrRpt_reset(&rpt, config.timeslot, configuredCc);
+    rptBlocksSwapped = false;
 }
 
 void dmr_init(const struct dmrConfig *cfg)
@@ -1024,7 +1222,8 @@ void dmr_init(const struct dmrConfig *cfg)
      * The protocol side of the chip, set up the way the radio's stock firmware
      * does it; the radio driver has already set up the board's front end.
      */
-    C6000.dmrDirectMode();
+    channelChanged = false;
+    setupChannel();
 
     /*
      * The receiver idles in passive timing so the chip can lock to the slot
@@ -1095,17 +1294,25 @@ void dmr_configure(const struct dmrConfig *cfg)
 {
     bool accessChanged = (cfg->access != config.access)
                       || (cfg->timeslot != config.timeslot);
+    bool ccChanged = (cfg->colorCode & 0x0F) != configuredCc;
     config = *cfg;
+    configuredCc = config.colorCode & 0x0F;
 
-    if (accessChanged)
-        reportAccess();
+    /*
+     * Another access or timeslot sets the chip up again, and so does another
+     * colour code through a repeater, as the downlink is followed on it. The
+     * DMR thread does it, as it owns the receiver.
+     */
+    if (accessChanged || (ccChanged && repeaterMode())) {
+        channelChanged = true;
+        dmrIrq_wakeWaiter();
+        return;
+    }
 
-    if ((config.colorCode & 0x0F) == configuredCc)
+    if (ccChanged == false)
         return;
 
-    configuredCc = config.colorCode & 0x0F;
     C6000.setDmrColorCode(configuredCc);
-
     dmrDebug_log(DMR_DBG_INFO, "dmr: color code set to %u", configuredCc);
 }
 
