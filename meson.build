@@ -66,6 +66,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/DMR/LinkControl.c',
                'openrtx/src/protocols/DMR/VoiceFrame.c',
                'openrtx/src/protocols/DMR/CallControl.c',
+               'openrtx/src/protocols/DMR/RepeaterSlot.c',
                'openrtx/src/protocols/DMR/VoiceSequence.c',
                'openrtx/src/protocols/M17/DSP.cpp',
                'openrtx/src/protocols/M17/Golay.cpp',
@@ -1269,6 +1270,10 @@ dmr_call_test = executable('dmr_call_test',
                            sources : unit_test_src + ['tests/unit/DMR_callControl.cpp'],
                            kwargs  : unit_test_opts)
 
+dmr_repeater_slot_test = executable('dmr_repeater_slot_test',
+                                   sources : unit_test_src + ['tests/unit/DMR_repeaterSlot.cpp'],
+                                   kwargs  : unit_test_opts)
+
 dmr_voice_sequence_test = executable('dmr_voice_sequence_test',
                                      sources : unit_test_src + ['tests/unit/DMR_voiceSequence.cpp'],
                                      kwargs  : unit_test_opts)
@@ -1290,6 +1295,7 @@ dmr_harness_src = ['tests/unit/dmr_harness.cpp',
                    'openrtx/src/protocols/DMR/LinkControl.c',
                    'openrtx/src/protocols/DMR/VoiceFrame.c',
                    'openrtx/src/protocols/DMR/CallControl.c',
+                   'openrtx/src/protocols/DMR/RepeaterSlot.c',
                    'openrtx/src/protocols/DMR/VoiceSequence.c']
 
 dmr_harness_test = executable('dmr_harness_test',
@@ -1312,6 +1318,7 @@ dmr_harness_uv3x0_src = ['tests/unit/dmr_harness_uv3x0.cpp',
                          'openrtx/src/protocols/DMR/LinkControl.c',
                          'openrtx/src/protocols/DMR/VoiceFrame.c',
                          'openrtx/src/protocols/DMR/CallControl.c',
+                         'openrtx/src/protocols/DMR/RepeaterSlot.c',
                          'openrtx/src/protocols/DMR/VoiceSequence.c']
 
 dmr_harness_uv3x0_test = executable('dmr_harness_uv3x0_test',
@@ -1404,6 +1411,7 @@ test('DMR Voice Frame Test', dmr_voice_frame_test)
 test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('Mic Frame Test', mic_frame_test)
 test('DMR Call Control Test', dmr_call_test)
+test('DMR Repeater Slot Test', dmr_repeater_slot_test)
 test('DMR Voice Sequence Test', dmr_voice_sequence_test)
 test('Settings Layout Test', settings_layout_test)
 test('DMR Driver Harness', dmr_harness_test)
