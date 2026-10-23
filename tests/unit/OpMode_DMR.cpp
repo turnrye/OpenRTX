@@ -320,6 +320,24 @@ TEST_CASE("DMR opmode does not transmit without a DMR ID", "[dmr][opmode]")
     }
 }
 
+TEST_CASE("DMR opmode does not transmit through a repeater yet",
+          "[dmr][opmode]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    ptt = true;
+    run(mode, s, 3);
+    for (const std::string &c : calls) {
+        REQUIRE(c != "enableTx");
+        REQUIRE(c != "startTx");
+        REQUIRE(c != "micOn");
+    }
+}
+
 TEST_CASE("DMR opmode plays the call being received, unless it is encrypted",
           "[dmr][opmode]")
 {

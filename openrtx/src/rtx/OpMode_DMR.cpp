@@ -196,6 +196,19 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
             return;
         }
 
+        /*
+         * Repeater mode does not transmit yet: keying up in direct mode timing
+         * on a repeater's input would put unaligned bursts into the repeater.
+         */
+        struct dmrConfig config;
+        buildConfig(status, &config);
+        if (config.access == DMR_ACCESS_REPEATER) {
+            dmrDebug_log(DMR_DBG_INFO, "tx: refused, no repeater transmit yet");
+            startRx = true;
+            status->opStatus = OFF;
+            return;
+        }
+
         platform_ledOff(GREEN);
         platform_ledOn(RED);
 
