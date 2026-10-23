@@ -34,8 +34,8 @@ void dmrPayload_init();
 void dmrPayload_terminate();
 
 /**
- * Load the voice payload the chip transmits in the upcoming slot. Safe to call
- * from the timeslot interrupt.
+ * Load the voice payload the chip transmits in the upcoming slot. Called from
+ * the DMR thread, at the slot boundary before that slot.
  *
  * @param payload: source buffer, DMR_PAYLOAD_LENGTH bytes long.
  */

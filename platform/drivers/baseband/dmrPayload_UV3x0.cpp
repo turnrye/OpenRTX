@@ -54,10 +54,9 @@ void dmrPayload_terminate()
 /**
  * Load the voice payload the chip transmits in the upcoming slot. The two
  * command bytes select the payload page and its first register, the payload
- * follows in the same transfer. This runs from the timeslot interrupt: the
- * payload rides on the second SPI bus, a hardware peripheral separate from the
- * bitbanged control bus, so it is safe to drive from an interrupt with no bus
- * coordination.
+ * follows in the same transfer. The payload rides on the second SPI bus, a
+ * hardware peripheral separate from the bitbanged control bus, so the two
+ * buses need no coordination.
  *
  * @param payload: source buffer, DMR_PAYLOAD_LENGTH bytes long.
  */
