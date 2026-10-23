@@ -32,12 +32,14 @@ extern "C" {
 bool dmrAudio_startRx(void);
 
 /**
- * Stop playback and release the audio path. Idempotent.
+ * Stop playback and release the audio path, also after playback ended on its
+ * own. Idempotent.
  */
 void dmrAudio_stopRx(void);
 
 /**
- * @return true while the playback thread is running.
+ * @return true while playback runs, false once it has stopped or ended on its
+ *         own, for instance when another path took the speaker over.
  */
 bool dmrAudio_running(void);
 
@@ -57,12 +59,14 @@ void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES]);
 bool dmrAudio_startTx(void);
 
 /**
- * Stop capture and release the microphone path. Idempotent.
+ * Stop capture and release the microphone path, also after capture ended on
+ * its own. Idempotent.
  */
 void dmrAudio_stopTx(void);
 
 /**
- * @return true while the capture thread is running.
+ * @return true while capture runs, false once it has stopped or ended on its
+ *         own.
  */
 bool dmrAudio_txRunning(void);
 

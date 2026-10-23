@@ -27,9 +27,16 @@
 #define CONFIG_MIC_OVERSAMPLE 1
 #endif
 
+/*
+ * Playback state. running is cleared by the playback thread when it ends on
+ * its own, and the thread is only joined, and its path only released, by
+ * whoever stops or restarts playback next. rxThreadLive tells them a thread is
+ * still to be joined.
+ */
 static pathId rxPath;
 static bool running = false;
 static bool reqStop = false;
+static bool rxThreadLive = false;
 
 /* Ring buffer of AMBE frames waiting to be decoded and played. */
 static uint8_t queue[QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
@@ -57,7 +64,6 @@ static void *playbackFunc(void *arg)
     if (dmr_codec_init() == false) {
         dmrDebug_log(DMR_DBG_INFO, "audio: playback not started, no vocoder");
         running = false;
-        pthread_detach(pthread_self());
         return NULL;
     }
 
@@ -70,7 +76,6 @@ static void *playbackFunc(void *arg)
                      "stream error %d",
                      (int)os);
         running = false;
-        pthread_detach(pthread_self());
         return NULL;
     }
 
@@ -111,17 +116,32 @@ static void *playbackFunc(void *arg)
     }
 
     audioStream_stop(os);
-    if (reqStop == false)
-        pthread_detach(pthread_self());
-
     running = false;
     return NULL;
+}
+
+/**
+ * Stop the playback thread, if there is one, and release its path, whether the
+ * thread is still playing or has already ended on its own.
+ */
+static void reapPlayback()
+{
+    if (rxThreadLive) {
+        reqStop = true;
+        pthread_join(thread, NULL);
+        audioPath_release(rxPath);
+        rxThreadLive = false;
+    }
+
+    running = false;
 }
 
 bool dmrAudio_startRx(void)
 {
     if (running)
         return true;
+
+    reapPlayback();
 
     /* Cheap check here; the actual init runs on the playback thread's stack. */
     if (dmr_codec_available() == false)
@@ -151,20 +171,16 @@ bool dmrAudio_startRx(void)
     if (pthread_create(&thread, &attr, playbackFunc, &rxPath) != 0) {
         running = false;
         audioPath_release(rxPath);
+        return false;
     }
 
-    return running;
+    rxThreadLive = true;
+    return true;
 }
 
 void dmrAudio_stopRx(void)
 {
-    if (running == false)
-        return;
-
-    reqStop = true;
-    pthread_join(thread, NULL);
-    audioPath_release(rxPath);
-    running = false;
+    reapPlayback();
 }
 
 bool dmrAudio_running(void)
@@ -201,8 +217,9 @@ static uint8_t txQueue[TX_QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
 static volatile uint32_t txHead;
 static volatile uint32_t txTail;
 static pathId txPath;
-static bool txRunning = false;
+static bool txRunning = false;    // Cleared by the thread if it ends on its own
 static bool txReqStop = false;
+static bool txThreadLive = false; // A capture thread is still to be joined
 static pthread_t txThread;
 
 /**
@@ -218,7 +235,7 @@ static void *captureFunc(void *arg)
     stream_sample_t *adcBuf = malloc(DMA_BUF_SAMPLES * CONFIG_MIC_OVERSAMPLE
                                      * sizeof(stream_sample_t));
     if (adcBuf == NULL)
-        goto detach;
+        goto end;
 
     if (dmr_codec_init() == false)
         goto freebuf;
@@ -262,17 +279,35 @@ static void *captureFunc(void *arg)
 
 freebuf:
     free(adcBuf);
-detach:
-    if (txReqStop == false)
-        pthread_detach(pthread_self());
+end:
     txRunning = false;
     return NULL;
+}
+
+/**
+ * Stop the capture thread, if there is one, and release its path, whether the
+ * thread is still capturing or has already ended on its own. Frames encoded
+ * for a transmission that is over are not handed out.
+ */
+static void reapCapture()
+{
+    if (txThreadLive) {
+        txReqStop = true;
+        pthread_join(txThread, NULL);
+        audioPath_release(txPath);
+        txThreadLive = false;
+    }
+
+    txTail = txHead;
+    txRunning = false;
 }
 
 bool dmrAudio_startTx(void)
 {
     if (txRunning)
         return true;
+
+    reapCapture();
 
     if (dmr_codec_available() == false)
         return false;
@@ -300,23 +335,16 @@ bool dmrAudio_startTx(void)
     if (pthread_create(&txThread, &attr, captureFunc, &txPath) != 0) {
         txRunning = false;
         audioPath_release(txPath);
+        return false;
     }
 
-    return txRunning;
+    txThreadLive = true;
+    return true;
 }
 
 void dmrAudio_stopTx(void)
 {
-    if (txRunning == false)
-        return;
-
-    txReqStop = true;
-    pthread_join(txThread, NULL);
-    audioPath_release(txPath);
-
-    /* Frames encoded for a transmission that is over are not handed out. */
-    txTail = txHead;
-    txRunning = false;
+    reapCapture();
 }
 
 bool dmrAudio_txRunning(void)

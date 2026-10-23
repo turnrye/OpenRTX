@@ -35,6 +35,7 @@ static std::condition_variable fakeCond;
 
 static bool codecAvailable = true;
 static int pathsRequested, pathsReleased;
+static enum PathStatus pathStatus = PATH_OPEN; // What every path reports
 
 static stream_sample_t outBuf[DMR_CODEC_PCM_SAMPLES];
 static std::vector<int> played; // First sample of each buffer played
@@ -59,7 +60,8 @@ pathId audioPath_request(enum AudioSource source, enum AudioSink sink,
 enum PathStatus audioPath_getStatus(const pathId id)
 {
     (void)id;
-    return PATH_OPEN;
+    std::lock_guard<std::mutex> lk(fakeMutex);
+    return pathStatus;
 }
 
 void audioPath_release(const pathId id)
@@ -166,6 +168,7 @@ static void resetFakes()
     std::lock_guard<std::mutex> lk(fakeMutex);
     codecAvailable = true;
     pathsRequested = pathsReleased = 0;
+    pathStatus = PATH_OPEN;
     played.clear();
     outputHeld = false;
     micLevel = 0;
@@ -192,6 +195,18 @@ template <typename F> static bool waitFor(F condition)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return condition();
+}
+
+static void setPathStatus(enum PathStatus status)
+{
+    std::lock_guard<std::mutex> lk(fakeMutex);
+    pathStatus = status;
+}
+
+static int released()
+{
+    std::lock_guard<std::mutex> lk(fakeMutex);
+    return pathsReleased;
 }
 
 static void setOutputHeld(bool held)
@@ -276,6 +291,38 @@ TEST_CASE("DMR playback ignores frames while it is not running", "[dmr][audio]")
     dmrAudio_stopRx();
 }
 
+TEST_CASE("DMR playback gives the speaker back when another path takes it",
+          "[dmr][audio]")
+{
+    resetFakes();
+    REQUIRE(dmrAudio_startRx());
+
+    // A voice prompt takes the speaker over: playback ends on its own
+    setPathStatus(PATH_SUSPENDED);
+    REQUIRE(waitFor([] { return dmrAudio_running() == false; }));
+
+    // Asked again while the speaker is still taken: the old path is released
+    // and the new one, not open, at once
+    REQUIRE_FALSE(dmrAudio_startRx());
+    REQUIRE(released() == 2);
+
+    // Once the speaker is free, playback runs again
+    setPathStatus(PATH_OPEN);
+    REQUIRE(dmrAudio_startRx());
+    REQUIRE(dmrAudio_running());
+    dmrAudio_pushFrame(frame(4).data());
+    REQUIRE(waitFor([] { return playedFrames().size() == 1; }));
+
+    // Ending on its own again, then stopping, releases that path too
+    setPathStatus(PATH_SUSPENDED);
+    REQUIRE(waitFor([] { return dmrAudio_running() == false; }));
+    dmrAudio_stopRx();
+    REQUIRE(released() == 3);
+    REQUIRE(pathsRequested == 3);
+    dmrAudio_stopRx();
+    REQUIRE(released() == 3);
+}
+
 TEST_CASE("DMR capture does not start without the vocoder", "[dmr][audio]")
 {
     resetFakes();
@@ -331,4 +378,32 @@ TEST_CASE("DMR capture encodes voice and sends silence without it",
     REQUIRE(pathsReleased == 1);
     dmrAudio_stopTx();
     REQUIRE(pathsReleased == 1);
+}
+
+TEST_CASE("DMR capture gives the microphone back when another path takes it",
+          "[dmr][audio]")
+{
+    resetFakes();
+    {
+        std::lock_guard<std::mutex> lk(fakeMutex);
+        micLevel = 8000;
+    }
+    REQUIRE(dmrAudio_startTx());
+    REQUIRE(waitFor([] {
+        std::lock_guard<std::mutex> lk(fakeMutex);
+        return encodeCount > 2;
+    }));
+
+    // The path is taken over: capture ends on its own, keeping the path
+    setPathStatus(PATH_SUSPENDED);
+    REQUIRE(waitFor([] { return dmrAudio_txRunning() == false; }));
+    REQUIRE(released() == 0);
+
+    // Stopping releases it and drops what was left encoded
+    dmrAudio_stopTx();
+    REQUIRE(released() == 1);
+    uint8_t f[DMR_CODEC_FRAME_BYTES];
+    REQUIRE_FALSE(dmrAudio_popFrame(f));
+    dmrAudio_stopTx();
+    REQUIRE(released() == 1);
 }
