@@ -39,6 +39,12 @@ void trace();
 /** Start the driver with a colour code, as the rtx layer does. */
 void start(uint8_t colorCode);
 
+/** Start the driver on a repeater channel. */
+void startRepeater(uint8_t colorCode, uint8_t timeslot);
+
+/** Reconfigure the running driver, as the rtx layer does on a new channel. */
+void configure(bool repeater, uint8_t timeslot, uint8_t colorCode);
+
 /** Stop the driver. */
 void stop();
 
@@ -69,6 +75,14 @@ void slot(uint8_t status, uint8_t colorCode);
  * as when its thread is woken late. */
 void timeslot(int count);
 
+/**
+ * A slot boundary of a repeater's downlink: as slot(), with the CACH's TC bit
+ * read alongside the colour code, and the sync source register telling a
+ * repeater's sync (true) from a radio's.
+ */
+void downlinkSlot(uint8_t status, uint8_t colorCode, uint8_t tc,
+                  bool repeater = true);
+
 /** Raise the system interrupt and wait for the driver to handle it. */
 void system();
 
@@ -83,13 +97,21 @@ void setLinkControl(const std::vector<uint8_t> &lc);
 /** Voice payload the chip hands over, 27 bytes. */
 void setPayload(const std::vector<uint8_t> &payload);
 
+/**
+ * Voice payload of a downlink block, 27 bytes, 0 for the block at 0x30 and 1
+ * for the one at 0x60, with the repeater's voice sync ahead of it or not.
+ */
+void setRepeaterPayload(uint8_t block, const std::vector<uint8_t> &payload,
+                        bool voiceSync);
+
 /** The writes the driver made, in order, and a filter by register. */
 std::vector<Write> writes();
 std::vector<Write> writes(uint8_t page, uint16_t addr);
 void clearWrites();
 
-/** Voice frames handed to playback. */
+/** Voice frames handed to playback, and the last one, 9 bytes. */
 int audioFramesPushed();
+std::vector<uint8_t> lastFramePushed();
 
 /** Payloads written to the payload bus, 27 bytes each. */
 std::vector<std::vector<uint8_t>> payloadsWritten();

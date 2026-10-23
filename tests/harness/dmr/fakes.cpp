@@ -210,6 +210,20 @@ void harness::setPayload(const std::vector<uint8_t> &payload)
         regs[2][0x66 + i] = payload[i];
 }
 
+void harness::setRepeaterPayload(uint8_t block,
+                                 const std::vector<uint8_t> &payload,
+                                 bool voiceSync)
+{
+    static const uint8_t sync[6] = { 0x75, 0x5F, 0xD7, 0xDF, 0x75, 0xF7 };
+    uint16_t base = (block == 0) ? 0x30 : 0x60;
+
+    std::lock_guard<std::mutex> lk(chipMutex);
+    for (size_t i = 0; i < 6; i++)
+        regs[2][base + 3 + i] = voiceSync ? sync[i] : 0x00;
+    for (size_t i = 0; i < payload.size() && i < 27; i++)
+        regs[2][base + 9 + i] = payload[i];
+}
+
 std::vector<Write> harness::writes()
 {
     std::lock_guard<std::mutex> lk(chipMutex);
@@ -348,6 +362,23 @@ void harness::slot(uint8_t status, uint8_t colorCode)
     timeslot();
 }
 
+void harness::downlinkSlot(uint8_t status, uint8_t colorCode, uint8_t tc,
+                           bool repeater)
+{
+    {
+        std::lock_guard<std::mutex> lk(chipMutex);
+        auto it = slotActionAt.find(counters.timeslot - 1);
+        bool silenced = (it != slotActionAt.end()) && (it->second == 0x00);
+        if (silenced == false) {
+            regs[4][0x51] = status;
+            regs[4][0x52] = (colorCode << 4) | ((tc & 1) << 2);
+        }
+        regs[4][0x5F] = repeater ? 0xC1 : 0xC0;
+    }
+
+    timeslot();
+}
+
 void harness::system()
 {
     counters.system += 1;
@@ -382,11 +413,14 @@ std::vector<std::vector<uint8_t>> harness::payloadsWritten()
 /* ---------------------------------------------------------------- audio */
 
 static std::atomic<int> framesPushed{ 0 };
+static std::mutex frameMutex;
+static std::vector<uint8_t> lastFrame;
 
 extern "C" {
 void dmrAudio_pushFrame(const uint8_t *frame)
 {
-    (void)frame;
+    std::lock_guard<std::mutex> lk(frameMutex);
+    lastFrame.assign(frame, frame + 9);
     framesPushed++;
 }
 bool dmrAudio_popFrame(uint8_t *frame)
@@ -399,6 +433,12 @@ bool dmrAudio_popFrame(uint8_t *frame)
 int harness::audioFramesPushed()
 {
     return framesPushed;
+}
+
+std::vector<uint8_t> harness::lastFramePushed()
+{
+    std::lock_guard<std::mutex> lk(frameMutex);
+    return lastFrame;
 }
 
 /* ---------------------------------------------------------------- debug log */
@@ -520,6 +560,10 @@ void harness::reset()
     }
     clockMs = 0;
     framesPushed = 0;
+    {
+        std::lock_guard<std::mutex> lk(frameMutex);
+        lastFrame.clear();
+    }
     memset(&counters, 0, sizeof(counters));
     pendingEvents = 0;
 }
@@ -533,6 +577,25 @@ void harness::start(uint8_t colorCode)
     harnessConfig.colorCode = colorCode;
     harnessConfig.timeslot = 1;
     dmr_init(&harnessConfig);
+    waitIdle();
+}
+
+void harness::startRepeater(uint8_t colorCode, uint8_t timeslot)
+{
+    harnessConfig = {};
+    harnessConfig.access = DMR_ACCESS_REPEATER;
+    harnessConfig.colorCode = colorCode;
+    harnessConfig.timeslot = timeslot;
+    dmr_init(&harnessConfig);
+    waitIdle();
+}
+
+void harness::configure(bool repeater, uint8_t timeslot, uint8_t colorCode)
+{
+    harnessConfig.access = repeater ? DMR_ACCESS_REPEATER : DMR_ACCESS_DIRECT;
+    harnessConfig.timeslot = timeslot;
+    harnessConfig.colorCode = colorCode;
+    dmr_configure(&harnessConfig);
     waitIdle();
 }
 

@@ -1287,6 +1287,7 @@ mic_frame_test = executable('mic_frame_test',
                             kwargs  : unit_test_opts)
 
 dmr_harness_src = ['tests/unit/dmr_harness.cpp',
+                   'tests/unit/dmr_harness_repeater.cpp',
                    'tests/harness/dmr/fakes.cpp',
                    'platform/drivers/baseband/dmr_C6000.cpp',
                    'platform/drivers/baseband/HR_C6000.cpp',
