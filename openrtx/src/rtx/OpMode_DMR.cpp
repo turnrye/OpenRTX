@@ -146,14 +146,16 @@ void OpMode_DMR::rxState(rtxStatus_t *const status)
 
     /*
      * Play the voice of the call being received, unless it is encrypted, as in
-     * OpenGD77. Playback is asked for on every step until it starts, as a
-     * voice prompt may hold the speaker when the call comes in.
+     * OpenGD77. Playback is asked for on every step until it runs, as a voice
+     * prompt may hold the speaker when the call comes in, or take it over
+     * during the call, which ends playback until the speaker is free again.
+     * Stopping also releases what a playback that ended on its own left.
      */
     bool play = rx.valid && (rx.encrypted == false);
     if (play && (dmrAudio_running() == false)) {
         if (dmrAudio_startRx())
             dmrDebug_log(DMR_DBG_INFO, "audio: voice playback started");
-    } else if ((play == false) && dmrAudio_running()) {
+    } else if (play == false) {
         dmrAudio_stopRx();
     }
 

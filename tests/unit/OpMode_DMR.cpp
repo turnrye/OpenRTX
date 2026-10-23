@@ -33,6 +33,7 @@ static struct dmrRxState basebandRx;   // What dmr_task hands out
 static bool playing, capturing;        // Playback and microphone running
 static bool speakerBusy;               // Playback cannot start
 static int playbackAsks;               // dmrAudio_startRx calls
+static int playbackStops;              // dmrAudio_stopRx calls
 static struct dmrConfig lastConfig;    // Last init or configure
 static int inits, configures;
 static bool startGroup;
@@ -137,6 +138,7 @@ bool dmrAudio_startRx(void)
 
 void dmrAudio_stopRx(void)
 {
+    playbackStops++;
     if (playing)
         calls.push_back("playOff");
     playing = false;
@@ -173,7 +175,7 @@ static void resetFakes()
     baseband_tx = false;
     memset(&basebandRx, 0, sizeof(basebandRx));
     playing = capturing = speakerBusy = false;
-    playbackAsks = 0;
+    playbackAsks = playbackStops = 0;
     memset(&lastConfig, 0, sizeof(lastConfig));
     inits = configures = 0;
     startGroup = false;
@@ -365,6 +367,31 @@ TEST_CASE("DMR opmode asks for playback until the speaker is free",
     speakerBusy = false;
     run(mode, s, 1);
     REQUIRE(playing);
+}
+
+TEST_CASE("DMR opmode stops a playback that ended on its own", "[dmr][opmode]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 443700000);
+    basebandRx.valid = true;
+    run(mode, s);
+    REQUIRE(playing);
+
+    // A voice prompt takes the speaker over: playback ends on its own, and is
+    // asked for again while the call lasts
+    playing = false;
+    speakerBusy = true;
+    int asks = playbackAsks;
+    run(mode, s, 2);
+    REQUIRE(playbackAsks == asks + 2);
+
+    // The call ends: what that playback left behind is released
+    playbackStops = 0;
+    basebandRx.valid = false;
+    run(mode, s, 1);
+    REQUIRE(playbackStops == 1);
 }
 
 TEST_CASE("DMR opmode runs the microphone for its transmission only",
