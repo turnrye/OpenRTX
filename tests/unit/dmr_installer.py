@@ -164,9 +164,9 @@ class Installer(unittest.TestCase):
             found.append((ld, int(start.group(1), 16),
                           int(end.group(1), 16) - int(start.group(1), 16)))
         with open(os.path.join(ROOT, "platform/drivers/baseband/dmr_codec.c")) as f:
-            base = re.search(r"#define\s+AMBE_BLOB_BASE\s+(0x[0-9A-Fa-f]+)",
-                             f.read())
-        found.append(("dmr_codec.c", int(base.group(1), 16), CODEC_LEN))
+            starts = re.findall(r"#define\s+AMBE_REGION_START\s+(0x[0-9A-Fa-f]+)",
+                                f.read())
+        self.assertIn(CODEC_ADDR, [int(a, 16) for a in starts])
 
         installer = load_installer()
         for where, start, length in found:

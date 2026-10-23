@@ -5,17 +5,23 @@
  */
 
 /*
- * DMR AMBE+2 vocoder driver. The vocoder is a proprietary blob installed at a
- * fixed flash address from the user's own donor firmware (see the separate DMR
- * installer); it is never part of the OpenRTX image. This file contains no
- * codec bytes -- only the addresses of the donor's own functions and the fixed
- * parameters to drive them, exactly as the donor firmware does. The blob uses
- * only the state pointers we pass it (verified: it holds no absolute references
- * to its buffers), so the state lives in our RAM.
+ * DMR AMBE+2 vocoder driver. The vocoder is proprietary code that is never part
+ * of the OpenRTX image, run from where it already sits in flash:
  *
- * The entry points and the initialisation sequence were recovered from the
- * donor by static analysis; they are facts about the interface, like the
- * HR-C6000 register map, not copied code.
+ * - on the MD-UV3x0, the MD9600 donor firmware's codec, which the separate DMR
+ *   installer merges into the image at the address the donor runs it from;
+ * - on the CS7000 Plus, the copy in the radio's own stock firmware. A factory
+ *   unit keeps the stock firmware in flash bank 1 while OpenRTX runs from bank
+ *   2, so the codec is left where it is.
+ *
+ * Both are the same codec with the same calling convention, at different
+ * addresses. This file contains no codec bytes: only the addresses of the
+ * codec's functions and the fixed parameters to drive them. The codec uses only
+ * the state pointers we pass it, so its state lives in our RAM.
+ *
+ * The entry points and the initialisation sequence were recovered by static
+ * analysis; they are facts about the interface, like the HR-C6000 register map,
+ * not copied code.
  */
 
 #include "interfaces/dmr_codec.h"
@@ -23,28 +29,72 @@
 #include <pthread.h>
 #include <string.h>
 
+/* Thumb entry points inside the codec (bit 0 set marks a Thumb target). */
+#define THUMB(a) ((a) | 1u)
+
+#if defined(PLATFORM_CS7000P)
+
 /*
- * The vocoder blob. Its first instruction is push {r4-r11,lr}, encoded as
- * 0x4FF0E92D; that word doubles as the "codec installed" magic.
+ * The codec of the CS7000 Plus stock firmware V9.00.96. It lies in flash bank 1
+ * sectors 5 to 7, along with the firmware's version string, and only that exact
+ * build is run: the CRC32 of the region must match before any of it is called.
  */
-#define AMBE_BLOB_BASE 0x0807537Cu
+#define AMBE_REGION_START 0x080A0000u
+#define AMBE_REGION_END 0x080F6A56u
+#define AMBE_REGION_CRC32 0x49205C0Eu
+
+#define AMBE_INIT_ENC THUMB(0x080A51B8u)
+#define AMBE_INIT_DEC THUMB(0x080A5614u)
+#define AMBE_CFG_ENC THUMB(0x080A5778u)
+#define AMBE_CFG_A THUMB(0x080A5104u)
+#define AMBE_CFG_B THUMB(0x080A55D0u)
+#define AMBE_ENCODE THUMB(0x080A5070u)
+#define AMBE_ENCODE_ECC THUMB(0x080A5438u)
+#define AMBE_DECODE THUMB(0x080A5528u)
+#define AMBE_ECC_INIT THUMB(0x080A5420u)
+#define AMBE_FEC_DEC THUMB(0x080A5A04u)
+#define AMBE_FEC_STATS THUMB(0x080A5F20u)
+#define AMBE_DEC_SETSTATS THUMB(0x080A54ECu)
+
+#else
+
+/*
+ * The codec of the MD9600 donor firmware V26.45. Its first instruction is
+ * push {r4-r11,lr}, encoded as 0x4FF0E92D; that word doubles as the "codec
+ * installed" magic.
+ */
+#define AMBE_REGION_START 0x0807537Cu
 #define AMBE_BLOB_MAGIC 0x4FF0E92Du
 
-/* Thumb entry points inside the blob (bit 0 set marks a Thumb target). */
-#define THUMB(a) ((a) | 1u)
-#define AMBE_INIT_ENC THUMB(0x08075600u)   /* init encoder state (buf,1,1)   */
-#define AMBE_INIT_DEC THUMB(0x08075A4Cu)   /* init decoder state (buf,1)      */
-#define AMBE_CFG_ENC THUMB(0x08075BC4u)    /* encoder config (buf, 10 params) */
-#define AMBE_CFG_A THUMB(0x0807553Cu)      /* (buf, 0x80, -20)                */
-#define AMBE_CFG_B THUMB(0x08075A04u)      /* (buf, 0x80, -20)                */
-#define AMBE_ENCODE THUMB(0x080754ACu)     /* one 80-sample encode half       */
-#define AMBE_ENCODE_ECC THUMB(0x08075864u) /* add FEC to the 72-bit frame     */
-#define AMBE_DECODE THUMB(0x08075954u)     /* one 80-sample decode half       */
-#define AMBE_ECC_INIT THUMB(0x08075848u)   /* init an FEC state (buf,1)       */
-#define AMBE_FEC_DEC THUMB(0x08075EE0u)    /* 72 on-air bits -> 49, status    */
-#define AMBE_FEC_STATS THUMB(0x080763DCu)  /* read the FEC error statistics   */
-#define AMBE_DEC_SETSTATS \
-    THUMB(0x0807591Cu)                     /* feed them to the decoder        */
+#define AMBE_INIT_ENC THUMB(0x08075600u)
+#define AMBE_INIT_DEC THUMB(0x08075A4Cu)
+#define AMBE_CFG_ENC THUMB(0x08075BC4u)
+#define AMBE_CFG_A THUMB(0x0807553Cu)
+#define AMBE_CFG_B THUMB(0x08075A04u)
+#define AMBE_ENCODE THUMB(0x080754ACu)
+#define AMBE_ENCODE_ECC THUMB(0x08075864u)
+#define AMBE_DECODE THUMB(0x08075954u)
+#define AMBE_ECC_INIT THUMB(0x08075848u)
+#define AMBE_FEC_DEC THUMB(0x08075EE0u)
+#define AMBE_FEC_STATS THUMB(0x080763DCu)
+#define AMBE_DEC_SETSTATS THUMB(0x0807591Cu)
+
+#endif
+
+/*
+ * What each entry point does:
+ *
+ * INIT_ENC, INIT_DEC  initialise the encoder state (buf, 1, 1) and the decoder
+ *                     state (buf, 1)
+ * CFG_ENC             encoder configuration (buf, 10 parameters)
+ * CFG_A, CFG_B        encoder and decoder settings (buf, 0x80, -20)
+ * ENCODE, DECODE      encode or decode one 80-sample half of a frame
+ * ECC_INIT            initialise an FEC state (buf, 1)
+ * ENCODE_ECC          add the FEC to the frame's 49 parameter bits
+ * FEC_DEC             correct the 72 on-air bits back to 49, with a status
+ * FEC_STATS           read the FEC error statistics
+ * DEC_SETSTATS        hand them to the decoder
+ */
 
 /* State buffer sizes, from the donor init routines' clear/write extents. */
 #define ENC_STATE_SIZE 0x2000
@@ -72,7 +122,7 @@
  */
 #define DMR_CODEC_TX_ENABLED 1
 
-/* Function-pointer views of the blob entries. */
+/* Function-pointer views of the codec entries. */
 typedef void (*ambe_init_enc_fn)(void *st, int a, int b);
 typedef void (*ambe_init_dec_fn)(void *st, int a);
 typedef void (*ambe_cfg_enc_fn)(void *st, int, int, int, int, int, int, int,
@@ -95,9 +145,52 @@ static uint8_t decEccState[ECC_STATE_SIZE] __attribute__((aligned(4)));
 static uint8_t fecStats[FEC_STATS_SIZE] __attribute__((aligned(4)));
 static bool ready = false;
 
+#if defined(PLATFORM_CS7000P)
+/**
+ * CRC32 as zlib computes it, four bits at a time to keep the table small.
+ *
+ * @param data: data to check.
+ * @param len: its length, in bytes.
+ * @return the CRC32.
+ */
+static uint32_t crc32(const uint8_t *data, size_t len)
+{
+    static const uint32_t table[16] = {
+        0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
+        0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
+        0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C
+    };
+    uint32_t crc = 0xFFFFFFFF;
+
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        crc = (crc >> 4) ^ table[crc & 0x0F];
+        crc = (crc >> 4) ^ table[crc & 0x0F];
+    }
+
+    return ~crc;
+}
+#endif
+
 bool dmr_codec_available(void)
 {
-    return *(const volatile uint32_t *)AMBE_BLOB_BASE == AMBE_BLOB_MAGIC;
+#if defined(PLATFORM_CS7000P)
+    /*
+     * Another stock firmware version keeps the codec at other addresses, so the
+     * whole region is checked. It is read once, the answer kept.
+     */
+    static uint8_t found = 0; // 0 until checked, then 1 if found, 2 if not
+
+    if (found == 0) {
+        const uint8_t *region = (const uint8_t *)AMBE_REGION_START;
+        size_t len = AMBE_REGION_END - AMBE_REGION_START;
+        found = (crc32(region, len) == AMBE_REGION_CRC32) ? 1 : 2;
+    }
+
+    return found == 1;
+#else
+    return *(const volatile uint32_t *)AMBE_REGION_START == AMBE_BLOB_MAGIC;
+#endif
 }
 
 bool dmr_codec_init(void)
@@ -255,14 +348,12 @@ static void *selfTestThread(void *arg)
     (void)arg;
 
     if (dmr_codec_available() == false) {
-        dmrDebug_log(DMR_DBG_INFO,
-                     "codec: not installed (no donor blob at "
-                     "0x%08lX)",
-                     (unsigned long)AMBE_BLOB_BASE);
+        dmrDebug_log(DMR_DBG_INFO, "codec: not found at 0x%08lX",
+                     (unsigned long)AMBE_REGION_START);
         return NULL;
     }
 
-    dmrDebug_log(DMR_DBG_INFO, "codec: blob present, self-test start");
+    dmrDebug_log(DMR_DBG_INFO, "codec: found, self-test start");
     if (dmr_codec_init() == false) {
         dmrDebug_log(DMR_DBG_INFO, "codec: init failed");
         return NULL;

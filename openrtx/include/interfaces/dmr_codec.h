@@ -15,11 +15,11 @@ extern "C" {
 #endif
 
 /*
- * DMR voice codec (AMBE+2 half rate). The vocoder itself is a proprietary blob
- * that is not part of OpenRTX: it is installed from the user's own donor
- * firmware at a fixed flash address by the separate DMR installer. This layer
- * only calls into it, mirroring how the donor firmware drives it; without the
- * blob installed the codec is unavailable and DMR degrades to header-only RX.
+ * DMR voice codec (AMBE+2 half rate). The vocoder itself is proprietary code
+ * that is not part of OpenRTX: each radio runs it from where it sits in flash,
+ * either merged in from a donor firmware by the separate DMR installer or left
+ * in place by the radio's own stock firmware. This layer only calls into it,
+ * the way the stock firmwares drive it; without it DMR runs without voice.
  *
  * A voice frame is one 20 ms AMBE frame: 160 PCM samples at 8 kHz in, 9 bytes
  * out (three of these make up the 27-byte payload of a DMR voice burst).
@@ -28,15 +28,15 @@ extern "C" {
 #define DMR_CODEC_FRAME_BYTES 9
 
 /**
- * @return true if the donor vocoder is installed at the expected flash address.
+ * @return true if the vocoder is in flash where this radio runs it from.
  */
 bool dmr_codec_available(void);
 
 /**
- * Bring the vocoder up: run the donor's initialisation sequence over the codec
- * state buffers. Must be called before encode/decode.
+ * Bring the vocoder up: run its initialisation sequence over the codec state
+ * buffers. Must be called before encode/decode.
  *
- * @return true on success, false if the vocoder blob is not installed.
+ * @return true on success, false if the vocoder is not in flash.
  */
 bool dmr_codec_init(void);
 
