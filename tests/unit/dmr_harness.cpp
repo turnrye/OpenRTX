@@ -147,6 +147,21 @@ TEST_CASE("DMR call starts from a header and ends on its terminator",
     REQUIRE(writes(CONFIG, 0x21).back().value == 0x01);
 }
 
+TEST_CASE("DMR voice reaches playback even with bit errors", "[dmr][harness]")
+{
+    Driver d;
+    startCall();
+
+    // Frames an MD-UV390 received on the bench, their first Golay codeword
+    // carrying 2, 3 and 4 or more bit errors. The vocoder corrects or conceals
+    // them; leaving them out would leave gaps in the audio.
+    setPayload({ 0xFF, 0xFF, 0x94, 0x36, 0xEC, 0x46, 0x78, 0xB6, 0x77,
+                 0x3E, 0xF0, 0x07, 0x60, 0x51, 0xC1, 0x59, 0x81, 0x6B,
+                 0xFD, 0x75, 0x70, 0x38, 0x90, 0xCC, 0xA0, 0xBB, 0x01 });
+    burst(FRAME_B, CC);
+    REQUIRE(audioFramesPushed() == 3);
+}
+
 TEST_CASE("DMR voice reaches playback, except from the wrong colour code",
           "[dmr][harness]")
 {

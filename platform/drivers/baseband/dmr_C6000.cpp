@@ -384,11 +384,13 @@ static void takeVoicePayload(const uint8_t status)
     if (repeated)
         return;
 
-    for (int f = 0; f < 3; f++) {
-        const uint8_t *frame = &payload[f * DMR_CODEC_FRAME_BYTES];
-        if (dmr_isVoiceFrame(frame))
-            dmrAudio_pushFrame(frame);
-    }
+    /*
+     * Every frame goes to playback, as the stock firmwares do: the vocoder's
+     * FEC corrects what it can and conceals the rest. A frame left out would
+     * leave a 20 ms gap in the audio instead.
+     */
+    for (int f = 0; f < 3; f++)
+        dmrAudio_pushFrame(&payload[f * DMR_CODEC_FRAME_BYTES]);
 }
 
 /**
