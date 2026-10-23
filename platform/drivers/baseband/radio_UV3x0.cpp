@@ -195,20 +195,7 @@ void radio_enableTx()
 
     C6000.setModOffset(txModBias);
 
-    /*
-     * In the digital transmit configuration the carrier comes out about 3kHz
-     * below the programmed frequency: an SDR capture measured our DMR signal
-     * 2.7-3.1kHz under a reference radio on the same channel, protocol content
-     * otherwise perfect. The cause is somewhere in the AT1846S digital mode
-     * setup and is a known trait of this radio: the reference firmware for it
-     * carries the same compensation on transmit. Program the transmitter high
-     * by the same amount; reception is not affected.
-     */
-    freq_t txFrequency = config->txFrequency;
-    if(config->opMode == OPMODE_DMR)
-        txFrequency += 3000;
-
-    at1846s.setFrequency(txFrequency);
+    at1846s.setFrequency(config->txFrequency);
 
     // Constrain output power between 1W and 5W.
     float power  = static_cast < float >(config->txPower) / 1000.0f;
