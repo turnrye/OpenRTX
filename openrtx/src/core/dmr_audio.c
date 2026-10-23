@@ -43,6 +43,7 @@ static uint8_t queue[QUEUE_FRAMES][DMR_CODEC_FRAME_BYTES];
 static uint8_t readPos;
 static uint8_t writePos;
 static uint8_t numFrames;
+static uint32_t droppedFrames; // Pushed while the queue was full
 
 static pthread_t thread;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -81,6 +82,14 @@ static void *playbackFunc(void *arg)
 
     outputStream_sync(os, false);
 
+    /*
+     * Frames played, and slots that went out silent between two frames: a
+     * burst missed, or playback running ahead of the frames coming in.
+     */
+    uint32_t played = 0;
+    uint32_t gaps = 0;
+    uint32_t silentRun = 0;
+
     while (reqStop == false) {
         if (audioPath_getStatus(path) != PATH_OPEN) {
             dmrDebug_log(DMR_DBG_INFO, "audio: playback stopped, speaker path "
@@ -107,15 +116,25 @@ static void *playbackFunc(void *arg)
             break;
         }
 
-        if (haveFrame)
+        if (haveFrame) {
             dmr_codec_decode(buf, frame);
-        else
+            if (played > 0)
+                gaps += silentRun;
+            silentRun = 0;
+            played += 1;
+        } else {
             memset(buf, 0, FRAME_SAMPLES * sizeof(stream_sample_t));
+            silentRun += 1;
+        }
 
         outputStream_sync(os, true);
     }
 
     audioStream_stop(os);
+    dmrDebug_log(DMR_DBG_INFO,
+                 "audio: playback ended, %lu frames, %lu gaps, %lu dropped",
+                 (unsigned long)played, (unsigned long)gaps,
+                 (unsigned long)droppedFrames);
     running = false;
     return NULL;
 }
@@ -156,6 +175,7 @@ bool dmrAudio_startRx(void)
     readPos = 0;
     writePos = 0;
     numFrames = 0;
+    droppedFrames = 0;
     reqStop = false;
     running = true;
 
@@ -198,6 +218,8 @@ void dmrAudio_pushFrame(const uint8_t frame[DMR_CODEC_FRAME_BYTES])
         memcpy(queue[writePos], frame, DMR_CODEC_FRAME_BYTES);
         writePos = (writePos + 1) % QUEUE_FRAMES;
         numFrames += 1;
+    } else {
+        droppedFrames += 1;
     }
     pthread_mutex_unlock(&mutex);
 }
