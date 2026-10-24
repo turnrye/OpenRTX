@@ -1320,6 +1320,28 @@ bool _ui_drawMacroMenu(ui_state_t* ui_state)
                   color_white, encdec_str);
     }
 #endif
+#ifdef CONFIG_DMR
+    else if (last_state.channel.mode == OPMODE_DMR)
+    {
+        // Group or private call, and the timeslot
+#if defined(CONFIG_UI_NO_KEYBOARD)
+        if (ui_state->macro_menu_selected == 0)
+#endif // CONFIG_UI_NO_KEYBOARD
+            gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_LEFT,
+                      yellow_fab413, "1");
+        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_LEFT,
+                  color_white, last_state.settings.dmr_private_call ?
+                               "  Private" : "  Group");
+#if defined(CONFIG_UI_NO_KEYBOARD)
+        if (ui_state->macro_menu_selected == 1)
+#endif // CONFIG_UI_NO_KEYBOARD
+            gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_CENTER,
+                      yellow_fab413, "2");
+        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_CENTER,
+                  color_white, "       TS%d",
+                  last_state.settings.dmr_timeslot + 1);
+    }
+#endif
 
     // Second row
     // Calculate symmetric second row position, line2_pos is asymmetric like main screen

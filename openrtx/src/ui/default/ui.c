@@ -971,6 +971,14 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                     state.channel.fm.txToneEn, state.channel.fm.txTone,
                     queueFlags | vpqIncludeDescriptions);
             }
+            #ifdef CONFIG_DMR
+            // Group or private call
+            else if(state.channel.mode == OPMODE_DMR)
+            {
+                state.settings.dmr_private_call = !state.settings.dmr_private_call;
+                *sync_rtx = true;
+            }
+            #endif
             break;
         case 2:
             if (state.channel.mode == OPMODE_FM)
@@ -993,6 +1001,16 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.txTone,
                                  queueFlags);
             }
+            #ifdef CONFIG_DMR
+            // Timeslot 1 or 2
+            else if(state.channel.mode == OPMODE_DMR)
+            {
+                state.settings.dmr_timeslot = !state.settings.dmr_timeslot;
+                *sync_rtx = true;
+                vp_announceTimeslot(state.settings.dmr_timeslot + 1,
+                                    queueFlags | vpqIncludeDescriptions);
+            }
+            #endif
             break;
 
         case 3:

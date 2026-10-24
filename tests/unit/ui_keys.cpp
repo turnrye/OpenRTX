@@ -133,3 +133,28 @@ TEST_CASE("UI hash key still sends the 1750 Hz tone in FM", "[ui]")
     press(KEY_HASH);
     REQUIRE(state.tone_enabled);
 }
+
+TEST_CASE("UI macro keys 1 and 2 toggle the DMR call type and timeslot",
+          "[ui][dmr]")
+{
+    startDmr(MAIN_VFO);
+    state.settings.dmr_private_call = 0;
+    state.settings.dmr_timeslot = 1; // Timeslot 2
+
+    REQUIRE(press(KEY_MONI | KEY_1));
+    REQUIRE(state.settings.dmr_private_call == 1);
+    REQUIRE(press(KEY_MONI | KEY_1));
+    REQUIRE(state.settings.dmr_private_call == 0);
+
+    REQUIRE(press(KEY_MONI | KEY_2));
+    REQUIRE(state.settings.dmr_timeslot == 0);
+    REQUIRE(press(KEY_MONI | KEY_2));
+    REQUIRE(state.settings.dmr_timeslot == 1);
+
+    // In FM they are the tone keys still
+    state.channel.mode = OPMODE_FM;
+    press(KEY_MONI | KEY_1);
+    press(KEY_MONI | KEY_2);
+    REQUIRE(state.settings.dmr_private_call == 0);
+    REQUIRE(state.settings.dmr_timeslot == 1);
+}
