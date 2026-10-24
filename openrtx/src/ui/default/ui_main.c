@@ -145,6 +145,19 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
                           color_white, "%lu",
                           (unsigned long) rtxStatus.dmrRxSrcId);
             }
+            else if(ui_state->edit_mode)
+            {
+                // The destination being typed in, so far
+                const char *kind = rtxStatus.dmrPrivateCall ? "ID" : "TG";
+
+                if(ui_state->new_dmr_value == 0)
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "DMR %s_", kind);
+                else
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "DMR %s%lu_", kind,
+                              (unsigned long) ui_state->new_dmr_value);
+            }
             else
             {
                 // Idle: show the configured destination and color code.

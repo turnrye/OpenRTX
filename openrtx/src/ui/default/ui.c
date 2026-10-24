@@ -1443,6 +1443,56 @@ static enum vpGPSInfoFlags GetGPSDirectionOrSpeedChanged()
 }
 #endif // CONFIG_GPS
 
+#ifdef CONFIG_DMR
+/**
+ * Start typing a DMR destination, a talkgroup or for a private call an ID,
+ * from a main screen.
+ */
+static void _ui_dmrDestinationStart(enum vpQueueFlags queueFlags)
+{
+    ui_state.edit_mode      = true;
+    ui_state.new_dmr_value  = 0;
+    ui_state.input_position = 0;
+    vp_announceTalkgroup(0, queueFlags);
+}
+
+/**
+ * Take a key while a DMR destination is typed on a main screen: digits add to
+ * it, the arrows take the last one back, enter sets it and escape gives up.
+ * DMR addresses are 24 bits long, and none is 0.
+ */
+static void _ui_dmrDestinationInput(kbd_msg_t msg, bool *sync_rtx,
+                                    enum vpQueueFlags queueFlags)
+{
+    if(msg.keys & KEY_ENTER)
+    {
+        uint32_t dst = ui_state.new_dmr_value;
+        if((dst > 0) && (dst <= 0xFFFFFF))
+        {
+            state.settings.dmr_talkgroup = dst;
+            *sync_rtx = true;
+        }
+
+        ui_state.edit_mode = false;
+        vp_announceTalkgroup(state.settings.dmr_talkgroup, queueFlags);
+    }
+    else if(msg.keys & KEY_ESC)
+    {
+        // Discard the destination being typed
+        ui_state.edit_mode = false;
+    }
+    else if(msg.keys & KEY_UP   || msg.keys & KEY_DOWN ||
+            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+    {
+        _ui_numberInputDel(&ui_state.new_dmr_value);
+    }
+    else if(input_isNumberPressed(msg))
+    {
+        _ui_numberInputKeypad(&ui_state.new_dmr_value, msg);
+    }
+}
+#endif
+
 void ui_updateFSM(bool *sync_rtx)
 {
     // Check for events
@@ -1561,6 +1611,13 @@ void ui_updateFSM(bool *sync_rtx)
 
                 if(ui_state.edit_mode)
                 {
+                    #ifdef CONFIG_DMR
+                    if(state.channel.mode == OPMODE_DMR)
+                    {
+                        _ui_dmrDestinationInput(msg, sync_rtx, queueFlags);
+                        break;
+                    }
+                    #endif
                     #ifdef CONFIG_M17
                     if(state.channel.mode == OPMODE_M17)
                     {
@@ -1634,6 +1691,14 @@ void ui_updateFSM(bool *sync_rtx)
                                     sizeof(ui_state.new_callsign));
                             vp_announceM17Info(NULL,  ui_state.edit_mode,
                                                queueFlags);
+                        }
+                        else
+                        #endif
+                        #ifdef CONFIG_DMR
+                        // In DMR mode, type the destination in
+                        if(state.channel.mode == OPMODE_DMR)
+                        {
+                            _ui_dmrDestinationStart(queueFlags);
                         }
                         else
                         #endif
@@ -1753,6 +1818,13 @@ void ui_updateFSM(bool *sync_rtx)
                 // M17 Destination callsign input
                 if(ui_state.edit_mode)
                 {
+                    #ifdef CONFIG_DMR
+                    if(state.channel.mode == OPMODE_DMR)
+                    {
+                        _ui_dmrDestinationInput(msg, sync_rtx, queueFlags);
+                        break;
+                    }
+                    #endif
                     {
                         if(msg.keys & KEY_ENTER)
                         {
@@ -1830,6 +1902,13 @@ void ui_updateFSM(bool *sync_rtx)
                             _ui_textInputReset(ui_state.new_callsign,
                                     sizeof(ui_state.new_callsign));
                         }
+                        #ifdef CONFIG_DMR
+                        // In DMR mode, type the destination in
+                        else if(state.channel.mode == OPMODE_DMR)
+                        {
+                            _ui_dmrDestinationStart(queueFlags);
+                        }
+                        #endif
                         else
                         {
                             if(!state.tone_enabled)
