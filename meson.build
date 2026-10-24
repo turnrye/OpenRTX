@@ -60,6 +60,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/dmr_audio.c',
                'openrtx/src/core/mic_frame.c',
                'openrtx/src/core/rtttl.c',
+               'openrtx/src/core/tones.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1291,6 +1292,17 @@ rtttl_test = executable('rtttl_test',
                         sources : unit_test_src + ['tests/unit/rtttl_test.cpp'],
                         kwargs  : unit_test_opts)
 
+tones_test = executable('tones_test',
+                        sources : ['tests/unit/tones_test.cpp',
+                                   'openrtx/src/core/tones.c',
+                                   'openrtx/src/core/rtttl.c'],
+                        c_args  : linux_c_args,
+                        cpp_args: linux_cpp_args,
+                        include_directories: ['openrtx/include',
+                                              'platform/targets/linux'],
+                        dependencies: [threads_dep, catch2_dep],
+                        link_args: linux_l_args)
+
 dmr_harness_src = ['tests/unit/dmr_harness.cpp',
                    'tests/unit/dmr_harness_repeater.cpp',
                    'tests/harness/dmr/fakes.cpp',
@@ -1417,6 +1429,7 @@ test('DMR Voice Frame Test', dmr_voice_frame_test)
 test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('Mic Frame Test', mic_frame_test)
 test('RTTTL Parser Test', rtttl_test)
+test('Tones Test', tones_test)
 test('DMR Call Control Test', dmr_call_test)
 test('DMR Repeater Slot Test', dmr_repeater_slot_test)
 test('DMR Voice Sequence Test', dmr_voice_sequence_test)

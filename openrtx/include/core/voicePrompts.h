@@ -310,6 +310,13 @@ bool vp_isPlaying();
 bool vp_sequenceNotEmpty();
 
 /**
+ * Check whether vp_beep() or vp_beepSeries() is driving the beeper.
+ *
+ * @return true while a beep or a beep series plays.
+ */
+bool vp_beepBusy();
+
+/**
  * play a beep at a given frequency for a given duration.
  */
 void vp_beep(uint16_t freq, uint16_t duration);

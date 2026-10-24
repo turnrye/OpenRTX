@@ -105,6 +105,7 @@ target_sources(app
     openrtx/src/core/dmr_debug.c
     openrtx/src/core/dmr_audio.c
     openrtx/src/core/rtttl.c
+    openrtx/src/core/tones.c
     openrtx/src/rtx/rtx.cpp
     openrtx/src/rtx/OpMode_FM.cpp
     openrtx/src/rtx/OpMode_M17.cpp
