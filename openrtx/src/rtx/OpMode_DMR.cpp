@@ -27,6 +27,7 @@ void OpMode_DMR::enable()
     waking = false;
     wakeupSending = false;
     micPending = false;
+    rejectTone = false;
 }
 
 void OpMode_DMR::disable()
@@ -44,6 +45,7 @@ void OpMode_DMR::disable()
     dmrAudio_stopTx();
     tones_stop();
     micPending = false;
+    rejectTone = false;
 
     platform_ledOff(GREEN);
     platform_ledOff(RED);
@@ -193,11 +195,22 @@ bool OpMode_DMR::pttAsksTx(const rtxStatus_t *const status)
 {
     if (platform_getPttStatus() == false) {
         txRefused = false;
+        if (rejectTone) {
+            tones_stop();
+            rejectTone = false;
+        }
+
         return false;
     }
 
     return (status->txDisable == 0) && (txRefused == false);
 }
+
+/*
+ * The Motorola talk reject tone: a steady 605 Hz, for as long as the PTT stays
+ * down after a refused key-up, a minute at most.
+ */
+static const struct rtttl_note TALK_REJECT_TONE[] = { { 605, 60000 } };
 
 void OpMode_DMR::refuseTx(rtxStatus_t *const status, const char *reason)
 {
@@ -205,6 +218,8 @@ void OpMode_DMR::refuseTx(rtxStatus_t *const status, const char *reason)
     txRefused = true;
     startRx = true;
     status->opStatus = OFF;
+
+    rejectTone = tones_playNotes(TALK_REJECT_TONE, 1);
 }
 
 /*

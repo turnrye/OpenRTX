@@ -23,6 +23,7 @@
 #include "interfaces/dmr.h"
 #include "core/dmr_audio.h"
 #include "core/dmr_debug.h"
+#include "core/tones.h"
 #include "rtx/OpMode_DMR.hpp"
 
 /* ---------------------------------------------------------------- the fakes */
@@ -148,6 +149,17 @@ bool tones_playRtttl(const char *rtttl)
     return toneFree;
 }
 
+static uint16_t noteAsked; // First note of the last tone asked for, Hz
+
+bool tones_playNotes(const struct rtttl_note *tone, const size_t length)
+{
+    (void)length;
+    calls.push_back("reject");
+    noteAsked = tone[0].freq_hz;
+    tonePlaying = toneFree;
+    return toneFree;
+}
+
 bool tones_playing(void)
 {
     return tonePlaying;
@@ -155,6 +167,8 @@ bool tones_playing(void)
 
 void tones_stop(void)
 {
+    if (tonePlaying)
+        calls.push_back("toneOff");
     tonePlaying = false;
 }
 
@@ -746,4 +760,30 @@ TEST_CASE("DMR opmode plays the talk permit tone once the repeater answers",
     run(mode, s, 2);
     REQUIRE(count("tone") == 1);
     REQUIRE(count("startTx") == 1);
+}
+
+TEST_CASE("DMR opmode plays the talk reject tone while the PTT stays down",
+          "[dmr][opmode][tone]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    // Refused: the reject tone, once, held with the PTT
+    readiness = DMR_TX_UNABLE;
+    toneFree = true;
+    ptt = true;
+    run(mode, s, 10);
+    REQUIRE(refusals == 1);
+    REQUIRE(count("reject") == 1);
+    REQUIRE(noteAsked == 605);
+    REQUIRE(tonePlaying);
+
+    // Released: silent
+    ptt = false;
+    run(mode, s, 2);
+    REQUIRE_FALSE(tonePlaying);
+    REQUIRE(count("toneOff") == 1);
 }

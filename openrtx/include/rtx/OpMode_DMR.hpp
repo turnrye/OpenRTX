@@ -90,7 +90,8 @@ private:
     void startMic();
 
     /**
-     * Refuse a key-up, saying why on the tap, and fall back to reception.
+     * Refuse a key-up, saying why on the tap and with the talk reject tone
+     * while the PTT stays down, and fall back to reception.
      *
      * @param reason: why, for the log.
      */
@@ -111,6 +112,7 @@ private:
     uint8_t wakeupCount = 0;    ///< Wake-ups sent for this key-up.
     long long wakeupTick = 0;   ///< When the last wake-up was sent.
     bool micPending = false;    ///< Microphone owed once the tone has played.
+    bool rejectTone = false;    ///< The talk reject tone plays.
 };
 
 #endif /* OPMODE_DMR_H */
