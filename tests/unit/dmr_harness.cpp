@@ -602,3 +602,48 @@ TEST_CASE("DMR transmission winds down on its own if the slot clock stops",
     waitIdle();
     REQUIRE_FALSE(txActive());
 }
+
+TEST_CASE("DMR call to another talkgroup is left out unless promiscuous",
+          "[dmr][harness]")
+{
+    Driver d;
+    listen(false, 3101003, 314431);
+
+    // Neither shown nor played
+    startCall(91, 3217219);
+    REQUIRE_FALSE(poll().valid);
+    setPayload(voicePayload());
+    burst(FRAME_B, CC);
+    REQUIRE(audioFramesPushed() == 0);
+
+    // The radio's talkgroup is
+    setLinkControl(groupLc(314431, 3217219));
+    burst(HEADER, CC);
+    REQUIRE(poll().valid);
+    REQUIRE(poll().dstId == 314431);
+}
+
+TEST_CASE("DMR private call to this radio is taken", "[dmr][harness]")
+{
+    Driver d;
+    listen(false, 3101003, 314431);
+
+    Bytes lc = groupLc(3101003, 3217219);
+    lc[0] = 0x03; // Private call
+    lockOnHeader();
+    setLinkControl(lc);
+    burst(HEADER, CC);
+    REQUIRE(poll().valid);
+    REQUIRE_FALSE(poll().groupCall);
+}
+
+TEST_CASE("DMR promiscuous takes the calls to other talkgroups",
+          "[dmr][harness]")
+{
+    Driver d;
+    listen(true, 3101003, 314431);
+
+    startCall(91, 3217219);
+    REQUIRE(poll().valid);
+    REQUIRE(poll().dstId == 91);
+}

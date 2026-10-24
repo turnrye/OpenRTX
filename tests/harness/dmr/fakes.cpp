@@ -573,6 +573,7 @@ static struct dmrConfig harnessConfig;
 void harness::start(uint8_t colorCode)
 {
     harnessConfig = {};
+    harnessConfig.rxPromiscuous = true;
     harnessConfig.access = DMR_ACCESS_DIRECT;
     harnessConfig.colorCode = colorCode;
     harnessConfig.timeslot = 1;
@@ -583,6 +584,7 @@ void harness::start(uint8_t colorCode)
 void harness::startRepeater(uint8_t colorCode, uint8_t timeslot)
 {
     harnessConfig = {};
+    harnessConfig.rxPromiscuous = true;
     harnessConfig.access = DMR_ACCESS_REPEATER;
     harnessConfig.colorCode = colorCode;
     harnessConfig.timeslot = timeslot;
@@ -595,6 +597,15 @@ void harness::configure(bool repeater, uint8_t timeslot, uint8_t colorCode)
     harnessConfig.access = repeater ? DMR_ACCESS_REPEATER : DMR_ACCESS_DIRECT;
     harnessConfig.timeslot = timeslot;
     harnessConfig.colorCode = colorCode;
+    dmr_configure(&harnessConfig);
+    waitIdle();
+}
+
+void harness::listen(bool promiscuous, uint32_t ownId, uint32_t talkgroup)
+{
+    harnessConfig.rxPromiscuous = promiscuous;
+    harnessConfig.ownId = ownId;
+    harnessConfig.talkgroup = talkgroup;
     dmr_configure(&harnessConfig);
     waitIdle();
 }

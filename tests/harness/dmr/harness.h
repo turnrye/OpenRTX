@@ -46,6 +46,9 @@ void startRepeater(uint8_t colorCode, uint8_t timeslot);
 /** Reconfigure the running driver, as the rtx layer does on a new channel. */
 void configure(bool repeater, uint8_t timeslot, uint8_t colorCode);
 
+/** Take every call, or only those for an ID and a talkgroup. */
+void listen(bool promiscuous, uint32_t ownId, uint32_t talkgroup);
+
 /** Stop the driver. */
 void stop();
 
