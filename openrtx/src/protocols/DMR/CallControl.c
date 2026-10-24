@@ -12,11 +12,35 @@ void dmrCall_reset(struct dmrRxCall *rx)
     memset(rx, 0, sizeof(*rx));
 }
 
+/**
+ * Tell whether a call is one the filter takes.
+ *
+ * @param call: the call.
+ * @param filter: which calls to take, NULL for every one.
+ * @return true if it is taken.
+ */
+static bool wanted(const struct dmrVoiceCall *call,
+                   const struct dmrRxFilter *filter)
+{
+    if ((filter == NULL) || filter->promiscuous)
+        return true;
+
+    if (call->groupCall)
+        return call->dstId == filter->talkgroup;
+
+    return call->dstId == filter->ownId;
+}
+
 enum dmrCallChange dmrCall_takeLc(struct dmrRxCall *rx, const uint8_t *lc,
-                                  const uint8_t colorCode, const long long now)
+                                  const uint8_t colorCode,
+                                  const struct dmrRxFilter *filter,
+                                  const long long now)
 {
     struct dmrVoiceCall call;
     if (dmr_parseVoiceLc(lc, &call) == false)
+        return DMR_CALL_IGNORED;
+
+    if (wanted(&call, filter) == false)
         return DMR_CALL_IGNORED;
 
     rx->lastBurst = now;

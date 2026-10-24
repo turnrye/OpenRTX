@@ -67,6 +67,16 @@ enum dmrCallChange {
 };
 
 /**
+ * Which calls are taken: every one, or only those for this radio, the group
+ * calls to its talkgroup and the private calls to its ID.
+ */
+struct dmrRxFilter {
+    bool promiscuous;   ///< Take every call.
+    uint32_t ownId;     ///< The radio's DMR ID.
+    uint32_t talkgroup; ///< The talkgroup it listens to.
+};
+
+/**
  * Forget any call.
  *
  * @param rx: call state.
@@ -80,12 +90,16 @@ void dmrCall_reset(struct dmrRxCall *rx);
  * @param rx: call state.
  * @param lc: full link control.
  * @param colorCode: colour code it was received with.
+ * @param filter: which calls to take, NULL for every one.
  * @param now: current time, ms.
  * @return DMR_CALL_STARTED for a new call, DMR_CALL_SAME for the one in
- * progress, DMR_CALL_IGNORED if the link control is not a voice call's.
+ * progress, DMR_CALL_IGNORED if the link control is not a voice call's, or
+ * that of a call the filter leaves out.
  */
 enum dmrCallChange dmrCall_takeLc(struct dmrRxCall *rx, const uint8_t *lc,
-                                  const uint8_t colorCode, const long long now);
+                                  const uint8_t colorCode,
+                                  const struct dmrRxFilter *filter,
+                                  const long long now);
 
 /**
  * Take the link control of a terminator.

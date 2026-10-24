@@ -25,13 +25,13 @@ TEST_CASE("DMR call starts from its link control and ends on its terminator",
     REQUIRE_FALSE(rx.active);
 
     Lc lc(true, 9, 3101003);
-    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, 1000) == DMR_CALL_STARTED);
+    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, NULL, 1000) == DMR_CALL_STARTED);
     REQUIRE(rx.active);
     REQUIRE(rx.call.dstId == 9);
     REQUIRE(rx.colorCode == 1);
 
     // The same call again, from the embedded signalling: no new call
-    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, 1360) == DMR_CALL_SAME);
+    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, NULL, 1360) == DMR_CALL_SAME);
 
     REQUIRE(dmrCall_takeTerminator(&rx, lc.b) == DMR_CALL_ENDED);
     REQUIRE_FALSE(rx.active);
@@ -49,12 +49,13 @@ TEST_CASE("DMR another station's link control starts a new call", "[dmr][call]")
     Lc other(true, 9, 2357322);
     Lc privateCall(false, 9, 3101003);
 
-    dmrCall_takeLc(&rx, first.b, 1, 0);
-    REQUIRE(dmrCall_takeLc(&rx, other.b, 1, 60) == DMR_CALL_STARTED);
+    dmrCall_takeLc(&rx, first.b, 1, NULL, 0);
+    REQUIRE(dmrCall_takeLc(&rx, other.b, 1, NULL, 60) == DMR_CALL_STARTED);
     REQUIRE(rx.call.srcId == 2357322);
 
     // Same addresses, but a private call: another call
-    REQUIRE(dmrCall_takeLc(&rx, privateCall.b, 1, 120) == DMR_CALL_STARTED);
+    REQUIRE(dmrCall_takeLc(&rx, privateCall.b, 1, NULL, 120)
+            == DMR_CALL_STARTED);
     REQUIRE_FALSE(rx.call.groupCall);
 }
 
@@ -65,7 +66,7 @@ TEST_CASE("DMR terminator of another call is ignored", "[dmr][call]")
 
     Lc mine(true, 9, 3101003);
     Lc theirs(true, 91, 2357322);
-    dmrCall_takeLc(&rx, mine.b, 1, 0);
+    dmrCall_takeLc(&rx, mine.b, 1, NULL, 0);
     REQUIRE(dmrCall_takeTerminator(&rx, theirs.b) == DMR_CALL_IGNORED);
     REQUIRE(rx.active);
 }
@@ -77,7 +78,7 @@ TEST_CASE("DMR link control that is not a voice call is ignored", "[dmr][call]")
 
     Lc lc(true, 9, 3101003);
     lc.b[0] = 0x04; // Talker alias header
-    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, 0) == DMR_CALL_IGNORED);
+    REQUIRE(dmrCall_takeLc(&rx, lc.b, 1, NULL, 0) == DMR_CALL_IGNORED);
     REQUIRE_FALSE(rx.active);
     REQUIRE(dmrCall_takeTerminator(&rx, lc.b) == DMR_CALL_IGNORED);
 }
@@ -93,7 +94,7 @@ TEST_CASE("DMR voice holds a call, and a call without bursts expires",
     REQUIRE_FALSE(dmrCall_expired(&rx, 10000, 500));
 
     Lc lc(true, 9, 3101003);
-    dmrCall_takeLc(&rx, lc.b, 1, 0);
+    dmrCall_takeLc(&rx, lc.b, 1, NULL, 0);
     for (long long t = 60; t <= 3000; t += 60) {
         REQUIRE(dmrCall_takeVoice(&rx, t));
         REQUIRE_FALSE(dmrCall_expired(&rx, t + 30, 500));
@@ -109,4 +110,39 @@ TEST_CASE("DMR colour code is carried by every burst but voice frame A",
     REQUIRE(dmr_burstHasColorCode(DMR_BURST_DATA));
     REQUIRE(dmr_burstHasColorCode(DMR_BURST_VOICE));
     REQUIRE_FALSE(dmr_burstHasColorCode(DMR_BURST_VOICE_SYNC));
+}
+
+TEST_CASE("DMR calls for this radio only, unless promiscuous", "[dmr][call]")
+{
+    struct dmrRxCall rx;
+    struct dmrRxFilter filter = { false, 3101003, 314431 };
+
+    // Group calls to its talkgroup, not to another one
+    dmrCall_reset(&rx);
+    Lc other(true, 91, 3217219);
+    REQUIRE(dmrCall_takeLc(&rx, other.b, 1, &filter, 0) == DMR_CALL_IGNORED);
+    REQUIRE_FALSE(rx.active);
+    Lc ours(true, 314431, 3217219);
+    REQUIRE(dmrCall_takeLc(&rx, ours.b, 1, &filter, 0) == DMR_CALL_STARTED);
+
+    // Private calls to its ID, not to another station's
+    dmrCall_reset(&rx);
+    Lc elsewhere(false, 3217219, 3101005);
+    REQUIRE(dmrCall_takeLc(&rx, elsewhere.b, 1, &filter, 0)
+            == DMR_CALL_IGNORED);
+    Lc toUs(false, 3101003, 3217219);
+    REQUIRE(dmrCall_takeLc(&rx, toUs.b, 1, &filter, 0) == DMR_CALL_STARTED);
+
+    // A call left out does not end the one in progress
+    REQUIRE(dmrCall_takeLc(&rx, other.b, 1, &filter, 60) == DMR_CALL_IGNORED);
+    REQUIRE(rx.active);
+    REQUIRE(rx.call.dstId == 3101003);
+
+    // Promiscuous: all of them
+    filter.promiscuous = true;
+    dmrCall_reset(&rx);
+    REQUIRE(dmrCall_takeLc(&rx, other.b, 1, &filter, 0) == DMR_CALL_STARTED);
+    dmrCall_reset(&rx);
+    REQUIRE(dmrCall_takeLc(&rx, elsewhere.b, 1, &filter, 0)
+            == DMR_CALL_STARTED);
 }

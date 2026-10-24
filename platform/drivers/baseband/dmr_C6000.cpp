@@ -424,7 +424,7 @@ static void takeCallLc(const uint8_t cc)
     if (readVoiceLc(lc) == false)
         return;
 
-    if (dmrCall_takeLc(&rxCall, lc, cc, getTick()) != DMR_CALL_STARTED)
+    if (dmrCall_takeLc(&rxCall, lc, cc, NULL, getTick()) != DMR_CALL_STARTED)
         return;
 
     callSyncMisses = 0;
