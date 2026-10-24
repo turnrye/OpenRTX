@@ -216,7 +216,7 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
          * Through a repeater the bursts follow its timing: without it, they
          * would go into the repeater unaligned.
          */
-        if (dmr_txReady() == false) {
+        if (dmr_txReadiness() != DMR_TX_READY) {
             dmrDebug_log(DMR_DBG_INFO, "tx: refused, no repeater timing");
             txRefused = true;
             startRx = true;

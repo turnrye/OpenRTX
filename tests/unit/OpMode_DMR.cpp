@@ -30,7 +30,7 @@
 static std::vector<std::string> calls; // Radio, baseband and audio calls
 static bool ptt;                       // PTT pressed
 static bool baseband_tx;               // dmr_txActive
-static bool basebandReady;             // dmr_txReady
+static enum dmrTxReadiness readiness;  // dmr_txReadiness
 static struct dmrRxState basebandRx;   // What dmr_task hands out
 static bool playing, capturing;        // Playback and microphone running
 static bool speakerBusy;               // Playback cannot start
@@ -126,9 +126,9 @@ void dmr_txTask()
 {
 }
 
-bool dmr_txReady()
+enum dmrTxReadiness dmr_txReadiness()
 {
-    return basebandReady;
+    return readiness;
 }
 
 bool dmr_txActive()
@@ -183,7 +183,7 @@ static void resetFakes()
     calls.clear();
     ptt = false;
     baseband_tx = false;
-    basebandReady = true;
+    readiness = DMR_TX_READY;
     memset(&basebandRx, 0, sizeof(basebandRx));
     playing = capturing = speakerBusy = false;
     playbackAsks = playbackStops = 0;
@@ -342,7 +342,7 @@ TEST_CASE("DMR opmode transmits only once the baseband is ready to",
     run(mode, s);
 
     // Not ready, as through a repeater whose timing is not known
-    basebandReady = false;
+    readiness = DMR_TX_UNABLE;
     ptt = true;
     run(mode, s, 3);
     for (const std::string &c : calls) {
@@ -354,7 +354,7 @@ TEST_CASE("DMR opmode transmits only once the baseband is ready to",
     // Ready on the next press
     ptt = false;
     run(mode, s, 2);
-    basebandReady = true;
+    readiness = DMR_TX_READY;
     ptt = true;
     run(mode, s, 3);
     REQUIRE(s.opStatus == TX);
@@ -369,7 +369,7 @@ TEST_CASE("DMR opmode refuses a key-up once per press of the PTT",
     mode.enable();
     rtxStatus_t s = channel(443700000, 448700000);
     run(mode, s);
-    basebandReady = false;
+    readiness = DMR_TX_UNABLE;
 
     // Held down: refused once, then left alone
     ptt = true;

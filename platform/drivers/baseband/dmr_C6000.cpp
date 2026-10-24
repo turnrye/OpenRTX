@@ -820,6 +820,12 @@ static volatile bool txKeyupRequested; // Key-up handed to the thread
 static uint32_t txSrcId;               // Own ID, sent as the source
 static struct dmrTxSequence txSeq;     // Bursts of the transmission
 static bool rptTimingPending;          // Downlink timing owed at the next slot
+static volatile bool wakeupRequested;  // Repeater wake-up handed to the thread
+static bool wakeupRunning;             // The wake-up burst is being sent
+static uint8_t wakeupSlots;            // Slots of the wake-up gone by
+
+/* The control block of the repeater wake-up. */
+static uint8_t txCsbk[DMR_CSBK_LENGTH];
 
 /**
  * Key up, as the stock firmware does: clear voice, transmission with the
@@ -887,6 +893,7 @@ static void endTransmission(const char *reason)
     C6000.clearDmrBuffers(C6000_DmrBuffers::ALL);
     C6000.setDmrSlotAction(C6000_DmrSlotAction::NEXT);
 
+    wakeupRunning = false;
     txRunning = false;
     rxRestoreNeeded = true;
 
@@ -963,11 +970,66 @@ static void txRepeaterSlot()
 }
 
 /**
+ * Start waking a repeater up, as the stock firmware does: restart the search
+ * for its downlink, then transmit on the chip's own slot timing, as in direct
+ * mode, for the wake-up burst to go out in the first slot.
+ */
+static void startWakeup()
+{
+    wakeupRequested = false;
+    rxRestoreNeeded = false;
+
+    armReceiver();
+    dmrRpt_reset(&rpt, config.timeslot, configuredCc);
+    rptBlocksSwapped = false;
+
+    C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+    C6000.setDmrTiming(C6000_DmrTiming::TRANSMIT);
+
+    wakeupSlots = 0;
+    wakeupRunning = true;
+
+    dmrDebug_log(DMR_DBG_INFO, "tx: waking the repeater up");
+}
+
+/**
+ * Set up the next slot of the repeater wake-up: the control block, then the
+ * slot after it left empty, then the end, after which the receiver comes back
+ * as after any transmission.
+ */
+static void wakeupSlot()
+{
+    switch (wakeupSlots++) {
+        case 0:
+            C6000.setDmrSlotAction(C6000_DmrSlotAction::TRANSMIT);
+            C6000.writeDmrCsbk(txCsbk);
+            C6000.setDmrBurstType(C6000_DmrBurstType::CSBK);
+            break;
+
+        case 1:
+            C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
+            break;
+
+        default:
+            wakeupRunning = false;
+            txRunning = false;
+            rxRestoreNeeded = true;
+            dmrDebug_log(DMR_DBG_INFO, "tx: wake-up sent");
+            break;
+    }
+}
+
+/**
  * Set up the next slot of the transmission, straight after the slot boundary:
  * in direct mode every other slot carries a burst.
  */
 static void txSlot()
 {
+    if (wakeupRunning) {
+        wakeupSlot();
+        return;
+    }
+
     if (repeaterMode()) {
         txRepeaterSlot();
         return;
@@ -1061,6 +1123,12 @@ static void *rxThreadFunc(void *arg)
 
         if (txKeyupRequested) {
             keyUp();
+            slotDue = -1;
+            continue;
+        }
+
+        if (wakeupRequested) {
+            startWakeup();
             slotDue = -1;
             continue;
         }
@@ -1186,13 +1254,35 @@ static void toggleMarker()
     dmrDebug_log(DMR_DBG_INFO, "tx: test pattern %s", txMarker ? "on" : "off");
 }
 
-bool dmr_txReady()
+enum dmrTxReadiness dmr_txReadiness()
 {
     if (config.access != DMR_ACCESS_REPEATER)
-        return true;
+        return DMR_TX_READY;
+
+    if (repeaterMode() == false)
+        return DMR_TX_UNABLE;
 
     /* Through a repeater, only on the timing of a downlink aligned to. */
-    return repeaterMode() && rpt.aligned;
+    return rpt.aligned ? DMR_TX_READY : DMR_TX_WAKEUP;
+}
+
+void dmr_startWakeup()
+{
+    if (repeaterMode() == false)
+        return;
+
+    dmr_buildWakeupCsbk(txCsbk, config.ownId);
+
+    /*
+     * The wake-up ends on its own after its burst, but counts as unkeyed from
+     * the start, so that it also ends if the slot clock stops.
+     */
+    txStopRequested = true;
+    txStopTick = getTick();
+    txRunning = true;
+
+    wakeupRequested = true;
+    dmrIrq_wakeWaiter();
 }
 
 bool dmr_txActive()
@@ -1330,6 +1420,8 @@ void dmr_init(const struct dmrConfig *cfg)
     txRunning = false;
     txStopRequested = false;
     rxRestoreNeeded = false;
+    wakeupRequested = false;
+    wakeupRunning = false;
 
     configuredCc = config.colorCode & 0x0F;
     reportedTs = 0;
@@ -1407,6 +1499,8 @@ void dmr_terminate()
     txRunning = false;
     txStopRequested = false;
     rxRestoreNeeded = false;
+    wakeupRequested = false;
+    wakeupRunning = false;
 
     C6000.setDmrSlotAction(C6000_DmrSlotAction::IDLE);
     dmrPayload_terminate();

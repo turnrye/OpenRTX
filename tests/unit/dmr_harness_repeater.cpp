@@ -394,19 +394,19 @@ TEST_CASE("DMR repeater channel is ready to transmit only while aligned",
           "[dmr][harness][repeater][tx]")
 {
     Repeater r;
-    REQUIRE_FALSE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_WAKEUP);
 
     uint8_t tc = idleSlots(7, 1);
-    REQUIRE_FALSE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_WAKEUP);
     tc = idleSlots(1, tc);
-    REQUIRE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_READY);
 
     downlinkSlot(IDLE_BURST, CC, tc, false);
-    REQUIRE_FALSE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_WAKEUP);
 
     // Direct mode is always ready
     configure(false, 1, CC);
-    REQUIRE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_READY);
 }
 
 TEST_CASE("DMR repeater key-up without the downlink's timing sends nothing",
@@ -484,7 +484,7 @@ TEST_CASE("DMR repeater transmission goes out on its timeslot, on the "
     REQUIRE(slotActions()
             == std::vector<uint8_t>({ 0x00, 0x40, 0x00, 0x40, 0x00 }));
     REQUIRE(logged("downlink lost") == 0);
-    REQUIRE(txReady());
+    REQUIRE(txReadiness() == DMR_TX_READY);
 }
 
 TEST_CASE("DMR repeater transmission keeps its timeslot over a missed slot "
@@ -516,4 +516,90 @@ TEST_CASE("DMR repeater key-up in the hang time after a call",
     REQUIRE(t.timing == std::vector<uint8_t>({ 0xC3 }));
     REQUIRE(t.actions == std::vector<uint8_t>({ 0x80 }));
     REQUIRE(t.bursts == std::vector<uint8_t>({ 0x10 }));
+}
+
+/* The bytes written to the data page, in order. */
+static Bytes dataWritten(const std::vector<Write> &ws)
+{
+    Bytes out;
+    for (const Write &w : ws)
+        if (w.page == DATA)
+            out.push_back(w.value);
+    return out;
+}
+
+TEST_CASE("DMR repeater wake-up sends its control block on the chip's own "
+          "timing",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    idleSlots(3, 1); // Part way through a search
+    clearWrites();
+
+    // The search restarts, then transmission on the chip's own timing
+    startWakeup(3101003);
+    REQUIRE(txActive());
+    std::vector<RegWrite> start = configWrites(writes(), { 0x40, 0x41 });
+    REQUIRE(containsSequence(start, REARM));
+    REQUIRE(start.size() >= 2);
+    REQUIRE(start[start.size() - 2] == RegWrite(0x41, 0x00));
+    REQUIRE(start.back() == RegWrite(0x40, 0xA3));
+
+    // The first slot carries the wake-up block
+    clearWrites();
+    timeslot();
+    REQUIRE(slotActions() == std::vector<uint8_t>({ 0x80 }));
+    REQUIRE(dataWritten(writes())
+            == Bytes({ 0xB8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x2F, 0x51,
+                       0x4B }));
+    REQUIRE(writes(CONFIG, 0x50).back().value == 0x30);
+    std::vector<RegWrite> order = configWrites(writes(), { 0x41, 0x50 });
+    REQUIRE(order.front() == RegWrite(0x41, 0x80));
+
+    // The next is left empty, and the one after ends it
+    clearWrites();
+    timeslot();
+    REQUIRE(slotActions() == std::vector<uint8_t>({ 0x00 }));
+    REQUIRE(txActive());
+    timeslot();
+    REQUIRE_FALSE(txActive());
+    REQUIRE(logged("tx: wake-up sent") == 1);
+
+    // The receiver comes back searching for the downlink
+    clearWrites();
+    timeslot();
+    REQUIRE(rearmedIn(writes()));
+    REQUIRE(txReadiness() == DMR_TX_WAKEUP);
+
+    // The repeater answers: aligned, ready to key up
+    idleSlots(8, 1);
+    REQUIRE(txReadiness() == DMR_TX_READY);
+}
+
+TEST_CASE("DMR repeater wake-up ends on its own if the slot clock stops",
+          "[dmr][harness][repeater][tx]")
+{
+    Repeater r;
+    startWakeup(3101003);
+    advance(1600);
+    txTask();
+    waitIdle();
+    REQUIRE_FALSE(txActive());
+
+    // A key-up after it is not taken for a wake-up
+    clearWrites();
+    timeslot(); // The receiver comes back
+    idleSlots(8, 1);
+    keyUp(true, 314431, 3101003);
+    timeslot();
+    REQUIRE(writes(CONFIG, 0x50).back().value == 0x10);
+}
+
+TEST_CASE("DMR wake-up on a direct channel sends nothing", "[dmr][harness][tx]")
+{
+    Driver d;
+    clearWrites();
+    startWakeup(3101003);
+    REQUIRE_FALSE(txActive());
+    REQUIRE(writes().empty());
 }

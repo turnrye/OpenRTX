@@ -181,3 +181,16 @@ TEST_CASE("MD-UV3x0 DMR transmits in mode 0x6C and sets direct mode up after",
     REQUIRE(lastWrite(CONFIG, 0x1F) == (CC << 4));
     REQUIRE(armedIn(ws));
 }
+
+TEST_CASE("MD-UV3x0 DMR does not transmit through a repeater",
+          "[dmr][harness][uv3x0]")
+{
+    Driver d;
+    configure(true, 1, CC);
+    REQUIRE(txReadiness() == DMR_TX_UNABLE);
+
+    clearWrites();
+    startWakeup(3101003);
+    REQUIRE_FALSE(txActive());
+    REQUIRE(writes().empty());
+}

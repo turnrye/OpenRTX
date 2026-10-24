@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include "interfaces/dmr.h"
 
 /**
  * The DMR driver harness: the HR_C6000 DMR driver running on the host against
@@ -130,11 +131,14 @@ struct RxState {
 };
 RxState poll();
 
-/** Key up and unkey, as the rtx layer does, and ask whether it may key up. */
+/** Key up and unkey, as the rtx layer does, and ask what a key-up needs. */
 void keyUp(bool group, uint32_t dst, uint32_t src);
 void unkey();
-bool txReady();
+enum dmrTxReadiness txReadiness();
 bool txActive();
+
+/** Send the repeater wake-up, as the rtx layer does, from a station's ID. */
+void startWakeup(uint32_t src);
 
 /** The rtx layer's periodic transmit housekeeping call. */
 void txTask();

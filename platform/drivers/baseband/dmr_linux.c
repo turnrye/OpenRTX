@@ -58,9 +58,13 @@ void dmr_txTask()
 {
 }
 
-bool dmr_txReady()
+enum dmrTxReadiness dmr_txReadiness()
 {
-    return true;
+    return DMR_TX_READY;
+}
+
+void dmr_startWakeup()
+{
 }
 
 bool dmr_txActive()

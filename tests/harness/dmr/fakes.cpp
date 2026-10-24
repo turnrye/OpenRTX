@@ -640,9 +640,17 @@ void harness::unkey()
     dmr_stopTx();
 }
 
-bool harness::txReady()
+enum dmrTxReadiness harness::txReadiness()
 {
-    return dmr_txReady();
+    return dmr_txReadiness();
+}
+
+void harness::startWakeup(uint32_t src)
+{
+    harnessConfig.ownId = src;
+    dmr_configure(&harnessConfig);
+    dmr_startWakeup();
+    waitIdle();
 }
 
 bool harness::txActive()

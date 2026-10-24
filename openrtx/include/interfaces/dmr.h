@@ -109,13 +109,34 @@ void dmr_stopTx();
 void dmr_txTask();
 
 /**
- * Check whether a transmission can start on the configured channel. Direct
- * mode transmits at any time; through a repeater, the bursts have to follow the
- * repeater's timing, which the baseband may not have.
- *
- * @return true if dmr_startTx would key up.
+ * What a transmission needs before it can start.
  */
-bool dmr_txReady();
+enum dmrTxReadiness {
+    DMR_TX_READY,  ///< Nothing: dmr_startTx keys up straight away.
+    DMR_TX_WAKEUP, ///< The repeater's timing: wake it up with dmr_startWakeup.
+    DMR_TX_UNABLE  ///< The baseband cannot transmit on this channel.
+};
+
+/**
+ * Tell what a transmission needs before it can start on the configured
+ * channel. Direct mode transmits at any time; through a repeater, the bursts
+ * have to follow the repeater's timing, which the baseband only has while it
+ * hears the repeater.
+ *
+ * @return what the transmission needs.
+ */
+enum dmrTxReadiness dmr_txReadiness();
+
+/**
+ * Send a repeater the burst that wakes it up, on a repeater channel the
+ * baseband is not aligned to, and go back to searching for its downlink. The
+ * radio has to be transmitting on the repeater's input meanwhile. Once the
+ * repeater answers, dmr_txReadiness returns DMR_TX_READY. Ignored on any other
+ * channel.
+ *
+ * dmr_txActive returns true until the burst has been sent.
+ */
+void dmr_startWakeup();
 
 /**
  * Check whether a transmission is still in progress.
