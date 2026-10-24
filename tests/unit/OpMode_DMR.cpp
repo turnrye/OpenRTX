@@ -284,6 +284,7 @@ TEST_CASE("DMR opmode configures the baseband from the rtx status",
     REQUIRE(lastConfig.colorCode == 1);
     REQUIRE(lastConfig.timeslot == 2);
     REQUIRE(lastConfig.ownId == 3101003);
+    REQUIRE(lastConfig.talkgroup == 9);
     REQUIRE(lastConfig.rxPromiscuous);
 
     // Only a new configuration reaches the running baseband

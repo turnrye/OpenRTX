@@ -56,6 +56,7 @@ struct dmrConfig {
     uint8_t colorCode;     ///< Color code to accept and to send, 0 to 15.
     uint8_t timeslot;      ///< Timeslot of the channel, 1 or 2.
     uint32_t ownId;        ///< The radio's own DMR ID, sent as the source.
+    uint32_t talkgroup;    ///< Talkgroup whose group calls are received.
     bool rxPromiscuous;    ///< Accept calls to any destination.
 };
 

@@ -75,6 +75,7 @@ static void buildConfig(const rtxStatus_t *status, struct dmrConfig *config)
     config->colorCode = status->dmrColorCode;
     config->timeslot = status->dmrTimeslot + 1;
     config->ownId = status->dmrId;
+    config->talkgroup = status->dmrTalkgroup;
     config->rxPromiscuous = status->dmrRxPromisc;
 }
 
