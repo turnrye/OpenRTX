@@ -33,6 +33,9 @@ static bool baseband_tx;               // dmr_txActive
 static enum dmrTxReadiness readiness;  // dmr_txReadiness
 static bool wakeupHeld;                // The wake-up burst stays in progress
 static long long clockMs;              // getTick, moved on by sleepFor
+static bool toneFree;                  // A tone can play on the speaker
+static bool tonePlaying;               // tones_playing
+static const char *toneAsked;          // The last tone asked for
 static struct dmrRxState basebandRx;   // What dmr_task hands out
 static bool playing, capturing;        // Playback and microphone running
 static bool speakerBusy;               // Playback cannot start
@@ -137,6 +140,24 @@ enum dmrTxReadiness dmr_txReadiness()
     return readiness;
 }
 
+bool tones_playRtttl(const char *rtttl)
+{
+    calls.push_back("tone");
+    toneAsked = rtttl;
+    tonePlaying = toneFree;
+    return toneFree;
+}
+
+bool tones_playing(void)
+{
+    return tonePlaying;
+}
+
+void tones_stop(void)
+{
+    tonePlaying = false;
+}
+
 void dmr_startWakeup()
 {
     calls.push_back("wakeup");
@@ -198,6 +219,9 @@ static void resetFakes()
     readiness = DMR_TX_READY;
     wakeupHeld = false;
     clockMs = 0;
+    toneFree = false;
+    tonePlaying = false;
+    toneAsked = NULL;
     memset(&basebandRx, 0, sizeof(basebandRx));
     playing = capturing = speakerBusy = false;
     playbackAsks = playbackStops = 0;
@@ -322,8 +346,8 @@ TEST_CASE("DMR opmode switches the radio off on every handover",
     REQUIRE(s.opStatus == RX);
 
     const std::vector<std::string> expected = {
-        "disableRtx", "enableRx", "disableRtx", "micOn",   "enableTx",
-        "startTx",    "micOff",   "disableRtx", "enableRx"
+        "disableRtx", "enableRx", "disableRtx", "tone",       "micOn",
+        "enableTx",   "startTx",  "micOff",     "disableRtx", "enableRx"
     };
     REQUIRE(calls == expected);
 }
@@ -488,8 +512,9 @@ TEST_CASE("DMR opmode runs the microphone for its transmission only",
     // The call is no longer played; the microphone starts before the key-up
     ptt = true;
     run(mode, s);
-    const std::vector<std::string> keyed = { "playOff", "disableRtx", "micOn",
-                                             "enableTx", "startTx" };
+    const std::vector<std::string> keyed = {
+        "playOff", "disableRtx", "tone", "micOn", "enableTx", "startTx"
+    };
     REQUIRE(calls == keyed);
 
     // The microphone runs until the baseband is done with the terminator
@@ -567,7 +592,7 @@ TEST_CASE("DMR opmode wakes the repeater up before keying up",
     run(mode, s, 1);
     REQUIRE(calls
             == std::vector<std::string>(
-                { "disableRtx", "micOn", "enableTx", "startTx" }));
+                { "disableRtx", "tone", "micOn", "enableTx", "startTx" }));
     REQUIRE(s.opStatus == TX);
     REQUIRE(refusals == 0);
 }
@@ -648,4 +673,77 @@ TEST_CASE("DMR opmode waits for the wake-up to go out before letting go",
     baseband_tx = false;
     run(mode, s, 3);
     REQUIRE(s.opStatus == RX);
+}
+
+TEST_CASE("DMR opmode plays the talk permit tone, then starts the microphone",
+          "[dmr][opmode][tone]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 443700000);
+    run(mode, s);
+
+    // The tone plays as the call keys up; the microphone waits for it
+    toneFree = true;
+    ptt = true;
+    calls.clear();
+    run(mode, s, 3);
+    REQUIRE(calls
+            == std::vector<std::string>(
+                { "disableRtx", "tone", "enableTx", "startTx" }));
+    REQUIRE(std::string(toneAsked) == "permit:d=32,o=6,b=214:g,c,g,e.");
+    REQUIRE_FALSE(capturing);
+
+    // Then the microphone, once
+    tonePlaying = false;
+    run(mode, s, 3);
+    REQUIRE(count("micOn") == 1);
+    REQUIRE(capturing);
+}
+
+TEST_CASE("DMR opmode stops the talk permit tone with a short transmission",
+          "[dmr][opmode][tone]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 443700000);
+    run(mode, s);
+
+    toneFree = true;
+    ptt = true;
+    run(mode, s, 3);
+    REQUIRE(tonePlaying);
+
+    // Released and over before the tone is: no microphone, no tone left
+    ptt = false;
+    baseband_tx = false;
+    run(mode, s, 3);
+    REQUIRE(s.opStatus == RX);
+    REQUIRE_FALSE(tonePlaying);
+    REQUIRE(count("micOn") == 0);
+}
+
+TEST_CASE("DMR opmode plays the talk permit tone once the repeater answers",
+          "[dmr][opmode][tone][repeater]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    // Not while waking the repeater up
+    readiness = DMR_TX_WAKEUP;
+    toneFree = true;
+    ptt = true;
+    run(mode, s, 3);
+    REQUIRE(count("tone") == 0);
+
+    // At the voice key-up
+    readiness = DMR_TX_READY;
+    run(mode, s, 2);
+    REQUIRE(count("tone") == 1);
+    REQUIRE(count("startTx") == 1);
 }

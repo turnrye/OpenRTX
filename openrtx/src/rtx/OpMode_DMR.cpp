@@ -10,6 +10,7 @@
 #include "interfaces/dmr.h"
 #include "core/dmr_audio.h"
 #include "core/dmr_debug.h"
+#include "core/tones.h"
 #include "rtx/OpMode_DMR.hpp"
 
 void OpMode_DMR::enable()
@@ -25,6 +26,7 @@ void OpMode_DMR::enable()
     txRefused = false;
     waking = false;
     wakeupSending = false;
+    micPending = false;
 }
 
 void OpMode_DMR::disable()
@@ -40,6 +42,8 @@ void OpMode_DMR::disable()
      */
     dmrAudio_stopRx();
     dmrAudio_stopTx();
+    tones_stop();
+    micPending = false;
 
     platform_ledOff(GREEN);
     platform_ledOff(RED);
@@ -203,18 +207,33 @@ void OpMode_DMR::refuseTx(rtxStatus_t *const status, const char *reason)
     status->opStatus = OFF;
 }
 
+/*
+ * The Motorola talk permit tone, played as the call keys up as the sign to
+ * start talking: G6, C6 and G6 of 35 ms, then E6 of 52 ms.
+ */
+static const char *const TALK_PERMIT_TONE = "permit:d=32,o=6,b=214:g,c,g,e.";
+
+void OpMode_DMR::startMic()
+{
+    if (dmrAudio_startTx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+}
+
 void OpMode_DMR::keyUp(rtxStatus_t *const status)
 {
     platform_ledOff(GREEN);
     platform_ledOn(RED);
 
     /*
-     * Capture and encode the microphone from now on, so the first voice frames
-     * are ready when the headers are over. The capture starts before the
-     * key-up, so the baseband only ever takes frames from a running one.
+     * Capture and encode the microphone once the talk permit tone has played,
+     * so that the tone does not go out with the voice; the baseband sends the
+     * silence frame until then. Without the tone, the capture starts before
+     * the key-up, so that the first voice frames are ready when the headers
+     * are over.
      */
-    if (dmrAudio_startTx())
-        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+    micPending = tones_playRtttl(TALK_PERMIT_TONE);
+    if (micPending == false)
+        startMic();
 
     radio_enableTx();
     dmr_startTx(status->dmrPrivateCall == 0, status->dmrTalkgroup);
@@ -329,6 +348,11 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
         return;
     }
 
+    if (micPending && (tones_playing() == false)) {
+        micPending = false;
+        startMic();
+    }
+
     /*
      * Periodic transmit housekeeping: keeps the interrupt watchdog fed while
      * dmr_task(), which normally feeds it, is not called.
@@ -345,6 +369,8 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
      */
     if (dmr_txActive() == false) {
         dmrAudio_stopTx();
+        tones_stop();
+        micPending = false;
         platform_ledOff(RED);
         startRx = true;
         status->opStatus = OFF;

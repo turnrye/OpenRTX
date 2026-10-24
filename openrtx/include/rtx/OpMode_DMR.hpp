@@ -80,9 +80,14 @@ private:
     void sendWakeup();
 
     /**
-     * Key the call and the microphone up.
+     * Key the call up, with the talk permit tone, and the microphone after it.
      */
     void keyUp(rtxStatus_t *const status);
+
+    /**
+     * Start capturing and encoding the microphone.
+     */
+    void startMic();
 
     /**
      * Refuse a key-up, saying why on the tap, and fall back to reception.
@@ -105,6 +110,7 @@ private:
     bool wakeupSending = false; ///< The wake-up is being sent.
     uint8_t wakeupCount = 0;    ///< Wake-ups sent for this key-up.
     long long wakeupTick = 0;   ///< When the last wake-up was sent.
+    bool micPending = false;    ///< Microphone owed once the tone has played.
 };
 
 #endif /* OPMODE_DMR_H */
