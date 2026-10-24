@@ -132,6 +132,15 @@ bool vp_announceContactWithIndex(const uint16_t index,
 void vp_announceTimeslot(const uint8_t timeslot, const enum vpQueueFlags flags);
 
 /**
+ * Announce a DMR talkgroup, or just say "talkgroup" for 0.
+ *
+ * @param talkgroup: the talkgroup, 0 for none yet.
+ * @param flags: control flags.
+ */
+void vp_announceTalkgroup(const uint32_t talkgroup,
+                          const enum vpQueueFlags flags);
+
+/**
  *
  */
 void vp_announceColorCode(const uint8_t rxColorCode, const uint8_t txColorCode,

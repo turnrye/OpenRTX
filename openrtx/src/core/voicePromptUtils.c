@@ -427,6 +427,20 @@ void vp_announceTimeslot(const uint8_t timeslot, const enum vpQueueFlags flags)
     playIfNeeded(flags);
 }
 
+void vp_announceTalkgroup(const uint32_t talkgroup,
+                          const enum vpQueueFlags flags)
+{
+    clearCurrPromptIfNeeded(flags);
+
+    if ((flags & vpqIncludeDescriptions) || (talkgroup == 0))
+        vp_queuePrompt(PROMPT_TALKGROUP);
+
+    if (talkgroup != 0)
+        vp_queueInteger((int)talkgroup);
+
+    playIfNeeded(flags);
+}
+
 void vp_announceColorCode(const uint8_t rxColorCode, const uint8_t txColorCode,
                           const enum vpQueueFlags flags)
 {
