@@ -1292,6 +1292,10 @@ rtttl_test = executable('rtttl_test',
                         sources : unit_test_src + ['tests/unit/rtttl_test.cpp'],
                         kwargs  : unit_test_opts)
 
+ui_keys_test = executable('ui_keys_test',
+                          sources : unit_test_src + ['tests/unit/ui_keys.cpp'],
+                          kwargs  : unit_test_opts)
+
 tones_test = executable('tones_test',
                         sources : ['tests/unit/tones_test.cpp',
                                    'openrtx/src/core/tones.c',
@@ -1430,6 +1434,7 @@ test('CS7000 PA Ramp Test', cs7000_pa_ramp_test)
 test('Mic Frame Test', mic_frame_test)
 test('RTTTL Parser Test', rtttl_test)
 test('Tones Test', tones_test)
+test('UI Keys Test', ui_keys_test)
 test('DMR Call Control Test', dmr_call_test)
 test('DMR Repeater Slot Test', dmr_repeater_slot_test)
 test('DMR Voice Sequence Test', dmr_voice_sequence_test)
