@@ -31,6 +31,8 @@ static std::vector<std::string> calls; // Radio, baseband and audio calls
 static bool ptt;                       // PTT pressed
 static bool baseband_tx;               // dmr_txActive
 static enum dmrTxReadiness readiness;  // dmr_txReadiness
+static bool wakeupHeld;                // The wake-up burst stays in progress
+static long long clockMs;              // getTick, moved on by sleepFor
 static struct dmrRxState basebandRx;   // What dmr_task hands out
 static bool playing, capturing;        // Playback and microphone running
 static bool speakerBusy;               // Playback cannot start
@@ -75,8 +77,12 @@ void radio_disableRtx()
 
 void sleepFor(unsigned int seconds, unsigned int mseconds)
 {
-    (void)seconds;
-    (void)mseconds;
+    clockMs += (seconds * 1000) + mseconds;
+}
+
+long long getTick()
+{
+    return clockMs;
 }
 
 static int refusals; // "tx: refused" lines logged
@@ -129,6 +135,12 @@ void dmr_txTask()
 enum dmrTxReadiness dmr_txReadiness()
 {
     return readiness;
+}
+
+void dmr_startWakeup()
+{
+    calls.push_back("wakeup");
+    baseband_tx = wakeupHeld;
 }
 
 bool dmr_txActive()
@@ -184,6 +196,8 @@ static void resetFakes()
     ptt = false;
     baseband_tx = false;
     readiness = DMR_TX_READY;
+    wakeupHeld = false;
+    clockMs = 0;
     memset(&basebandRx, 0, sizeof(basebandRx));
     playing = capturing = speakerBusy = false;
     playbackAsks = playbackStops = 0;
@@ -515,4 +529,123 @@ TEST_CASE("DMR opmode stops the audio after the baseband when disabled",
     REQUIRE(
         calls
         == std::vector<std::string>({ "terminate", "micOff", "disableRtx" }));
+}
+
+static int count(const std::string &call)
+{
+    return std::count(calls.begin(), calls.end(), call);
+}
+
+TEST_CASE("DMR opmode wakes the repeater up before keying up",
+          "[dmr][opmode][repeater]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    // The wake-up goes out with the radio transmitting, and in full
+    readiness = DMR_TX_WAKEUP;
+    wakeupHeld = true;
+    ptt = true;
+    calls.clear();
+    run(mode, s, 3);
+    REQUIRE(calls
+            == std::vector<std::string>(
+                { "disableRtx", "disableRtx", "enableTx", "wakeup" }));
+
+    // Then the radio listens for the repeater
+    baseband_tx = false;
+    calls.clear();
+    run(mode, s, 3);
+    REQUIRE(calls == std::vector<std::string>({ "disableRtx", "enableRx" }));
+
+    // The repeater answers: key up
+    readiness = DMR_TX_READY;
+    calls.clear();
+    run(mode, s, 1);
+    REQUIRE(calls
+            == std::vector<std::string>(
+                { "disableRtx", "micOn", "enableTx", "startTx" }));
+    REQUIRE(s.opStatus == TX);
+    REQUIRE(refusals == 0);
+}
+
+TEST_CASE("DMR opmode gives up on a repeater after four wake-ups",
+          "[dmr][opmode][repeater]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    readiness = DMR_TX_WAKEUP;
+    ptt = true;
+    run(mode, s, 3);
+    REQUIRE(count("wakeup") == 1);
+
+    // Sent again after 600ms without an answer
+    long long first = clockMs;
+    while ((count("wakeup") < 2) && (clockMs - first < 2000))
+        run(mode, s, 1);
+    REQUIRE(count("wakeup") == 2);
+    REQUIRE(clockMs - first >= 600);
+    REQUIRE(clockMs - first < 650);
+
+    // Four in all, then refused, once while the PTT stays down
+    run(mode, s, 400);
+    REQUIRE(count("wakeup") == 4);
+    REQUIRE(refusals == 1);
+    REQUIRE(count("startTx") == 0);
+    REQUIRE(s.opStatus == RX);
+}
+
+TEST_CASE("DMR opmode stops waking the repeater up when the PTT is released",
+          "[dmr][opmode][repeater]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    readiness = DMR_TX_WAKEUP;
+    ptt = true;
+    run(mode, s, 3);
+
+    ptt = false;
+    run(mode, s, 3);
+    REQUIRE(s.opStatus == RX);
+    REQUIRE(count("wakeup") == 1);
+    REQUIRE(count("startTx") == 0);
+    REQUIRE(refusals == 0);
+    REQUIRE(calls.back() == "enableRx");
+}
+
+TEST_CASE("DMR opmode waits for the wake-up to go out before letting go",
+          "[dmr][opmode][repeater]")
+{
+    resetFakes();
+    OpMode_DMR mode;
+    mode.enable();
+    rtxStatus_t s = channel(443700000, 448700000);
+    run(mode, s);
+
+    readiness = DMR_TX_WAKEUP;
+    wakeupHeld = true;
+    ptt = true;
+    run(mode, s, 3);
+
+    // Released while the burst is still going out: the radio stays on air
+    ptt = false;
+    calls.clear();
+    run(mode, s, 3);
+    REQUIRE(calls.empty());
+    REQUIRE(s.opStatus == TX);
+
+    baseband_tx = false;
+    run(mode, s, 3);
+    REQUIRE(s.opStatus == RX);
 }

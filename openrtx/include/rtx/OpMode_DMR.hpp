@@ -67,15 +67,44 @@ private:
     void txState(rtxStatus_t *const status);
 
     /**
+     * Wake-up handling, before keying up through a repeater that is not heard:
+     * send the wake-up with the radio transmitting, listen for the repeater
+     * with it receiving, and key up once the repeater answers, sending the
+     * wake-up again a few times before giving up.
+     */
+    void wakeupState(rtxStatus_t *const status);
+
+    /**
+     * Send the repeater a wake-up, with the radio transmitting.
+     */
+    void sendWakeup();
+
+    /**
+     * Key the call and the microphone up.
+     */
+    void keyUp(rtxStatus_t *const status);
+
+    /**
+     * Refuse a key-up, saying why on the tap, and fall back to reception.
+     *
+     * @param reason: why, for the log.
+     */
+    void refuseTx(rtxStatus_t *const status, const char *reason);
+
+    /**
      * Tell whether the PTT asks for a transmission: pressed, transmission
      * allowed, and not still held down from a key-up that was refused.
      */
     bool pttAsksTx(const rtxStatus_t *const status);
 
-    bool enabled = false;   ///< Baseband brought up.
-    bool startRx = false;   ///< Reception has still to be armed.
-    bool startTx = false;   ///< A transmission has still to be keyed.
-    bool txRefused = false; ///< A key-up was refused, the PTT is still held.
+    bool enabled = false;       ///< Baseband brought up.
+    bool startRx = false;       ///< Reception has still to be armed.
+    bool startTx = false;       ///< A transmission has still to be keyed.
+    bool txRefused = false;     ///< A key-up was refused, the PTT still held.
+    bool waking = false;        ///< Waking the repeater up before keying up.
+    bool wakeupSending = false; ///< The wake-up is being sent.
+    uint8_t wakeupCount = 0;    ///< Wake-ups sent for this key-up.
+    long long wakeupTick = 0;   ///< When the last wake-up was sent.
 };
 
 #endif /* OPMODE_DMR_H */

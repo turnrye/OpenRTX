@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include "interfaces/delays.h"
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include "interfaces/dmr.h"
@@ -22,6 +23,8 @@ void OpMode_DMR::enable()
     startRx = false;
     startTx = false;
     txRefused = false;
+    waking = false;
+    wakeupSending = false;
 }
 
 void OpMode_DMR::disable()
@@ -192,6 +195,99 @@ bool OpMode_DMR::pttAsksTx(const rtxStatus_t *const status)
     return (status->txDisable == 0) && (txRefused == false);
 }
 
+void OpMode_DMR::refuseTx(rtxStatus_t *const status, const char *reason)
+{
+    dmrDebug_log(DMR_DBG_INFO, "tx: refused, %s", reason);
+    txRefused = true;
+    startRx = true;
+    status->opStatus = OFF;
+}
+
+void OpMode_DMR::keyUp(rtxStatus_t *const status)
+{
+    platform_ledOff(GREEN);
+    platform_ledOn(RED);
+
+    /*
+     * Capture and encode the microphone from now on, so the first voice frames
+     * are ready when the headers are over. The capture starts before the
+     * key-up, so the baseband only ever takes frames from a running one.
+     */
+    if (dmrAudio_startTx())
+        dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
+
+    radio_enableTx();
+    dmr_startTx(status->dmrPrivateCall == 0, status->dmrTalkgroup);
+}
+
+/*
+ * Wake-ups sent before giving up, and the wait for the repeater after each, in
+ * milliseconds: OpenGD77's, as the stock firmware takes them from the codeplug.
+ */
+static const uint8_t WAKEUP_ATTEMPTS = 4;
+static const long long WAKEUP_INTERVAL = 600;
+
+void OpMode_DMR::sendWakeup()
+{
+    wakeupCount += 1;
+    wakeupTick = getTick();
+    wakeupSending = true;
+
+    dmrDebug_log(DMR_DBG_INFO, "tx: repeater wake-up %u of %u",
+                 (unsigned)wakeupCount, (unsigned)WAKEUP_ATTEMPTS);
+
+    platform_ledOn(RED);
+    radio_disableRtx();
+    radio_enableTx();
+    dmr_startWakeup();
+}
+
+void OpMode_DMR::wakeupState(rtxStatus_t *const status)
+{
+    /* Keeps the interrupt watchdog fed, as dmr_task() is not called. */
+    dmr_txTask();
+
+    /* The wake-up goes out in full before the radio goes back to receive. */
+    if (wakeupSending) {
+        if (dmr_txActive()) {
+            sleepFor(0u, 10u);
+            return;
+        }
+
+        wakeupSending = false;
+        platform_ledOff(RED);
+        radio_disableRtx();
+        radio_enableRx();
+    }
+
+    if (platform_getPttStatus() == false) {
+        waking = false;
+        startRx = true;
+        status->opStatus = OFF;
+        return;
+    }
+
+    if (dmr_txReadiness() == DMR_TX_READY) {
+        waking = false;
+        dmrDebug_log(DMR_DBG_INFO, "tx: the repeater answered");
+        radio_disableRtx();
+        keyUp(status);
+        return;
+    }
+
+    if ((getTick() - wakeupTick) >= WAKEUP_INTERVAL) {
+        if (wakeupCount >= WAKEUP_ATTEMPTS) {
+            waking = false;
+            refuseTx(status, "the repeater does not answer");
+            return;
+        }
+
+        sendWakeup();
+    }
+
+    sleepFor(0u, 10u);
+}
+
 void OpMode_DMR::txState(rtxStatus_t *const status)
 {
     if (startTx) {
@@ -203,40 +299,34 @@ void OpMode_DMR::txState(rtxStatus_t *const status)
          * dead PTT is otherwise a puzzle, and fall back to reception.
          */
         if (status->dmrId == 0) {
-            dmrDebug_log(
-                DMR_DBG_INFO,
-                "tx: refused, no DMR ID set (Settings > DMR > DMR ID)");
-            txRefused = true;
-            startRx = true;
-            status->opStatus = OFF;
+            refuseTx(status, "no DMR ID set (Settings > DMR > DMR ID)");
             return;
         }
 
         /*
-         * Through a repeater the bursts follow its timing: without it, they
-         * would go into the repeater unaligned.
+         * Through a repeater the bursts follow its timing: one that is not
+         * heard is woken up first.
          */
-        if (dmr_txReadiness() != DMR_TX_READY) {
-            dmrDebug_log(DMR_DBG_INFO, "tx: refused, no repeater timing");
-            txRefused = true;
-            startRx = true;
-            status->opStatus = OFF;
-            return;
+        switch (dmr_txReadiness()) {
+            case DMR_TX_READY:
+                keyUp(status);
+                break;
+
+            case DMR_TX_WAKEUP:
+                waking = true;
+                wakeupCount = 0;
+                sendWakeup();
+                return;
+
+            default:
+                refuseTx(status, "no repeater mode on this radio");
+                return;
         }
+    }
 
-        platform_ledOff(GREEN);
-        platform_ledOn(RED);
-
-        /*
-         * Capture and encode the microphone from now on, so the first voice
-         * frames are ready when the headers are over. The capture starts before
-         * the key-up, so the baseband only ever takes frames from a running one.
-         */
-        if (dmrAudio_startTx())
-            dmrDebug_log(DMR_DBG_INFO, "audio: microphone encode started");
-
-        radio_enableTx();
-        dmr_startTx(status->dmrPrivateCall == 0, status->dmrTalkgroup);
+    if (waking) {
+        wakeupState(status);
+        return;
     }
 
     /*
