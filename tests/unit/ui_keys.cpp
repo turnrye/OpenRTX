@@ -158,3 +158,14 @@ TEST_CASE("UI macro keys 1 and 2 toggle the DMR call type and timeslot",
     REQUIRE(state.settings.dmr_private_call == 0);
     REQUIRE(state.settings.dmr_timeslot == 1);
 }
+
+TEST_CASE("UI macro key 3 toggles DMR promiscuous reception", "[ui][dmr]")
+{
+    startDmr(MAIN_VFO);
+    state.settings.dmr_rx_promisc = 1;
+
+    REQUIRE(press(KEY_MONI | KEY_3));
+    REQUIRE(state.settings.dmr_rx_promisc == 0);
+    REQUIRE(press(KEY_MONI | KEY_3));
+    REQUIRE(state.settings.dmr_rx_promisc == 1);
+}

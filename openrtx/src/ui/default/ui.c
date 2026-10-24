@@ -1026,6 +1026,14 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
                                  state.channel.fm.txTone,
                                  queueFlags |vpqIncludeDescriptions);
             }
+            #ifdef CONFIG_DMR
+            // Every call, or only those for this radio
+            else if(state.channel.mode == OPMODE_DMR)
+            {
+                state.settings.dmr_rx_promisc = !state.settings.dmr_rx_promisc;
+                *sync_rtx = true;
+            }
+            #endif
             break;
         case 4:
             if(state.channel.mode == OPMODE_FM)

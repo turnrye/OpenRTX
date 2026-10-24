@@ -1340,6 +1340,16 @@ bool _ui_drawMacroMenu(ui_state_t* ui_state)
         gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_CENTER,
                   color_white, "       TS%d",
                   last_state.settings.dmr_timeslot + 1);
+
+        // Every call, or only those for this radio
+#if defined(CONFIG_UI_NO_KEYBOARD)
+        if (ui_state->macro_menu_selected == 2)
+#endif // CONFIG_UI_NO_KEYBOARD
+            gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_RIGHT,
+                      yellow_fab413, "3        ");
+        gfx_print(layout.line1_pos, layout.top_font, TEXT_ALIGN_RIGHT,
+                  color_white, last_state.settings.dmr_rx_promisc ?
+                               " All" : " Own");
     }
 #endif
 
