@@ -96,3 +96,20 @@ TEST_CASE("DMR link control parse reads privacy and refuses other opcodes",
         REQUIRE(call.dstId == 77); // Untouched
     }
 }
+
+TEST_CASE("DMR repeater wake-up control block", "[dmr][lc]")
+{
+    uint8_t csbk[DMR_CSBK_LENGTH];
+    memset(csbk, 0xAA, sizeof(csbk));
+
+    dmr_buildWakeupCsbk(csbk, 3101003);
+
+    const uint8_t expected[DMR_CSBK_LENGTH] = {
+        0xB8, 0x00,       // Last block, BS_Dwn_Act, standard feature set
+        0x00, 0x00,       // Reserved
+        0xFF, 0xFF, 0xFF, // Every repeater
+        0x2F, 0x51, 0x4B  // Source 3101003
+    };
+
+    REQUIRE(memcmp(csbk, expected, sizeof(csbk)) == 0);
+}

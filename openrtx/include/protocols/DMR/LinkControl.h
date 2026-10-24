@@ -44,6 +44,25 @@ void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
                       const uint32_t srcId);
 
 /**
+ * Length of a control signalling block, CSBK, as handed to the chip: the 80-bit
+ * block without its CRC, which the chip adds.
+ */
+#define DMR_CSBK_LENGTH 10
+
+/* CSBK opcode asking a repeater to start its downlink, BS_Dwn_Act. */
+#define DMR_CSBKO_BS_DWN_ACT 0x38
+
+/**
+ * Build the control signalling block that wakes a repeater up, BS_Dwn_Act, as
+ * the CS7000 Plus stock firmware sends it: the last block, the standard feature
+ * set, addressed to every repeater, from the calling station.
+ *
+ * @param csbk: destination buffer, DMR_CSBK_LENGTH bytes long.
+ * @param srcId: the transmitting station's DMR ID.
+ */
+void dmr_buildWakeupCsbk(uint8_t *csbk, const uint32_t srcId);
+
+/**
  * A voice call, as its full link control describes it.
  */
 struct dmrVoiceCall {

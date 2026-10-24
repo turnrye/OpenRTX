@@ -26,6 +26,22 @@ void dmr_buildVoiceLc(uint8_t *lc, const bool groupCall, const uint32_t dstId,
     lc[11] = 0x00;
 }
 
+void dmr_buildWakeupCsbk(uint8_t *csbk, const uint32_t srcId)
+{
+    csbk[0] = 0x80 | DMR_CSBKO_BS_DWN_ACT; // Last block
+    csbk[1] = 0x00;                        // Feature set ID, standard
+    csbk[2] = 0x00;                        // Reserved
+    csbk[3] = 0x00;
+
+    csbk[4] = 0xFF; // Repeater address, all
+    csbk[5] = 0xFF;
+    csbk[6] = 0xFF;
+
+    csbk[7] = (srcId >> 16) & 0xFF;
+    csbk[8] = (srcId >> 8) & 0xFF;
+    csbk[9] = srcId & 0xFF;
+}
+
 /* Service options bit marking an encrypted call. */
 #define DMR_SO_PRIVACY 0x40
 
