@@ -69,7 +69,8 @@ enum class C6000_DmrBurstType : uint8_t
 {
     VOICE        = 0x08,    ///< Voice frame, the frame number added.
     VOICE_HEADER = 0x10,    ///< Voice link control header.
-    TERMINATOR   = 0x20     ///< Terminator with link control.
+    TERMINATOR   = 0x20,    ///< Terminator with link control.
+    CSBK         = 0x30     ///< Control signalling block.
 };
 
 /**
@@ -144,6 +145,12 @@ struct C6000_DmrStatus
  * error corrected a burst.
  */
 static constexpr size_t C6000_LC_LENGTH = 12;
+
+/**
+ * Length of a control signalling block handed to the chip to transmit, the
+ * block without its CRC, which the chip adds.
+ */
+static constexpr size_t C6000_CSBK_LENGTH = 10;
 
 class HR_C6000 : public HR_Cx000 < C6000_SpiOpModes >
 {
@@ -376,6 +383,14 @@ public:
      * @param lc: link control to transmit, C6000_LC_LENGTH bytes long.
      */
     void writeDmrLinkControl(const uint8_t *lc);
+
+    /**
+     * Hand the chip a control signalling block to transmit in a CSBK burst.
+     * The chip adds the CRC and the error correction.
+     *
+     * @param csbk: control signalling block, C6000_CSBK_LENGTH bytes long.
+     */
+    void writeDmrCsbk(const uint8_t *csbk);
 
     /**
      * Acknowledge the interrupt sources which have been served, leaving the

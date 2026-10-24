@@ -102,6 +102,18 @@ void HR_C6000::writeDmrLinkControl(const uint8_t *lc)
     spi_send(uSpi, cmd, sizeof(cmd));
 }
 
+void HR_C6000::writeDmrCsbk(const uint8_t *csbk)
+{
+    uint8_t cmd[2 + C6000_CSBK_LENGTH];
+
+    cmd[0] = static_cast< uint8_t >(C6000_SpiOpModes::DATA);
+    cmd[1] = 0x00;
+    memcpy(&cmd[2], csbk, C6000_CSBK_LENGTH);
+
+    ScopedChipSelect cs(uSpi, uCs);
+    spi_send(uSpi, cmd, sizeof(cmd));
+}
+
 void HR_C6000::readDmrLinkControl(uint8_t *lc)
 {
     readPage(C6000_SpiOpModes::DATA, 0x00, lc, C6000_LC_LENGTH);
