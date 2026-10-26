@@ -13,6 +13,8 @@
 #include <pthread.h>
 #include <sys/types.h>
 
+#include "rtx/modem_frame.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,9 +43,10 @@ typedef struct {
 
     bool toneEn;
 
-    uint8_t can     : 4; /**< M17 Channel Access Number     */
-    uint8_t canRxEn : 1; /**< M17 Check CAN on RX           */
-    uint8_t         : 3;
+    uint8_t can       : 4; /**< M17 Channel Access Number     */
+    uint8_t canRxEn   : 1; /**< M17 Check CAN on RX           */
+    uint8_t hostModem : 1; /**< Physical layer driven by host */
+    uint8_t           : 2;
 
     char source_address[10];      /**< M17 call source address    */
     char destination_address[10]; /**< M17 call routing address   */
@@ -171,6 +174,31 @@ int rtx_addPacketRx(struct pktDesc *packet);
  * @return zero on success a negative error code otherwise.
  */
 int rtx_addPacketTx(struct pktDesc *packet);
+
+/**
+ * Queue a frame for transmission by the host-driven modem.
+ *
+ * @param frame: frame to transmit.
+ * @return zero on success, -EAGAIN if the transmit queue is full, -ENOTSUP
+ * if the current operating mode is not host-driven.
+ */
+int rtx_modemPushTxFrame(const struct modemFrame *frame);
+
+/**
+ * Collect a frame received by the host-driven modem.
+ *
+ * @param frame: destination for the frame.
+ * @return zero on success, -EAGAIN if no frame is waiting, -ENOTSUP if the
+ * current operating mode is not host-driven.
+ */
+int rtx_modemPopRxFrame(struct modemFrame *frame);
+
+/**
+ * Get the number of frames the host can still queue for transmission.
+ *
+ * @return free transmit slots, zero when not in a host-driven mode.
+ */
+size_t rtx_modemTxSpace(void);
 
 #ifdef __cplusplus
 }

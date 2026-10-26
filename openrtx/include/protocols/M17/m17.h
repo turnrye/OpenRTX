@@ -30,4 +30,16 @@ struct m17Packet {
     uint8_t payload[M17_MAX_PACKET_DATA]; /**< Packet payload data */
 } __attribute__((packed));
 
+/**
+ * Frame types used when the M17 physical layer is driven by a host computer
+ * (see rtx/modem_frame.h).
+ */
+enum m17ModemFrame {
+    M17_MODEM_LSF = 0, /**< Link setup frame                   */
+    M17_MODEM_STREAM,  /**< Stream frame                       */
+    M17_MODEM_PACKET,  /**< Packet frame                       */
+    M17_MODEM_EOT,     /**< End of transmission frame          */
+    M17_MODEM_LOST,    /**< Marker: sync lost, no payload      */
+};
+
 #endif /* M17_PROTOCOL_H */

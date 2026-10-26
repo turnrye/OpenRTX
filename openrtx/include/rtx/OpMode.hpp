@@ -116,6 +116,51 @@ public:
         (void)packet;
         return -ENOTSUP;
     }
+
+    /**
+     * Check whether the physical layer is driven by a host computer instead
+     * of the radio's own data link layer.
+     *
+     * @return true for host-driven modes.
+     */
+    virtual bool isHostDriven()
+    {
+        return false;
+    }
+
+    /**
+     * Queue a raw frame for transmission, host-driven modes only.
+     *
+     * @param frame: frame to transmit.
+     * @return zero on success, a negative error code otherwise.
+     */
+    virtual int modemPushTxFrame(const struct modemFrame *frame)
+    {
+        (void)frame;
+        return -ENOTSUP;
+    }
+
+    /**
+     * Collect a received raw frame, host-driven modes only.
+     *
+     * @param frame: destination for the frame.
+     * @return zero on success, a negative error code otherwise.
+     */
+    virtual int modemPopRxFrame(struct modemFrame *frame)
+    {
+        (void)frame;
+        return -ENOTSUP;
+    }
+
+    /**
+     * Get the number of free transmit slots, host-driven modes only.
+     *
+     * @return free slots, zero when not applicable.
+     */
+    virtual size_t modemTxSpace()
+    {
+        return 0;
+    }
 };
 
 #endif /* OPMODE_H */
