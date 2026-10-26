@@ -362,6 +362,62 @@ uint32_t  DCD_EP_Flush (USB_OTG_CORE_HANDLE *pdev , uint8_t epnum)
   return (0);
 }
 
+/**
+* @brief  Abort the transfer pending on an IN endpoint.
+*         Flushing the Tx FIFO alone is not enough: the endpoint stays enabled
+*         with the old transfer size programmed, so the next DCD_EP_Tx queues
+*         behind it and every packet from then on reaches the host one
+*         transfer late. NAK the endpoint, disable it, wait for the core to
+*         acknowledge, then flush the FIFO and forget the transfer, the same
+*         sequence STM32CubeF4 uses in USB_EPStopXfer.
+* @param pdev: device instance
+* @param epnum: endpoint address (IN endpoints only)
+* @retval : status
+*/
+uint32_t  DCD_EP_Abort (USB_OTG_CORE_HANDLE *pdev , uint8_t epnum)
+{
+  USB_OTG_DEPCTL_TypeDef  depctl;
+  USB_OTG_EP *ep;
+  uint32_t num = epnum & 0x7F;
+  uint32_t count = 0;
+
+  if ((epnum & 0x80) == 0)
+  {
+    return (1);
+  }
+
+  ep = &pdev->dev.in_ep[num];
+
+  /* Stop the Tx FIFO empty interrupt from pushing more of this transfer */
+  USB_OTG_MODIFY_REG32(&pdev->regs.DREGS->DIEPEMPMSK, 0x1 << num, 0);
+
+  depctl.d32 = USB_OTG_READ_REG32(&pdev->regs.INEP_REGS[num]->DIEPCTL);
+  if (depctl.b.epena)
+  {
+    depctl.b.snak = 1;
+    USB_OTG_WRITE_REG32(&pdev->regs.INEP_REGS[num]->DIEPCTL, depctl.d32);
+    depctl.b.epdis = 1;
+    USB_OTG_WRITE_REG32(&pdev->regs.INEP_REGS[num]->DIEPCTL, depctl.d32);
+
+    /* The core clears EPENA once the disable has taken effect */
+    do
+    {
+      depctl.d32 = USB_OTG_READ_REG32(&pdev->regs.INEP_REGS[num]->DIEPCTL);
+      if (++count > 200000)
+      {
+        break;
+      }
+    }
+    while (depctl.b.epena == 1);
+  }
+
+  USB_OTG_FlushTxFifo(pdev, ep->tx_fifo_num);
+  ep->xfer_count = 0;
+  ep->xfer_len   = 0;
+
+  return (0);
+}
+
 
 /**
 * @brief  This Function set USB device address

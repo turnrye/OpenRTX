@@ -218,7 +218,12 @@ ssize_t vcom_writeBlock(const void* buf, size_t len)
         timeout++;
         if(timeout > 500)
         {
-            DCD_EP_Flush(&USB_OTG_dev, CDC_IN_EP);
+            /*
+             * The host stopped reading: abort the transfer so the endpoint
+             * is clean for the next write. A bare FIFO flush leaves it
+             * enabled and every later packet reaches the host one behind.
+             */
+            DCD_EP_Abort(&USB_OTG_dev, CDC_IN_EP);
             return -1;
         }
     }
