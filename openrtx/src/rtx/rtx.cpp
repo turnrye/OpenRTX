@@ -10,6 +10,8 @@
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
+#include "rtx/OpMode_Modem.hpp"
+#include "rtx/M17FrameModem.hpp"
 
 static pthread_mutex_t *cfgMutex; // Mutex for incoming config messages
 static const rtxStatus_t *newCnf; // Pointer for incoming config messages
@@ -22,6 +24,8 @@ static OpMode noMode;             // Empty opMode handler for opmode::NONE
 static OpMode_FM fmMode;          // FM mode handler
 #ifdef CONFIG_M17
 static OpMode_M17 m17Mode;        // M17 mode handler
+static M17FrameModem m17Modem;    // M17 physical layer for host-driven mode
+static OpMode_Modem m17HostMode(m17Modem, OPMODE_M17); // M17 host-driven mode
 #endif
 
 void rtx_init(pthread_mutex_t *m)
@@ -129,7 +133,9 @@ void rtx_task()
          *   selected mode;
          * - enable the new mode handler
          */
-        if (currMode->getID() != rtxStatus.opMode) {
+        bool hostModem = (rtxStatus.hostModem != 0);
+        if ((currMode->getID() != rtxStatus.opMode)
+            || (currMode->isHostDriven() != hostModem)) {
             // Forward opMode change also to radio driver
             radio_setOpmode(static_cast<enum opmode>(rtxStatus.opMode));
 
@@ -145,7 +151,8 @@ void rtx_task()
                     break;
 #ifdef CONFIG_M17
                 case OPMODE_M17:
-                    currMode = &m17Mode;
+                    currMode = hostModem ? static_cast<OpMode *>(&m17HostMode) :
+                                           static_cast<OpMode *>(&m17Mode);
                     break;
 #endif
                 default:
@@ -248,4 +255,25 @@ int rtx_addPacketTx(struct pktDesc *packet)
         packet->status = PKT_STATUS_IDLE;
 
     return ret;
+}
+
+int rtx_modemPushTxFrame(const struct modemFrame *frame)
+{
+    if (frame == NULL)
+        return -EINVAL;
+
+    return currMode->modemPushTxFrame(frame);
+}
+
+int rtx_modemPopRxFrame(struct modemFrame *frame)
+{
+    if (frame == NULL)
+        return -EINVAL;
+
+    return currMode->modemPopRxFrame(frame);
+}
+
+size_t rtx_modemTxSpace(void)
+{
+    return currMode->modemTxSpace();
 }
