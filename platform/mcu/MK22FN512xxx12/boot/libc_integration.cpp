@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <reent.h>
 #include "drivers/usb_vcom.h"
+#include "interfaces/delays.h"
 #include "filesystem/file_access.h"
 
 using namespace std;
@@ -49,14 +50,20 @@ int _read_r(struct _reent *ptr, int fd, void *buf, size_t cnt)
     #ifdef ENABLE_STDIO
     if(fd == STDIN_FILENO)
     {
-        for(;;)
+        // Block until the requested amount of data has been read, keeping
+        // what each nonblocking read returns.
+        size_t rd = 0;
+        ret = ((int) cnt);
+        while(rd < cnt)
         {
-            ssize_t r = vcom_readBlock(buf, cnt);
-            if((r < 0) || (r == ((ssize_t) cnt)))
+            ssize_t r = vcom_readBlock(((uint8_t *) buf) + rd, cnt - rd);
+            if(r < 0)
             {
                 ret = ((int) r);
                 break;
             }
+            if(r == 0) delayMs(1);
+            rd += r;
         }
     }
     else

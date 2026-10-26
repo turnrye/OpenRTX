@@ -252,7 +252,7 @@ stm32f405_inc = ['platform/mcu/CMSIS/Include',
                  'platform/mcu/STM32F4xx/drivers',
                  'platform/mcu/STM32F4xx/drivers/usb']
 
-stm32f405_def = {'STM32F405xx': '', 'HSE_VALUE':'8000000'}
+stm32f405_def = {'STM32F405xx': '', 'HSE_VALUE':'8000000', 'ENABLE_STDIO': ''}
 
 stm32f405_src += miosix_cm4f_src
 stm32f405_inc += miosix_cm4f_inc
@@ -284,7 +284,7 @@ mk22fn512_inc = ['platform/mcu/CMSIS/Include',
                  'platform/mcu/MK22FN512xxx12',
                  'platform/mcu/MK22FN512xxx12/drivers']
 
-mk22fn512_def = {'MK22FN512xx': ''}
+mk22fn512_def = {'MK22FN512xx': '', 'ENABLE_STDIO': ''}
 
 mk22fn512_src += miosix_cm4f_src
 mk22fn512_inc += miosix_cm4f_inc
