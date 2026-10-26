@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <unistd.h>
+#include "interfaces/chardev.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,21 @@ ssize_t vcom_writeBlock(const void *buf, size_t len);
 * asked.
 */
 ssize_t vcom_readBlock(void *buf, size_t len);
+
+/**
+ * Character device driver functions wrapping the USB virtual com port.
+ */
+extern const struct chardevApi vcom_chardev_api;
+
+/**
+ * Instantiate a character device backed by the USB virtual com port.
+ *
+ * @param name: device variable name.
+ */
+#define VCOM_CHARDEV_DEFINE(name)                                              \
+    const struct chardev name = {.api = &vcom_chardev_api,                     \
+                                 .config = NULL,                               \
+                                 .priv = NULL};
 
 #ifdef __cplusplus
 }

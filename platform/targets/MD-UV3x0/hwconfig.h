@@ -9,6 +9,7 @@
 
 #include "stm32f4xx.h"
 #include "pinmap.h"
+#include "interfaces/chardev.h"
 
 #ifdef __cplusplus
 
@@ -52,6 +53,10 @@ extern const struct Adc adc1;
 
 /* Device supports M17 mode */
 #define CONFIG_M17
+
+/* Device has a serial link towards a host computer */
+#define CONFIG_HOST_SERIAL
+extern const struct chardev hostSerial;
 
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32

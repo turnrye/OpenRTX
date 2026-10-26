@@ -13,6 +13,7 @@
 #include "drivers/ADC/adc_stm32.h"
 #include "drivers/GPS/gps_stm32.h"
 #include "core/gps.h"
+#include "usb_vcom.h"
 
 static pthread_mutex_t c6000_mutex;
 static pthread_mutex_t adcMutex;
@@ -75,6 +76,7 @@ static void gpsDisable(void *priv)
 SPI_CUSTOM_DEVICE_DEFINE(c6000_spi, spiC6000_func, NULL, &c6000_mutex)
 SPI_STM32_DEVICE_DEFINE(nvm_spi, SPI1, NULL)
 ADC_STM32_DEVICE_DEFINE(adc1, ADC1, &adcMutex, ADC_COUNTS_TO_UV(3300000, 12))
+VCOM_CHARDEV_DEFINE(hostSerial)
 
 const struct gpsDevice gps =
 {

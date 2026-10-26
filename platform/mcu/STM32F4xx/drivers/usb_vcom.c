@@ -467,3 +467,45 @@ static uint16_t VCP_Ctrl (uint32_t Cmd, uint8_t* Buf, uint32_t Len)
 
     return USBD_OK;
 }
+
+/******************************************************************************
+ *                                                                            *
+ *            Character device interface                                      *
+ *                                                                            *
+ ******************************************************************************/
+
+static int vcomChardev_init(const struct chardev *dev)
+{
+    (void) dev;
+
+    // The virtual com port is initialised at boot by the BSP.
+    return 0;
+}
+
+static void vcomChardev_terminate(const struct chardev *dev)
+{
+    (void) dev;
+}
+
+static ssize_t vcomChardev_read(const struct chardev *dev, void *buf, size_t len)
+{
+    (void) dev;
+
+    return vcom_readBlock(buf, len);
+}
+
+static ssize_t vcomChardev_write(const struct chardev *dev, const void *buf,
+                                 size_t len)
+{
+    (void) dev;
+
+    return vcom_writeBlock(buf, len);
+}
+
+const struct chardevApi vcom_chardev_api =
+{
+    .init      = vcomChardev_init,
+    .terminate = vcomChardev_terminate,
+    .read      = vcomChardev_read,
+    .write     = vcomChardev_write,
+};

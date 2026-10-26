@@ -7,6 +7,8 @@
 #ifndef HWCONFIG_H
 #define HWCONFIG_H
 
+#include "interfaces/chardev.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,6 +28,10 @@ enum Mod17Flags {
 
 /* Device supports M17 mode */
 #define CONFIG_M17
+
+/* Device has a serial link towards a host computer (pseudo-terminal) */
+#define CONFIG_HOST_SERIAL
+extern const struct chardev hostSerial;
 
 #ifdef __cplusplus
 }

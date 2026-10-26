@@ -11,6 +11,7 @@
 #include "core/gps.h"
 #include "emulator.h"
 #include "toneGenerator_sdl.h"
+#include "mcu/x86_64/drivers/pty.h"
 
 /*
  * Create the data structure holding Module17 calibration data to make the
@@ -19,6 +20,8 @@
  * with the Module17 UI to make development faster.
  */
 mod17Calib_t mod17CalData;
+
+PTY_CHARDEV_DEFINE(hostSerial)
 
 static const hwInfo_t hwInfo = {
     .vhf_maxFreq = 174,
