@@ -171,7 +171,8 @@ const char * settings_m17_items[] =
     "Callsign",
     "Meta Txt",
     "CAN",
-    "CAN RX Check"
+    "CAN RX Check",
+    "Hotspot"
 };
 
 const char* settings_fm_items[] =
@@ -2406,6 +2407,22 @@ void ui_updateFSM(bool *sync_rtx)
                                 ui_state.edit_mode = !ui_state.edit_mode;
                             else if(msg.keys & KEY_ESC)
                                 ui_state.edit_mode = false;
+                            break;
+                        case M17_HOTSPOT:
+                            if(msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                                (ui_state.edit_mode &&
+                                 (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT ||
+                                  msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)))
+                            {
+                                state.settings.m17_hotspot =
+                                    !state.settings.m17_hotspot;
+                                *sync_rtx = true;
+                            }
+                            else if(msg.keys & KEY_ENTER)
+                                ui_state.edit_mode = !ui_state.edit_mode;
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
+                            break;
                     }
                 }
                 else

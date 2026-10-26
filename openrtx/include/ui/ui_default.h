@@ -142,7 +142,8 @@ enum settingsM17Items
     M17_CALLSIGN = 0,
     M17_METATEXT,
     M17_CAN,
-    M17_CAN_RX
+    M17_CAN_RX,
+    M17_HOTSPOT
 };
 
 enum settingsFMItems

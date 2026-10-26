@@ -103,6 +103,7 @@ void *ui_threadFunc(void *arg)
             // Copy new M17 CAN, source and destination addresses
             rtx_cfg.can = state.settings.m17_can;
             rtx_cfg.canRxEn = state.settings.m17_can_rx;
+            rtx_cfg.hostModem = state.settings.m17_hotspot;
             strncpy(rtx_cfg.source_address,      state.settings.callsign, 10);
             strncpy(rtx_cfg.destination_address, state.settings.m17_dest, 10);
 
