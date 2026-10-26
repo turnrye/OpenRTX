@@ -23,6 +23,7 @@
 #include "core/voicePrompts.h"
 #include "core/messages.h"
 #include "core/message_dispatcher.h"
+#include "core/mmdvm_host.h"
 
 #if defined(PLATFORM_TTWRPLUS)
 #include "pmu.h"
@@ -78,8 +79,9 @@ void *ui_threadFunc(void *arg)
         #endif
 
         // If synchronization needed take mutex and update RTX configuration
-        if(sync_rtx)
+        if(sync_rtx || state.rtxCfgDirty)
         {
+            state.rtxCfgDirty = false;
             pthread_mutex_lock(&rtx_mutex);
             rtx_cfg.opMode      = state.channel.mode;
             rtx_cfg.bandwidth   = state.channel.bandwidth;
@@ -146,6 +148,10 @@ void *main_thread(void *arg)
         state.gpsDetected = true;
     #endif
 
+    #if defined(CONFIG_HOST_SERIAL) && defined(CONFIG_M17)
+    mmdvmHost_init(&hostSerial);
+    #endif
+
     while(state.devStatus != SHUTDOWN)
     {
         time = getTick();
@@ -168,10 +174,19 @@ void *main_thread(void *arg)
         // Run state update task
         state_task();
 
+        // Run host modem protocol task
+        #if defined(CONFIG_HOST_SERIAL) && defined(CONFIG_M17)
+        mmdvmHost_task();
+        #endif
+
         // Run this loop once every 5ms
         time += 5;
         sleepUntil(time);
     }
+
+    #if defined(CONFIG_HOST_SERIAL) && defined(CONFIG_M17)
+    mmdvmHost_terminate();
+    #endif
 
     return NULL;
 }

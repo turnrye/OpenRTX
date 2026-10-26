@@ -58,6 +58,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/messages.c',
                'openrtx/src/core/message_dispatcher.c',
+               'openrtx/src/core/mmdvm_host.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1266,6 +1267,14 @@ modem_opmode_test = executable('modem_opmode_test',
                                sources : unit_test_src + ['tests/unit/modem_opmode.cpp'],
                                kwargs  : unit_test_opts)
 
+mmdvm_host_src = ['openrtx/src/core/mmdvm_host.c',
+                  'platform/mcu/x86_64/drivers/delays.c',
+                  'tests/unit/rtx_modem_stub.cpp']
+
+mmdvm_host_test = executable('mmdvm_host_test',
+                             sources : mmdvm_host_src + ['tests/unit/mmdvm_host.cpp'],
+                             kwargs  : unit_test_opts)
+
 messages_src = ['openrtx/src/core/messages.c',
                 'openrtx/src/core/message_dispatcher.c',
                 'tests/unit/rtx_packet_stub.cpp']
@@ -1297,5 +1306,6 @@ test('M17 Packet Framing Test', m17_packet_framing_test)
 test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
 test('Modem OpMode Test', modem_opmode_test)
+test('MMDVM Host Test', mmdvm_host_test)
 test('Messages Registry Test', messages_test)
 test('Message Dispatcher Test', message_dispatcher_test)

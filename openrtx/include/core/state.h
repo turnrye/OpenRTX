@@ -51,6 +51,7 @@ typedef struct {
     bool restore_eflash;
     bool pttDisable;
     uint8_t step_index;
+    bool rtxCfgDirty; /**< Channel changed outside the UI, rtx needs sync */
 } state_t;
 
 extern const uint32_t freq_steps[];
