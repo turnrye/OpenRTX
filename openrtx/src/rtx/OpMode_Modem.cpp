@@ -9,22 +9,29 @@
 #include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include <errno.h>
+#include <new>
 
 OpMode_Modem::OpMode_Modem(FrameModem &modem, const enum opmode protocol) :
     modem(modem), protocol(protocol), startRx(false), rxActive(false),
     txActive(false), locked(false), txPending(false), txEnding(false),
     txPendingTick(0), lastFrameTick(0)
 {
+    pthread_mutex_init(&queuesMutex, NULL);
 }
 
 OpMode_Modem::~OpMode_Modem()
 {
+    pthread_mutex_destroy(&queuesMutex);
 }
 
 void OpMode_Modem::enable()
 {
     modem.init();
-    txQueue.clear();
+
+    // Pay for the queues only while the mode is in use.
+    pthread_mutex_lock(&queuesMutex);
+    queues.reset(new (std::nothrow) Queues());
+    pthread_mutex_unlock(&queuesMutex);
     startRx = true;
     rxActive = false;
     txActive = false;
@@ -50,16 +57,26 @@ void OpMode_Modem::disable()
     locked = false;
     radio_disableRtx();
     modem.terminate();
+
+    pthread_mutex_lock(&queuesMutex);
+    queues.reset();
+    pthread_mutex_unlock(&queuesMutex);
 }
 
 void OpMode_Modem::update(rtxStatus_t *const status, const bool newCfg)
 {
     (void)newCfg;
 
+    // Out of memory when the mode was enabled: nothing can be done.
+    if (!queues) {
+        sleepMs(30);
+        return;
+    }
+
     // A hard TX lockout drops what the host sends, so that nothing stale goes
     // out once it is lifted.
     if (status->txDisable != 0)
-        txQueue.clear();
+        queues->tx.clear();
 
     switch (status->opStatus) {
         case OFF:
@@ -130,7 +147,7 @@ void OpMode_Modem::rxState(rtxStatus_t *const status)
 
         // If the host has fallen behind and the queue is full the frame is
         // dropped: only the host side takes frames out.
-        rxQueue.push(frame);
+        queues->rx.push(frame);
     }
 
     bool lock = modem.rxLocked();
@@ -165,7 +182,7 @@ void OpMode_Modem::txState(rtxStatus_t *const status)
     if (status->txDisable != 0) {
         // Hard TX lockout: stop now. update() has dropped the queue.
         keyDown = true;
-    } else if (txQueue.pop(frame)) {
+    } else if (queues->tx.pop(frame)) {
         modem.txFrame(frame);
         modem.inspect(frame, status);
         txEnding = modem.endsTransmission(frame);
@@ -205,15 +222,16 @@ int OpMode_Modem::modemPushTxFrame(const struct modemFrame *frame)
     if (frame->len > MODEM_FRAME_MAX_LEN)
         return -EINVAL;
 
-    if (!txQueue.push(*frame))
-        return -EAGAIN;
+    pthread_mutex_lock(&queuesMutex);
+    bool queued = queues && queues->tx.push(*frame);
+    pthread_mutex_unlock(&queuesMutex);
 
-    return 0;
+    return queued ? 0 : -EAGAIN;
 }
 
 bool OpMode_Modem::txReady()
 {
-    size_t queued = txQueue.size();
+    size_t queued = queues->tx.size();
 
     if (queued == 0) {
         txPending = false;
@@ -233,15 +251,20 @@ bool OpMode_Modem::txReady()
 
 int OpMode_Modem::modemPopRxFrame(struct modemFrame *frame)
 {
-    if (!rxQueue.pop(*frame))
-        return -EAGAIN;
+    pthread_mutex_lock(&queuesMutex);
+    bool popped = queues && queues->rx.pop(*frame);
+    pthread_mutex_unlock(&queuesMutex);
 
-    return 0;
+    return popped ? 0 : -EAGAIN;
 }
 
 size_t OpMode_Modem::modemTxSpace()
 {
-    return TX_SLOTS - txQueue.size();
+    pthread_mutex_lock(&queuesMutex);
+    size_t space = queues ? (TX_SLOTS - queues->tx.size()) : 0;
+    pthread_mutex_unlock(&queuesMutex);
+
+    return space;
 }
 
 uint32_t OpMode_Modem::nowMs()

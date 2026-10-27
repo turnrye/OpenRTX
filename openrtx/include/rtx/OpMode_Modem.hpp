@@ -10,6 +10,8 @@
 #include "core/spsc_queue.hpp"
 #include "rtx/FrameModem.hpp"
 #include "rtx/OpMode.hpp"
+#include <memory>
+#include <pthread.h>
 
 /**
  * Host-driven operating mode: the radio acts as a modem for a host computer
@@ -137,20 +139,29 @@ private:
      */
     bool holdCarrier();
 
-    FrameModem &modem;          ///< Physical layer being driven.
-    const enum opmode protocol; ///< Operating mode of the physical layer.
-    bool startRx;               ///< RX start pending.
-    bool rxActive;              ///< Baseband sampling running.
-    bool txActive;              ///< Baseband output running.
-    bool locked;                ///< Demodulator locked on a transmission.
-    bool txPending;             ///< TX queue seen non-empty, not keyed yet.
-    bool txEnding;              ///< Last frame sent ended the transmission.
-    uint32_t txPendingTick;     ///< When the TX queue was seen non-empty.
-    uint32_t lastFrameTick;     ///< When the last frame went out.
-    struct modemFrame frame;    ///< Scratch frame.
+    /**
+     * The frame queues, allocated only while the mode is enabled. The rtx
+     * thread owns them; the host side reaches them under queuesMutex.
+     */
+    struct Queues {
+        SpscQueue<struct modemFrame, TX_SLOTS> tx; ///< Host to air.
+        SpscQueue<struct modemFrame, RX_SLOTS> rx; ///< Air to host.
+    };
 
-    SpscQueue<struct modemFrame, TX_SLOTS> txQueue; ///< Host to air.
-    SpscQueue<struct modemFrame, RX_SLOTS> rxQueue; ///< Air to host.
+    FrameModem &modem;              ///< Physical layer being driven.
+    const enum opmode protocol;     ///< Operating mode of the physical layer.
+    bool startRx;                   ///< RX start pending.
+    bool rxActive;                  ///< Baseband sampling running.
+    bool txActive;                  ///< Baseband output running.
+    bool locked;                    ///< Demodulator locked on a transmission.
+    bool txPending;                 ///< TX queue seen non-empty, not keyed yet.
+    bool txEnding;                  ///< Last frame sent ended the transmission.
+    uint32_t txPendingTick;         ///< When the TX queue was seen non-empty.
+    uint32_t lastFrameTick;         ///< When the last frame went out.
+    struct modemFrame frame;        ///< Scratch frame.
+
+    std::unique_ptr<Queues> queues; ///< Frame queues, while enabled.
+    pthread_mutex_t queuesMutex;    ///< Guards queues for the host side.
 };
 
 #endif /* OPMODE_MODEM_H */

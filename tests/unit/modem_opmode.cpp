@@ -191,6 +191,8 @@ TEST_CASE("OpMode_Modem: transmit queue accounting", "[modem][opmode]")
 
     REQUIRE(mode.getID() == OPMODE_M17);
     REQUIRE(mode.isHostDriven());
+
+    mode.enable();
     REQUIRE(mode.modemTxSpace() == OpMode_Modem::TX_SLOTS);
 
     struct modemFrame f = makeFrame(0, 0xAA);
@@ -206,6 +208,33 @@ TEST_CASE("OpMode_Modem: transmit queue accounting", "[modem][opmode]")
 
     struct modemFrame out;
     REQUIRE(mode.modemPopRxFrame(&out) == -EAGAIN);
+}
+
+TEST_CASE("OpMode_Modem: queues exist only while the mode is enabled",
+          "[modem][opmode]")
+{
+    FakeModem modem;
+    TestMode mode(modem);
+    struct modemFrame f = makeFrame(0, 0xAA);
+    struct modemFrame out;
+
+    // Disabled: no room, nothing to collect.
+    REQUIRE(mode.modemTxSpace() == 0);
+    REQUIRE(mode.modemPushTxFrame(&f) == -EAGAIN);
+    REQUIRE(mode.modemPopRxFrame(&out) == -EAGAIN);
+
+    mode.enable();
+    REQUIRE(mode.modemPushTxFrame(&f) == 0);
+    REQUIRE(mode.modemTxSpace() == OpMode_Modem::TX_SLOTS - 1);
+
+    // Disabling frees the queues and what was in them.
+    mode.disable();
+    REQUIRE(mode.modemTxSpace() == 0);
+    REQUIRE(mode.modemPushTxFrame(&f) == -EAGAIN);
+
+    mode.enable();
+    REQUIRE(mode.modemTxSpace() == OpMode_Modem::TX_SLOTS);
+    mode.disable();
 }
 
 TEST_CASE("OpMode_Modem: received frames reach the host in order",
