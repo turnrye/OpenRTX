@@ -11,10 +11,6 @@
 #include "protocols/M17/Utils.hpp"
 #include "protocols/M17/DSP.hpp"
 
-#if defined(PLATFORM_LINUX)
-#include <stdio.h>
-#endif
-
 using namespace M17;
 
 
@@ -64,7 +60,6 @@ bool Modulator::start()
     if(txRunning)
         return true;
 
-    #ifndef PLATFORM_LINUX
     outPath = audioPath_request(SOURCE_MCU, SINK_RTX, PRIO_TX);
     if(outPath < 0)
         return false;
@@ -77,8 +72,6 @@ bool Modulator::start()
         return false;
 
     idleBuffer = outputStream_getIdleBuffer(outStream);
-    #endif
-
     txRunning = true;
 
     return true;
@@ -165,7 +158,6 @@ void Modulator::symbolsToBaseband()
     }
 }
 
-#ifndef PLATFORM_LINUX
 void Modulator::sendBaseband()
 {
     if(txRunning == false) return;
@@ -175,17 +167,3 @@ void Modulator::sendBaseband()
     outputStream_sync(outStream, true);
     idleBuffer = outputStream_getIdleBuffer(outStream);
 }
-#else
-void Modulator::sendBaseband()
-{
-    FILE *outfile = fopen("/tmp/m17_output.raw", "ab");
-
-    for(size_t i = 0; i < FRAME_SAMPLES; i++)
-    {
-        auto s = idleBuffer[i];
-        fwrite(&s, sizeof(s), 1, outfile);
-    }
-
-    fclose(outfile);
-}
-#endif
