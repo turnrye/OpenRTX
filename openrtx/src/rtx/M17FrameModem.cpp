@@ -20,7 +20,8 @@ extern mod17Calib_t mod17CalData;
 using namespace M17;
 
 M17FrameModem::M17FrameModem() :
-    locked(false), firstFrame(false), invertTxPhase(false), invertRxPhase(false)
+    locked(false), firstFrame(false), txEndOfStream(false),
+    invertTxPhase(false), invertRxPhase(false)
 {
 }
 
@@ -126,6 +127,7 @@ void M17FrameModem::startTx()
 {
     getPhaseInversion();
     decoder.reset();
+    txEndOfStream = false;
     modulator.invertPhase(invertTxPhase);
     modulator.start();
     modulator.sendPreamble();
@@ -141,9 +143,15 @@ void M17FrameModem::txFrame(const struct modemFrame &frame)
     std::copy_n(frame.data, data.size(), data.begin());
 
     // Decode what goes out as well, so that the display follows the relayed
-    // transmission.
-    if ((frame.type == M17_MODEM_LSF) || (frame.type == M17_MODEM_STREAM))
-        decoder.decodeFrame(data);
+    // transmission and the end of a stream is noticed.
+    txEndOfStream = false;
+    if ((frame.type == M17_MODEM_LSF) || (frame.type == M17_MODEM_STREAM)) {
+        M17::FrameType type = decoder.decodeFrame(data);
+        if (type == M17::FrameType::STREAM) {
+            M17::StreamFrame sf = decoder.getStreamFrame();
+            txEndOfStream = sf.isLastFrame();
+        }
+    }
 
     modulator.sendFrame(data);
 }
@@ -151,6 +159,23 @@ void M17FrameModem::txFrame(const struct modemFrame &frame)
 void M17FrameModem::stopTx()
 {
     modulator.stop();
+}
+
+void M17FrameModem::txIdle()
+{
+    // Unmodulated carrier, as an MMDVM does when its buffer runs dry: the
+    // circular baseband DMA would otherwise replay the last two frames.
+    modulator.sendIdle();
+}
+
+bool M17FrameModem::endsTransmission(const struct modemFrame &frame)
+{
+    // An EOT, or a stream frame with the end of stream flag: hosts that do
+    // not follow it with an EOT still get the carrier dropped promptly.
+    if (frame.type == M17_MODEM_EOT)
+        return true;
+
+    return (frame.type == M17_MODEM_STREAM) && txEndOfStream;
 }
 
 void M17FrameModem::inspect(const struct modemFrame &frame,

@@ -12,7 +12,8 @@
 
 OpMode_Modem::OpMode_Modem(FrameModem &modem, const enum opmode protocol) :
     modem(modem), protocol(protocol), startRx(false), rxActive(false),
-    txActive(false), locked(false), txIdle(0)
+    txActive(false), locked(false), txPending(false), txEnding(false),
+    txPendingTick(0), lastFrameTick(0)
 {
 }
 
@@ -29,7 +30,8 @@ void OpMode_Modem::enable()
     rxActive = false;
     txActive = false;
     locked = false;
-    txIdle = 0;
+    txPending = false;
+    txEnding = false;
 }
 
 void OpMode_Modem::disable()
@@ -54,6 +56,11 @@ void OpMode_Modem::disable()
 void OpMode_Modem::update(rtxStatus_t *const status, const bool newCfg)
 {
     (void)newCfg;
+
+    // A hard TX lockout drops what the host sends, so that nothing stale goes
+    // out once it is lifted.
+    if (status->txDisable != 0)
+        flushTxQueue();
 
     switch (status->opStatus) {
         case OFF:
@@ -97,7 +104,7 @@ void OpMode_Modem::offState(rtxStatus_t *const status)
     radio_disableRtx();
 
     // Frames waiting from the host take precedence over listening.
-    if (!txQueue.empty() && (status->txDisable == 0)) {
+    if (txReady() && (status->txDisable == 0)) {
         status->opStatus = TX;
         return;
     }
@@ -107,7 +114,7 @@ void OpMode_Modem::offState(rtxStatus_t *const status)
         return;
     }
 
-    sleepFor(0, 30);
+    sleepMs(30);
 }
 
 void OpMode_Modem::rxState(rtxStatus_t *const status)
@@ -122,9 +129,16 @@ void OpMode_Modem::rxState(rtxStatus_t *const status)
     if (modem.rxUpdate(frame)) {
         modem.inspect(frame, status);
 
+        int ret = rxQueue.tryPush(frame);
+        if (ret == -EBUSY) {
+            // The main thread is collecting a frame: let it finish.
+            sleepMs(LOCK_WAIT_MS);
+            ret = rxQueue.tryPush(frame);
+        }
+
         // A full queue means the host fell behind: drop the oldest frame so
         // that it keeps seeing the latest state of the channel.
-        if (rxQueue.tryPush(frame) == -EAGAIN) {
+        if (ret == -EAGAIN) {
             struct modemFrame discard;
             rxQueue.tryPop(discard);
             rxQueue.tryPush(frame);
@@ -136,8 +150,8 @@ void OpMode_Modem::rxState(rtxStatus_t *const status)
         modem.clearStatus(status);
     locked = lock;
 
-    // Switch to transmission as soon as the host has something to send.
-    if (!txQueue.empty() && (status->txDisable == 0)) {
+    // Switch to transmission once the host has queued enough to send.
+    if (txReady() && (status->txDisable == 0)) {
         modem.stopRx();
         rxActive = false;
         if (locked)
@@ -153,23 +167,33 @@ void OpMode_Modem::txState(rtxStatus_t *const status)
         radio_enableTx();
         modem.startTx();
         txActive = true;
-        txIdle = 0;
+        txPending = false;
+        txEnding = false;
+        lastFrameTick = nowMs();
     }
 
-    if (txQueue.tryPop(frame) == 0) {
-        modem.txFrame(frame);
-        modem.inspect(frame, status);
-        txIdle = 0;
-        return;
+    bool keyDown = false;
+
+    if (status->txDisable != 0) {
+        // Hard TX lockout: stop now. update() has dropped the queue.
+        keyDown = true;
+    } else {
+        int ret = txQueue.tryPop(frame);
+        if (ret == 0) {
+            modem.txFrame(frame);
+            modem.inspect(frame, status);
+            txEnding = modem.endsTransmission(frame);
+            lastFrameTick = nowMs();
+        } else if (ret == -EAGAIN) {
+            keyDown = holdCarrier();
+        } else {
+            // The main thread is pushing a frame: let it finish.
+            sleepMs(LOCK_WAIT_MS);
+        }
     }
 
-    // Nothing to send: hold the carrier for a short while, the host may
-    // just be late, then go back to listening.
-    txIdle += 1;
-    if (txIdle < TX_HANG_TICKS) {
-        sleepFor(0, TX_IDLE_TICK_MS);
+    if (!keyDown)
         return;
-    }
 
     modem.stopTx();
     modem.clearStatus(status);
@@ -178,16 +202,73 @@ void OpMode_Modem::txState(rtxStatus_t *const status)
     status->opStatus = OFF;
 }
 
+bool OpMode_Modem::holdCarrier()
+{
+    uint32_t limit = txEnding ? TX_TAIL_MS : TX_HANG_MS;
+    if ((nowMs() - lastFrameTick) >= limit)
+        return true;
+
+    // The filler blocks for a frame time; when it did not (no filler,
+    // output not running) pause anyway so that other threads run.
+    uint32_t start = nowMs();
+    modem.txIdle();
+    if ((nowMs() - start) < TX_IDLE_TICK_MS)
+        sleepMs(TX_IDLE_TICK_MS);
+
+    return false;
+}
+
+void OpMode_Modem::flushTxQueue()
+{
+    struct modemFrame discard;
+
+    for (;;) {
+        int ret = txQueue.tryPop(discard);
+        if (ret == -EAGAIN)
+            break;
+
+        // The main thread is pushing a frame: let it finish.
+        if (ret == -EBUSY)
+            sleepMs(LOCK_WAIT_MS);
+    }
+}
+
 int OpMode_Modem::modemPushTxFrame(const struct modemFrame *frame)
 {
     if (frame->len > MODEM_FRAME_MAX_LEN)
         return -EINVAL;
 
     int ret = txQueue.tryPush(*frame);
+    if (ret == -EBUSY) {
+        // The rtx thread is copying a frame out: let it finish.
+        sleepMs(LOCK_WAIT_MS);
+        ret = txQueue.tryPush(*frame);
+    }
+
     if (ret != 0)
         return -EAGAIN;
 
     return 0;
+}
+
+bool OpMode_Modem::txReady()
+{
+    size_t queued = txQueue.size();
+
+    if (queued == 0) {
+        txPending = false;
+        return false;
+    }
+
+    if (!txPending) {
+        txPending = true;
+        txPendingTick = nowMs();
+    }
+
+    if (queued >= TX_START_FRAMES)
+        return true;
+
+    return (nowMs() - txPendingTick) >= TX_START_WAIT_MS;
 }
 
 int OpMode_Modem::modemPopRxFrame(struct modemFrame *frame)
@@ -202,4 +283,14 @@ int OpMode_Modem::modemPopRxFrame(struct modemFrame *frame)
 size_t OpMode_Modem::modemTxSpace()
 {
     return TX_SLOTS - txQueue.size();
+}
+
+uint32_t OpMode_Modem::nowMs()
+{
+    return (uint32_t)getTick();
+}
+
+void OpMode_Modem::sleepMs(const uint32_t ms)
+{
+    sleepFor(0, ms);
 }

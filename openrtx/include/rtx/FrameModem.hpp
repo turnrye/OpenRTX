@@ -86,6 +86,31 @@ public:
     virtual void stopTx() = 0;
 
     /**
+     * Keep the carrier up with nothing to send, the host being late with
+     * the next frame. The physical layer emits one frame time of whatever
+     * stands for silence in its protocol, blocking like txFrame(); a layer
+     * with no filler keeps the default and the caller just waits.
+     */
+    virtual void txIdle()
+    {
+    }
+
+    /**
+     * Tell whether the frame just passed to txFrame() closes the
+     * transmission, so that the carrier is dropped after a short tail
+     * instead of the full hang time. Protocols without such a frame keep
+     * the default.
+     *
+     * @param frame: frame just transmitted.
+     * @return true if the frame ends the transmission.
+     */
+    virtual bool endsTransmission(const struct modemFrame &frame)
+    {
+        (void)frame;
+        return false;
+    }
+
+    /**
      * Update the rtx status with what a frame passing through the modem
      * carries, for display purposes only. The protocol decides what is
      * worth showing.

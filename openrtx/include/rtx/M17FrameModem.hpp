@@ -46,6 +46,10 @@ public:
 
     virtual void stopTx() override;
 
+    virtual void txIdle() override;
+
+    virtual bool endsTransmission(const struct modemFrame &frame) override;
+
     virtual void inspect(const struct modemFrame &frame,
                          rtxStatus_t *const status) override;
 
@@ -59,6 +63,7 @@ private:
 
     bool locked;                  ///< Demodulator locked on a transmission.
     bool firstFrame;              ///< Next frame is the first after sync.
+    bool txEndOfStream;           ///< Last stream frame sent had EOS set.
     bool invertTxPhase;           ///< TX signal phase inversion setting.
     bool invertRxPhase;           ///< RX signal phase inversion setting.
     M17::Modulator modulator;     ///< M17 modulator.
