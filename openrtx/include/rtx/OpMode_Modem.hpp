@@ -7,7 +7,7 @@
 #ifndef OPMODE_MODEM_H
 #define OPMODE_MODEM_H
 
-#include "core/ringbuf.hpp"
+#include "core/spsc_queue.hpp"
 #include "rtx/FrameModem.hpp"
 #include "rtx/OpMode.hpp"
 
@@ -94,8 +94,8 @@ public:
     static constexpr uint32_t TX_IDLE_TICK_MS = 10;
 
     /**
-     * Number of received frames waiting for the host before the oldest ones
-     * are dropped.
+     * Number of received frames waiting for the host before new ones are
+     * dropped.
      */
     static constexpr size_t RX_SLOTS = 4;
 
@@ -137,18 +137,6 @@ private:
      */
     bool holdCarrier();
 
-    /**
-     * Drop every frame the host has queued for transmission.
-     */
-    void flushTxQueue();
-
-    /**
-     * Pause when a queue is locked by the other thread, giving it the CPU to
-     * finish copying its frame: the rtx thread runs at a higher priority
-     * than the main thread, so it must not spin.
-     */
-    static constexpr uint32_t LOCK_WAIT_MS = 1;
-
     FrameModem &modem;          ///< Physical layer being driven.
     const enum opmode protocol; ///< Operating mode of the physical layer.
     bool startRx;               ///< RX start pending.
@@ -161,8 +149,8 @@ private:
     uint32_t lastFrameTick;     ///< When the last frame went out.
     struct modemFrame frame;    ///< Scratch frame.
 
-    NbRingBuffer<struct modemFrame, TX_SLOTS> txQueue; ///< Host to air.
-    NbRingBuffer<struct modemFrame, RX_SLOTS> rxQueue; ///< Air to host.
+    SpscQueue<struct modemFrame, TX_SLOTS> txQueue; ///< Host to air.
+    SpscQueue<struct modemFrame, RX_SLOTS> rxQueue; ///< Air to host.
 };
 
 #endif /* OPMODE_MODEM_H */

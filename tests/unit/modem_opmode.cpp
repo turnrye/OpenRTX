@@ -252,7 +252,8 @@ TEST_CASE("OpMode_Modem: received frames reach the host in order",
     REQUIRE(modem.rxRunning == false);
 }
 
-TEST_CASE("OpMode_Modem: a full receive queue drops the oldest frame",
+TEST_CASE("OpMode_Modem: a full receive queue keeps the frames already "
+          "queued",
           "[modem][opmode]")
 {
     FakeModem modem;
@@ -268,8 +269,12 @@ TEST_CASE("OpMode_Modem: a full receive queue drops the oldest frame",
     }
 
     struct modemFrame out;
-    REQUIRE(mode.modemPopRxFrame(&out) == 0);
-    REQUIRE(out.data[0] == 2);
+    for (uint8_t i = 0; i < OpMode_Modem::RX_SLOTS; i++) {
+        REQUIRE(mode.modemPopRxFrame(&out) == 0);
+        REQUIRE(out.data[0] == i);
+    }
+
+    REQUIRE(mode.modemPopRxFrame(&out) == -EAGAIN);
 }
 
 TEST_CASE("OpMode_Modem: host frames are transmitted then the modem returns "
