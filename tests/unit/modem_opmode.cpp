@@ -525,6 +525,33 @@ TEST_CASE("OpMode_Modem: a TX lockout ends a transmission and drops the "
     REQUIRE(modem.sent.size() == 1);
 }
 
+TEST_CASE("OpMode_Modem: a lockout before keying up returns to receive",
+          "[modem][opmode]")
+{
+    FakeModem modem;
+    TestMode mode(modem);
+    rtxStatus_t status = makeStatus();
+
+    startReceiving(mode, status);
+    for (uint8_t i = 0; i < OpMode_Modem::TX_START_FRAMES; i++) {
+        struct modemFrame a = makeFrame(0, 0xA0 + i);
+        REQUIRE(mode.modemPushTxFrame(&a) == 0);
+    }
+
+    // RX stops for the transmission...
+    mode.update(&status, false);
+    REQUIRE(status.opStatus == OFF);
+    REQUIRE(modem.rxRunning == false);
+
+    // ...but the channel turns RX-only before the modem keys up.
+    status.txDisable = 1;
+    mode.update(&status, false);
+    REQUIRE(status.opStatus == RX);
+    mode.update(&status, false);
+    REQUIRE(modem.rxRunning);
+    REQUIRE(modem.txStarts == 0);
+}
+
 TEST_CASE("OpMode_Modem: hard TX lockout keeps the modem receiving",
           "[modem][opmode]")
 {

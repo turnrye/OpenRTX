@@ -155,10 +155,12 @@ void OpMode_Modem::rxState(rtxStatus_t *const status)
         modem.clearStatus(status);
     locked = lock;
 
-    // Switch to transmission once the host has queued enough to send.
+    // Switch to transmission once the host has queued enough to send. RX is
+    // flagged for restart in case a TX lockout lands before keying up.
     if (txReady() && (status->txDisable == 0)) {
         modem.stopRx();
         rxActive = false;
+        startRx = true;
         if (locked)
             modem.clearStatus(status);
         locked = false;
