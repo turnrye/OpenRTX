@@ -72,6 +72,12 @@ public:
     void sendFrame(const frame_t& frame);
 
     /**
+     * Send one frame time (40 ms) of unmodulated carrier: all-zero symbols,
+     * for holding the channel while there is nothing to send.
+     */
+    void sendIdle();
+
+    /**
      * Terminate baseband transmission.
      */
     void stop();

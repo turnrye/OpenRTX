@@ -116,6 +116,13 @@ void Modulator::sendFrame(const frame_t& frame)
     sendBaseband();
 }
 
+void Modulator::sendIdle()
+{
+    symbols.fill(0);
+    symbolsToBaseband();
+    sendBaseband();
+}
+
 void Modulator::stop()
 {
     if(txRunning == false)
