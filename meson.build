@@ -1263,6 +1263,10 @@ m17_packet_opmode_test = executable('m17_packet_opmode_test',
                                      sources : unit_test_src + ['tests/unit/M17_packet_opmode.cpp'],
                                      kwargs  : unit_test_opts)
 
+ringbuf_test = executable('ringbuf_test',
+                          sources : ['tests/unit/ringbuf.cpp'],
+                          kwargs  : unit_test_opts)
+
 modem_opmode_test = executable('modem_opmode_test',
                                sources : unit_test_src + ['tests/unit/modem_opmode.cpp'],
                                kwargs  : unit_test_opts)
@@ -1305,6 +1309,7 @@ test('M17 Packet Disassembly Test', m17_packet_disassembly_test)
 test('M17 Packet Framing Test', m17_packet_framing_test)
 test('M17 SMS Packet Test', m17_sms_packet_test)
 test('M17 Packet OpMode Test', m17_packet_opmode_test)
+test('Ring Buffer Test', ringbuf_test)
 test('Modem OpMode Test', modem_opmode_test)
 test('MMDVM Host Test', mmdvm_host_test)
 test('Messages Registry Test', messages_test)
