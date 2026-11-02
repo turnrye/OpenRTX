@@ -15,27 +15,30 @@
 
 /*
  * Board layer: radio AF output and speaker GPIOs, then the codec driver
- * connects the sources and sinks. This lock serializes initialization and
- * route changes; the codec worker never takes it, so route changes can wait
- * for the worker.
+ * connects the sources and sinks. This lock serializes route changes; the
+ * codec worker never takes it, so route changes can wait for the worker.
+ * audio_init() and audio_terminate() are called once each, so they don't
+ * take it.
  */
 static K_MUTEX_DEFINE(board_mutex);
 static bool initialized;
 static bool paths[3][3]; /* Active routes, by source and sink */
-/* Both device tables use one driver; the config selects capture or playback */
-static const bool input_config = true;
-static const bool output_config = false;
 
+/* Both device tables use one driver; the config selects capture or playback */
 const struct audioDevice outputDevices[] = {
     { NULL, NULL, 0, SINK_MCU },
-    { &csk6_codec_audio_driver, &output_config, SINK_RTX, SINK_RTX },
-    { &csk6_codec_audio_driver, &output_config, SINK_SPK, SINK_SPK },
+    { &csk6_codec_audio_driver, (const void *)CSK6_CODEC_MODE_OUTPUT, SINK_RTX,
+      SINK_RTX },
+    { &csk6_codec_audio_driver, (const void *)CSK6_CODEC_MODE_OUTPUT, SINK_SPK,
+      SINK_SPK },
 };
 
 const struct audioDevice inputDevices[] = {
     { NULL, NULL, 0, SOURCE_MCU },
-    { &csk6_codec_audio_driver, &input_config, SOURCE_RTX, SOURCE_RTX },
-    { &csk6_codec_audio_driver, &input_config, SOURCE_MIC, SOURCE_MIC },
+    { &csk6_codec_audio_driver, (const void *)CSK6_CODEC_MODE_INPUT, SOURCE_RTX,
+      SOURCE_RTX },
+    { &csk6_codec_audio_driver, (const void *)CSK6_CODEC_MODE_INPUT, SOURCE_MIC,
+      SOURCE_MIC },
 };
 
 PINCTRL_DT_DEFINE(DT_CHOSEN(zephyr_console));
@@ -88,33 +91,31 @@ static void update_mux(enum AudioSource source)
 
 void audio_init(void)
 {
-    k_mutex_lock(&board_mutex, K_FOREVER);
     gpio_pin_configure_dt(&speaker_enable, GPIO_OUTPUT_INACTIVE);
     gpio_pin_configure_dt(&dtmf_enable, GPIO_OUTPUT_INACTIVE);
     restore_console();
     initialized = csk6codec_init() == 0;
     restore_console();
-    k_mutex_unlock(&board_mutex);
 }
 
 void audio_terminate(void)
 {
-    k_mutex_lock(&board_mutex, K_FOREVER);
-    if (initialized) {
-        memset(paths, 0, sizeof(paths));
-        update_mux(SOURCE_RTX);
-        csk6codec_terminate();
-        initialized = false;
-    }
-    k_mutex_unlock(&board_mutex);
+    if (!initialized)
+        return;
+
+    memset(paths, 0, sizeof(paths));
+    update_mux(SOURCE_RTX);
+    csk6codec_terminate();
+    initialized = false;
 }
 
 void audio_connect(const enum AudioSource source, const enum AudioSink sink)
 {
-    if (source > SOURCE_MCU || sink > SINK_MCU)
+    if (!initialized || source > SOURCE_MCU || sink > SINK_MCU)
         return;
+
     k_mutex_lock(&board_mutex, K_FOREVER);
-    if (initialized && !paths[source][sink]) {
+    if (!paths[source][sink]) {
         paths[source][sink] = true;
         csk6codec_setRoute(source, sink, true);
         update_mux(source);
@@ -124,10 +125,11 @@ void audio_connect(const enum AudioSource source, const enum AudioSink sink)
 
 void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
 {
-    if (source > SOURCE_MCU || sink > SINK_MCU)
+    if (!initialized || source > SOURCE_MCU || sink > SINK_MCU)
         return;
+
     k_mutex_lock(&board_mutex, K_FOREVER);
-    if (initialized && paths[source][sink]) {
+    if (paths[source][sink]) {
         paths[source][sink] = false;
         csk6codec_setRoute(source, sink, false);
         update_mux(source);

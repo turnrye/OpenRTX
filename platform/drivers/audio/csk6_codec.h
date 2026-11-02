@@ -14,9 +14,18 @@ extern "C" {
 #endif
 
 /**
+ * Direction of a codec device, passed as its audioDevice configuration with
+ * a cast to (const void *).
+ */
+enum Csk6CodecMode {
+    CSK6_CODEC_MODE_OUTPUT = 0,
+    CSK6_CODEC_MODE_INPUT = 1,
+};
+
+/**
  * C62 audio through the CSK6 codec and DSP: one 48 kHz stereo stream each way,
  * microphone/speaker on the left and the BK4819 on the right. The device
- * configuration is a bool, true for capture.
+ * configuration is an enum Csk6CodecMode.
  */
 extern const struct audioDriver csk6_codec_audio_driver;
 
@@ -26,7 +35,9 @@ extern const struct audioDriver csk6_codec_audio_driver;
  */
 int csk6codec_init(void);
 
-/** Cancel streams, join the worker and release DSP audio resources. */
+/**
+ * Cancel streams, join the worker and release DSP audio resources.
+ */
 void csk6codec_terminate(void);
 
 /**
