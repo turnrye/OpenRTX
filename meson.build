@@ -84,7 +84,8 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/APRS/Demodulator.cpp',
                'openrtx/src/protocols/APRS/FrameEncoder.cpp',
                'openrtx/src/protocols/APRS/Modulator.cpp',
-               'openrtx/src/protocols/APRS/packet.c']
+               'openrtx/src/protocols/APRS/packet.c',
+               'openrtx/src/protocols/APRS/symbols.c']
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -1337,7 +1338,8 @@ aprs_msg_test = executable('aprs_msg_test',
 
 aprs_packet_test = executable('aprs_packet_test',
                               sources : unit_test_src + ['tests/unit/aprs_test_frame.cpp',
-                                                        'tests/unit/APRS_packet.cpp'],
+                                                        'tests/unit/APRS_packet.cpp',
+                                                        'tests/unit/APRS_symbols.cpp'],
                               kwargs  : unit_test_opts)
 aprs_test_opts = unit_test_opts + {'cpp_args' : linux_cpp_args +
       ['-DAPRS_ASSET_DIR="' + meson.project_source_root() / 'tests/unit/assets' + '"']}
