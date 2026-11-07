@@ -34,6 +34,7 @@ OpMode_M17::OpMode_M17() :
     extendedCall(false), invertTxPhase(false), invertRxPhase(false),
     currRxPkt(nullptr), currTxPkt(nullptr)
 {
+    csma_init(&csma, CSMA_PERSIST, CSMA_SLOT_TIME, CSMA_DEFER_TIMEOUT, 1);
 }
 
 OpMode_M17::~OpMode_M17()
@@ -53,6 +54,8 @@ void OpMode_M17::enable()
     startTx = false;
     pktDeframer.reset();
     abortPackets();
+    csma_init(&csma, CSMA_PERSIST, CSMA_SLOT_TIME, CSMA_DEFER_TIMEOUT,
+              (uint32_t)getTick());
 }
 
 void OpMode_M17::disable()
@@ -334,7 +337,15 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
     locked = lock;
 
-    bool shouldExit = platform_getPttStatus() || (currTxPkt != nullptr);
+    // A packet waits for a clear channel: not while a transmission is being
+    // received, then p-persistent, as in APRS. PTT keys up at once.
+    bool packetReady = false;
+    if (currTxPkt != nullptr)
+        packetReady = csma_mayTransmit(&csma, lock, getTick());
+    if (packetReady || (currTxPkt == nullptr))
+        csma_idle(&csma);
+
+    bool shouldExit = platform_getPttStatus() || packetReady;
     if (shouldExit) {
         demodulator.stopBasebandSampling();
         locked = false;

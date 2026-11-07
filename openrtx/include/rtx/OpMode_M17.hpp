@@ -15,6 +15,7 @@
 #include "protocols/M17/PacketDeframer.hpp"
 #include "protocols/M17/PacketFramer.hpp"
 #include "core/audio_path.h"
+#include "core/csma.h"
 #include "core/ringbuf.hpp"
 #include "OpMode.hpp"
 #include <atomic>
@@ -175,6 +176,13 @@ private:
         currTxPkt;      ///< Pending TX descriptor (single-slot)
     bool pktTxStarted;  ///< Phase flag: preamble+LSF sent
     bool pktTxLastSent; ///< Phase flag: last packet frame sent
+    // Packet channel access, as APRS: p 63/256 per 100 ms slot,
+    // transmitting anyway after 5 s
+    static constexpr uint8_t CSMA_PERSIST = 63;
+    static constexpr uint32_t CSMA_SLOT_TIME = 100;
+    static constexpr uint32_t CSMA_DEFER_TIMEOUT = 5000;
+
+    struct csmaState csma; ///< Channel access for packets
 };
 
 #endif /* OPMODE_M17_H */
