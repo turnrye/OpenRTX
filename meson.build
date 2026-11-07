@@ -63,6 +63,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/csma.c',
                'openrtx/src/core/m17_sms.cpp',
                'openrtx/src/core/aprs_msg.c',
+               'openrtx/src/core/aprs_beacon.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1386,6 +1387,16 @@ m17_aprs_packet_test = executable('m17_aprs_packet_test',
                                   sources : unit_test_src + ['tests/unit/M17_aprs_packet.cpp'],
                                   kwargs  : unit_test_opts)
 
+aprs_beacon_test = executable('aprs_beacon_test',
+                              sources : ['openrtx/src/core/aprs_beacon.c',
+                                         'openrtx/src/core/beacon.c',
+                                         'openrtx/src/protocols/APRS/packet.c',
+                                         'openrtx/src/protocols/M17/AprsPacket.c',
+                                         'tests/unit/rtx_packet_stub.cpp',
+                                         'tests/unit/aprs_beacon_test.cpp',
+                                         'tests/unit/aprs_beacon_tick_test.cpp'],
+                              kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1419,3 +1430,4 @@ test('Slip Test', slip_test)
 test('Beacon Test', beacon_test)
 test('APRS Position Test', aprs_position_test)
 test('M17 APRS Packet Test', m17_aprs_packet_test)
+test('APRS Beacon Producer Test', aprs_beacon_test)

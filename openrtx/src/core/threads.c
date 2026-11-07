@@ -24,6 +24,7 @@
 #include "core/messages.h"
 #include "core/m17_sms.h"
 #include "core/aprs_msg.h"
+#include "core/aprs_beacon.h"
 #include "core/beeps.h"
 
 #if defined(PLATFORM_TTWRPLUS)
@@ -32,6 +33,95 @@
 
 /* Mutex for concurrent access to RTX state variable */
 pthread_mutex_t rtx_mutex;
+
+#if defined(CONFIG_APRS)
+/**
+ * \internal Assemble the beacon configuration and current position from the
+ * radio state and run one beacon tick. Called about once a second while APRS
+ * or M17 is the active mode; the scheduler decides whether anything is
+ * transmitted.
+ */
+static void beacon_service(const state_t *st, uint32_t nowSec)
+{
+    static struct beaconState bstate;
+    static bool     inited  = false;
+    static uint32_t lastSec = 0;
+
+    if(!inited)
+    {
+        beacon_reset(&bstate);
+        inited  = true;
+        lastSec = nowSec;
+        return;
+    }
+
+    if(nowSec == lastSec)   // at most once per second
+        return;
+    lastSec = nowSec;
+
+    // Each carrier has its own switch; the schedule is shared, and starts
+    // over when the carrier changes.
+    static uint8_t lastCarrier = OPMODE_APRS;
+    uint8_t carrier = st->channel.mode;
+    if(carrier != lastCarrier)
+    {
+        beacon_reset(&bstate);
+        lastCarrier = carrier;
+    }
+    if((carrier == OPMODE_M17) ? !st->settings.m17_beacon
+                               : !st->settings.aprs_beacon)
+        return;
+
+    struct aprsBeaconParams params;
+    params.sched.method       = (enum beaconMethod) st->settings.beacon_method;
+    params.sched.minInterval  = st->settings.beacon_interval;
+    params.sched.maxInterval  = st->settings.beacon_maxInterval;
+    params.sched.errThreshold = st->settings.beacon_errThreshold;
+    params.callsign           = st->settings.aprs_callsign;
+    params.path               = st->settings.aprs_path;
+    params.symbolTable        = st->settings.aprs_symTable;
+    params.symbolCode         = st->settings.aprs_symCode;
+    params.comment            = st->settings.beacon_comment;
+    params.sendCourseSpeed    = st->settings.beacon_send_cs;
+    params.sendAltitude       = st->settings.beacon_send_alt;
+    params.carrier            = carrier;
+    params.m17Callsign        = st->settings.callsign;
+
+    struct beaconFix fix;
+    if(st->settings.beacon_pos_fixed)
+    {
+        // A fixed position has no course, speed or altitude to report, and
+        // "/A=000000" would claim sea level.
+        params.sendCourseSpeed = false;
+        params.sendAltitude    = false;
+
+        fix.valid     = true;
+        fix.latitude  = st->settings.beacon_fixedLat;
+        fix.longitude = st->settings.beacon_fixedLon;
+        fix.course    = 0;
+        fix.speed     = 0;
+        fix.altitude  = 0;
+    }
+    else
+    {
+        // A fix the receiver stopped confirming is not a position to send.
+        const gps_t *g = &st->gps_data;
+        uint32_t fixAge = (uint32_t) getTick() - g->fix_tick;
+        fix.valid     = (st->settings.gps_enabled != 0)
+                        && (g->fix_quality != FIX_QUALITY_NO_FIX)
+                        && (g->fix_quality != FIX_QUALITY_ESTIMATED)
+                        && (g->fix_tick != 0)
+                        && (fixAge < BEACON_FIX_MAX_AGE_MS);
+        fix.latitude  = g->latitude;
+        fix.longitude = g->longitude;
+        fix.course    = (uint16_t) g->tmg_true;
+        fix.speed     = g->speed;
+        fix.altitude  = g->altitude;
+    }
+
+    aprsBeacon_tick(&params, &fix, &bstate, nowSec);
+}
+#endif
 
 /**
  * \internal Thread managing user input and UI
@@ -84,6 +174,13 @@ void *ui_threadFunc(void *arg)
         #if defined(CONFIG_MESSAGES)
         if(messages_task(state.channel.mode) > 0)
             vp_beep(BEEP_NEW_MESSAGE, LONG_BEEP);
+        #endif
+
+        #if defined(CONFIG_APRS)
+        // Position beacons go out in APRS, or as APRS in M17 packet mode.
+        if((state.channel.mode == OPMODE_APRS) ||
+           (state.channel.mode == OPMODE_M17))
+            beacon_service(&state, (uint32_t)(time / 1000));
         #endif
 
         // If synchronization needed take mutex and update RTX configuration

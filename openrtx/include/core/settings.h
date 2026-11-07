@@ -52,6 +52,22 @@ typedef struct
     bool    gpsSetTime;           // Use GPS to ajust RTC time
     char    M17_meta_text[53];    // M17 Meta Text to send
     char    aprs_callsign[10];    // APRS station address, "CALL" or "CALL-SSID"
+    uint8_t beacon_method   : 2,  // Beacon: off/manual/interval/adaptive
+            beacon_pos_fixed: 1,  // Beacon uses the fixed position, not GPS
+            beacon_send_cs  : 1,  // Include course/speed in beacons
+            beacon_send_alt : 1,  // Include altitude in beacons
+            aprs_beacon     : 1,  // Beacon over APRS
+            m17_beacon      : 1,  // Carry the position in M17 metadata
+            _reserved_aprs  : 1;
+    uint16_t beacon_interval;     // Beacon interval / rate floor, seconds
+    uint16_t beacon_maxInterval;  // Beacon heartbeat ceiling, seconds
+    uint16_t beacon_errThreshold; // Adaptive beacon error threshold, metres
+    char    aprs_symTable;        // APRS symbol table id, e.g. '/'
+    char    aprs_symCode;         // APRS symbol code, e.g. '['
+    char    aprs_path[20];        // APRS digipeater path
+    char    beacon_comment[32];   // Beacon comment text
+    int32_t beacon_fixedLat;      // Fixed-position latitude, microdegrees
+    int32_t beacon_fixedLon;      // Fixed-position longitude, microdegrees
 }
 __attribute__((packed)) settings_t;
 
@@ -81,6 +97,22 @@ static const settings_t default_settings =
     false,                        // Update RTC with GPS
     "OpenRTX",                    // Default M17 meta text
     "N0CALL",                     // Default APRS callsign
+    0,                            // Beacon method: off
+    false,                        // Beacon position source: GPS
+    true,                         // Include course/speed
+    true,                         // Include altitude
+    true,                         // Beacon over APRS
+    true,                         // Position in M17 metadata
+    0,                            // not used
+    600,                          // Beacon interval, seconds
+    1800,                         // Beacon heartbeat, seconds
+    600,                          // Adaptive beacon error threshold, metres
+    '/',                          // APRS symbol table
+    '[',                          // APRS symbol code (person)
+    "WIDE1-1,WIDE2-1",            // APRS digipeater path
+    "OpenRTX",                    // Beacon comment
+    0,                            // APRS fixed latitude, microdegrees
+    0,                            // APRS fixed longitude, microdegrees
 };
 
 #endif /* SETTINGS_H */

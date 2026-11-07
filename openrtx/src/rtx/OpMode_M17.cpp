@@ -388,7 +388,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
             metaText.getNextBlock(lsf.metadata());
         }
 
-        if (state.settings.gps_enabled) {
+        if (state.settings.gps_enabled && state.settings.m17_beacon) {
             lsf.setGnssData(&state.gps_data, GNSS_STATION_HANDHELD);
             gpsTimer = 0;
         }
@@ -433,7 +433,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
             encoder.updateLsfData(lsf);
         }
 
-        if (state.settings.gps_enabled) {
+        if (state.settings.gps_enabled && state.settings.m17_beacon) {
             gpsTimer++;
 
             if (gpsTimer >= GPS_UPDATE_TICKS) {

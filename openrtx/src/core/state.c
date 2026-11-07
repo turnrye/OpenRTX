@@ -50,6 +50,31 @@ void state_init()
 #endif
 
     /*
+     * Settings saved before APRS existed read back with the APRS fields
+     * zeroed: a symbol table is never empty, so start those from the
+     * defaults.
+     */
+    if (state.settings.aprs_symTable == '\0') {
+        const settings_t *d = &default_settings;
+        settings_t *s = &state.settings;
+        s->beacon_method = d->beacon_method;
+        s->beacon_pos_fixed = d->beacon_pos_fixed;
+        s->beacon_send_cs = d->beacon_send_cs;
+        s->beacon_send_alt = d->beacon_send_alt;
+        s->aprs_beacon = d->aprs_beacon;
+        s->m17_beacon = d->m17_beacon;
+        s->beacon_interval = d->beacon_interval;
+        s->beacon_maxInterval = d->beacon_maxInterval;
+        s->beacon_errThreshold = d->beacon_errThreshold;
+        s->aprs_symTable = d->aprs_symTable;
+        s->aprs_symCode = d->aprs_symCode;
+        memcpy(s->aprs_path, d->aprs_path, sizeof(s->aprs_path));
+        memcpy(s->beacon_comment, d->beacon_comment, sizeof(s->beacon_comment));
+        s->beacon_fixedLat = d->beacon_fixedLat;
+        s->beacon_fixedLon = d->beacon_fixedLon;
+    }
+
+    /*
      * Try loading VFO configuration from nonvolatile memory and default to sane
      * values in case of failure.
      */
