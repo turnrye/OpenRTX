@@ -57,6 +57,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/voicePromptData.S',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/messages.c',
+               'openrtx/src/core/csma.c',
                'openrtx/src/core/m17_sms.cpp',
                'openrtx/src/core/aprs_msg.c',
                'openrtx/src/rtx/rtx.cpp',
@@ -1358,6 +1359,10 @@ aprs_modulator_test = executable('aprs_modulator_test',
                                            + ['tests/unit/APRS_modulator.cpp'],
                                  kwargs  : unit_test_opts)
 
+csma_test = executable('csma_test',
+                       sources : unit_test_src + ['tests/unit/csma_test.cpp'],
+                       kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1386,3 +1391,4 @@ test('APRS Test', aprs_test)
 test('APRS OpMode Test', aprs_opmode_test)
 test('APRS RX Performance Test', aprs_rx_performance_test)
 test('APRS Modulator Test', aprs_modulator_test)
+test('CSMA Test', csma_test)
