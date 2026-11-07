@@ -26,6 +26,17 @@ enum addrFlags {
 
 /* ":ADDRESSEE:" — the separator after the padded addressee is at a fixed
  * offset. */
+/*
+ * Control and protocol identifier of an APRS frame: a UI frame carrying no
+ * layer 3 protocol.
+ */
+enum ax25Ui {
+    AX25_CTRL_UI = 0x03,   ///< Unnumbered information frame.
+    AX25_PID_NO_L3 = 0xf0, ///< No layer 3 protocol.
+};
+
+/* ":ADDRESSEE:" — the separator after the padded addressee is at a fixed
+ * offset. */
 #define MSG_TEXT_OFFSET (1 + APRS_MSG_ADDRESSEE_LEN + 1)
 
 /*
@@ -295,4 +306,141 @@ int aprsAddr_validate(const char *str)
         return 0;
 
     return -EINVAL;
+}
+
+/*
+ * Shift one address into the seven bytes AX.25 sends. Short callsigns are
+ * padded with spaces, and the reserved bits are sent as ones, as every other
+ * station does.
+ */
+static void writeAddress(uint8_t *dst, const struct aprsAddress *addr,
+                         bool command, bool last)
+{
+    size_t i = 0;
+
+    for (; (i < APRS_ADDR_LEN - 1) && (addr->addr[i] != '\0'); i++)
+        dst[i] = (uint8_t)(addr->addr[i] << 1);
+    for (; i < APRS_ADDR_LEN - 1; i++)
+        dst[i] = (uint8_t)(' ' << 1);
+
+    uint8_t flags = ADDR_RESERVED | (uint8_t)(addr->ssid << ADDR_SSID_SHIFT);
+    if ((addr->repeated != 0) || command)
+        flags |= ADDR_CMD_OR_H;
+    if (last)
+        flags |= ADDR_LAST;
+
+    dst[APRS_ADDR_LEN - 1] = flags;
+}
+
+/*
+ * Parse a comma-separated digipeater path into @p addresses, each element
+ * optionally followed by the '*' that aprsPath_toStr() writes for a repeated
+ * one. Returns the number of addresses parsed, or -EINVAL.
+ */
+static int parsePath(const char *path, struct aprsAddress *addresses,
+                     size_t room)
+{
+    const char *p = path;
+    size_t count = 0;
+
+    while (*p != '\0') {
+        const char *comma = strchr(p, ',');
+        size_t len = (comma != NULL) ? (size_t)(comma - p) : strlen(p);
+        char element[APRS_ADDR_STR_LEN];
+        bool repeated = false;
+
+        if (count == room)
+            return -EINVAL;
+
+        if ((len > 0) && (p[len - 1] == '*')) {
+            repeated = true;
+            len--;
+        }
+
+        if ((len == 0) || (len >= sizeof(element)))
+            return -EINVAL;
+
+        memcpy(element, p, len);
+        element[len] = '\0';
+
+        if (aprsAddr_fromStr(element, &addresses[count]) != 0)
+            return -EINVAL;
+
+        addresses[count].repeated = repeated ? 1 : 0;
+        count++;
+
+        if (comma == NULL)
+            break;
+
+        p = comma + 1;
+        if (*p == '\0')
+            return -EINVAL;
+    }
+
+    return (int)count;
+}
+
+ssize_t aprsFrame_build(uint8_t *buf, size_t cap, const char *dest,
+                        const char *src, const char *path, const char *info,
+                        size_t infoLen)
+{
+    struct aprsAddress addresses[APRS_MAX_ADDRESSES];
+
+    if ((infoLen == 0) || (infoLen > APRS_MAX_INFO))
+        return -EINVAL;
+
+    /* Parse every address before writing anything, so a bad one leaves the
+     * caller's buffer untouched. */
+    if ((aprsAddr_fromStr(dest, &addresses[0]) != 0)
+        || (aprsAddr_fromStr(src, &addresses[1]) != 0))
+        return -EINVAL;
+
+    int hops = 0;
+    if (path != NULL)
+        hops = parsePath(path, &addresses[2], APRS_MAX_ADDRESSES - 2);
+
+    if (hops < 0)
+        return hops;
+
+    const size_t count = 2 + (size_t)hops;
+    const size_t total = (count * APRS_ADDR_LEN) + APRS_CTRL_PID_LEN + infoLen;
+    if (total > cap)
+        return -ENOSPC;
+
+    /* APRS sends UI frames as commands: the command bit is set on the
+     * destination. */
+    for (size_t i = 0; i < count; i++)
+        writeAddress(&buf[i * APRS_ADDR_LEN], &addresses[i], (i == 0),
+                     (i == (count - 1)));
+
+    size_t offset = count * APRS_ADDR_LEN;
+    buf[offset++] = AX25_CTRL_UI;
+    buf[offset++] = AX25_PID_NO_L3;
+    memcpy(&buf[offset], info, infoLen);
+
+    return (ssize_t)total;
+}
+
+ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
+                       const char *text)
+{
+    const size_t addrLen = strlen(addressee);
+    const size_t textLen = strlen(text);
+
+    if ((addrLen == 0) || (addrLen > APRS_MSG_ADDRESSEE_LEN)
+        || (textLen > APRS_MSG_TEXT_MAX))
+        return -EINVAL;
+
+    const size_t total = MSG_TEXT_OFFSET + textLen;
+    if (len < (total + 1))
+        return -ENOSPC;
+
+    out[0] = ':';
+    memcpy(&out[1], addressee, addrLen);
+    memset(&out[1 + addrLen], ' ', APRS_MSG_ADDRESSEE_LEN - addrLen);
+    out[MSG_TEXT_OFFSET - 1] = ':';
+    memcpy(&out[MSG_TEXT_OFFSET], text, textLen);
+    out[total] = '\0';
+
+    return (ssize_t)total;
 }

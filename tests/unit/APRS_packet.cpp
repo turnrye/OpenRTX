@@ -390,3 +390,214 @@ TEST_CASE("APRS address: a callsign the user chooses is checked strictly",
         CHECK(aprsAddr_validate("-7") == -EINVAL);
     }
 }
+
+TEST_CASE("APRS frame builder: a built frame parses back to what went in",
+          "[aprs]")
+{
+    struct aprsTestFrame frame;
+    aprsPacket pkt;
+    char addr[APRS_ADDR_STR_LEN];
+    char path[32];
+
+    const char info[] = ":W1AW     :hello";
+
+    REQUIRE((frame.len = aprsFrame_build(frame.data, sizeof(frame.data),
+                                         APRS_TOCALL, "N0CALL-7",
+                                         APRS_DEFAULT_PATH, info, strlen(info)))
+            > 0);
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+
+    REQUIRE(pkt.addressesLen == 4);
+
+    aprsAddr_toStr(&pkt.addresses[0], addr, sizeof(addr));
+    REQUIRE(strcmp(addr, APRS_TOCALL) == 0);
+
+    aprsAddr_toStr(&pkt.addresses[1], addr, sizeof(addr));
+    REQUIRE(strcmp(addr, "N0CALL-7") == 0);
+
+    aprsPath_toStr(&pkt, path, sizeof(path));
+    REQUIRE(strcmp(path, APRS_DEFAULT_PATH) == 0);
+
+    REQUIRE(pkt.type == APRS_TYPE_MESSAGE);
+    REQUIRE(std::string(pkt.info, pkt.infoLen) == info);
+}
+
+TEST_CASE("APRS frame builder: the frame matches an independent encoder",
+          "[aprs]")
+{
+    /* scripts/aprs_gen_baseband.py, parse_tnc2() of
+     *   N0CALL-7>APORT1,WIDE1-1,WIDE2-1::W1AW     :hello
+     * Regenerate with:
+     *   python3 -c "import importlib.util as u; \
+     *     s=u.spec_from_file_location('g','scripts/aprs_gen_baseband.py'); \
+     *     m=u.module_from_spec(s); s.loader.exec_module(m); \
+     *     print(m.parse_tnc2('N0CALL-7>APORT1,WIDE1-1,WIDE2-1::W1AW     :hello').hex())"
+     */
+    static const uint8_t expected[] = {
+        0x82, 0xa0, 0x9e, 0xa4, 0xa8, 0x62, 0xe0, 0x9c, 0x60, 0x86, 0x82, 0x98,
+        0x98, 0x6e, 0xae, 0x92, 0x88, 0x8a, 0x62, 0x40, 0x62, 0xae, 0x92, 0x88,
+        0x8a, 0x64, 0x40, 0x63, 0x03, 0xf0, 0x3a, 0x57, 0x31, 0x41, 0x57, 0x20,
+        0x20, 0x20, 0x20, 0x20, 0x3a, 0x68, 0x65, 0x6c, 0x6c, 0x6f
+    };
+
+    struct aprsTestFrame frame;
+    const char info[] = ":W1AW     :hello";
+
+    REQUIRE((frame.len = aprsFrame_build(frame.data, sizeof(frame.data),
+                                         APRS_TOCALL, "N0CALL-7",
+                                         APRS_DEFAULT_PATH, info, strlen(info)))
+            > 0);
+
+    REQUIRE(frame.len == sizeof(expected));
+    REQUIRE(memcmp(frame.data, expected, sizeof(expected)) == 0);
+}
+
+TEST_CASE("APRS frame builder: a path is optional", "[aprs]")
+{
+    struct aprsTestFrame frame;
+    aprsPacket pkt;
+    char path[32];
+
+    const char info[] = ">heard direct";
+
+    REQUIRE((frame.len = aprsFrame_build(frame.data, sizeof(frame.data),
+                                         APRS_TOCALL, "N0CALL", nullptr, info,
+                                         strlen(info)))
+            > 0);
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+    REQUIRE(pkt.addressesLen == 2);
+    REQUIRE(aprsPath_toStr(&pkt, path, sizeof(path)) == 0);
+
+    REQUIRE((frame.len = aprsFrame_build(frame.data, sizeof(frame.data),
+                                         APRS_TOCALL, "N0CALL", "", info,
+                                         strlen(info)))
+            > 0);
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+    REQUIRE(pkt.addressesLen == 2);
+}
+
+TEST_CASE("APRS frame builder: a repeated path element round-trips", "[aprs]")
+{
+    struct aprsTestFrame frame;
+    aprsPacket pkt;
+    char path[32];
+
+    const char info[] = ">digipeated";
+
+    REQUIRE((frame.len = aprsFrame_build(
+                 frame.data, sizeof(frame.data), APRS_TOCALL, "N0CALL",
+                 "WIDE1-1*,WIDE2-1", info, strlen(info)))
+            > 0);
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+    REQUIRE(aprsPath_toStr(&pkt, path, sizeof(path)) > 0);
+    REQUIRE(strcmp(path, "WIDE1-1*,WIDE2-1") == 0);
+}
+
+TEST_CASE("APRS frame builder: invalid arguments are rejected", "[aprs]")
+{
+    struct aprsTestFrame frame;
+    const char info[] = ">hi";
+
+    SECTION("an empty info field would not parse back")
+    {
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL", nullptr, info, 0)
+                == -EINVAL);
+    }
+
+    SECTION("a malformed source or path")
+    {
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL-99", nullptr, info, strlen(info))
+                == -EINVAL);
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL", "WIDE1-1,", info, strlen(info))
+                == -EINVAL);
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL", "TOOLONGDIGI", info, strlen(info))
+                == -EINVAL);
+    }
+
+    SECTION("more digipeaters than AX.25 allows")
+    {
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL", "W1,W2,W3,W4,W5,W6,W7,W8,W9", info,
+                                strlen(info))
+                == -EINVAL);
+    }
+
+    SECTION("an info field longer than AX.25 allows")
+    {
+        char big[APRS_MAX_INFO + 1];
+        memset(big, 'x', sizeof(big));
+        REQUIRE(aprsFrame_build(frame.data, sizeof(frame.data), APRS_TOCALL,
+                                "N0CALL", APRS_DEFAULT_PATH, big, sizeof(big))
+                == -EINVAL);
+    }
+
+    SECTION("a frame that would not fit the buffer")
+    {
+        REQUIRE(aprsFrame_build(frame.data, 16, APRS_TOCALL, "N0CALL", nullptr,
+                                info, strlen(info))
+                == -ENOSPC);
+    }
+}
+
+TEST_CASE("APRS message: a formatted message unwraps to what went in", "[aprs]")
+{
+    char info[APRS_MSG_ADDRESSEE_LEN + APRS_MSG_TEXT_MAX + 3];
+    struct aprsTestFrame frame;
+    aprsPacket pkt;
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_PACLEN];
+
+    SECTION("a short addressee is padded to nine characters")
+    {
+        REQUIRE(aprsMsg_format(info, sizeof(info), "W1AW", "hello") == 16);
+        REQUIRE(strcmp(info, ":W1AW     :hello") == 0);
+
+        REQUIRE((frame.len = aprsFrame_build(
+                     frame.data, sizeof(frame.data), APRS_TOCALL, "N0CALL-7",
+                     APRS_DEFAULT_PATH, info, strlen(info)))
+                > 0);
+        REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+        REQUIRE(aprsMsg_unwrap(&pkt, addressee, sizeof(addressee), text,
+                               sizeof(text))
+                == 0);
+        REQUIRE(strcmp(addressee, "W1AW") == 0);
+        REQUIRE(strcmp(text, "hello") == 0);
+    }
+
+    SECTION("a full-width addressee needs no padding")
+    {
+        REQUIRE(aprsMsg_format(info, sizeof(info), "N0CALL-15", "hi") > 0);
+        REQUIRE(strcmp(info, ":N0CALL-15:hi") == 0);
+    }
+
+    SECTION("an empty message text is still a valid message")
+    {
+        REQUIRE(aprsMsg_format(info, sizeof(info), "W1AW", "") == 11);
+        REQUIRE(strcmp(info, ":W1AW     :") == 0);
+    }
+
+    SECTION("no acknowledgement sequence is appended")
+    {
+        REQUIRE(aprsMsg_format(info, sizeof(info), "W1AW", "hello") > 0);
+        REQUIRE(strchr(info, '{') == nullptr);
+    }
+
+    SECTION("invalid arguments are rejected")
+    {
+        char longText[APRS_MSG_TEXT_MAX + 2];
+        memset(longText, 'x', sizeof(longText));
+        longText[sizeof(longText) - 1] = '\0';
+
+        REQUIRE(aprsMsg_format(info, 0, "W1AW", "hi") == -ENOSPC);
+        REQUIRE(aprsMsg_format(info, sizeof(info), "", "hi") == -EINVAL);
+        REQUIRE(aprsMsg_format(info, sizeof(info), "TOOLONGADDR", "hi")
+                == -EINVAL);
+        REQUIRE(aprsMsg_format(info, sizeof(info), "W1AW", longText)
+                == -EINVAL);
+        REQUIRE(aprsMsg_format(info, 12, "W1AW", "hello") == -ENOSPC);
+    }
+}

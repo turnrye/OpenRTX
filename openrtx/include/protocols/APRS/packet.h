@@ -10,6 +10,7 @@
 #include "protocols/APRS/constants.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,6 +21,19 @@ extern "C" {
  * characters, a dash and two SSID digits.
  */
 #define APRS_ADDR_STR_LEN 10
+
+/**
+ * AX.25 destination of every frame OpenRTX transmits, the TOCALL receiving
+ * stations read to tell which software sent it. `APORT?` is registered to
+ * OpenRTX in aprsorg/aprs-deviceid, with the last character ours to assign;
+ * the digit marks the firmware generation.
+ */
+#define APRS_TOCALL "APORT1"
+
+/**
+ * Digipeater path for frames OpenRTX transmits: one local hop, one wide hop.
+ */
+#define APRS_DEFAULT_PATH "WIDE1-1,WIDE2-1"
 
 /**
  * Longest text an addressed ":ADDRESSEE:text" message carries.
@@ -141,6 +155,41 @@ int aprsAddr_fromStr(const char *str, struct aprsAddress *addr);
  * @return 0 if the text is a valid station address, -EINVAL otherwise.
  */
 int aprsAddr_validate(const char *str);
+
+/**
+ * Build an AX.25 UI frame from TNC2-style address text: addresses, control,
+ * PID and info, without the FCS, as the decoder hands a frame back.
+ *
+ * @param buf: destination buffer; untouched if the frame cannot be built.
+ * @param cap: size of buf.
+ * @param dest: destination address, the TOCALL for a transmitted frame.
+ * @param src: source address, "CALLSIGN" or "CALLSIGN-SSID".
+ * @param path: comma-separated digipeater path; NULL or "" for none.
+ * @param info: info field bytes; need not be NUL-terminated.
+ * @param infoLen: number of info bytes, 1 to APRS_MAX_INFO.
+ * @return frame length on success, -EINVAL for an address or path that is not
+ *         valid AX.25 or an info length out of range, -ENOSPC if the frame
+ *         does not fit in buf.
+ */
+ssize_t aprsFrame_build(uint8_t *buf, size_t cap, const char *dest,
+                        const char *src, const char *path, const char *info,
+                        size_t infoLen);
+
+/**
+ * Format the info field of an addressed message, ":ADDRESSEE:text", with the
+ * addressee space-padded to APRS_MSG_ADDRESSEE_LEN.
+ *
+ * @param out: destination buffer, NUL-terminated on success.
+ * @param len: size of out.
+ * @param addressee: recipient callsign, at most APRS_MSG_ADDRESSEE_LEN
+ *                   characters.
+ * @param text: message text, at most APRS_MSG_TEXT_MAX characters.
+ * @return number of characters written on success, -EINVAL if the addressee
+ *         or text is too long or the addressee empty, -ENOSPC if out is too
+ *         small.
+ */
+ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
+                       const char *text);
 
 #ifdef __cplusplus
 }
