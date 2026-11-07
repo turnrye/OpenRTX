@@ -6,6 +6,7 @@
 
 #include "core/audio_path.h"
 #include <map>
+#include <pthread.h>
 #include <set>
 
 /**
@@ -99,6 +100,40 @@ static std::set< int >        activePaths;      // IDs of currently active paths
 static std::map< int, Route > routes;           // Route data of currently active paths.
 static int                    pathCounter = 1;  // Counter for path ID generation.
 
+/*
+ * The routing tables above are shared state: audioPath_request() and
+ * audioPath_release() mutate them from the UI and RTX threads while
+ * audioPath_getInfo() / audioPath_getStatus() read them from the codec
+ * thread. Without serialisation this is a data race on the std::map/std::set
+ * internals, which shows up as intermittent crashes inside the container code.
+ * A single mutex around every public entry point is enough: the critical
+ * sections are short and none of them re-enter the audio_path API.
+ */
+static pthread_mutex_t pathMutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * \internal
+ * Scope guard that holds pathMutex for the duration of a public call.
+ * Destructors run on every return path (exceptions are disabled), so the
+ * mutex is always released.
+ */
+class PathLock
+{
+public:
+    PathLock()
+    {
+        pthread_mutex_lock(&pathMutex);
+    }
+
+    ~PathLock()
+    {
+        pthread_mutex_unlock(&pathMutex);
+    }
+
+    PathLock(const PathLock&)            = delete;
+    PathLock& operator=(const PathLock&) = delete;
+};
+
 
 pathId audioPath_request(enum AudioSource source, enum AudioSink sink,
                          enum AudioPriority prio)
@@ -106,6 +141,8 @@ pathId audioPath_request(enum AudioSource source, enum AudioSink sink,
     const Path path(source, sink, prio);
     if (!path.isValid())
         return -1;
+
+    PathLock lock;
 
     std::set< int > pathsToSuspend;
 
@@ -150,6 +187,8 @@ pathInfo_t audioPath_getInfo(const pathId id)
 {
     pathInfo_t info = {0, 0, 0, 0};
 
+    PathLock lock;
+
     const auto it = routes.find(id);
     if(it == routes.end())
     {
@@ -170,6 +209,8 @@ pathInfo_t audioPath_getInfo(const pathId id)
 
 enum PathStatus audioPath_getStatus(const pathId id)
 {
+    PathLock lock;
+
     const auto it = routes.find(id);
 
     if(it == routes.end())
@@ -183,6 +224,8 @@ enum PathStatus audioPath_getStatus(const pathId id)
 
 void audioPath_release(const pathId id)
 {
+    PathLock lock;
+
     auto it = routes.find(id);
     if(it == routes.end())  // Does not exists
         return;
