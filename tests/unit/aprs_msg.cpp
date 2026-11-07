@@ -19,6 +19,16 @@
 /* The source matches received messages against the APRS callsign. */
 state_t state;
 
+/* Frames handed to the KISS emitter, which the test stands in for. */
+static size_t kissFrames;
+
+extern "C" void packetEngine_send(const uint8_t *frame, size_t len)
+{
+    (void)frame;
+    (void)len;
+    kissFrames++;
+}
+
 /* Time as the source sees it, in milliseconds. */
 static long long now;
 
@@ -279,5 +289,21 @@ TEST_CASE("aprs_msg: sending is refused where it should be", "[aprs][messages]")
         CHECK(sendMessage("W1AW", big).len == 0);
     }
 
+    messages_terminate();
+}
+
+TEST_CASE("aprs_msg: every frame heard goes to the KISS emitter",
+          "[aprs][messages]")
+{
+    setup("N0CALL");
+    kissFrames = 0;
+
+    struct aprsTestFrame mine = makeFrame("W1AW", ":N0CALL   :Hello");
+    struct aprsTestFrame other = makeFrame("W1AW", "!4903.50N/07201.75W-");
+    REQUIRE(receive(mine) == 0);
+    REQUIRE(receive(other) == 0);
+
+    CHECK(kissFrames == 2);
+    CHECK(messages_count() == 1);
     messages_terminate();
 }
