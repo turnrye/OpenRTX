@@ -15,6 +15,9 @@
 #include "core/utils.h"
 #include "ui/utils.h"
 #include "core/messages.h"
+#ifdef CONFIG_APRS
+#include "core/aprs_beacon.h"
+#endif
 
 void _ui_drawMainBackground()
 {
@@ -226,6 +229,46 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
         case OPMODE_APRS:
             gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
                       color_white, "APRS");
+            {
+                /* Beacon status: method, position source, and how long since
+                 * the last beacon. */
+                const char *method;
+                switch(last_state.settings.beacon_method)
+                {
+                    case 1:  method = "Man";   break;
+                    case 2:  method = "Int";   break;
+                    case 3:  method = "Adapt"; break;
+                    default: method = "Off";   break;
+                }
+
+                const char *pos;
+                if(last_state.settings.beacon_pos_fixed)
+                    pos = "Fix";
+                else if((last_state.settings.gps_enabled != 0)
+                        && (last_state.gps_data.fix_quality != 0)
+                        && (last_state.gps_data.fix_quality != 6))
+                    pos = "GPS";
+                else
+                    pos = "no pos";
+
+                char last[8];
+                uint32_t age = 0;
+                if(aprsBeacon_lastSent(&age, (uint32_t)(getTick() / 1000)))
+                {
+                    if(age < 100)
+                        sniprintf(last, sizeof(last), "%us", (unsigned)age);
+                    else
+                        sniprintf(last, sizeof(last), "%um",
+                                  (unsigned)(age / 60));
+                }
+                else
+                {
+                    sniprintf(last, sizeof(last), "-");
+                }
+
+                gfx_print(layout.line3_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "%s %s %s", method, pos, last);
+            }
             break;
 
         #endif

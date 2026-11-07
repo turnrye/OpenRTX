@@ -66,7 +66,11 @@
 #include "core/voicePromptUtils.h"
 #include "core/beeps.h"
 #include "core/messages.h"
+#ifdef CONFIG_APRS
+#include "core/aprs_beacon.h"
 #include "protocols/APRS/packet.h"
+#include "protocols/APRS/symbols.h"
+#endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBackground();
@@ -100,7 +104,10 @@ extern void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state);
 #endif
 extern void _ui_drawSettingsDisplay(ui_state_t* ui_state);
 extern void _ui_drawSettingsM17(ui_state_t* ui_state);
+#ifdef CONFIG_APRS
 extern void _ui_drawSettingsAPRS(ui_state_t* ui_state);
+extern void _ui_drawSettingsBeacon(ui_state_t* ui_state);
+#endif
 extern void _ui_drawSettingsFM(ui_state_t* ui_state);
 extern void _ui_drawSettingsVoicePrompts(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
@@ -149,6 +156,7 @@ const char *settings_items[] =
 #endif
 #ifdef CONFIG_APRS
     "APRS",
+    "Beacon",
 #endif
     "FM",
     "Accessibility",
@@ -190,13 +198,41 @@ const char * settings_m17_items[] =
     "Callsign",
     "Meta Txt",
     "CAN",
-    "CAN RX Check"
+    "CAN RX Check",
+    "Beacon"
 };
 
+#ifdef CONFIG_APRS
 const char *settings_aprs_items[] =
 {
     "Callsign",
+    "Beacon",
+    "Symbol",
+    "Path",
 };
+const uint8_t settings_aprs_num = sizeof(settings_aprs_items)/sizeof(settings_aprs_items[0]);
+
+const char *settings_beacon_items[] =
+{
+    "Method",
+    "Position",
+    "Latitude",
+    "Lat N/S",
+    "Longitude",
+    "Lon E/W",
+    "Course/Speed",
+    "Altitude",
+    "Comment",
+    "Interval",
+    "Beacon Now"
+};
+const uint8_t settings_beacon_num = sizeof(settings_beacon_items)/sizeof(settings_beacon_items[0]);
+
+// Beacon intervals offered, in seconds; stepped through, never typed.
+const uint16_t beacon_intervals[] = { 30, 60, 120, 180, 300, 600, 900,
+                                    1200, 1800, 3600 };
+const uint8_t beacon_intervals_num = sizeof(beacon_intervals)/sizeof(beacon_intervals[0]);
+#endif
 
 const char* settings_fm_items[] =
 {
@@ -300,7 +336,6 @@ const uint8_t settings_radio_num = sizeof(settings_radio_items)/sizeof(settings_
 #ifdef CONFIG_M17
 const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_items[0]);
 #endif
-const uint8_t settings_aprs_num = ARRAY_SIZE(settings_aprs_items);
 const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_items[0]);
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
 const uint8_t backup_restore_num = sizeof(backup_restore_items)/sizeof(backup_restore_items[0]);
@@ -316,6 +351,19 @@ layout_t layout;
 state_t last_state;
 bool macro_latched;
 static ui_state_t ui_state;
+
+#ifdef CONFIG_APRS
+// Expose the in-progress keypad entry so the menu value renderer (which does
+// not receive ui_state) can echo digits live while an APRS item is edited.
+bool _ui_aprsEditScratch(uint8_t item, uint32_t *out)
+{
+    if(!ui_state.edit_mode || (ui_state.menu_selected != item))
+        return false;
+    *out = ui_state.aprs_coord;
+    return true;
+}
+#endif
+
 static bool macro_menu = false;
 static bool layout_ready = false;
 static bool redraw_needed = true;
@@ -2079,6 +2127,9 @@ void ui_updateFSM(bool *sync_rtx)
                         case S_APRS:
                             state.ui_screen = SETTINGS_APRS;
                             break;
+                        case S_BEACON:
+                            state.ui_screen = SETTINGS_BEACON;
+                            break;
 #endif
                         case S_FM:
                             state.ui_screen = SETTINGS_FM;
@@ -2312,6 +2363,324 @@ void ui_updateFSM(bool *sync_rtx)
                     _ui_menuBack(MENU_SETTINGS);
                 break;
 #endif
+#ifdef CONFIG_APRS
+            case SETTINGS_APRS:
+                // Text entry for the APRS callsign: an invalid one is not
+                // accepted, the field stays in edit until it is or ESC
+                // discards it.
+                if(ui_state.edit_mode && (ui_state.menu_selected == APRS_CALLSIGN))
+                {
+                    switch(_ui_enterCallsign(msg, &f1Handled))
+                    {
+                        case CALLSIGN_CONFIRMED:
+                            if(aprsAddr_validate(ui_state.new_callsign) != 0)
+                            {
+                                ui_state.callsign_invalid = true;
+                                break;
+                            }
+
+                            strncpy(state.settings.aprs_callsign,
+                                    ui_state.new_callsign,
+                                    sizeof(state.settings.aprs_callsign) - 1);
+                            /* fallthrough */
+                        case CALLSIGN_DISCARDED:
+                            ui_state.callsign_invalid = false;
+                            ui_state.edit_mode = false;
+                            vp_announceBuffer(&currentLanguage->callsign, false,
+                                              true, state.settings.aprs_callsign);
+                            break;
+                        case CALLSIGN_CHANGED:
+                            ui_state.callsign_invalid = false;
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                }
+
+                // Text entry for the digipeater path: typed on the text
+                // keypad for its commas, upper-cased, and only accepted as
+                // a list of valid addresses.
+                if(ui_state.edit_mode && (ui_state.menu_selected == APRS_PATH))
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_beacon_text);
+                        if(strcmp(ui_state.new_beacon_text, "_") == 0)
+                            ui_state.new_beacon_text[0] = '\0';
+                        for(char *c = ui_state.new_beacon_text; *c != '\0'; c++)
+                        {
+                            if((*c >= 'a') && (*c <= 'z'))
+                                *c = (char)(*c - 'a' + 'A');
+                        }
+                        if(!aprsPathValid(ui_state.new_beacon_text) ||
+                           (strlen(ui_state.new_beacon_text)
+                            >= sizeof(state.settings.aprs_path)))
+                        {
+                            ui_state.callsign_invalid = true;
+                            break;
+                        }
+                        strncpy(state.settings.aprs_path,
+                                ui_state.new_beacon_text,
+                                sizeof(state.settings.aprs_path) - 1);
+                        state.settings.aprs_path[sizeof(state.settings.aprs_path) - 1] = '\0';
+                        ui_state.edit_mode = false;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                    {
+                        ui_state.edit_mode        = false;
+                        ui_state.callsign_invalid = false;
+                    }
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                    {
+                        ui_state.callsign_invalid = false;
+                        _ui_textInputDel(ui_state.new_beacon_text);
+                    }
+                    else if(input_isCharPressed(msg))
+                    {
+                        ui_state.callsign_invalid = false;
+                        _ui_textInputKeypad(ui_state.new_beacon_text,
+                                            sizeof(state.settings.aprs_path) - 1,
+                                            msg, false);
+                    }
+                    break;
+                }
+
+                if(msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                   (ui_state.edit_mode &&
+                   (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT ||
+                    msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)))
+                {
+                    bool fwd = (msg.keys & KEY_RIGHT) || (msg.keys & KEY_UP) ||
+                               (msg.keys & KNOB_RIGHT);
+                    switch(ui_state.menu_selected)
+                    {
+                        case APRS_BEACON:
+                            state.settings.aprs_beacon =
+                                !state.settings.aprs_beacon;
+                            break;
+                        case APRS_SYMBOL:
+                        {
+                            // A symbol not in the list starts the cycle over.
+                            int i = aprsSymbolFind(state.settings.aprs_symTable,
+                                                   state.settings.aprs_symCode);
+                            int n = (int) aprsSymbolsNum;
+                            if(i < 0)
+                                i = fwd ? 0 : n - 1;
+                            else
+                                i = fwd ? (i + 1) % n : (i + n - 1) % n;
+                            state.settings.aprs_symTable = aprsSymbols[i].table;
+                            state.settings.aprs_symCode  = aprsSymbols[i].code;
+                            break;
+                        }
+                        default:
+                            state.ui_screen = SETTINGS_APRS;
+                    }
+                }
+                else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                    _ui_menuUp(settings_aprs_num);
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                    _ui_menuDown(settings_aprs_num);
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(!ui_state.edit_mode)
+                    {
+                        if(ui_state.menu_selected == APRS_PATH)
+                        {
+                            ui_state.callsign_invalid = false;
+                            _ui_textInputReset(ui_state.new_beacon_text,
+                                    sizeof(ui_state.new_beacon_text));
+                        }
+                        else if(ui_state.menu_selected == APRS_CALLSIGN)
+                        {
+                            ui_state.callsign_invalid = false;
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
+                            vp_announceBuffer(&currentLanguage->callsign,
+                                              true, true,
+                                              ui_state.new_callsign);
+                        }
+                    }
+                    ui_state.edit_mode = !ui_state.edit_mode;
+                }
+                else if(msg.keys & KEY_ESC)
+                    _ui_menuBack(MENU_SETTINGS);
+                break;
+            case SETTINGS_BEACON:
+                // Text entry for the beacon comment, like the M17 meta text.
+                if(ui_state.edit_mode && (ui_state.menu_selected == BCN_COMMENT))
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_beacon_text);
+                        // Nothing typed leaves only the cursor: no comment.
+                        if(strcmp(ui_state.new_beacon_text, "_") == 0)
+                            ui_state.new_beacon_text[0] = '\0';
+                        strncpy(state.settings.beacon_comment,
+                                ui_state.new_beacon_text,
+                                sizeof(state.settings.beacon_comment) - 1);
+                        state.settings.beacon_comment[sizeof(state.settings.beacon_comment) - 1] = '\0';
+                        ui_state.edit_mode = false;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                        ui_state.edit_mode = false;
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                        _ui_textInputDel(ui_state.new_beacon_text);
+                    else if(input_isCharPressed(msg))
+                        _ui_textInputKeypad(ui_state.new_beacon_text,
+                                            sizeof(ui_state.new_beacon_text) - 1,
+                                            msg, false);
+                    break;
+                }
+
+                // Keypad entry: the latitude and longitude items take
+                // digits from the keypad, like the offset entry.
+                if(ui_state.edit_mode &&
+                   ((ui_state.menu_selected == BCN_LAT) ||
+                    (ui_state.menu_selected == BCN_LON)))
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        bool isLat = (ui_state.menu_selected == BCN_LAT);
+                        uint32_t mag    = ui_state.aprs_coord;
+                        uint32_t maxMag = isLat ? 900000u : 1800000u;
+                        if(mag > maxMag)
+                            mag = maxMag;
+
+                        // 1e-4 deg magnitude -> signed microdegrees, keeping
+                        // the hemisphere already set for this coordinate.
+                        int32_t micro = (int32_t)(mag * 100u);
+                        if(isLat)
+                        {
+                            if(state.settings.beacon_fixedLat < 0)
+                                micro = -micro;
+                            state.settings.beacon_fixedLat = micro;
+                        }
+                        else
+                        {
+                            if(state.settings.beacon_fixedLon < 0)
+                                micro = -micro;
+                            state.settings.beacon_fixedLon = micro;
+                        }
+                        ui_state.edit_mode = false;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                        ui_state.edit_mode = false;   // discard the entry
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                        _ui_numberInputDel(&ui_state.aprs_coord);
+                    else if(input_isNumberPressed(msg))
+                    {
+                        _ui_numberInputKeypad(&ui_state.aprs_coord, msg);
+                        ui_state.input_position += 1;
+                    }
+                    break;
+                }
+
+                if(msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                   (ui_state.edit_mode &&
+                   (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT ||
+                    msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)))
+                {
+                    bool fwd = (msg.keys & KEY_RIGHT) || (msg.keys & KEY_UP) ||
+                               (msg.keys & KNOB_RIGHT);
+                    switch(ui_state.menu_selected)
+                    {
+                        case BCN_METHOD:
+                        {
+                            uint8_t m = state.settings.beacon_method;
+                            m = fwd ? (uint8_t)((m + 1) % 4)
+                                    : (uint8_t)((m + 3) % 4);
+                            state.settings.beacon_method = m;
+                            break;
+                        }
+                        case BCN_POSITION:
+                            state.settings.beacon_pos_fixed =
+                                !state.settings.beacon_pos_fixed;
+                            break;
+                        case BCN_LAT_HEMI:
+                            // Flip N<->S by negating the stored latitude.
+                            state.settings.beacon_fixedLat =
+                                -state.settings.beacon_fixedLat;
+                            break;
+                        case BCN_LON_HEMI:
+                            // Flip E<->W by negating the stored longitude.
+                            state.settings.beacon_fixedLon =
+                                -state.settings.beacon_fixedLon;
+                            break;
+                        case BCN_COURSE_SPEED:
+                            state.settings.beacon_send_cs =
+                                !state.settings.beacon_send_cs;
+                            break;
+                        case BCN_ALTITUDE:
+                            state.settings.beacon_send_alt =
+                                !state.settings.beacon_send_alt;
+                            break;
+                        case BCN_INTERVAL:
+                        {
+                            // Step through the offered intervals, from the
+                            // nearest one to the current value.
+                            int i = 0;
+                            while((i + 1 < beacon_intervals_num) &&
+                                  (beacon_intervals[i] < state.settings.beacon_interval))
+                                i++;
+                            if(fwd && (i + 1 < beacon_intervals_num))
+                                i++;
+                            else if(!fwd && (i > 0) &&
+                                    (beacon_intervals[i] >= state.settings.beacon_interval))
+                                i--;
+                            state.settings.beacon_interval = beacon_intervals[i];
+                            break;
+                        }
+                        default:
+                            state.ui_screen = SETTINGS_BEACON;
+                    }
+                }
+                else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                    _ui_menuUp(settings_beacon_num);
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                    _ui_menuDown(settings_beacon_num);
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(ui_state.menu_selected == BCN_NOW)
+                    {
+                        // An action, not an editable value: request a beacon
+                        // on the next tick and stay out of edit mode.
+                        aprsBeacon_requestNow();
+                    }
+                    else
+                    {
+                        // Entering edit seeds the keypad scratch from the
+                        // stored setting: a coordinate magnitude (microdeg ->
+                        // 1e-4 deg), or the interval in seconds.
+                        if(!ui_state.edit_mode)
+                        {
+                            if((ui_state.menu_selected == BCN_LAT) ||
+                               (ui_state.menu_selected == BCN_LON))
+                            {
+                                int32_t v = (ui_state.menu_selected == BCN_LAT)
+                                                ? state.settings.beacon_fixedLat
+                                                : state.settings.beacon_fixedLon;
+                                uint32_t a = (v < 0) ? (uint32_t)(-v)
+                                                     : (uint32_t)v;
+                                ui_state.aprs_coord     = a / 100u;
+                                ui_state.input_position = 0;
+                            }
+                            else if(ui_state.menu_selected == BCN_COMMENT)
+                            {
+                                _ui_textInputReset(ui_state.new_beacon_text,
+                                        sizeof(ui_state.new_beacon_text));
+                            }
+                        }
+                        ui_state.edit_mode = !ui_state.edit_mode;
+                    }
+                }
+                else if(msg.keys & KEY_ESC)
+                    _ui_menuBack(MENU_SETTINGS);
+                break;
+#endif
             // Radio Settings
             case SETTINGS_RADIO:
                 // If the entry is selected with enter we are in edit_mode
@@ -2498,6 +2867,20 @@ void ui_updateFSM(bool *sync_rtx)
                                 ui_state.edit_mode = !ui_state.edit_mode;
                             else if(msg.keys & KEY_ESC)
                                 ui_state.edit_mode = false;
+                            break;
+                        case M17_BEACON:
+                            if(msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                                (ui_state.edit_mode &&
+                                 (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT ||
+                                  msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)))
+                            {
+                                state.settings.m17_beacon =
+                                    !state.settings.m17_beacon;
+                            }
+                            else if(msg.keys & KEY_ENTER)
+                                ui_state.edit_mode = !ui_state.edit_mode;
+                            else if(msg.keys & KEY_ESC)
+                                ui_state.edit_mode = false;
                     }
                 }
                 else
@@ -2539,69 +2922,6 @@ void ui_updateFSM(bool *sync_rtx)
                         *sync_rtx = true;
                         _ui_menuBack(MENU_SETTINGS);
                     }
-                }
-                break;
-#endif
-#ifdef CONFIG_APRS
-            // APRS Settings
-            case SETTINGS_APRS:
-                if(ui_state.edit_mode)
-                {
-                    switch(ui_state.menu_selected)
-                    {
-                        case APRS_CALLSIGN:
-                            // A callsign that is not a station address is
-                            // refused, and the field stays in edit
-                            switch(_ui_enterCallsign(msg, &f1Handled))
-                            {
-                                case CALLSIGN_CONFIRMED:
-                                    if(aprsAddr_validate(ui_state.new_callsign) != 0)
-                                    {
-                                        ui_state.callsign_invalid = true;
-                                        break;
-                                    }
-
-                                    strncpy(state.settings.aprs_callsign,
-                                            ui_state.new_callsign,
-                                            sizeof(state.settings.aprs_callsign) - 1);
-                                    /* fallthrough */
-                                case CALLSIGN_DISCARDED:
-                                    ui_state.callsign_invalid = false;
-                                    ui_state.edit_mode = false;
-                                    vp_announceBuffer(&currentLanguage->callsign,
-                                                      false, true,
-                                                      state.settings.aprs_callsign);
-                                    break;
-                                case CALLSIGN_CHANGED:
-                                    ui_state.callsign_invalid = false;
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                    }
-                }
-                else
-                {
-                    if(msg.keys & KEY_ENTER)
-                    {
-                        ui_state.edit_mode = true;
-
-                        if(ui_state.menu_selected == APRS_CALLSIGN)
-                        {
-                            ui_state.callsign_invalid = false;
-                            _ui_textInputReset(ui_state.new_callsign,
-                                    sizeof(ui_state.new_callsign));
-                            vp_announceBuffer(&currentLanguage->callsign,
-                                            true, true, ui_state.new_callsign);
-                        }
-                    }
-                    else if((msg.keys & KEY_UP) || (msg.keys & KNOB_LEFT))
-                        _ui_menuUp(settings_aprs_num);
-                    else if((msg.keys & KEY_DOWN) || (msg.keys & KNOB_RIGHT))
-                        _ui_menuDown(settings_aprs_num);
-                    else if(msg.keys & KEY_ESC)
-                        _ui_menuBack(MENU_SETTINGS);
                 }
                 break;
 #endif
@@ -2903,9 +3223,11 @@ bool ui_updateGUI()
             break;
 #endif
 #ifdef CONFIG_APRS
-        // APRS settings screen
         case SETTINGS_APRS:
             _ui_drawSettingsAPRS(&ui_state);
+            break;
+        case SETTINGS_BEACON:
+            _ui_drawSettingsBeacon(&ui_state);
             break;
 #endif
         // FM settings screen

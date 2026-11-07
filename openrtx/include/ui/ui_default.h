@@ -50,7 +50,10 @@ enum uiScreen
     SETTINGS_GPS,
     SETTINGS_RADIO,
     SETTINGS_M17,
+#ifdef CONFIG_APRS
     SETTINGS_APRS,
+    SETTINGS_BEACON,
+#endif
     SETTINGS_FM,
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
@@ -99,6 +102,7 @@ enum settingsItems
 #endif
 #ifdef CONFIG_APRS
     S_APRS,
+    S_BEACON,
 #endif
     S_FM,
     S_ACCESSIBILITY,
@@ -134,6 +138,31 @@ enum settingsGPSItems
 };
 #endif
 
+#ifdef CONFIG_APRS
+enum settingsAPRSItems
+{
+    APRS_CALLSIGN = 0,
+    APRS_BEACON,
+    APRS_SYMBOL,
+    APRS_PATH,
+};
+
+enum settingsBeaconItems
+{
+    BCN_METHOD = 0,
+    BCN_POSITION,
+    BCN_LAT,
+    BCN_LAT_HEMI,
+    BCN_LON,
+    BCN_LON_HEMI,
+    BCN_COURSE_SPEED,
+    BCN_ALTITUDE,
+    BCN_COMMENT,
+    BCN_INTERVAL,
+    BCN_NOW,
+};
+#endif
+
 enum settingsAccessibilityItems
 {
     A_MACRO_LATCH = 0,
@@ -153,12 +182,8 @@ enum settingsM17Items
     M17_CALLSIGN = 0,
     M17_METATEXT,
     M17_CAN,
-    M17_CAN_RX
-};
-
-enum settingsAPRSItems
-{
-    APRS_CALLSIGN = 0,
+    M17_CAN_RX,
+    M17_BEACON
 };
 
 enum settingsFMItems
@@ -244,9 +269,15 @@ typedef struct ui_state_t
     char new_time_buf[9];
 #endif
     char new_callsign[10];
-    // The callsign typed was refused, until the next key
+    // A callsign entry was refused as invalid; cleared on the next key
     bool callsign_invalid;
     freq_t new_offset;
+#ifdef CONFIG_APRS
+    // Scratch magnitude while entering a fixed APRS position, in 1e-4 degree
+    uint32_t aprs_coord;
+    // Beacon comment being typed
+    char new_beacon_text[32];
+#endif
     // Which state to return to when we exit menu
     uint8_t last_main_state;
 #if defined(CONFIG_UI_NO_KEYBOARD)
@@ -290,7 +321,11 @@ extern const char *display_items[];
 extern const char *settings_gps_items[];
 extern const char *settings_radio_items[];
 extern const char *settings_m17_items[];
+#ifdef CONFIG_APRS
 extern const char *settings_aprs_items[];
+extern const uint16_t beacon_intervals[];
+extern const uint8_t beacon_intervals_num;
+#endif
 extern const char *settings_fm_items[];
 extern const char * settings_accessibility_items[];
 extern const char *backup_restore_items[];
@@ -302,7 +337,11 @@ extern const uint8_t display_num;
 extern const uint8_t settings_gps_num;
 extern const uint8_t settings_radio_num;
 extern const uint8_t settings_m17_num;
+#ifdef CONFIG_APRS
 extern const uint8_t settings_aprs_num;
+extern const char *settings_beacon_items[];
+extern const uint8_t settings_beacon_num;
+#endif
 extern const uint8_t settings_fm_num;
 extern const uint8_t settings_accessibility_num;
 extern const uint8_t backup_restore_num;

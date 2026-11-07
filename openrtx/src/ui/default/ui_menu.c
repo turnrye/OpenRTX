@@ -17,6 +17,9 @@
 #include "core/memory_profiling.h"
 #include "ui/ui_strings.h"
 #include "core/voicePromptUtils.h"
+#ifdef CONFIG_APRS
+#include "protocols/APRS/symbols.h"
+#endif
 
 #ifdef PLATFORM_TTWRPLUS
 #include "drivers/baseband/SA8x8.h"
@@ -336,6 +339,145 @@ int _ui_getSettingsGPSValueName(char *buf, uint8_t max_len, uint8_t index)
 }
 #endif
 
+#ifdef CONFIG_APRS
+int _ui_getSettingsAPRSEntryName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= settings_aprs_num) return -1;
+    sniprintf(buf, max_len, "%s", settings_aprs_items[index]);
+    return 0;
+}
+
+int _ui_getSettingsAPRSValueName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= settings_aprs_num) return -1;
+
+    switch(index)
+    {
+        case APRS_CALLSIGN:
+            sniprintf(buf, max_len, "%s", last_state.settings.aprs_callsign);
+            break;
+        case APRS_BEACON:
+            sniprintf(buf, max_len, "%s", (last_state.settings.aprs_beacon) ?
+                                              currentLanguage->on :
+                                              currentLanguage->off);
+            break;
+        case APRS_SYMBOL:
+        {
+            int i = aprsSymbolFind(last_state.settings.aprs_symTable,
+                                   last_state.settings.aprs_symCode);
+            if(i >= 0)
+                sniprintf(buf, max_len, "%s", aprsSymbols[i].name);
+            else
+                sniprintf(buf, max_len, "%c%c", last_state.settings.aprs_symTable,
+                          last_state.settings.aprs_symCode);
+            break;
+        }
+        case APRS_PATH:
+            if(last_state.settings.aprs_path[0] == '\0')
+                sniprintf(buf, max_len, "%s", currentLanguage->None);
+            else if(strlen(last_state.settings.aprs_path) > 7)
+                sniprintf(buf, max_len, "%.7s*", last_state.settings.aprs_path);
+            else
+                sniprintf(buf, max_len, "%s", last_state.settings.aprs_path);
+            break;
+    }
+    return 0;
+}
+
+int _ui_getSettingsBeaconEntryName(char *buf, uint8_t max_len, uint8_t index)
+{
+    if(index >= settings_beacon_num) return -1;
+    sniprintf(buf, max_len, "%s", settings_beacon_items[index]);
+    return 0;
+}
+
+// Defined in ui.c: true while this beacon item is being keypad-edited, so
+// its in-progress value can be echoed live.
+extern bool _ui_aprsEditScratch(uint8_t item, uint32_t *out);
+
+int _ui_getSettingsBeaconValueName(char *buf, uint8_t max_len, uint8_t index)
+{
+    static const char *const methods[] = { "Off", "Manual", "Interval",
+                                            "Adaptive" };
+    if(index >= settings_beacon_num) return -1;
+
+    // While a coordinate is being entered, show the digits as
+    // they are typed rather than the last committed value.
+    uint32_t scratch = 0;
+    bool     editing = _ui_aprsEditScratch(index, &scratch);
+
+    switch(index)
+    {
+        case BCN_METHOD:
+            sniprintf(buf, max_len, "%s",
+                      methods[last_state.settings.beacon_method & 0x03]);
+            break;
+        case BCN_POSITION:
+            sniprintf(buf, max_len, "%s",
+                      last_state.settings.beacon_pos_fixed ? "Fixed" : "GPS");
+            break;
+        case BCN_LAT:
+        {
+            int32_t v = last_state.settings.beacon_fixedLat;
+            uint32_t mag = editing ? scratch
+                             : ((v < 0) ? (uint32_t)(-v) : (uint32_t)v) / 100u;
+            sniprintf(buf, max_len, "%lu.%04lu", (unsigned long)(mag / 10000u),
+                      (unsigned long)(mag % 10000u));
+            break;
+        }
+        case BCN_LAT_HEMI:
+            sniprintf(buf, max_len, "%s",
+                      (last_state.settings.beacon_fixedLat < 0) ? "S" : "N");
+            break;
+        case BCN_LON:
+        {
+            int32_t v = last_state.settings.beacon_fixedLon;
+            uint32_t mag = editing ? scratch
+                             : ((v < 0) ? (uint32_t)(-v) : (uint32_t)v) / 100u;
+            sniprintf(buf, max_len, "%lu.%04lu", (unsigned long)(mag / 10000u),
+                      (unsigned long)(mag % 10000u));
+            break;
+        }
+        case BCN_LON_HEMI:
+            sniprintf(buf, max_len, "%s",
+                      (last_state.settings.beacon_fixedLon < 0) ? "W" : "E");
+            break;
+        case BCN_COURSE_SPEED:
+            sniprintf(buf, max_len, "%s", (last_state.settings.beacon_send_cs) ?
+                                              currentLanguage->on :
+                                              currentLanguage->off);
+            break;
+        case BCN_ALTITUDE:
+            sniprintf(buf, max_len, "%s", (last_state.settings.beacon_send_alt) ?
+                                              currentLanguage->on :
+                                              currentLanguage->off);
+            break;
+        case BCN_COMMENT:
+            // Like the M17 meta text: 7 characters, '*' if there is more
+            if(strlen(last_state.settings.beacon_comment) > 7)
+                sniprintf(buf, max_len, "%.7s*", last_state.settings.beacon_comment);
+            else
+                sniprintf(buf, max_len, "%s", last_state.settings.beacon_comment);
+            break;
+        case BCN_INTERVAL:
+        {
+            uint16_t s = last_state.settings.beacon_interval;
+            if(s < 60)
+                sniprintf(buf, max_len, "%u s", (unsigned)s);
+            else if(s < 3600)
+                sniprintf(buf, max_len, "%u min", (unsigned)(s / 60));
+            else
+                sniprintf(buf, max_len, "%u h", (unsigned)(s / 3600));
+            break;
+        }
+        case BCN_NOW:
+            sniprintf(buf, max_len, "%s", "Send");
+            break;
+    }
+    return 0;
+}
+#endif
+
 int _ui_getRadioEntryName(char *buf, uint8_t max_len, uint8_t index)
 {
     if(index >= settings_radio_num) return -1;
@@ -444,6 +586,11 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
             break;
         case M17_CAN_RX:
             sniprintf(buf, max_len, "%s", (last_state.settings.m17_can_rx) ?
+                                                           currentLanguage->on :
+                                                           currentLanguage->off);
+            break;
+        case M17_BEACON:
+            sniprintf(buf, max_len, "%s", (last_state.settings.m17_beacon) ?
                                                            currentLanguage->on :
                                                            currentLanguage->off);
             break;
@@ -923,6 +1070,133 @@ void _ui_drawSettingsGPS(ui_state_t* ui_state)
 }
 #endif
 
+/**
+ * Draw the box a callsign is typed into.
+ *
+ * @param callsign: callsign being typed.
+ */
+void _ui_drawCallsignInput(const char *callsign)
+{
+    uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+    uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+    point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+                           (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+    gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                layout.horizontal_pad, layout.menu_font,
+                TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
+    gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+    // Print the callsign being typed
+    gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                  layout.horizontal_pad, layout.input_font,
+                  TEXT_ALIGN_CENTER, color_white, callsign);
+}
+
+#ifdef CONFIG_APRS
+void _ui_drawSettingsAPRS(ui_state_t* ui_state)
+{
+    gfx_clearScreen();
+    // Print "APRS Settings" on top bar
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+              color_white, currentLanguage->aprsSettings);
+
+    if((ui_state->edit_mode) && (ui_state->menu_selected == APRS_CALLSIGN))
+    {
+        _ui_drawCallsignInput(ui_state->new_callsign);
+        if(ui_state->callsign_invalid)
+            gfx_print(layout.bottom_pos, layout.bottom_font, TEXT_ALIGN_CENTER,
+                      color_white, currentLanguage->invalidCallsign);
+        return;
+    }
+
+    if((ui_state->edit_mode) && (ui_state->menu_selected == APRS_PATH))
+    {
+        // The path being typed, in a box like the M17 meta text
+        const uint8_t BOX_PAD = 2;
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+            (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                    layout.horizontal_pad, layout.menu_font,
+                    TEXT_ALIGN_LEFT, color_white,
+                    settings_aprs_items[ui_state->menu_selected]);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+
+        if(ui_state->callsign_invalid)
+            gfx_print(layout.bottom_pos, layout.menu_font, TEXT_ALIGN_CENTER,
+                      color_white, currentLanguage->invalidCallsign);
+
+        uint8_t font_h    = gfx_getFontHeight(layout.message_font);
+        int16_t text_x    = rect_origin.x + BOX_PAD;
+        uint16_t max_x    = rect_origin.x + rect_width - BOX_PAD;
+        int16_t clip_top  = rect_origin.y + 1;
+        int16_t clip_bot  = rect_origin.y + rect_height - 1;
+        int16_t scroll    = gfx_scrollOffsetForCursor(layout.message_font,
+                                ui_state->new_beacon_text,
+                                ui_state->input_position, text_x, max_x,
+                                clip_bot - clip_top);
+        point_t text_start = {text_x, clip_top + font_h - scroll};
+
+        gfx_printBufferClipped(text_start, layout.message_font, TEXT_ALIGN_LEFT,
+                               color_white, ui_state->new_beacon_text, max_x,
+                               clip_top, clip_bot);
+        return;
+    }
+
+    // Print APRS settings entries
+    _ui_drawMenuListValue(ui_state, ui_state->menu_selected,
+                          _ui_getSettingsAPRSEntryName,
+                          _ui_getSettingsAPRSValueName);
+}
+#endif
+
+#ifdef CONFIG_APRS
+void _ui_drawSettingsBeacon(ui_state_t* ui_state)
+{
+    gfx_clearScreen();
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+              color_white, "Beacon");
+
+    if((ui_state->edit_mode) && (ui_state->menu_selected == BCN_COMMENT))
+    {
+        // The comment being typed, in a box like the M17 meta text
+        const uint8_t BOX_PAD = 2;
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+            (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                    layout.horizontal_pad, layout.menu_font,
+                    TEXT_ALIGN_LEFT, color_white,
+                    settings_beacon_items[ui_state->menu_selected]);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+
+        uint8_t font_h    = gfx_getFontHeight(layout.message_font);
+        int16_t text_x    = rect_origin.x + BOX_PAD;
+        uint16_t max_x    = rect_origin.x + rect_width - BOX_PAD;
+        int16_t clip_top  = rect_origin.y + 1;
+        int16_t clip_bot  = rect_origin.y + rect_height - 1;
+        int16_t scroll    = gfx_scrollOffsetForCursor(layout.message_font,
+                                ui_state->new_beacon_text,
+                                ui_state->input_position, text_x, max_x,
+                                clip_bot - clip_top);
+        point_t text_start = {text_x, clip_top + font_h - scroll};
+
+        gfx_printBufferClipped(text_start, layout.message_font, TEXT_ALIGN_LEFT,
+                               color_white, ui_state->new_beacon_text, max_x,
+                               clip_top, clip_bot);
+        return;
+    }
+
+    _ui_drawMenuListValue(ui_state, ui_state->menu_selected,
+                          _ui_getSettingsBeaconEntryName,
+                          _ui_getSettingsBeaconValueName);
+}
+#endif
+
 #ifdef CONFIG_RTC
 void _ui_drawSettingsTimeDate()
 {
@@ -982,28 +1256,6 @@ void _ui_drawSettingsTimeDateSet(ui_state_t* ui_state)
 }
 #endif
 
-/**
- * Draw the box a callsign is typed into.
- *
- * @param callsign: callsign being typed.
- */
-void _ui_drawCallsignInput(const char *callsign)
-{
-    uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
-    uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
-    point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
-                           (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
-
-    gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                layout.horizontal_pad, layout.menu_font,
-                TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
-    gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
-    // Print the callsign being typed
-    gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                  layout.horizontal_pad, layout.input_font,
-                  TEXT_ALIGN_CENTER, color_white, callsign);
-}
-
 #ifdef CONFIG_M17
 void _ui_drawSettingsM17(ui_state_t* ui_state)
 {
@@ -1054,50 +1306,6 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
     {
         _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getM17EntryName,
                               _ui_getM17ValueName);
-    }
-}
-#endif
-
-#ifdef CONFIG_APRS
-static int _ui_getAPRSEntryName(char *buf, uint8_t max_len, uint8_t index)
-{
-    if(index >= settings_aprs_num) return -1;
-    sniprintf(buf, max_len, "%s", settings_aprs_items[index]);
-    return 0;
-}
-
-static int _ui_getAPRSValueName(char *buf, uint8_t max_len, uint8_t index)
-{
-    if(index >= settings_aprs_num)
-        return -1;
-
-    switch(index)
-    {
-        case APRS_CALLSIGN:
-            sniprintf(buf, max_len, "%s", last_state.settings.aprs_callsign);
-            break;
-    }
-
-    return 0;
-}
-
-void _ui_drawSettingsAPRS(ui_state_t* ui_state)
-{
-    gfx_clearScreen();
-    // Print "APRS Settings" on top bar
-    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
-              color_white, currentLanguage->aprsSettings);
-    if((ui_state->edit_mode) && (ui_state->menu_selected == APRS_CALLSIGN))
-    {
-        _ui_drawCallsignInput(ui_state->new_callsign);
-        if(ui_state->callsign_invalid)
-            gfx_print(layout.bottom_pos, layout.bottom_font, TEXT_ALIGN_CENTER,
-                      color_white, currentLanguage->invalidCallsign);
-    }
-    else
-    {
-        _ui_drawMenuListValue(ui_state, ui_state->menu_selected,
-                              _ui_getAPRSEntryName, _ui_getAPRSValueName);
     }
 }
 #endif
