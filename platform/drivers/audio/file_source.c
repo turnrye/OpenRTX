@@ -23,7 +23,9 @@ static int fileSource_start(const uint8_t instance, const void *config,
 
     ctx->running = 1;
 
-    FILE *fp = fopen(config, "rb");
+    /* A test can point the emulator at its own file. */
+    const char *path = getenv("OPENRTX_BASEBAND");
+    FILE *fp = fopen((path != NULL) ? path : config, "rb");
     if (fp == NULL) {
         ctx->running = 0;
         return -EINVAL;

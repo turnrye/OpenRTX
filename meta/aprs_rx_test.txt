@@ -1,0 +1,22 @@
+nop APRS RX e2e: visit every radio mode, dwelling long enough in each for the
+nop generated baseband to play through while APRS is the active one.
+nop
+nop Requires: /tmp/baseband.raw holds the AFSK output of scripts/aprs_gen_baseband.py
+nop
+nop The emulator persists the selected opmode in NVM, so which mode a run
+nop starts in depends on how the previous run ended. Rather than assume, this
+nop cycles the whole ring (FM, M17, APRS on the linux target) with a dwell
+nop after each step: one of those dwells is always APRS. Cycling all the way
+nop round also leaves NVM exactly as it was found.
+sleep 2000
+nop mode_step_1
+keycombo MONI 5
+sleep 9000
+nop mode_step_2
+keycombo MONI 5
+sleep 9000
+nop mode_step_3
+keycombo MONI 5
+sleep 9000
+screenshot aprs_rx_done.bmp
+quit
