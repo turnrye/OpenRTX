@@ -5,6 +5,7 @@
  */
 
 #include "interfaces/platform.h"
+#include "interfaces/delays.h"
 #include "core/gps.h"
 #include <minmea.h>
 #include <stdio.h>
@@ -84,11 +85,18 @@ void gps_task(const struct gpsDevice *dev)
                 gps_data.timestamp.date = frame.date.day;
                 gps_data.timestamp.month = frame.date.month;
                 gps_data.timestamp.year = frame.date.year;
-                gps_data.speed = KNOTS2KMH(minmea_toint(&frame.speed));
-                #ifdef CONFIG_RTC
+                // Tenths of a knot keep the resolution integer knots lose
+                gps_data.speed = (minmea_rescale(&frame.speed, 10) * 1852 + 5000)
+                               / 10000;
+                if(frame.course.scale != 0)
+                    gps_data.tmg_true = minmea_toint(&frame.course);
                 if(frame.valid)
+                {
+                    gps_data.fix_tick = (uint32_t) getTick();
+                    #ifdef CONFIG_RTC
                     syncRtc(gps_data.timestamp);
-                #endif
+                    #endif
+                }
             }
         }
         break;
@@ -103,6 +111,8 @@ void gps_task(const struct gpsDevice *dev)
                 gps_data.fix_quality = frame.fix_quality;
                 gps_data.satellites_tracked = frame.satellites_tracked;
                 gps_data.altitude = minmea_toint(&frame.altitude);
+                if(frame.fix_quality != FIX_QUALITY_NO_FIX)
+                    gps_data.fix_tick = (uint32_t) getTick();
             }
         }
         break;

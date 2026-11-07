@@ -66,6 +66,7 @@ typedef struct
     int16_t    tmg_mag;              // Course over ground, degrees, magnetic
     int16_t    tmg_true;             // Course over ground, degrees, true
     uint16_t   hdop;                 // Horizontal dilution of precision, in cm
+    uint32_t   fix_tick;             // getTick() when the fix was last confirmed, 0 if never
 }
 gps_t;
 
