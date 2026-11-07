@@ -79,6 +79,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/APRS/FrameDecoder.cpp',
                'openrtx/src/protocols/APRS/Demodulator.cpp',
                'openrtx/src/protocols/APRS/FrameEncoder.cpp',
+               'openrtx/src/protocols/APRS/Modulator.cpp',
                'openrtx/src/protocols/APRS/packet.c']
 
 openrtx_inc = ['openrtx/include', 'platform']
@@ -1352,6 +1353,11 @@ aprs_rx_performance_test = executable('aprs_rx_performance_test',
                                                    'tests/unit/APRS_rx_performance.cpp'],
                                       kwargs  : unit_test_opts + {'include_directories' : m17_signal_inc})
 
+aprs_modulator_test = executable('aprs_modulator_test',
+                                 sources : unit_test_src
+                                           + ['tests/unit/APRS_modulator.cpp'],
+                                 kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1379,3 +1385,4 @@ test('APRS Packet Test', aprs_packet_test)
 test('APRS Test', aprs_test)
 test('APRS OpMode Test', aprs_opmode_test)
 test('APRS RX Performance Test', aprs_rx_performance_test)
+test('APRS Modulator Test', aprs_modulator_test)
