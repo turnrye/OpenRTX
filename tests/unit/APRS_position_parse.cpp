@@ -282,3 +282,52 @@ TEST_CASE("APRS position: !DAO! adds a digit of precision", "[aprs][pos]")
     CHECK(p.hasDao == false);
     CHECK(p.latitude == 49058333);
 }
+
+TEST_CASE("APRS weather: positionless and complete reports", "[aprs][wx]")
+{
+    auto wxOf = [](const char *info, aprsWeather *wx) {
+        aprsPacket pkt = packetWith(info);
+        INFO("info: " << info);
+        return aprsWeatherParse(&pkt, wx);
+    };
+    aprsWeather wx;
+
+    /* APRS 1.0 chapter 12 */
+    REQUIRE(wxOf("_10090556c220s004g005t077r000p000P000h50b09900wRSW", &wx));
+    CHECK(wx.valid == 0x1ff);
+    CHECK(wx.windDir == 220);
+    CHECK(wx.windSpeed == 4);
+    CHECK(wx.gust == 5);
+    CHECK(wx.temp == 77);
+    CHECK(wx.humidity == 50);
+    CHECK(wx.pressure == 9900);
+
+    REQUIRE(
+        wxOf("!4903.50N/07201.75W_220/004g005t077r001p002P003h50b09900", &wx));
+    CHECK(wx.windDir == 220);
+    CHECK(wx.windSpeed == 4);
+    CHECK(wx.rain1h == 1);
+    CHECK(wx.rain24h == 2);
+    CHECK(wx.rainToday == 3);
+
+    /* Heard on APRS-IS: a timestamp, and fields after the last we know */
+    REQUIRE(wxOf("@111313z4724.83N/12219.11W_155/000g002t053r000p000P000h91"
+                 "b10193L000AmbientCWOP.com",
+                 &wx));
+    CHECK(wx.windDir == 155);
+    CHECK(wx.gust == 2);
+    CHECK(wx.temp == 53);
+    CHECK(wx.humidity == 91);
+    CHECK(wx.pressure == 10193);
+
+    /* Fields not measured are dots; below zero; 100% humidity is "00" */
+    REQUIRE(wxOf("_10090556c...s...g...t-05h00", &wx));
+    CHECK((wx.valid & (APRS_WX_WIND_DIR | APRS_WX_GUST)) == 0);
+    CHECK(wx.temp == -5);
+    CHECK(wx.humidity == 100);
+
+    /* Not weather */
+    CHECK(wxOf("!4903.50N/07201.75W-Test", &wx) == false);
+    CHECK(wxOf(">status", &wx) == false);
+    CHECK(wxOf("_1009", &wx) == false);
+}

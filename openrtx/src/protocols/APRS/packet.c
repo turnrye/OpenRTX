@@ -62,6 +62,10 @@ static enum aprsType classifyDti(char dti)
             return APRS_TYPE_OBJECT;
         case 'T':
             return APRS_TYPE_TELEMETRY;
+        case '_':
+            return APRS_TYPE_WEATHER;
+        case '}':
+            return APRS_TYPE_THIRD_PARTY;
         default:
             return APRS_TYPE_OTHER;
     }
@@ -554,6 +558,83 @@ bool aprsAddresseeValid(const char *str)
     return true;
 }
 
+bool aprsThirdPartyUnwrap(const struct aprsPacket *pkt,
+                          struct aprsPacket *inner, char *src, size_t srcLen)
+{
+    static struct aprsPacket p;
+    char header[APRS_MAX_ADDRESSES * APRS_ADDR_STR_LEN];
+
+    if ((pkt == NULL) || (inner == NULL) || (src == NULL) || (srcLen == 0)
+        || (pkt->infoLen < 2) || (pkt->info[0] != '}'))
+        return false;
+
+    /* No address contains a colon: the first one ends the header. */
+    const char *line = &pkt->info[1];
+    size_t len = pkt->infoLen - 1;
+    const char *colon = memchr(line, ':', len);
+    if ((colon == NULL) || ((size_t)(colon - line) >= sizeof(header)))
+        return false;
+
+    size_t hlen = (size_t)(colon - line);
+    memcpy(header, line, hlen);
+    header[hlen] = '\0';
+
+    char *gt = strchr(header, '>');
+    if (gt == NULL)
+        return false;
+    *gt = '\0';
+
+    char *dest = gt + 1;
+    char *path = strchr(dest, ',');
+    if (path != NULL)
+        *path++ = '\0';
+
+    if (!aprsAddresseeValid(header) || (strlen(header) >= srcLen))
+        return false;
+
+    memset(&p, 0, sizeof(p));
+    if (aprsAddr_fromStr(dest, &p.addresses[0]) != 0)
+        return false;
+    if (aprsAddr_fromStr(header, &p.addresses[1]) != 0)
+        memset(&p.addresses[1], 0, sizeof(p.addresses[1]));
+    p.addressesLen = 2;
+
+    /* The path as far as AX.25 can hold it, for the record. */
+    while ((path != NULL) && (*path != '\0')
+           && (p.addressesLen < APRS_MAX_ADDRESSES)) {
+        char *next = strchr(path, ',');
+        if (next != NULL)
+            *next++ = '\0';
+
+        size_t n = strlen(path);
+        bool used = (n > 0) && (path[n - 1] == '*');
+        if (used)
+            path[n - 1] = '\0';
+
+        struct aprsAddress hop;
+        memset(&hop, 0, sizeof(hop));
+        if (aprsAddr_fromStr(path, &hop) == 0) {
+            hop.repeated = used ? 1 : 0;
+            p.addresses[p.addressesLen++] = hop;
+        }
+
+        path = next;
+    }
+
+    size_t infoLen = len - hlen - 1;
+    if ((infoLen == 0) || (infoLen > APRS_MAX_INFO))
+        return false;
+
+    // The inner packet points into the outer one's info field
+    p.info = colon + 1;
+    p.infoLen = (uint16_t)infoLen;
+    p.type = classifyDti(p.info[0]);
+
+    *inner = p;
+    strcpy(src, header);
+    return true;
+}
+
 /**
  * Write "MM" or "MM}AA" for @p id into @p out, NUL-terminated.
  *
@@ -764,6 +845,127 @@ void aprsSanitize(char *s)
     }
 }
 
+/* Weather fields: a letter, then a fixed number of digits. */
+static const struct {
+    char key;
+    uint8_t width;
+    uint16_t bit;
+} wxFields[] = {
+    { 'c', 3, APRS_WX_WIND_DIR },   { 's', 3, APRS_WX_WIND_SPEED },
+    { 'g', 3, APRS_WX_GUST },       { 't', 3, APRS_WX_TEMP },
+    { 'r', 3, APRS_WX_RAIN_1H },    { 'p', 3, APRS_WX_RAIN_24H },
+    { 'P', 3, APRS_WX_RAIN_TODAY }, { 'h', 2, APRS_WX_HUMIDITY },
+    { 'b', 5, APRS_WX_PRESSURE },
+};
+
+static void wxStore(struct aprsWeather *wx, uint16_t bit, long v)
+{
+    switch (bit) {
+        case APRS_WX_WIND_DIR:
+            wx->windDir = (uint16_t)(v % 360);
+            break;
+        case APRS_WX_WIND_SPEED:
+            wx->windSpeed = (uint16_t)v;
+            break;
+        case APRS_WX_GUST:
+            wx->gust = (uint16_t)v;
+            break;
+        case APRS_WX_TEMP:
+            wx->temp = (int16_t)v;
+            break;
+        case APRS_WX_RAIN_1H:
+            wx->rain1h = (uint16_t)v;
+            break;
+        case APRS_WX_RAIN_24H:
+            wx->rain24h = (uint16_t)v;
+            break;
+        case APRS_WX_RAIN_TODAY:
+            wx->rainToday = (uint16_t)v;
+            break;
+        case APRS_WX_HUMIDITY:
+            wx->humidity = (uint8_t)((v == 0) ? 100 : v); /* "h00" is 100% */
+            break;
+        case APRS_WX_PRESSURE:
+            wx->pressure = (uint16_t)v;
+            break;
+    }
+    wx->valid |= bit;
+}
+
+/* Read weather fields until one is not recognised. */
+static void wxParseFields(const char *s, size_t len, struct aprsWeather *wx)
+{
+    size_t i = 0;
+
+    while (i < len) {
+        size_t f = 0;
+        while ((f < sizeof(wxFields) / sizeof(wxFields[0]))
+               && (wxFields[f].key != s[i]))
+            f++;
+        if (f == sizeof(wxFields) / sizeof(wxFields[0]))
+            return;
+
+        size_t w = wxFields[f].width;
+        if (i + 1 + w > len)
+            return;
+
+        const char *d = &s[i + 1];
+        bool neg = (d[0] == '-');
+        bool digits = true;
+        bool missing = true;
+        long v = 0;
+        for (size_t j = neg ? 1 : 0; j < w; j++) {
+            digits = digits && isDigit(d[j]);
+            missing = missing && ((d[j] == '.') || (d[j] == ' '));
+            v = (v * 10) + (isDigit(d[j]) ? (d[j] - '0') : 0);
+        }
+        if (digits)
+            wxStore(wx, wxFields[f].bit, neg ? -v : v);
+        else if (!missing)
+            return;
+
+        i += 1 + w;
+    }
+}
+
+bool aprsWeatherParse(const struct aprsPacket *pkt, struct aprsWeather *wx)
+{
+    if ((pkt == NULL) || (wx == NULL) || (pkt->infoLen == 0))
+        return false;
+
+    struct aprsWeather w;
+    memset(&w, 0, sizeof(w));
+
+    if (pkt->info[0] == '_') {
+        /* "_MMDDHHMM" then the fields, wind first as c and s */
+        if (pkt->infoLen < 10)
+            return false;
+        wxParseFields(&pkt->info[9], pkt->infoLen - 9, &w);
+    } else {
+        struct aprsPosition pos;
+        if (!aprsPosParse(pkt, &pos) || (pos.symbolCode != '_'))
+            return false;
+
+        /* The course/speed slot just before the comment is the wind. */
+        const char *c = pos.comment;
+        if ((c - pkt->info >= 7) && (c[-4] == '/')) {
+            char slot[8];
+            memcpy(slot, c - 7, 7);
+            slot[7] = '\0';
+            char fields[10] = { 'c',     slot[0], slot[1], slot[2], 's',
+                                slot[4], slot[5], slot[6], '\0' };
+            wxParseFields(fields, 8, &w);
+        }
+        wxParseFields(c, pos.commentLen, &w);
+    }
+
+    if (w.valid == 0)
+        return false;
+
+    *wx = w;
+    return true;
+}
+
 size_t aprsFrameToTnc2(const uint8_t *frame, size_t len, char *out, size_t cap)
 {
     if ((frame == NULL) || (out == NULL) || (cap == 0) || (len > APRS_PACLEN))
@@ -845,6 +1047,89 @@ size_t aprsFrameFromTnc2(const char *line, size_t len, uint8_t *buf, size_t cap)
 
     const ssize_t n = aprsFrame_build(buf, cap, dest, src, path, info, infoLen);
     return (n > 0) ? (size_t)n : 0;
+}
+
+bool aprsGroupAddressee(const char *addressee)
+{
+    if (addressee == NULL)
+        return false;
+
+    if ((strncmp(addressee, "BLN", 3) == 0)
+        || (strncmp(addressee, "NWS-", 4) == 0)
+        || (strncmp(addressee, "SKY", 3) == 0))
+        return true;
+
+    return (strcmp(addressee, "ALL") == 0) || (strcmp(addressee, "CQ") == 0)
+        || (strcmp(addressee, "QST") == 0);
+}
+
+bool aprsEmergency(const struct aprsPacket *pkt)
+{
+    if (pkt == NULL)
+        return false;
+
+    static const char word[] = "EMERGENCY";
+    const size_t wordLen = sizeof(word) - 1;
+    for (size_t i = 0; (i + wordLen) <= pkt->infoLen; i++) {
+        if (memcmp(&pkt->info[i], word, wordLen) == 0)
+            return true;
+    }
+
+    /* Only Mic-E carries the Emergency comment in its bits. */
+    char dti = pkt->info[0];
+    if ((dti != 0x1c) && (dti != 0x1d) && (dti != '`') && (dti != '\''))
+        return false;
+
+    struct aprsPosition pos;
+    return aprsPosParse(pkt, &pos) && pos.emergency;
+}
+
+enum aprsKind aprsPacketKind(const struct aprsPacket *pkt, const char *me)
+{
+    if (pkt == NULL)
+        return APRS_KIND_OTHER;
+
+    if (aprsEmergency(pkt))
+        return APRS_KIND_EMERGENCY;
+
+    switch (pkt->info[0]) {
+        case '}':
+            return APRS_KIND_THIRD_PARTY;
+        case '?':
+            return APRS_KIND_QUERY;
+        default:
+            break;
+    }
+
+    if (pkt->type == APRS_TYPE_MESSAGE) {
+        char addressee[APRS_ADDR_STR_LEN];
+        char text[APRS_PACLEN];
+        if (aprsMsg_unwrap(pkt, addressee, sizeof(addressee), text,
+                           sizeof(text))
+            != 0)
+            return APRS_KIND_OTHER;
+
+        struct aprsMsgId id;
+        if (aprsMsgParseId(pkt, &id) && (id.kind != APRS_MSG_TEXT))
+            return APRS_KIND_ACK;
+        if (text[0] == '?')
+            return APRS_KIND_QUERY;
+        if (aprsGroupAddressee(addressee))
+            return APRS_KIND_GROUP;
+
+        struct aprsAddress a, b;
+        if ((me != NULL) && (aprsAddr_fromStr(addressee, &a) == 0)
+            && (aprsAddr_fromStr(me, &b) == 0) && (strcmp(a.addr, b.addr) == 0)
+            && (a.ssid == b.ssid))
+            return APRS_KIND_TO_ME;
+
+        return APRS_KIND_MESSAGE;
+    }
+
+    if ((pkt->type == APRS_TYPE_POSITION) || (pkt->type == APRS_TYPE_OBJECT))
+        return APRS_KIND_POSITION;
+
+    return APRS_KIND_OTHER;
 }
 
 bool aprsPathValid(const char *path)

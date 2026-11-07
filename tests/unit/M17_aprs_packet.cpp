@@ -99,3 +99,25 @@ TEST_CASE("M17 APRS: other packets are not APRS", "[m17][aprs]")
     CHECK(m17_aprsFrame(payload.data(), payload.size(), frame, sizeof(frame))
           == 0);
 }
+
+TEST_CASE("M17 APRS: a third-party line from a gateway unwraps", "[m17][aprs]")
+{
+    /* How a gateway carries a source AX.25 cannot hold */
+    const char *line = "K0RET-10>APRS:}WINLINK>APWL2K,TCPIP,K0RET-10*::"
+                       "K0RET-2  :mail{AB";
+    bytes payload = { M17_PACKET_APRS };
+    payload.insert(payload.end(), line, line + strlen(line));
+    payload.push_back(0);
+
+    uint8_t frame[APRS_PACLEN];
+    size_t n = m17_aprsFrame(payload.data(), payload.size(), frame,
+                             sizeof(frame));
+    REQUIRE(n > 0);
+
+    struct aprsPacket pkt, inner;
+    char src[APRS_ADDR_STR_LEN];
+    REQUIRE(aprsPkt_fromFrame(frame, n, &pkt) == 0);
+    REQUIRE(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)));
+    CHECK(std::string(src) == "WINLINK");
+    CHECK(std::string(inner.info, inner.infoLen) == ":K0RET-2  :mail{AB");
+}

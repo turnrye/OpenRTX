@@ -613,6 +613,77 @@ TEST_CASE("APRS sanitise: control characters become dots", "[aprs]")
     aprsSanitize(nullptr);
 }
 
+TEST_CASE("APRS third party: the packet carried is unwrapped", "[aprs]")
+{
+    auto heard = [](const char *info) {
+        // The parsed packet points into the frame: a few are kept, so that
+        // packets parsed one after another stay valid together
+        static uint8_t frames[4][APRS_PACLEN];
+        static size_t nextFrame;
+        uint8_t *frame = frames[nextFrame++ % 4];
+        ssize_t n = aprsFrame_build(frame, APRS_PACLEN, "APRS", "K0RET-10",
+                                    "WIDE1-1", info, strlen(info));
+        REQUIRE(n > 0);
+        struct aprsPacket pkt;
+        REQUIRE(aprsPkt_fromFrame(frame, n, &pkt) == 0);
+        return pkt;
+    };
+
+    struct aprsPacket inner;
+    char src[APRS_ADDR_STR_LEN];
+    char call[APRS_ADDR_STR_LEN], path[80];
+
+    /* A source AX.25 can carry */
+    struct aprsPacket pkt =
+        heard("}K0RET-4>APFII0,TCPIP,K0RET-10*::K0RET-2  :hi{3F}");
+    CHECK(pkt.type == APRS_TYPE_THIRD_PARTY);
+    REQUIRE(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)));
+    CHECK(std::string(src) == "K0RET-4");
+    aprsAddr_toStr(&inner.addresses[0], call, sizeof(call));
+    CHECK(std::string(call) == "APFII0");
+    aprsAddr_toStr(&inner.addresses[1], call, sizeof(call));
+    CHECK(std::string(call) == "K0RET-4");
+    aprsPath_toStr(&inner, path, sizeof(path));
+    CHECK(std::string(path) == "TCPIP,K0RET-10*");
+    CHECK(inner.type == APRS_TYPE_MESSAGE);
+    CHECK(std::string(inner.info, inner.infoLen) == ":K0RET-2  :hi{3F}");
+    CHECK(inner.infoLen == strlen(":K0RET-2  :hi{3F}"));
+
+    /* One it cannot: the name comes back as text, the address empty */
+    pkt = heard("}WINLINK>APWL2K,TCPIP,K0RET-10*::K1ABC    :mail{AB");
+    REQUIRE(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)));
+    CHECK(std::string(src) == "WINLINK");
+    CHECK(inner.addresses[1].addr[0] == '\0');
+    CHECK(std::string(inner.info, inner.infoLen) == ":K1ABC    :mail{AB");
+
+    pkt = heard("}KD7ZYN-S>APDG01,TCPIP,qAR,K0RET-10*:!4724.83N/12219.11W&x");
+    REQUIRE(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)));
+    CHECK(std::string(src) == "KD7ZYN-S");
+    CHECK(inner.type == APRS_TYPE_POSITION);
+    struct aprsPosition pos;
+    REQUIRE(aprsPosParse(&inner, &pos));
+    CHECK(pos.latitude > 47000000);
+
+    /* Not third party, or malformed */
+    pkt = heard(">status");
+    CHECK(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)) == false);
+    const char *bad[] = {
+        "}",
+        "}no header here",
+        "}K0RET-4:no destination",
+        "}>APRS:no source",
+        "}K0RET-4>APRS:",
+        "}k0ret-4>APRS:>lower case source",
+        "}TOOLONGCALL>APRS:>ten characters",
+        "}K0RET-4>NOT A CALL:>bad destination",
+    };
+    for (const char *info : bad) {
+        INFO(info);
+        pkt = heard(info);
+        CHECK(aprsThirdPartyUnwrap(&pkt, &inner, src, sizeof(src)) == false);
+    }
+}
+
 TEST_CASE("APRS addressee: wider than an AX.25 callsign", "[aprs]")
 {
     const char *valid[] = { "W1AW",      "K0RET-10", "WINLINK",  "KD7ZYN-S",
@@ -699,6 +770,52 @@ TEST_CASE("APRS TNC2: a monitor line builds the frame it shows", "[aprs]")
     CHECK(build(">APRS:no source") == "");
     CHECK(build("W1AW>APRS:") == "");
     CHECK(build("W1AW>APRS,BAD ADDR:x") == "");
+}
+
+TEST_CASE("APRS kind: packets are classified for this station", "[aprs]")
+{
+    auto kindOf = [](const char *dest, const char *info) {
+        uint8_t frame[APRS_PACLEN];
+        ssize_t n = aprsFrame_build(frame, APRS_PACLEN, dest, "N2BP-7",
+                                    "WIDE1-1", info, strlen(info));
+        REQUIRE(n > 0);
+        struct aprsPacket pkt;
+        REQUIRE(aprsPkt_fromFrame(frame, n, &pkt) == 0);
+        return aprsPacketKind(&pkt, "K1ABC");
+    };
+
+    CHECK(kindOf("APRS", ":K1ABC    :hello{01") == APRS_KIND_TO_ME);
+    CHECK(kindOf("APRS", ":K1ABC-7  :hello") == APRS_KIND_MESSAGE);
+    CHECK(kindOf("APRS", ":W1AW     :hello") == APRS_KIND_MESSAGE);
+    CHECK(kindOf("APRS", ":BLN1     :weather net at 8") == APRS_KIND_GROUP);
+    CHECK(kindOf("APRS", ":BLNAVOLS :announce") == APRS_KIND_GROUP);
+    CHECK(kindOf("APRS", ":NWS-WARN :tornado") == APRS_KIND_GROUP);
+    CHECK(kindOf("APRS", ":ALL      :hi all") == APRS_KIND_GROUP);
+    CHECK(kindOf("APRS", ":K1ABC    :ack01") == APRS_KIND_ACK);
+    CHECK(kindOf("APRS", ":W1AW     :rej42") == APRS_KIND_ACK);
+    CHECK(kindOf("APRS", ":K1ABC    :?APRSP") == APRS_KIND_QUERY);
+    CHECK(kindOf("APRS", "?APRS?") == APRS_KIND_QUERY);
+    CHECK(kindOf("APRS", "}W1AW>APRS,TCPIP*:>status") == APRS_KIND_THIRD_PARTY);
+    CHECK(kindOf("APRS", "!4903.50N/07201.75W-test") == APRS_KIND_POSITION);
+    CHECK(kindOf("APRS", ";LEADER   *092345z4903.50N/07201.75W>")
+          == APRS_KIND_POSITION);
+    CHECK(kindOf("APRS", ">just a status") == APRS_KIND_OTHER);
+    CHECK(kindOf("APRS", "T#005,199,000,255,073,123,01101001")
+          == APRS_KIND_OTHER);
+
+    /* Emergency: the Mic-E comment bits, or the word in any text */
+    CHECK(kindOf("234U6T", "`(_fn\"Oj/") == APRS_KIND_EMERGENCY);
+    CHECK(kindOf("S32UVT", "`(_fn\"Oj/") == APRS_KIND_POSITION);
+    CHECK(kindOf("APRS", ">EMERGENCY need help") == APRS_KIND_EMERGENCY);
+    CHECK(kindOf("APRS", ":K1ABC    :EMERGENCY at the dam")
+          == APRS_KIND_EMERGENCY);
+    CHECK(kindOf("APRS", ":BLN1     :no emergency drill") == APRS_KIND_GROUP);
+
+    CHECK(aprsGroupAddressee("BLN3") == true);
+    CHECK(aprsGroupAddressee("QST") == true);
+    CHECK(aprsGroupAddressee("W1AW") == false);
+    CHECK(aprsGroupAddressee(nullptr) == false);
+    CHECK(aprsPacketKind(nullptr, "K1ABC") == APRS_KIND_OTHER);
 }
 
 TEST_CASE("APRS path: a typed digipeater path is a list of valid addresses",

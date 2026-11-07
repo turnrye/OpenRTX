@@ -76,12 +76,14 @@ struct aprsAddress {
  * field. Anything not named is APRS_TYPE_OTHER and keeps its raw text.
  */
 enum aprsType {
-    APRS_TYPE_OTHER = 0, ///< Unrecognised or unclassified DTI.
-    APRS_TYPE_MESSAGE,   ///< ':' addressed text message.
-    APRS_TYPE_POSITION,  ///< '!' '=' '/' '@' position report.
-    APRS_TYPE_STATUS,    ///< '>' status text.
-    APRS_TYPE_OBJECT,    ///< ';' object, ')' item.
-    APRS_TYPE_TELEMETRY, ///< 'T' telemetry report.
+    APRS_TYPE_OTHER = 0,   ///< Unrecognised or unclassified DTI.
+    APRS_TYPE_MESSAGE,     ///< ':' addressed text message.
+    APRS_TYPE_POSITION,    ///< '!' '=' '/' '@' position report.
+    APRS_TYPE_STATUS,      ///< '>' status text.
+    APRS_TYPE_OBJECT,      ///< ';' object, ')' item.
+    APRS_TYPE_TELEMETRY,   ///< 'T' telemetry report.
+    APRS_TYPE_WEATHER,     ///< '_' positionless weather report.
+    APRS_TYPE_THIRD_PARTY, ///< '}' a packet relayed for another.
 };
 
 /**
@@ -249,11 +251,69 @@ bool aprsMsgParseId(const struct aprsPacket *pkt, struct aprsMsgId *id);
 bool aprsAddresseeValid(const char *str);
 
 /**
+ * @brief Unwrap a third-party packet, "}SRC>DEST,PATH:info" in the info
+ * field of the packet that carried it.
+ *
+ * The inner source comes back as text, since it may be a name AX.25 cannot
+ * hold; the inner packet holds the destination and, where they fit AX.25,
+ * the source and path elements, with the inner info field and its type.
+ *
+ * @param pkt: the packet heard.
+ * @param inner: destination for the packet it carries.
+ * @param src: destination for the inner source.
+ * @param srcLen: size of src; APRS_ADDR_STR_LEN is enough.
+ * @return true if @p pkt is a well-formed third-party packet.
+ */
+bool aprsThirdPartyUnwrap(const struct aprsPacket *pkt,
+                          struct aprsPacket *inner, char *src, size_t srcLen);
+
+/**
  * @brief Check a digipeater path the user typed: up to eight addresses each
  * valid by aprsCallsignValid(), separated by commas. Empty is valid and
  * means no digipeaters.
  */
 bool aprsPathValid(const char *path);
+
+/**
+ * @brief What a packet means to this station, beyond its data type.
+ *
+ * Decided from the whole packet: who it is addressed to, whether it is an
+ * acknowledgement or a query, whether it raises an emergency.
+ */
+enum aprsKind {
+    APRS_KIND_OTHER = 0,   /**< Status, telemetry, anything unclassified. */
+    APRS_KIND_POSITION,    /**< Position report, object or item.          */
+    APRS_KIND_MESSAGE,     /**< Text addressed to some other station.     */
+    APRS_KIND_TO_ME,       /**< Text addressed to this station.           */
+    APRS_KIND_GROUP,       /**< Bulletin, announcement or group address.  */
+    APRS_KIND_ACK,         /**< "ackMM" or "rejMM", whoever it is for.    */
+    APRS_KIND_QUERY,       /**< General or directed query.                */
+    APRS_KIND_THIRD_PARTY, /**< '}' traffic relayed from another network. */
+    APRS_KIND_EMERGENCY,   /**< Mic-E Emergency, or EMERGENCY in the text. */
+};
+
+/**
+ * @brief Whether a message addressee names a group rather than a station:
+ * bulletins and announcements ("BLNn", "BLNx", "BLNnGROUP"), weather
+ * bulletins ("NWS-", "SKY"), and the conventional ALL, CQ and QST.
+ */
+bool aprsGroupAddressee(const char *addressee);
+
+/**
+ * @brief Whether a packet raises an emergency: a Mic-E report with the
+ * Emergency comment, or the word EMERGENCY anywhere in the text.
+ */
+bool aprsEmergency(const struct aprsPacket *pkt);
+
+/**
+ * @brief Classify a packet for this station.
+ *
+ * @param pkt: parsed packet.
+ * @param me: this station's address, "CALL" or "CALL-SSID"; matched with
+ *            the SSID, so that CALL and CALL-7 are different stations.
+ * @return the packet's kind.
+ */
+enum aprsKind aprsPacketKind(const struct aprsPacket *pkt, const char *me);
 
 /**
  * @brief Make text safe to show: control characters become '.'.
@@ -263,6 +323,44 @@ bool aprsPathValid(const char *path);
  * @param s: NUL-terminated text, changed in place.
  */
 void aprsSanitize(char *s);
+
+/** Which fields of a weather report were sent. */
+enum aprsWeatherValid {
+    APRS_WX_WIND_DIR = 1,
+    APRS_WX_WIND_SPEED = 2,
+    APRS_WX_GUST = 4,
+    APRS_WX_TEMP = 8,
+    APRS_WX_RAIN_1H = 16,
+    APRS_WX_RAIN_24H = 32,
+    APRS_WX_RAIN_TODAY = 64,
+    APRS_WX_HUMIDITY = 128,
+    APRS_WX_PRESSURE = 256,
+};
+
+/** A weather report, in the units APRS sends. */
+struct aprsWeather {
+    uint16_t valid;     /**< enum aprsWeatherValid bits.                */
+    uint16_t windDir;   /**< Degrees.                                   */
+    uint16_t windSpeed; /**< mph, one-minute sustained.                 */
+    uint16_t gust;      /**< mph, peak of the last five minutes.        */
+    int16_t temp;       /**< Fahrenheit.                                */
+    uint16_t rain1h;    /**< Hundredths of an inch.                     */
+    uint16_t rain24h;   /**< Hundredths of an inch.                     */
+    uint16_t rainToday; /**< Hundredths of an inch since midnight.      */
+    uint8_t humidity;   /**< Percent.                                   */
+    uint16_t pressure;  /**< Tenths of a millibar.                      */
+};
+
+/**
+ * @brief Read a weather report: positionless ("_MMDDHHMMc...s...") or
+ * after a position with the weather station symbol ("_"), where the
+ * course/speed slot holds the wind.
+ *
+ * @param pkt: parsed packet.
+ * @param wx: destination; untouched if the packet carries no weather.
+ * @return true if at least one field was read.
+ */
+bool aprsWeatherParse(const struct aprsPacket *pkt, struct aprsWeather *wx);
 
 /**
  * @brief Write an AX.25 UI frame as a TNC2 monitor line,
