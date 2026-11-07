@@ -66,6 +66,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/aprs_traffic.c',
                'openrtx/src/core/stations.c',
                'openrtx/src/core/aprs_beacon.c',
+               'openrtx/src/core/aprs_qsy.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
@@ -1433,6 +1434,10 @@ aprs_digipeater_test = executable('aprs_digipeater_test',
                                   sources : unit_test_src + ['tests/unit/APRS_digipeater.cpp'],
                                   kwargs  : unit_test_opts)
 
+aprs_qsy_test = executable('aprs_qsy_test',
+                           sources : unit_test_src + ['tests/unit/aprs_qsy_test.cpp'],
+                           kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1472,3 +1477,4 @@ test('APRS Traffic Test', aprs_traffic_test)
 test('Stations Test', stations_test)
 test('M17 GNSS Meta Test', m17_gnss_test)
 test('APRS Digipeater Test', aprs_digipeater_test)
+test('APRS QSY Test', aprs_qsy_test)
