@@ -79,6 +79,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/PacketDeframer.cpp',
                'openrtx/src/protocols/M17/PacketFramer.cpp',
                'openrtx/src/protocols/M17/SmsPacket.cpp',
+               'openrtx/src/protocols/M17/AprsPacket.c',
                'openrtx/src/protocols/APRS/Slicer.cpp',
                'openrtx/src/protocols/APRS/FrameDecoder.cpp',
                'openrtx/src/protocols/APRS/Demodulator.cpp',
@@ -1381,6 +1382,10 @@ aprs_position_test = executable('aprs_position_test',
                                          + ['tests/unit/APRS_position.cpp'],
                                kwargs  : unit_test_opts)
 
+m17_aprs_packet_test = executable('m17_aprs_packet_test',
+                                  sources : unit_test_src + ['tests/unit/M17_aprs_packet.cpp'],
+                                  kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1413,3 +1418,4 @@ test('CSMA Test', csma_test)
 test('Slip Test', slip_test)
 test('Beacon Test', beacon_test)
 test('APRS Position Test', aprs_position_test)
+test('M17 APRS Packet Test', m17_aprs_packet_test)
