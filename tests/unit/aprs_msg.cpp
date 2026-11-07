@@ -56,6 +56,33 @@ static struct aprsTestFrame makeFrame(const char *src, const char *info)
 }
 
 /**
+ * Send a message from the inbox, as the compose screen does, and return the
+ * frame it hands to the rtx stage; the frame is empty if none was.
+ */
+static struct aprsTestFrame sendMessage(const char *recipient, const char *body)
+{
+    struct aprsTestFrame frame = {};
+    struct message msg = {};
+
+    msg.body = body;
+    msg.bodyLen = (uint16_t)strlen(body);
+    msg.mode = OPMODE_APRS;
+    strncpy(msg.sender, "W9XYZ", sizeof(msg.sender) - 1);
+    strncpy(msg.recipient, recipient, sizeof(msg.recipient) - 1);
+
+    if (messages_send(&msg) != 0)
+        return frame;
+
+    struct pktDesc *tx = rtxStub_txDesc();
+    if (tx == nullptr)
+        return frame;
+
+    memcpy(frame.data, tx->buffer, tx->size);
+    frame.len = tx->size;
+    return frame;
+}
+
+/**
  * Hand a received frame to the source, as the inbox does.
  */
 static int receive(struct aprsTestFrame &frame)
@@ -199,5 +226,58 @@ TEST_CASE("aprs_msg: a malformed frame is refused", "[aprs][messages]")
 
     CHECK(receive(frame) == -EINVAL);
     CHECK(messages_count() == 0);
+    messages_terminate();
+}
+
+TEST_CASE("aprs_msg: a sent message goes out from the APRS callsign",
+          "[aprs][messages]")
+{
+    setup("K1ABC-7");
+
+    struct aprsTestFrame frame = sendMessage("W1AW", "meet on 146.52");
+    REQUIRE(frame.len > 0);
+
+    struct aprsPacket pkt;
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+
+    char addr[APRS_ADDR_STR_LEN];
+    aprsAddr_toStr(&pkt.addresses[0], addr, sizeof(addr));
+    CHECK(strcmp(addr, APRS_TOCALL) == 0);
+    aprsAddr_toStr(&pkt.addresses[1], addr, sizeof(addr));
+    CHECK(strcmp(addr, "K1ABC-7") == 0);
+
+    char path[32];
+    aprsPath_toStr(&pkt, path, sizeof(path));
+    CHECK(strcmp(path, APRS_DEFAULT_PATH) == 0);
+
+    char addressee[APRS_ADDR_STR_LEN];
+    char text[APRS_MSG_TEXT_MAX + 1];
+    REQUIRE(
+        aprsMsg_unwrap(&pkt, addressee, sizeof(addressee), text, sizeof(text))
+        == 0);
+    CHECK(strcmp(addressee, "W1AW") == 0);
+    CHECK(strcmp(text, "meet on 146.52") == 0);
+
+    messages_terminate();
+}
+
+TEST_CASE("aprs_msg: sending is refused where it should be", "[aprs][messages]")
+{
+    SECTION("under the factory callsign")
+    {
+        setup("N0CALL");
+        CHECK(sendMessage("W1AW", "hi").len == 0);
+    }
+
+    SECTION("text longer than an APRS message carries")
+    {
+        char big[APRS_MSG_TEXT_MAX + 2];
+
+        setup("K1ABC");
+        memset(big, 'x', sizeof(big) - 1);
+        big[sizeof(big) - 1] = '\0';
+        CHECK(sendMessage("W1AW", big).len == 0);
+    }
+
     messages_terminate();
 }

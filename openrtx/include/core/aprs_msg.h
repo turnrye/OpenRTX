@@ -16,8 +16,8 @@ extern "C" {
 /**
  * Protocol source translating between APRS messages and message inbox
  * entries, to be registered with messages_registerSource(). Only messages
- * addressed to the APRS callsign in the settings are stored; transmit is not
- * supported yet.
+ * addressed to the APRS callsign in the settings are stored, and messages
+ * are sent from that callsign.
  */
 extern const struct messageOps aprs_msg_ops;
 

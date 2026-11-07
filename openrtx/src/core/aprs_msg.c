@@ -135,11 +135,38 @@ static int processRx(const struct pktDesc *pkt)
 
 static int formatTx(const struct message *msg, struct pktDesc *pkt)
 {
-    (void)msg;
-    (void)pkt;
+    char info[APRS_MSG_ADDRESSEE_LEN + APRS_MSG_TEXT_MAX + 3];
+    char text[APRS_MSG_TEXT_MAX + 1];
+    const char *me = state.settings.aprs_callsign;
+    ssize_t len;
 
-    // APRS transmit is not implemented yet
-    return -ENOTSUP;
+    if (msg->bodyLen == 0)
+        return -EINVAL;
+
+    // An APRS message is at most 67 characters of text: refuse a longer one
+    // rather than cut it short
+    if (msg->bodyLen > APRS_MSG_TEXT_MAX)
+        return -EMSGSIZE;
+
+    // Every frame names its sender to every station that hears it, so refuse
+    // to transmit under the factory callsign, as Kenwood radios do
+    if (strcmp(me, default_settings.aprs_callsign) == 0)
+        return -EINVAL;
+
+    memcpy(text, msg->body, msg->bodyLen);
+    text[msg->bodyLen] = '\0';
+
+    len = aprsMsg_format(info, sizeof(info), msg->recipient, text);
+    if (len < 0)
+        return (int)len;
+
+    len = aprsFrame_build(pkt->buffer, pkt->size, APRS_TOCALL, me,
+                          APRS_DEFAULT_PATH, info, (size_t)len);
+    if (len < 0)
+        return (int)len;
+
+    pkt->size = (size_t)len;
+    return 0;
 }
 
 const struct messageOps aprs_msg_ops = {
