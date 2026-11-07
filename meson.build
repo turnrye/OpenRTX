@@ -1332,9 +1332,9 @@ aprs_msg_test = executable('aprs_msg_test',
                            sources : ['openrtx/src/core/messages.c',
                                       'tests/unit/rtx_packet_stub.cpp',
                                       'openrtx/src/core/aprs_msg.c',
-                                      'openrtx/src/core/crc.c',
                                       'tests/unit/aprs_test_frame.cpp',
                                       'openrtx/src/protocols/APRS/packet.c',
+                                      'openrtx/src/protocols/M17/AprsPacket.c',
                                       'tests/unit/aprs_msg.cpp'],
                            kwargs  : unit_test_opts)
 
@@ -1397,6 +1397,18 @@ aprs_beacon_test = executable('aprs_beacon_test',
                                          'tests/unit/aprs_beacon_tick_test.cpp'],
                               kwargs  : unit_test_opts)
 
+aprs_source_test = executable('aprs_source_test',
+                              sources : ['openrtx/src/core/messages.c',
+                                         'openrtx/src/core/aprs_msg.c',
+                                         'openrtx/src/protocols/APRS/packet.c',
+                                         'openrtx/src/protocols/M17/AprsPacket.c',
+                                         'tests/unit/rtx_packet_stub.cpp',
+                                         'tests/unit/aprs_source_stubs.cpp',
+                                         'tests/unit/aprs_source_test.cpp'],
+                              kwargs  : unit_test_opts + {
+                                'c_args'   : linux_c_args + messages_test_defs,
+                                'cpp_args' : linux_cpp_args + messages_test_defs})
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1431,3 +1443,4 @@ test('Beacon Test', beacon_test)
 test('APRS Position Test', aprs_position_test)
 test('M17 APRS Packet Test', m17_aprs_packet_test)
 test('APRS Beacon Producer Test', aprs_beacon_test)
+test('APRS Source Test', aprs_source_test)

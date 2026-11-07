@@ -14,12 +14,20 @@ extern "C" {
 #endif
 
 /**
- * Protocol source translating between APRS messages and message inbox
- * entries, to be registered with messages_registerSource(). Only messages
- * addressed to the APRS callsign in the settings are stored, and messages
- * are sent from that callsign.
+ * Message source for APRS addressed text messages.
+ *
+ * Registered with the inbox on targets that define CONFIG_APRS. Received
+ * frames arrive through the inbox's packet descriptors, sent messages leave
+ * the same way; this source only translates between AX.25 frames and
+ * inbox entries.
  */
 extern const struct messageOps aprs_msg_ops;
+
+/**
+ * Forget the acknowledgement bookkeeping: messages heard, acks owed and our
+ * messages waiting for one.
+ */
+void aprs_msg_reset(void);
 
 #ifdef __cplusplus
 }
