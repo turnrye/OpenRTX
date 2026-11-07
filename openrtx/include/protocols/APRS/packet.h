@@ -363,6 +363,51 @@ struct aprsPosReport {
  */
 size_t aprsPosFormat(char *out, size_t len, const struct aprsPosReport *rpt);
 
+/**
+ * @brief A position read out of a received packet, in gps_t units.
+ *
+ * The inverse of aprsPosReport: micro-degrees, km/h, metres, with each
+ * optional field flagged rather than given a sentinel, since a course of
+ * zero is due north.
+ */
+struct aprsPosition {
+    char name[10];     /**< Object or item name; empty for a station.   */
+    bool killed;       /**< An object or item being taken off the map.  */
+    bool emergency;    /**< Mic-E with the Emergency position comment.  */
+    int32_t latitude;  /**< Millionths of a degree, positive north.     */
+    int32_t longitude; /**< Millionths of a degree, positive east.      */
+    bool ambiguous;    /**< The sender withheld some digits.            */
+    char symbolTable;
+    char symbolCode;
+    bool hasCourseSpeed;
+    uint16_t course;     /**< Degrees, 0-359.    */
+    uint16_t speed;      /**< km/h.              */
+    bool hasAltitude;
+    int16_t altitude;    /**< Metres.            */
+    bool hasPhg;         /**< "PHGphgd": power, height, gain, direction. */
+    uint16_t phgPower;   /**< Watts.                                     */
+    uint16_t phgHeight;  /**< Feet above average terrain.                */
+    uint8_t phgGain;     /**< dB.                                        */
+    uint16_t phgDir;     /**< Degrees the antenna favours; 0 omni.       */
+    uint16_t range;      /**< Miles, from "RNGrrrr"; 0 if not sent.      */
+    bool hasDao;         /**< "!DAO!" added a digit of precision.        */
+    const char *comment; /**< Into pkt->info, not NUL-terminated.     */
+    uint16_t commentLen; /**< Comment length.                         */
+};
+
+/**
+ * @brief Read the position a packet carries.
+ *
+ * Handles position reports with and without a timestamp, uncompressed and
+ * compressed, Mic-E, objects and items, the course/speed extension and the
+ * "/A=" altitude.
+ *
+ * @param pkt: parsed packet.
+ * @param pos: destination; untouched if the packet carries no position.
+ * @return true if a position was read.
+ */
+bool aprsPosParse(const struct aprsPacket *pkt, struct aprsPosition *pos);
+
 #ifdef __cplusplus
 }
 #endif

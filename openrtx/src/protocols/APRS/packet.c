@@ -7,6 +7,7 @@
 #include "protocols/APRS/packet.h"
 
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -49,6 +50,10 @@ static enum aprsType classifyDti(char dti)
         case '=':
         case '/':
         case '@':
+        case '`': /* Mic-E, current and old data */
+        case '\'':
+        case 0x1c:
+        case 0x1d:
             return APRS_TYPE_POSITION;
         case '>':
             return APRS_TYPE_STATUS;
@@ -442,6 +447,8 @@ ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
 
     return (ssize_t)total;
 }
+
+static bool isDigit(char c);
 
 static bool isAlnum(char c)
 {
@@ -865,4 +872,464 @@ bool aprsPathValid(const char *path)
             return true;
         p = comma + 1;
     }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Position parsing — the inverse of aprsPosFormat().
+ * ------------------------------------------------------------------------ */
+
+static bool isDigit(char c)
+{
+    return (c >= '0') && (c <= '9');
+}
+
+/**
+ * Read "DDMM.hh" or "DDDMM.hh" into micro-degrees. A space stands for a
+ * withheld digit, read as zero.
+ */
+static bool parseMinutes(const char *s, size_t degDigits, int32_t *micro,
+                         bool *ambiguous)
+{
+    uint32_t deg = 0;
+    for (size_t i = 0; i < degDigits; i++) {
+        if (!isDigit(s[i]))
+            return false;
+        deg = (deg * 10u) + (uint32_t)(s[i] - '0');
+    }
+
+    /* MM.hh; once a digit is withheld the rest must be too */
+    uint32_t mmhh = 0;
+    bool blank = false;
+    const size_t at[4] = { degDigits, degDigits + 1, degDigits + 3,
+                           degDigits + 4 };
+    if (s[degDigits + 2] != '.')
+        return false;
+    for (size_t i = 0; i < 4; i++) {
+        char c = s[at[i]];
+        if (c == ' ')
+            blank = true;
+        else if (!isDigit(c) || blank)
+            return false;
+        mmhh = (mmhh * 10u) + (uint32_t)(blank ? 0 : (c - '0'));
+    }
+    if (blank)
+        *ambiguous = true;
+
+    if ((mmhh / 100u) >= 60u)
+        return false;
+
+    *micro =
+        (int32_t)((deg * 1000000u) + (((mmhh * 1000000u) + 3000u) / 6000u));
+    return true;
+}
+
+/** Uncompressed "DDMM.hhN<t>DDDMM.hhW<c>", 19 characters. */
+static bool parseUncompressed(const char *s, size_t len,
+                              struct aprsPosition *pos)
+{
+    if (len < 19)
+        return false;
+
+    int32_t lat, lon;
+    if (!parseMinutes(s, 2, &lat, &pos->ambiguous))
+        return false;
+    if (!parseMinutes(&s[9], 3, &lon, &pos->ambiguous))
+        return false;
+
+    if (s[7] == 'S')
+        lat = -lat;
+    else if (s[7] != 'N')
+        return false;
+    if (s[17] == 'W')
+        lon = -lon;
+    else if (s[17] != 'E')
+        return false;
+
+    if ((lat > POS_LAT_MAX_MICRO) || (lat < -POS_LAT_MAX_MICRO)
+        || (lon > POS_LON_MAX_MICRO) || (lon < -POS_LON_MAX_MICRO))
+        return false;
+
+    pos->latitude = lat;
+    pos->longitude = lon;
+    pos->symbolTable = s[8];
+    pos->symbolCode = s[18];
+    return true;
+}
+
+/** Four base-91 characters. */
+static bool base91(const char *s, uint32_t *out)
+{
+    uint32_t n = 0;
+    for (int i = 0; i < 4; i++) {
+        if ((s[i] < '!') || (s[i] > '{'))
+            return false;
+        n = (n * 91u) + (uint32_t)(s[i] - '!');
+    }
+    *out = n;
+    return true;
+}
+
+/** Compressed "<t>YYYYXXXX<c>csT", 13 characters. */
+static bool parseCompressed(const char *s, size_t len, struct aprsPosition *pos)
+{
+    if (len < 13)
+        return false;
+
+    uint32_t y, x;
+    if (!base91(&s[1], &y) || !base91(&s[5], &x))
+        return false;
+
+    pos->latitude = (int32_t)lround((90.0 - (y / 380926.0)) * 1000000.0);
+    pos->longitude = (int32_t)lround((-180.0 + (x / 190463.0)) * 1000000.0);
+    pos->symbolTable = s[0];
+    pos->symbolCode = s[9];
+
+    const char c = s[10], sp = s[11], t = s[12];
+    if ((c == ' ') || (t < '!'))
+        return true;
+
+    if (((t - '!') & 0x18) == 0x10) {
+        /* Altitude: 1.002^(c*91+s) feet */
+        double feet = pow(1.002, (double)(((c - '!') * 91) + (sp - '!')));
+        pos->hasAltitude = true;
+        pos->altitude = (int16_t)lround(feet * 0.3048);
+    } else if ((c >= '!') && (c <= 'z')) {
+        /* Course in 4 degree steps, speed 1.08^s - 1 knots */
+        double knots = pow(1.08, (double)(sp - '!')) - 1.0;
+        pos->hasCourseSpeed = true;
+        pos->course = (uint16_t)(((c - '!') * 4) % 360);
+        pos->speed = (uint16_t)lround(knots * 1.852);
+    }
+
+    return true;
+}
+
+/**
+ * A "!DAO!" anywhere in the comment adds a third decimal of minutes: 'W'
+ * as two digits, 'w' as two base-91 characters.
+ */
+static void applyDao(const char *s, size_t len, struct aprsPosition *pos)
+{
+    for (size_t i = 0; i + 5 <= len; i++) {
+        if ((s[i] != '!') || (s[i + 4] != '!'))
+            continue;
+
+        char d = s[i + 1];
+        char a = s[i + 2];
+        char o = s[i + 3];
+        int32_t dlat, dlon;
+
+        if ((d == 'W') && isDigit(a) && isDigit(o)) {
+            /* thousandths of a minute: 1e6 / 60 / 1000 microdegrees */
+            dlat = ((a - '0') * 1000000 + 30000) / 60000;
+            dlon = ((o - '0') * 1000000 + 30000) / 60000;
+        } else if ((d == 'w') && (a >= '!') && (a <= '{') && (o >= '!')
+                   && (o <= '{')) {
+            /* (c - 33) / 91 hundredths of a minute */
+            dlat = ((a - 33) * 10000000 + 2730000) / 5460000;
+            dlon = ((o - 33) * 10000000 + 2730000) / 5460000;
+        } else {
+            continue;
+        }
+
+        pos->latitude += (pos->latitude < 0) ? -dlat : dlat;
+        pos->longitude += (pos->longitude < 0) ? -dlon : dlon;
+        pos->hasDao = true;
+        return;
+    }
+}
+
+/**
+ * A "PHGphgd" or "RNGrrrr" data extension in the seven bytes after a
+ * position.
+ */
+static bool parseDataExtension(const char *s, size_t len,
+                               struct aprsPosition *pos)
+{
+    if (len < 7)
+        return false;
+
+    if ((memcmp(s, "PHG", 3) == 0) && isDigit(s[3]) && isDigit(s[4])
+        && isDigit(s[5]) && isDigit(s[6])) {
+        unsigned p = (unsigned)(s[3] - '0');
+        pos->hasPhg = true;
+        pos->phgPower = (uint16_t)(p * p);
+        pos->phgHeight = (uint16_t)(10u << (s[4] - '0'));
+        pos->phgGain = (uint8_t)(s[5] - '0');
+        pos->phgDir = (uint16_t)((s[6] - '0') * 45);
+        return true;
+    }
+
+    if ((memcmp(s, "RNG", 3) == 0) && isDigit(s[3]) && isDigit(s[4])
+        && isDigit(s[5]) && isDigit(s[6])) {
+        pos->range = (uint16_t)((s[3] - '0') * 1000 + (s[4] - '0') * 100
+                                + (s[5] - '0') * 10 + (s[6] - '0'));
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * The fields after a position: an optional "ddd/sss" course and speed, an
+ * "/A=aaaaaa" altitude anywhere, and the comment.
+ */
+static void parseExtensions(const char *s, size_t len, struct aprsPosition *pos)
+{
+    size_t at = 0;
+
+    if (parseDataExtension(s, len, pos)) {
+        at = 7;
+    } else if ((len >= 7) && (s[3] == '/')) {
+        bool digits = true;
+        bool unknown = true;
+        for (size_t i = 0; i < 7; i++) {
+            if (i == 3)
+                continue;
+            digits = digits && (isDigit(s[i]) || (s[i] == '.'));
+            unknown = unknown && ((s[i] == '0') || (s[i] == '.'));
+        }
+        if (digits) {
+            at = 7;
+            if (!unknown && isDigit(s[0])) {
+                unsigned course = (unsigned)((s[0] - '0') * 100
+                                             + (s[1] - '0') * 10
+                                             + (s[2] - '0'));
+                unsigned knots = (unsigned)((s[4] - '0') * 100
+                                            + (s[5] - '0') * 10 + (s[6] - '0'));
+                pos->hasCourseSpeed = true;
+                pos->course = (uint16_t)(course % 360);
+                pos->speed = (uint16_t)((knots * 1852u + 500u) / 1000u);
+            }
+        }
+    }
+
+    for (size_t i = at; i + 9 <= len; i++) {
+        if ((s[i] != '/') || (s[i + 1] != 'A') || (s[i + 2] != '='))
+            continue;
+        const char *d = &s[i + 3];
+        bool neg = (d[0] == '-');
+        bool ok = true;
+        long feet = 0;
+        for (size_t j = neg ? 1 : 0; j < 6; j++) {
+            ok = ok && isDigit(d[j]);
+            feet = (feet * 10) + (ok ? (d[j] - '0') : 0);
+        }
+        if (ok) {
+            pos->hasAltitude = true;
+            pos->altitude = (int16_t)lround((neg ? -feet : feet) * 0.3048);
+            break;
+        }
+    }
+
+    applyDao(s, len, pos);
+    pos->comment = &s[at];
+    pos->commentLen = (uint16_t)((at <= len) ? (len - at) : 0);
+}
+
+/**
+ * Mic-E: the latitude, the N/S, W/E and longitude-offset flags and the
+ * position comment come from the destination address; the longitude,
+ * speed, course and symbol follow in the info field, each byte offset by
+ * 28. APRS 1.2 chapter 10.
+ */
+static bool parseMicE(const struct aprsPacket *pkt, struct aprsPosition *p)
+{
+    const char *dest = pkt->addresses[0].addr;
+    const char *s = pkt->info;
+    size_t len = pkt->infoLen;
+
+    if ((strlen(dest) != 6) || (len < 9))
+        return false;
+
+    uint32_t digits[6];
+    bool north = false, west = false, offset = false;
+
+    for (int i = 0; i < 6; i++) {
+        char c = dest[i];
+        bool high; /* the North / +100 / West family of characters */
+
+        if ((c >= '0') && (c <= '9')) {
+            digits[i] = (uint32_t)(c - '0');
+            high = false;
+        } else if ((c >= 'A') && (c <= 'J')) {
+            digits[i] = (uint32_t)(c - 'A');
+            high = false;
+        } else if ((c == 'K') || (c == 'L') || (c == 'Z')) {
+            digits[i] = 0;
+            p->ambiguous = true;
+            high = (c != 'L');
+        } else if ((c >= 'P') && (c <= 'Y')) {
+            digits[i] = (uint32_t)(c - 'P');
+            high = true;
+        } else {
+            return false;
+        }
+
+        if (i == 3)
+            north = high;
+        else if (i == 4)
+            offset = high;
+        else if (i == 5)
+            west = high;
+    }
+
+    /* The first three bytes carry the position comment bits, set by a
+     * letter; all three clear is the Emergency comment. */
+    p->emergency = true;
+    for (int i = 0; i < 3; i++) {
+        if ((dest[i] < '0') || (dest[i] > '9'))
+            p->emergency = false;
+    }
+
+    uint32_t mmhh = (digits[2] * 1000u) + (digits[3] * 100u) + (digits[4] * 10u)
+                  + digits[5];
+    if (((digits[0] * 10u) + digits[1] > 90u) || ((mmhh / 100u) >= 60u))
+        return false;
+    int32_t lat = (int32_t)(((digits[0] * 10u) + digits[1]) * 1000000u
+                            + (((mmhh * 1000000u) + 3000u) / 6000u));
+    p->latitude = north ? lat : -lat;
+
+    int d = (int)(uint8_t)s[1] - 28;
+    int m = (int)(uint8_t)s[2] - 28;
+    int h = (int)(uint8_t)s[3] - 28;
+    if (offset)
+        d += 100;
+    if ((d >= 180) && (d <= 189))
+        d -= 80;
+    else if ((d >= 190) && (d <= 199))
+        d -= 190;
+    if (m >= 60)
+        m -= 60;
+    if ((d < 0) || (d > 180) || (m < 0) || (m >= 60) || (h < 0) || (h > 99))
+        return false;
+    if (p->ambiguous)
+        h = 0;
+    int32_t lon =
+        (int32_t)((uint32_t)d * 1000000u
+                  + ((((uint32_t)m * 100u + (uint32_t)h) * 1000000u + 3000u)
+                     / 6000u));
+    p->longitude = west ? -lon : lon;
+
+    int sp = (int)(uint8_t)s[4] - 28;
+    int dc = (int)(uint8_t)s[5] - 28;
+    int se = (int)(uint8_t)s[6] - 28;
+    if ((sp < 0) || (dc < 0) || (se < 0))
+        return false;
+    int knots = (sp * 10) + (dc / 10);
+    int course = ((dc % 10) * 100) + se;
+    if (knots >= 800)
+        knots -= 800;
+    if (course >= 400)
+        course -= 400;
+    if ((knots > 0) || (course > 0)) {
+        p->hasCourseSpeed = true;
+        p->course = (uint16_t)(course % 360);
+        p->speed = (uint16_t)(((unsigned)knots * 1852u + 500u) / 1000u);
+    }
+
+    p->symbolCode = s[7];
+    p->symbolTable = s[8];
+
+    /* An altitude is "xxx}" right after the symbol: base-91 metres + 10000 */
+    size_t at = 9;
+    if ((len >= 13) && (s[12] == '}')) {
+        uint32_t n = 0;
+        bool ok = true;
+        for (size_t i = 9; i < 12; i++) {
+            ok = ok && (s[i] >= '!') && (s[i] <= '{');
+            n = (n * 91u) + (uint32_t)(s[i] - '!');
+        }
+        if (ok) {
+            p->hasAltitude = true;
+            p->altitude = (int16_t)((int32_t)n - 10000);
+            at = 13;
+        }
+    }
+
+    p->comment = &s[at];
+    p->commentLen = (uint16_t)(len - at);
+    applyDao(p->comment, p->commentLen, p);
+    return true;
+}
+
+bool aprsPosParse(const struct aprsPacket *pkt, struct aprsPosition *pos)
+{
+    if ((pkt == NULL) || (pos == NULL) || (pkt->infoLen == 0))
+        return false;
+
+    struct aprsPosition p;
+    memset(&p, 0, sizeof(p));
+
+    const char *s = pkt->info;
+    size_t len = pkt->infoLen;
+    size_t at = 1;
+
+    switch (s[0]) {
+        case '!':
+        case '=':
+            break;
+
+        case '/':
+        case '@':
+            at += 7; /* timestamp */
+            break;
+
+        case '`':
+        case '\'':
+        case 0x1c:
+        case 0x1d:
+            if (!parseMicE(pkt, &p))
+                return false;
+            *pos = p;
+            return true;
+
+        case ';': /* ";NAME     *DDHHMMz<position>" */
+            if (len < 18)
+                return false;
+            memcpy(p.name, &s[1], 9);
+            p.name[9] = '\0';
+            for (int i = 8; (i >= 0) && (p.name[i] == ' '); i--)
+                p.name[i] = '\0';
+            if ((s[10] != '*') && (s[10] != '_'))
+                return false;
+            p.killed = (s[10] == '_');
+            at = 18;
+            break;
+
+        case ')': { /* ")NAME!<position>" with a 3 to 9 character name */
+            size_t n = 1;
+            while ((n < len) && (n <= 9) && (s[n] != '!') && (s[n] != '_'))
+                n++;
+            if ((n < 4) || (n >= len))
+                return false;
+            memcpy(p.name, &s[1], n - 1);
+            p.name[n - 1] = '\0';
+            p.killed = (s[n] == '_');
+            at = n + 1;
+            break;
+        }
+
+        default:
+            return false;
+    }
+
+    if (at >= len)
+        return false;
+
+    size_t used;
+    if (isDigit(s[at]) || (s[at] == ' ')) {
+        if (!parseUncompressed(&s[at], len - at, &p))
+            return false;
+        used = 19;
+    } else {
+        if (!parseCompressed(&s[at], len - at, &p))
+            return false;
+        used = 13;
+    }
+
+    parseExtensions(&s[at + used], len - at - used, &p);
+
+    *pos = p;
+    return true;
 }
