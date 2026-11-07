@@ -95,6 +95,22 @@ typedef struct __attribute__((packed))
 gnssData_t;
 
 /**
+ * GNSS metadata as received, in the units of gps_t.
+ */
+typedef struct
+{
+    int32_t  latitude;      //< Millionths of a degree, positive north
+    int32_t  longitude;     //< Millionths of a degree, positive east
+    int16_t  altitude;      //< Metres
+    uint16_t speed;         //< km/h
+    uint16_t bearing;       //< Degrees
+    bool     coordsValid;
+    bool     altValid;
+    bool     velocityValid;
+}
+gnssPosition_t;
+
+/**
  * Data structure for M17 extended callsign metadata field.
  */
 typedef struct __attribute__((packed))

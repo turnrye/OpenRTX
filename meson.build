@@ -1424,6 +1424,10 @@ stations_test = executable('stations_test',
                                       'tests/unit/stations_test.cpp'],
                            kwargs  : unit_test_opts)
 
+m17_gnss_test = executable('m17_gnss_test',
+                           sources : unit_test_src + ['tests/unit/M17_gnss.cpp'],
+                           kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1461,3 +1465,4 @@ test('APRS Beacon Producer Test', aprs_beacon_test)
 test('APRS Source Test', aprs_source_test)
 test('APRS Traffic Test', aprs_traffic_test)
 test('Stations Test', stations_test)
+test('M17 GNSS Meta Test', m17_gnss_test)

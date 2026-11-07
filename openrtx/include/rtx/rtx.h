@@ -54,6 +54,15 @@ typedef struct {
     char M17_link[10];            /**  M17 LSF traffic originator */
     char M17_refl[10];            /**  M17 LSF reflector module   */
     char M17_meta_text[53];       /**< M17 Meta Text              */
+    struct {
+        uint8_t seq;      /**< Bumped for each GNSS metadata received   */
+        uint8_t valid;    /**< Bit 0 coordinates, 1 altitude, 2 velocity */
+        int32_t latitude; /**< Millionths of a degree, positive north   */
+        int32_t longitude;
+        int16_t altitude; /**< Metres                                   */
+        uint16_t speed;   /**< km/h                                     */
+        uint16_t bearing; /**< Degrees                                  */
+    } M17_gnss;           /**< Last M17 GNSS metadata, from M17_src     */
 } rtxStatus_t;
 
 /**

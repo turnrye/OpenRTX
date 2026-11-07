@@ -251,6 +251,22 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                                         sizeof(status->M17_meta_text) - 1);
                             break;
                         }
+                        case META_GNSS: {
+                            // Published for the UI thread's station table
+                            gnssPosition_t pos;
+                            if (lsf.getGnssData(&pos)) {
+                                status->M17_gnss.latitude = pos.latitude;
+                                status->M17_gnss.longitude = pos.longitude;
+                                status->M17_gnss.altitude = pos.altitude;
+                                status->M17_gnss.speed = pos.speed;
+                                status->M17_gnss.bearing = pos.bearing;
+                                status->M17_gnss.valid =
+                                    1 | (pos.altValid ? 2 : 0)
+                                    | (pos.velocityValid ? 4 : 0);
+                                status->M17_gnss.seq++;
+                            }
+                            break;
+                        }
                         default:
                             // M17_src already set above
                             break;

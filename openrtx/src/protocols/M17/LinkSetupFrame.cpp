@@ -164,3 +164,35 @@ void LinkSetupFrame::setGnssData(const gps_t *position,
     uint16_t alt = (uint16_t)1000 + position->altitude * 2;
     data.meta.gnss_data.altitude = __builtin_bswap16(alt);
 }
+
+bool LinkSetupFrame::getGnssData(gnssPosition_t *position)
+{
+    streamType_t streamType = getType();
+    if((streamType.fields.encType != ENCRYPTION_NONE)
+    || (streamType.fields.encSubType != META_GNSS))
+        return false;
+
+    const gnssData_t &g = data.meta.gnss_data;
+
+    // Coordinates are 24-bit two's complement, big endian, Q1.23
+    auto s24 = [](const int8_t *b)
+    {
+        int32_t v = ((int32_t)(uint8_t)b[0] << 16)
+                  | ((int32_t)(uint8_t)b[1] << 8)
+                  |  (int32_t)(uint8_t)b[2];
+        return (v & 0x800000) ? (v - 0x1000000) : v;
+    };
+
+    position->coordsValid   = g.coords_valid;
+    position->altValid      = g.alt_valid;
+    position->velocityValid = g.velocity_valid;
+    position->latitude      = fixedPointToCoord(s24(g.latitude_bytes), 90);
+    position->longitude     = fixedPointToCoord(s24(g.longitude_bytes), 180);
+    position->altitude      = (int16_t)(((int32_t)__builtin_bswap16(g.altitude)
+                                         - 1000) / 2);
+    position->speed         = (uint16_t)(((g.speed_1 << 4) | g.speed_2) / 2);
+    position->bearing       = (uint16_t)(((uint16_t)g.bearing_1 << 8)
+                                         | g.bearing_2);
+
+    return position->coordsValid;
+}

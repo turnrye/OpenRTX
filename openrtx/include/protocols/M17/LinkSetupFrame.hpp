@@ -138,6 +138,17 @@ public:
      */
     void setGnssData(const gps_t *position, const GNSSStationType stationType);
 
+    /**
+     * @brief Read the GNSS data of the LSF's meta field, the inverse of
+     * setGnssData(): coordinates in millionths of a degree, altitude in
+     * metres, speed in km/h, bearing in degrees. Each part is flagged as
+     * the sender marked it, which a receiver should not take on trust.
+     *
+     * @param position: destination.
+     * @return true if the meta field holds GNSS data with coordinates.
+     */
+    bool getGnssData(gnssPosition_t *position);
+
 private:
 
     struct __attribute__((packed))
