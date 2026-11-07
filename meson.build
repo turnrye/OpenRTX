@@ -1444,6 +1444,10 @@ aprs_qsy_test = executable('aprs_qsy_test',
                            sources : unit_test_src + ['tests/unit/aprs_qsy_test.cpp'],
                            kwargs  : unit_test_opts)
 
+m17_packet_rx_test = executable('m17_packet_rx_test',
+                                sources : unit_test_src + ['tests/unit/M17_packet_rx.cpp'],
+                                kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1484,3 +1488,4 @@ test('Stations Test', stations_test)
 test('M17 GNSS Meta Test', m17_gnss_test)
 test('APRS Digipeater Test', aprs_digipeater_test)
 test('APRS QSY Test', aprs_qsy_test)
+test('M17 Packet RX Test', m17_packet_rx_test)
