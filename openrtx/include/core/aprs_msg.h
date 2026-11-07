@@ -29,6 +29,21 @@ extern const struct messageOps aprs_msg_ops;
  */
 void aprs_msg_reset(void);
 
+/**
+ * The emergency most recently heard and not yet acknowledged by the
+ * operator, if any. Every emergency packet raises it again unless the same
+ * station's was acknowledged within the last ten minutes.
+ *
+ * @param call: filled with the station raising it.
+ * @param len: size of call.
+ * @param since: filled with when it was heard, seconds of system tick.
+ * @return true if an emergency is pending.
+ */
+bool aprs_msg_emergency(char *call, size_t len, uint32_t *since);
+
+/** The operator has seen the pending emergency. */
+void aprs_msg_emergencyAck(void);
+
 #ifdef __cplusplus
 }
 #endif

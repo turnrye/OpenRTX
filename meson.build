@@ -1336,6 +1336,8 @@ aprs_msg_test = executable('aprs_msg_test',
                            sources : ['openrtx/src/core/messages.c',
                                       'tests/unit/rtx_packet_stub.cpp',
                                       'openrtx/src/core/aprs_msg.c',
+                                      'openrtx/src/core/aprs_traffic.c',
+                                      'openrtx/src/core/stations.c',
                                       'tests/unit/aprs_test_frame.cpp',
                                       'openrtx/src/protocols/APRS/packet.c',
                                       'openrtx/src/protocols/M17/AprsPacket.c',
@@ -1406,6 +1408,8 @@ aprs_beacon_test = executable('aprs_beacon_test',
 aprs_source_test = executable('aprs_source_test',
                               sources : ['openrtx/src/core/messages.c',
                                          'openrtx/src/core/aprs_msg.c',
+                                         'openrtx/src/core/aprs_traffic.c',
+                                         'openrtx/src/core/stations.c',
                                          'openrtx/src/protocols/APRS/packet.c',
                                          'openrtx/src/protocols/M17/AprsPacket.c',
                                          'tests/unit/rtx_packet_stub.cpp',
@@ -1413,7 +1417,8 @@ aprs_source_test = executable('aprs_source_test',
                                          'tests/unit/aprs_source_test.cpp'],
                               kwargs  : unit_test_opts + {
                                 'c_args'   : linux_c_args + messages_test_defs,
-                                'cpp_args' : linux_cpp_args + messages_test_defs})
+                                'cpp_args' : linux_cpp_args + messages_test_defs
+                                             + ['-DAPRS_TEST_DATA="' + meson.project_source_root() / 'tests/unit/data' + '"']})
 
 aprs_traffic_test = executable('aprs_traffic_test',
                                sources : ['openrtx/src/core/aprs_traffic.c',

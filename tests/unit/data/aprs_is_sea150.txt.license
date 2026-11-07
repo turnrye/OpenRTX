@@ -1,0 +1,6 @@
+SPDX-FileCopyrightText: 2026 OpenRTX Contributors
+SPDX-License-Identifier: CC0-1.0
+
+Five minutes of public APRS-IS traffic within 150 km of Seattle, received
+from dallas.aprs2.net with the filter r/47.6/-122.3/150 on 2026-09-11, as
+TNC2 lines exactly as the server sent them.

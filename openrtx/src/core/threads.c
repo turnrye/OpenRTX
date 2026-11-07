@@ -24,6 +24,8 @@
 #include "core/messages.h"
 #include "core/m17_sms.h"
 #include "core/aprs_msg.h"
+#include "core/aprs_traffic.h"
+#include "core/stations.h"
 #include "core/aprs_beacon.h"
 #include "core/beeps.h"
 
@@ -123,6 +125,52 @@ static void beacon_service(const state_t *st, uint32_t nowSec)
 }
 #endif
 
+#if defined(CONFIG_M17)
+/**
+ * \internal Put the station of an M17 transmission in the station table,
+ * with its position when the stream carried GNSS metadata. Called once per
+ * UI loop; the status copy is the hand-off from the RTX thread.
+ */
+static void m17_stationService(uint32_t nowSec)
+{
+    static bool    wasHeard = false;
+    static uint8_t lastSeq  = 0;
+
+    const rtxStatus_t *st = rtx_getStatus();
+    bool heard = (st->opMode == OPMODE_M17) && st->lsfOk
+              && (st->M17_src[0] != '\0');
+    bool fresh = heard && (st->M17_gnss.seq != lastSeq);
+
+    if(heard && (!wasHeard || fresh))
+    {
+        struct station *s = stations_update(st->M17_src, STATION_CARRIER_M17,
+                                            nowSec);
+        if((s != NULL) && fresh)
+        {
+            s->latitude  = st->M17_gnss.latitude;
+            s->longitude = st->M17_gnss.longitude;
+            s->valid     = STATION_HAS_POSITION;
+            // Altitude and velocity flags come straight from the sender
+            if(st->M17_gnss.valid & 2)
+            {
+                s->altitude = st->M17_gnss.altitude;
+                s->valid   |= STATION_HAS_ALTITUDE;
+            }
+            if(st->M17_gnss.valid & 4)
+            {
+                s->speed  = st->M17_gnss.speed;
+                s->course = (int16_t)(st->M17_gnss.bearing % 360);
+                s->valid |= STATION_HAS_VELOCITY;
+            }
+        }
+    }
+
+    if(fresh)
+        lastSeq = st->M17_gnss.seq;
+    wasHeard = heard;
+}
+#endif
+
 /**
  * \internal Thread managing user input and UI
  */
@@ -142,10 +190,11 @@ void *ui_threadFunc(void *arg)
     #if defined(CONFIG_M17_SMS)
     messages_registerSource(&m17_sms_ops);
     #endif
-
     #if defined(CONFIG_APRS)
     messages_registerSource(&aprs_msg_ops);
+    aprsTraffic_init();
     #endif
+    stations_init();
 
     // Load initial state and update the UI
     ui_saveState();
@@ -181,6 +230,20 @@ void *ui_threadFunc(void *arg)
         if((state.channel.mode == OPMODE_APRS) ||
            (state.channel.mode == OPMODE_M17))
             beacon_service(&state, (uint32_t)(time / 1000));
+
+        // An emergency heard on the air keeps sounding until it is seen.
+        {
+            static long long lastAlarm = 0;
+            if(aprs_msg_emergency(NULL, 0, NULL) && ((time - lastAlarm) >= 5000))
+            {
+                vp_beep(BEEP_NEW_MESSAGE, LONG_BEEP);
+                lastAlarm = time;
+            }
+        }
+        #endif
+
+        #if defined(CONFIG_M17)
+        m17_stationService((uint32_t)(time / 1000));
         #endif
 
         // If synchronization needed take mutex and update RTX configuration

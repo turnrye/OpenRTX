@@ -23,11 +23,15 @@ extern "C" {
 }
 #include "rtx_packet_stub.h"
 #include "core/aprs_msg.h"
+#include "core/aprs_traffic.h"
+#include "core/stations.h"
 #include "protocols/M17/m17.h"
 #include "core/messages.h"
 #include "protocols/APRS/packet.h"
 
 #include <cstring>
+#include <fstream>
+#include <set>
 #include <string>
 
 /* Provided by the test target; state.settings.aprs_callsign is what the
@@ -575,6 +579,329 @@ TEST_CASE("aprs source: our next message carries the reply-ack owed",
     messages_terminate();
 }
 
+TEST_CASE("aprs source: every packet reaches the traffic log",
+          "[aprs][src][traffic]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+
+    hear("N2BP-7", "!4903.50N/07201.75W-test");
+    hear("W1AW", ":N2BP-7   :not for us");
+    hear("N2BP-7", ":K1ABC    :for us{01");
+    fakeTick += 9000;
+    hear("N2BP-7", ":K1ABC    :for us{01");
+    send("W1AW", "ours");
+
+    REQUIRE(aprsTraffic_count() == 5);
+    CHECK(aprsTraffic_get(4)->flags == 0);
+    CHECK(aprsTraffic_get(3)->flags == 0);
+    CHECK(aprsTraffic_get(2)->flags == APRS_TRAFFIC_FOR_ME);
+    CHECK(aprsTraffic_get(1)->flags
+          == (APRS_TRAFFIC_FOR_ME | APRS_TRAFFIC_DUP));
+    CHECK(aprsTraffic_get(0)->flags == APRS_TRAFFIC_TX);
+    CHECK(std::string(aprsTraffic_get(0)->line)
+          == "K1ABC>APORT1,WIDE1-1,WIDE2-1::W1AW     :ours{01}");
+
+    /* The inbox still holds the message once. */
+    CHECK(messages_count() == 2);
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: messages and acks take the configured path",
+          "[aprs][src]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+    strcpy(state.settings.aprs_path, "WIDE2-1");
+
+    /* Digipeater path of the frame last handed to the radio. */
+    auto txPath = []() {
+        struct pktDesc *tx = rtxStub_txDesc();
+        REQUIRE(tx != nullptr);
+        struct aprsPacket pkt;
+        REQUIRE(aprsPkt_fromFrame(static_cast<const uint8_t *>(tx->buffer),
+                                  tx->size, &pkt)
+                == 0);
+        char path[64];
+        aprsPath_toStr(&pkt, path, sizeof(path));
+        return std::string(path);
+    };
+
+    send("W1AW", "ours");
+    CHECK(lastTx() == "K1ABC>:W1AW     :ours{01}");
+    CHECK(txPath() == "WIDE2-1");
+    CHECK(std::string(aprsTraffic_get(0)->line)
+          == "K1ABC>APORT1,WIDE2-1::W1AW     :ours{01}");
+    complete();
+
+    hear("N2BP-7", ":K1ABC    :hi{42");
+    messages_task(OPMODE_APRS);
+    CHECK(lastTx() == "K1ABC>:N2BP-7   :ack42");
+    CHECK(txPath() == "WIDE2-1");
+    complete();
+
+    /* Nothing configured falls back to the conventional default. */
+    state.settings.aprs_path[0] = '\0';
+    send("W1AW", "more");
+    CHECK(txPath() == "WIDE1-1,WIDE2-1");
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: an emergency raises an alarm until it is seen",
+          "[aprs][src][emergency]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+    stations_init();
+
+    char call[APRS_ADDR_STR_LEN];
+    uint32_t since = 0;
+    CHECK(aprs_msg_emergency(call, sizeof(call), &since) == false);
+
+    hear("N2BP-7", ">EMERGENCY stuck on the ridge");
+    REQUIRE(aprs_msg_emergency(call, sizeof(call), &since) == true);
+    CHECK(std::string(call) == "N2BP-7");
+    CHECK(since == (uint32_t)(fakeTick / 1000));
+    CHECK(aprsTraffic_get(0)->flags == APRS_TRAFFIC_EMERGENCY);
+    CHECK((stations_find("N2BP-7")->valid & STATION_EMERGENCY) != 0);
+
+    /* Seen: quiet, and the same station's repeat stays quiet for a while */
+    aprs_msg_emergencyAck();
+    CHECK(aprs_msg_emergency(nullptr, 0, nullptr) == false);
+    fakeTick += 60000;
+    hear("N2BP-7", ">EMERGENCY stuck on the ridge");
+    CHECK(aprs_msg_emergency(nullptr, 0, nullptr) == false);
+
+    /* Another station's emergency is a new alarm */
+    hear("W1AW", ":K1ABC    :EMERGENCY come now");
+    REQUIRE(aprs_msg_emergency(call, sizeof(call), nullptr) == true);
+    CHECK(std::string(call) == "W1AW");
+    CHECK(aprsTraffic_get(0)->flags
+          == (APRS_TRAFFIC_EMERGENCY | APRS_TRAFFIC_FOR_ME));
+    /* and, being addressed to us, it is in the inbox too */
+    CHECK(messages_count() == 1);
+
+    /* The flag follows the station's latest packet */
+    hear("N2BP-7", "!4903.50N/07201.75W-all fine now");
+    CHECK((stations_find("N2BP-7")->valid & STATION_EMERGENCY) == 0);
+    CHECK((stations_find("N2BP-7")->valid & STATION_HAS_POSITION) != 0);
+
+    /* A bulletin is marked as such and not stored */
+    hear("W1AW", ":BLN1     :net tonight 8pm");
+    CHECK(aprsTraffic_get(0)->flags == APRS_TRAFFIC_GROUP);
+    CHECK(messages_count() == 1);
+
+    aprs_msg_reset();
+    CHECK(aprs_msg_emergency(nullptr, 0, nullptr) == false);
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: APRS in M17 packet mode is heard and acked over M17",
+          "[aprs][src][m17]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+    stations_init();
+    strcpy(state.settings.callsign, "K1ABC");
+
+    /* N2BP-7 sends us a numbered message as an M17 packet */
+    static struct m17Packet rx;
+    memset(&rx, 0, sizeof(rx));
+    strcpy(rx.src, "N2BP");
+    strcpy(rx.dst, "ALL");
+    const char *line = "N2BP-7>APORT1::K1ABC    :over m17{07";
+    rx.payload[0] = 0x02;
+    strcpy(reinterpret_cast<char *>(&rx.payload[1]), line);
+    struct pktDesc d = {};
+    d.buffer = &rx;
+    d.size = sizeof(rx);
+    d.res = (ssize_t)(strlen(line) + 2);
+    d.status = PKT_STATUS_DONE;
+
+    REQUIRE(aprs_msg_ops.processGuest(OPMODE_M17, &d) == 0);
+    REQUIRE(messages_count() == 1);
+    CHECK(std::string(messages_get(0)->body) == "over m17");
+    CHECK(messages_get(0)->mode == OPMODE_APRS);
+    CHECK(messages_get(0)->carrier == OPMODE_M17);
+    CHECK(aprsTraffic_get(0)->flags
+          == (APRS_TRAFFIC_M17 | APRS_TRAFFIC_FOR_ME));
+    REQUIRE(stations_find("N2BP-7") != nullptr);
+    CHECK(stations_find("N2BP-7")->carrier == STATION_CARRIER_M17);
+
+    /* The ack is not sent on the AFSK channel... */
+    aprs_msg_ops.task();
+    CHECK(rtxStub_txSubmissions() == 0);
+
+    /* ...but back over M17, from our M17 callsign, with no path */
+    aprs_msg_ops.guestTask(OPMODE_M17);
+    REQUIRE(rtxStub_txSubmissions() == 1);
+    struct pktDesc *tx = rtxStub_txDesc();
+    const auto *pkt = static_cast<const struct m17Packet *>(tx->buffer);
+    CHECK(std::string(pkt->src) == "K1ABC");
+    CHECK(std::string(pkt->dst) == "ALL");
+    REQUIRE(pkt->payload[0] == 0x02);
+    const char *ack = reinterpret_cast<const char *>(&pkt->payload[1]);
+    CHECK(std::string(ack) == "K1ABC>APORT1::N2BP-7   :ack07");
+    CHECK(tx->size == 20 + 2 + strlen(ack));
+    complete();
+
+    /* A repeat within the window is not stored or acked again */
+    d.status = PKT_STATUS_DONE;
+    REQUIRE(aprs_msg_ops.processGuest(OPMODE_M17, &d) == 0);
+    CHECK(messages_count() == 1);
+
+    /* Not ours: an SMS, raw AX.25 (0x01 is for other packet radio), or a
+     * packet heard in another mode */
+    static struct m17Packet sms;
+    memset(&sms, 0, sizeof(sms));
+    sms.payload[0] = 0x05;
+    sms.payload[1] = 'h';
+    struct pktDesc s = {};
+    s.buffer = &sms;
+    s.size = sizeof(sms);
+    s.res = 3;
+    s.status = PKT_STATUS_DONE;
+    CHECK(aprs_msg_ops.processGuest(OPMODE_M17, &s) == -EPROTO);
+    sms.payload[0] = 0x01;
+    CHECK(aprs_msg_ops.processGuest(OPMODE_M17, &s) == -EPROTO);
+    CHECK(aprs_msg_ops.processGuest(OPMODE_FM, &d) == -EPROTO);
+
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: heard stations land in the station table",
+          "[aprs][src][stations]")
+{
+    start("K1ABC");
+    stations_init();
+
+    hear("N2BP-7", "!4903.50N/07201.75W>088/036/A=001234 mobile");
+    hear("W1AW", ">just a status");
+    hear("VE3XYZ", ";LEADER   *092345z4903.50N/07201.75W>");
+    fakeTick += 5000;
+    hear("N2BP-7", ":K1ABC    :hi{01");
+
+    REQUIRE(stations_count() == 4);
+    CHECK(std::string(stations_get(0)->call) == "N2BP-7");
+    CHECK(std::string(stations_get(1)->call) == "LEADER");
+    CHECK(std::string(stations_get(2)->call) == "VE3XYZ");
+    CHECK(std::string(stations_get(3)->call) == "W1AW");
+
+    /* A message keeps the position its sender beaconed earlier */
+    const station *n2bp = stations_get(0);
+    CHECK(n2bp->lastHeard == 6);
+    CHECK(n2bp->latitude == 49058333);
+    CHECK(n2bp->speed == 67);
+    CHECK(n2bp->altitude == 376);
+    CHECK(n2bp->symCode == '>');
+    CHECK(n2bp->valid
+          == (STATION_HAS_POSITION | STATION_HAS_SYMBOL | STATION_HAS_VELOCITY
+              | STATION_HAS_ALTITUDE));
+    CHECK(n2bp->kind == STATION_KIND_STATION);
+
+    CHECK(stations_get(1)->kind == STATION_KIND_OBJECT);
+    CHECK(stations_get(1)->latitude == 49058333);
+    CHECK(stations_get(2)->valid == 0);
+    CHECK(stations_get(3)->valid == 0);
+
+    hear("VE3XYZ", ";LEADER   _092345z4903.50N/07201.75W>");
+    CHECK(stations_find("LEADER") == nullptr);
+    CHECK(stations_count() == 3);
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: five minutes of recorded traffic",
+          "[aprs][src][replay]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+    stations_init();
+
+    /* A message for us arrives first and must outlive everything after it */
+    hear("N2BP-7", ":K1ABC    :keep me{01");
+
+    std::ifstream in(APRS_TEST_DATA "/aprs_is_sea150.txt");
+    REQUIRE(in.good());
+
+    size_t lines = 0, heard = 0, positions = 0, weather = 0, phg = 0;
+    size_t freqs = 0;
+    std::set<std::string> senders;
+    std::string last;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || (line[0] == '#'))
+            continue;
+        lines++;
+
+        /* The APRS-IS path (TCPIP*, qAR, gate names) is not an RF path */
+        size_t colon = line.find(':');
+        size_t comma = line.find(',');
+        if ((comma != std::string::npos) && (comma < colon))
+            line.erase(comma, colon - comma);
+
+        uint8_t frame[APRS_PACLEN];
+        size_t n = aprsFrameFromTnc2(line.c_str(), line.size(), frame,
+                                     sizeof(frame));
+        if (n == 0)
+            continue; /* a source no AX.25 frame can carry */
+
+        struct pktDesc d = frameDesc(frame, n);
+        INFO(line);
+        CHECK(aprs_msg_ops.processRx(&d) == 0);
+        fakeTick += 1500;
+        heard++;
+
+        struct aprsPacket pkt;
+        REQUIRE(aprsPkt_fromFrame(frame, n, &pkt) == 0);
+        char src[APRS_ADDR_STR_LEN];
+        aprsAddr_toStr(&pkt.addresses[1], src, sizeof(src));
+        senders.insert(src);
+        last = src;
+
+        struct aprsPosition pos;
+        struct aprsWeather wx;
+        if (aprsPosParse(&pkt, &pos)) {
+            positions++;
+            phg += pos.hasPhg ? 1 : 0;
+        }
+        if (aprsWeatherParse(&pkt, &wx))
+            weather++;
+        struct aprsFreq freq;
+        if (aprsFreqParse(&pkt, &freq))
+            freqs++;
+    }
+
+    printf("replay: %zu lines, %zu heard, %zu senders, %zu positions, "
+           "%zu weather, %zu PHG, %zu frequencies\n",
+           lines, heard, senders.size(), positions, weather, phg, freqs);
+
+    /* A third of APRS-IS traffic has a source no AX.25 frame can carry
+     * (WINLINK, D-Star gateways' "-S"/"-B"/"-D"); the rest is all heard,
+     * and most of it is a position. Measured on this capture. */
+    CHECK(lines == 175);
+    CHECK(heard >= 119);
+    CHECK(positions >= 92);
+    CHECK(weather >= 21);
+    CHECK(phg >= 15);
+    CHECK(freqs >= 4);
+
+    /* The message for us is still the only thing in the inbox */
+    REQUIRE(messages_count() == 1);
+    CHECK(std::string(messages_get(0)->body) == "keep me");
+
+    /* The station table is full and newest first; the log holds the tail */
+    CHECK(senders.size() > 64);
+    CHECK(stations_count() == 64);
+    CHECK(std::string(stations_get(0)->call) == last);
+    CHECK(aprsTraffic_count() == 32);
+    for (size_t i = 0; i < aprsTraffic_count(); i++) {
+        for (const char *c = aprsTraffic_get(i)->line; *c != '\0'; c++)
+            CHECK((unsigned char)*c >= 0x20);
+    }
+
+    messages_terminate();
+}
+
 namespace
 {
 
@@ -660,5 +987,107 @@ TEST_CASE("aprs source: a message sent over M17 is numbered, retried and "
     fakeTick += 120000;
     messages_task(OPMODE_M17);
     CHECK(rtxStub_txSubmissions() == 2);
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: third-party traffic is taken as sent by its source",
+          "[aprs][src][thirdparty]")
+{
+    start("K1ABC");
+    aprsTraffic_init();
+    stations_init();
+
+    /* A message to us from a station AX.25 cannot name, via an iGate */
+    hear("K0RET-10", "}WINLINK>APWL2K,TCPIP,K0RET-10*::K1ABC    :mail{AB");
+    REQUIRE(messages_count() == 1);
+    CHECK(std::string(messages_get(0)->sender) == "WINLINK");
+    CHECK(std::string(messages_get(0)->body) == "mail");
+
+    /* The log keeps it as heard, marked */
+    const struct aprsTrafficEntry *e = aprsTraffic_get(0);
+    CHECK(std::string(e->sender) == "K0RET-10");
+    CHECK(e->type == APRS_TYPE_THIRD_PARTY);
+    CHECK(e->flags == (APRS_TRAFFIC_THIRD_PARTY | APRS_TRAFFIC_FOR_ME));
+
+    /* Both the gateway and the source were heard */
+    CHECK(stations_find("K0RET-10") != nullptr);
+    CHECK(stations_find("WINLINK") != nullptr);
+
+    /* The ack goes to the source, for the gateway to pass on */
+    messages_task(OPMODE_APRS);
+    REQUIRE(rtxStub_txSubmissions() == 1);
+    CHECK(lastTx() == "K1ABC>:WINLINK  :ackAB");
+    complete();
+
+    /* And a reply can be sent to it */
+    uint32_t seq = send("WINLINK", "thanks");
+    CHECK(lastTx() == "K1ABC>:WINLINK  :thanks{01}");
+    complete();
+    hear("K0RET-10", "}WINLINK>APWL2K,TCPIP,K0RET-10*::K1ABC    :ack01");
+    CHECK(statusOf(seq) == MSG_STATUS_DELIVERED);
+
+    /* A position relayed for a D-Star gateway */
+    hear("K0RET-10",
+         "}KD7ZYN-S>APDG01,TCPIP,qAR,K0RET-10*:!4724.83N/12219.11W&");
+    const struct station *s = stations_find("KD7ZYN-S");
+    REQUIRE(s != nullptr);
+    CHECK((s->valid & STATION_HAS_POSITION) != 0);
+
+    /* Malformed third-party traffic is only logged */
+    size_t before = messages_count();
+    hear("K0RET-10", "}garbage");
+    CHECK(messages_count() == before);
+    CHECK(aprsTraffic_get(0)->type == APRS_TYPE_THIRD_PARTY);
+    CHECK((aprsTraffic_get(0)->flags & APRS_TRAFFIC_THIRD_PARTY) == 0);
+    messages_terminate();
+}
+
+TEST_CASE("aprs source: stations keep the frequency they announce",
+          "[aprs][src][freq]")
+{
+    start("K1ABC");
+    stations_init();
+
+    /* A repeater object: the record is the object's */
+    hear("KA7UEC-10", ";146.625TN*111542z3505.07N/08948.50WrPHG6460 T107 "
+                      "-060 W4BS DARC");
+    const struct station *s = stations_find("146.625TN");
+    REQUIRE(s != nullptr);
+    CHECK((s->valid & STATION_HAS_FREQ) != 0);
+    CHECK(s->freq.freq == 146625000);
+    CHECK(s->freq.tone == 107);
+    CHECK(s->freq.offset == -600000);
+    s = stations_find("KA7UEC-10");
+    REQUIRE(s != nullptr);
+    CHECK((s->valid & STATION_HAS_FREQ) == 0);
+
+    /* A station's own, in its position */
+    hear("K0RET-10", "!3512.68NM08955.62W&441.112MHz M17 CAN0 M17-KCW B");
+    s = stations_find("K0RET-10");
+    REQUIRE(s != nullptr);
+    CHECK((s->valid & STATION_HAS_FREQ) != 0);
+    CHECK(s->freq.mode == APRS_FREQ_M17);
+    CHECK(s->freq.freq == 441112500);
+
+    /* A position without one keeps it */
+    hear("K0RET-10", "!3512.68NM08955.62W&M17 hotspot");
+    s = stations_find("K0RET-10");
+    CHECK((s->valid & STATION_HAS_FREQ) != 0);
+    CHECK(s->freq.freq == 441112500);
+
+    /* A tracker that sends it in its status */
+    hear("N0CALL-9", ">146.520MHz T100 Monitoring");
+    s = stations_find("N0CALL-9");
+    REQUIRE(s != nullptr);
+    CHECK((s->valid & STATION_HAS_FREQ) != 0);
+    CHECK(s->freq.freq == 146520000);
+    hear("N0CALL-9", "!3500.00N/09000.00W>");
+    s = stations_find("N0CALL-9");
+    CHECK((s->valid & STATION_HAS_POSITION) != 0);
+    CHECK((s->valid & STATION_HAS_FREQ) != 0);
+
+    /* A new one replaces it */
+    hear("N0CALL-9", ">147.120MHz");
+    CHECK(stations_find("N0CALL-9")->freq.freq == 147120000);
     messages_terminate();
 }

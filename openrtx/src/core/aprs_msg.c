@@ -11,8 +11,9 @@
  * frame check sequence.
  *
  * Only addressed text messages for this station become inbox entries: the
- * rest of the channel, positions, objects and status, is decoded and
- * dropped, so it cannot flush messages out of a bounded inbox.
+ * rest of the channel, positions, objects and status, goes to the station
+ * table and the traffic log instead, so it cannot flush messages out of a
+ * bounded inbox.
  */
 
 #include <errno.h>
@@ -21,9 +22,11 @@
 #include <string.h>
 #include <strings.h>
 #include "core/aprs_msg.h"
+#include "core/aprs_traffic.h"
 #include "core/messages.h"
 #include "core/packet_engine.h"
 #include "core/state.h"
+#include "core/stations.h"
 #include "core/utils.h"
 #include "interfaces/delays.h"
 #include "protocols/APRS/packet.h"
@@ -120,6 +123,31 @@ static bool addressedToMe(const char *addressee, const char *me)
         return strcmp(addressee, me) == 0;
 
     return (strcmp(a.addr, b.addr) == 0) && (a.ssid == b.ssid);
+}
+
+/* The emergency alert: who raised it, when, and whether it is still unseen. */
+static char emergencyCall[APRS_ADDR_STR_LEN];
+static uint32_t emergencyAt;
+static bool emergencyPending;
+static char emergencyAckCall[APRS_ADDR_STR_LEN];
+static uint32_t emergencyAckAt;
+#define EMERGENCY_ACK_HOLD 600u /* seconds */
+
+/**
+ * \internal
+ * A station raised an emergency: alert, unless the operator acknowledged
+ * this station's emergency recently.
+ */
+static void raiseEmergency(const char *call, uint32_t now)
+{
+    if ((strcmp(call, emergencyAckCall) == 0)
+        && ((now - emergencyAckAt) < EMERGENCY_ACK_HOLD))
+        return;
+
+    strncpy(emergencyCall, call, sizeof(emergencyCall) - 1);
+    emergencyCall[sizeof(emergencyCall) - 1] = '\0';
+    emergencyAt = now;
+    emergencyPending = true;
 }
 
 /**
@@ -430,6 +458,79 @@ static void retryAwaiting(long long now, uint8_t mode)
 
 /**
  * \internal
+ * Put what a packet says about its sender, or about the object it places,
+ * into the station table.
+ */
+static void noteStation(const struct aprsPacket *pkt, const char *sender,
+                        uint32_t now, uint8_t carrier)
+{
+    static struct aprsPosition pos;
+    static struct aprsFreq freq;
+    bool hasPos = aprsPosParse(pkt, &pos);
+    bool hasFreq = aprsFreqParse(pkt, &freq);
+
+    /* The sender was heard, whatever it sent. */
+    struct station *s = stations_update(sender, carrier, now);
+    if (s == NULL)
+        return;
+
+    if (aprsEmergency(pkt))
+        s->valid |= STATION_EMERGENCY;
+    else
+        s->valid &= (uint8_t)~STATION_EMERGENCY;
+
+    if ((pkt->type == APRS_TYPE_WEATHER)
+        || (hasPos && (pos.name[0] == '\0') && (pos.symbolCode == '_')))
+        s->kind = STATION_KIND_WEATHER;
+
+    /* Kept until another replaces it: a tracker may send it only in its
+     * status. */
+    if (!hasPos) {
+        if (hasFreq) {
+            s->freq = freq;
+            s->valid |= STATION_HAS_FREQ;
+        }
+        return;
+    }
+
+    /* An object or item is a record of its own, placed by the sender. */
+    if (pos.name[0] != '\0') {
+        if (pos.killed) {
+            stations_remove(pos.name);
+            return;
+        }
+        s = stations_update(pos.name, carrier, now);
+        if (s == NULL)
+            return;
+        s->kind = (pkt->info[0] == ';') ? STATION_KIND_OBJECT :
+                                          STATION_KIND_ITEM;
+    }
+
+    s->latitude = pos.latitude;
+    s->longitude = pos.longitude;
+    s->symTable = pos.symbolTable;
+    s->symCode = pos.symbolCode;
+    s->valid = (uint8_t)((s->valid & (STATION_EMERGENCY | STATION_HAS_FREQ))
+                         | STATION_HAS_POSITION | STATION_HAS_SYMBOL);
+    if (hasFreq) {
+        s->freq = freq;
+        s->valid |= STATION_HAS_FREQ;
+    }
+    if (pos.ambiguous)
+        s->valid |= STATION_POSITION_AMBIGUOUS;
+    if (pos.hasCourseSpeed) {
+        s->course = (int16_t)pos.course;
+        s->speed = pos.speed;
+        s->valid |= STATION_HAS_VELOCITY;
+    }
+    if (pos.hasAltitude) {
+        s->altitude = pos.altitude;
+        s->valid |= STATION_HAS_ALTITUDE;
+    }
+}
+
+/**
+ * \internal
  * Handle an AX.25 frame heard in @p mode: OPMODE_APRS on the AFSK channel,
  * OPMODE_M17 when it came in M17 packet mode.
  */
@@ -441,6 +542,7 @@ static int processFrame(const uint8_t *frame, size_t len, uint8_t mode)
     /* Static: a parsed packet is a few hundred bytes and this runs on a
      * thread with a small stack; it is never re-entered. */
     static struct aprsPacket heardPkt;
+    static struct aprsPacket inner;
     static char addressee[APRS_ADDR_STR_LEN];
     static char text[APRS_PACLEN];
 
@@ -451,15 +553,38 @@ static int processFrame(const uint8_t *frame, size_t len, uint8_t mode)
     char sender[APRS_ADDR_STR_LEN];
     aprsAddr_toStr(&heardPkt.addresses[1], sender, sizeof(sender));
 
+    const uint32_t now = (uint32_t)(getTick() / 1000);
+    const uint8_t carrier = (mode == OPMODE_M17) ? STATION_CARRIER_M17 :
+                                                   STATION_CARRIER_APRS;
+    noteStation(&heardPkt, sender, now, carrier);
+
+    /* Third-party traffic: the log keeps the packet as heard; everything
+     * else takes what it carries as sent by its source, whose name AX.25
+     * may not hold. */
     const struct aprsPacket *pkt = &heardPkt;
+    uint8_t flags = (mode == OPMODE_M17) ? APRS_TRAFFIC_M17 : 0;
+    if (aprsThirdPartyUnwrap(&heardPkt, &inner, sender, sizeof(sender))) {
+        pkt = &inner;
+        flags |= APRS_TRAFFIC_THIRD_PARTY;
+        noteStation(&inner, sender, now, carrier);
+    }
+
     char me[APRS_ADDR_STR_LEN];
     myAddress(me, sizeof(me));
+    const enum aprsKind kind = aprsPacketKind(pkt, me);
+    if (kind == APRS_KIND_EMERGENCY) {
+        flags |= APRS_TRAFFIC_EMERGENCY;
+        raiseEmergency(sender, now);
+    } else if (kind == APRS_KIND_GROUP) {
+        flags |= APRS_TRAFFIC_GROUP;
+    }
 
     if (pkt->type != APRS_TYPE_MESSAGE) {
 #ifdef PLATFORM_LINUX
         fprintf(stderr, "APRS_DECODED from '%s' type %u: '%.*s'\n", sender,
                 (unsigned)pkt->type, (int)pkt->infoLen, pkt->info);
 #endif
+        aprsTraffic_record(&heardPkt, flags, now);
         return 0; /* decoded, deliberately not stored */
     }
 
@@ -467,7 +592,12 @@ static int processFrame(const uint8_t *frame, size_t len, uint8_t mode)
         != 0)
         return -EPROTO;
 
-    if (!addressedToMe(addressee, me)) {
+    /* An emergency message to us is still a message to us. */
+    const bool forMe = addressedToMe(addressee, me);
+    if (forMe)
+        flags |= APRS_TRAFFIC_FOR_ME;
+    aprsTraffic_record(&heardPkt, flags, now);
+    if (!forMe) {
 #ifdef PLATFORM_LINUX
         fprintf(stderr, "APRS_DECODED from '%s' type %u to '%s': '%s'\n",
                 sender, (unsigned)pkt->type, addressee, text);
@@ -606,6 +736,13 @@ static int formatTx(const struct message *msg, struct pktDesc *pkt)
 
     const size_t frameLen = (size_t)built;
 
+    /* Sent frames show in the traffic log too. */
+    static struct aprsPacket sent;
+    if (aprsPkt_fromFrame(frame, frameLen, &sent) == 0)
+        aprsTraffic_record(&sent,
+                           APRS_TRAFFIC_TX | (overM17 ? APRS_TRAFFIC_M17 : 0),
+                           (uint32_t)(getTick() / 1000));
+
     uint8_t *out = (uint8_t *)pkt->buffer;
     if (overM17) {
         size_t n = m17Wrap(frame, frameLen, out, pkt->size);
@@ -644,6 +781,35 @@ void aprs_msg_reset(void)
     memset(heard, 0, sizeof(heard));
     memset(awaiting, 0, sizeof(awaiting));
     lastNumber = 0;
+    emergencyPending = false;
+    emergencyCall[0] = '\0';
+    emergencyAckCall[0] = '\0';
+    emergencyAckAt = 0;
+}
+
+bool aprs_msg_emergency(char *call, size_t len, uint32_t *since)
+{
+    if (!emergencyPending)
+        return false;
+
+    if ((call != NULL) && (len > 0)) {
+        strncpy(call, emergencyCall, len - 1);
+        call[len - 1] = '\0';
+    }
+    if (since != NULL)
+        *since = emergencyAt;
+
+    return true;
+}
+
+void aprs_msg_emergencyAck(void)
+{
+    if (!emergencyPending)
+        return;
+
+    emergencyPending = false;
+    strncpy(emergencyAckCall, emergencyCall, sizeof(emergencyAckCall));
+    emergencyAckAt = (uint32_t)(getTick() / 1000);
 }
 
 /* APRS has no broadcast address for messages. */
