@@ -68,6 +68,11 @@ typedef struct
     char    beacon_comment[32];   // Beacon comment text
     int32_t beacon_fixedLat;      // Fixed-position latitude, microdegrees
     int32_t beacon_fixedLon;      // Fixed-position longitude, microdegrees
+    uint8_t aprs_digiMode;        // Digipeater: 0 off, 1 fill-in, 2 custom
+    uint8_t aprs_digiDelay;       // Seconds a frame is held before repeating
+    uint8_t aprs_digiHops;        // Hop limit served and tolerated (custom)
+    uint8_t aprs_digiDirect;      // Custom digipeater repeats direct frames only
+    char    aprs_digiAlias[10];   // Extra name the digipeater answers to
 }
 __attribute__((packed)) settings_t;
 
@@ -113,6 +118,11 @@ static const settings_t default_settings =
     "OpenRTX",                    // Beacon comment
     0,                            // APRS fixed latitude, microdegrees
     0,                            // APRS fixed longitude, microdegrees
+    0,                            // Digipeater off
+    5,                            // Digipeater hold, seconds
+    4,                            // Digipeater hop limit
+    1,                            // Digipeater direct only
+    "",                           // Digipeater alias
 };
 
 #endif /* SETTINGS_H */

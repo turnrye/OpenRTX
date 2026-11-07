@@ -72,6 +72,10 @@ void state_init()
         memcpy(s->beacon_comment, d->beacon_comment, sizeof(s->beacon_comment));
         s->beacon_fixedLat = d->beacon_fixedLat;
         s->beacon_fixedLon = d->beacon_fixedLon;
+        s->aprs_digiMode = d->aprs_digiMode;
+        s->aprs_digiDelay = d->aprs_digiDelay;
+        s->aprs_digiHops = d->aprs_digiHops;
+        s->aprs_digiDirect = d->aprs_digiDirect;
     }
 
     /*

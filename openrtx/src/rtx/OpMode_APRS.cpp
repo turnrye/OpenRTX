@@ -10,6 +10,7 @@
 #include "rtx/OpMode_APRS.hpp"
 #include "rtx/rtx.h"
 
+#include <cstring>
 #include <errno.h>
 
 OpMode_APRS::OpMode_APRS() :
@@ -17,6 +18,8 @@ OpMode_APRS::OpMode_APRS() :
     txPhase(TxPhase::KEYUP)
 {
     csma_init(&csma, CSMA_PERSIST, CSMA_SLOT_TIME, CSMA_DEFER_TIMEOUT, 1);
+    aprsDigi_init(&digi, nullptr);
+    memset(&digiDesc, 0, sizeof(digiDesc));
 }
 
 OpMode_APRS::~OpMode_APRS()
@@ -28,10 +31,12 @@ void OpMode_APRS::enable()
     basebandBuffer = std::make_unique<int16_t[]>(BASEBAND_SIZE);
     demodulator.init();
     modulator.init();
+
     streamRunning = false;
     txPhase = TxPhase::KEYUP;
     csma_init(&csma, CSMA_PERSIST, CSMA_SLOT_TIME, CSMA_DEFER_TIMEOUT,
               (uint32_t)getTick());
+    digiDesc.status = PKT_STATUS_IDLE;
 
     // Descriptors submitted while the mode was off
     finishTx(-ECANCELED);
@@ -80,7 +85,8 @@ void OpMode_APRS::cancelRx()
 
 void OpMode_APRS::update(rtxStatus_t *const status, const bool newCfg)
 {
-    (void)newCfg;
+    if (newCfg)
+        configureDigi(status);
 
     // Main FSM logic
     switch (status->opStatus) {
@@ -136,6 +142,7 @@ void OpMode_APRS::offState(rtxStatus_t *const status)
 
     // Without a receiver there is no carrier to sense: transmit anyway rather
     // than hold the frame forever
+    serviceDigi(status);
     if (startTxIfPending(status, false))
         return;
 
@@ -151,35 +158,81 @@ void OpMode_APRS::rxState(rtxStatus_t *const status)
         return;
     }
 
-    if (startTxIfPending(status, demodulator.DCD()))
-        return;
-
     if (demodulator.update(baseband)) {
+        // The frame is taken once: the inbox gets a copy through its
+        // descriptor, the digipeater sees it whether or not one is queued
+        ssize_t len = demodulator.getFrame(rxFrame, sizeof(rxFrame));
         struct pktDesc *rxPkt;
 
-        // With no descriptor to fill the frame is dropped, as M17 does,
+        // With no descriptor to fill, the inbox misses the frame, as in M17,
         // and the receiver keeps running
-        if (rxPktQueue.tryPop(rxPkt) != 0)
-            return;
-
-        ssize_t len = demodulator.getFrame(rxPkt->buffer, rxPkt->size);
-        if (len < 0) {
-            rxPkt->size = 0;
-            rxPkt->res = len;
-            rxPkt->status = PKT_STATUS_ERROR;
-        } else {
-            rxPkt->res = len;
-            rxPkt->status = PKT_STATUS_DONE;
+        if (rxPktQueue.tryPop(rxPkt) == 0) {
+            if ((len < 0) || ((size_t)len > rxPkt->size)) {
+                rxPkt->size = 0;
+                rxPkt->res = (len < 0) ? len : -EMSGSIZE;
+                rxPkt->status = PKT_STATUS_ERROR;
+            } else {
+                memcpy(rxPkt->buffer, rxFrame, (size_t)len);
+                rxPkt->res = len;
+                rxPkt->status = PKT_STATUS_DONE;
+            }
         }
+
+        if (len > 0)
+            aprsDigi_offer(&digi, rxFrame, (size_t)len,
+                           (uint32_t)(getTick() / 1000));
     }
+
+    serviceDigi(status);
+    startTxIfPending(status, demodulator.DCD());
 }
 
-int OpMode_APRS::addPacketRx(struct pktDesc *packet)
+void OpMode_APRS::configureDigi(const rtxStatus_t *status)
 {
-    if (rxPktQueue.tryPush(packet) != 0)
-        return -EAGAIN;
+    struct aprsDigiConfig cfg;
 
-    return 0;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.mode = status->aprs_digi.mode;
+    cfg.delay = status->aprs_digi.delay;
+    cfg.maxHops = status->aprs_digi.maxHops;
+    cfg.directOnly = (status->aprs_digi.directOnly != 0);
+    strncpy(cfg.me, status->aprs_digi.call, sizeof(cfg.me) - 1);
+    strncpy(cfg.alias, status->aprs_digi.alias, sizeof(cfg.alias) - 1);
+
+    // Repeating under the factory callsign is unidentified operation
+    if ((cfg.me[0] == '\0') || (strcmp(cfg.me, "N0CALL") == 0))
+        cfg.mode = APRS_DIGI_OFF;
+    if (cfg.delay > APRS_DIGI_MAX_DELAY)
+        cfg.delay = APRS_DIGI_MAX_DELAY;
+    if (cfg.maxHops == 0)
+        cfg.maxHops = 1;
+
+    aprsDigi_configure(&digi, &cfg);
+}
+
+void OpMode_APRS::serviceDigi(rtxStatus_t *status)
+{
+    status->aprs_digiStats.heard = digi.stats.heard;
+    status->aprs_digiStats.repeated = digi.stats.repeated;
+    status->aprs_digiStats.stoodDown = digi.stats.stoodDown;
+    status->aprs_digiStats.refused = digi.stats.refused;
+
+    // A user's message in the slot goes first; a held frame can wait
+    if ((currTxPkt.load(std::memory_order_acquire) != nullptr)
+        || (digiDesc.status == PKT_STATUS_SUBMITTED))
+        return;
+
+    size_t n = aprsDigi_due(&digi, (uint32_t)(getTick() / 1000), digiFrame,
+                            sizeof(digiFrame));
+    if (n == 0)
+        return;
+
+    digiDesc.buffer = digiFrame;
+    digiDesc.size = n;
+    digiDesc.res = 0;
+    digiDesc.status = PKT_STATUS_SUBMITTED;
+    if (addPacketTx(&digiDesc) != 0)
+        digiDesc.status = PKT_STATUS_IDLE;
 }
 
 void OpMode_APRS::stopRx(rtxStatus_t *const status)
@@ -280,6 +333,14 @@ void OpMode_APRS::finishTx(ssize_t result)
     // Released last: the submitter polls status, so the descriptor must be
     // fully written before the slot is handed back.
     currTxPkt.store(nullptr, std::memory_order_release);
+}
+
+int OpMode_APRS::addPacketRx(struct pktDesc *packet)
+{
+    if (rxPktQueue.tryPush(packet) != 0)
+        return -EAGAIN;
+
+    return 0;
 }
 
 int OpMode_APRS::addPacketTx(struct pktDesc *packet)

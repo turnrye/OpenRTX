@@ -9,10 +9,11 @@
 
 #include "core/audio_path.h"
 #include "core/audio_stream.h"
-#include "core/csma.h"
 #include "core/ringbuf.hpp"
+#include "core/csma.h"
 #include "core/dsp.h"
 #include "protocols/APRS/constants.h"
+#include "protocols/APRS/digipeater.h"
 #include "protocols/APRS/Demodulator.hpp"
 #include "protocols/APRS/FrameEncoder.hpp"
 #include "protocols/APRS/Modulator.hpp"
@@ -142,12 +143,6 @@ private:
     void stopRx(rtxStatus_t *const status);
 
     /**
-     * Hand every queued receive descriptor back, cancelled, so that its
-     * owner can submit it to the next operating mode.
-     */
-    void cancelRx();
-
-    /**
      * Start a pending transmission if there is one and channel access allows
      * it.
      *
@@ -165,6 +160,30 @@ private:
     void finishTx(ssize_t result);
 
     /**
+     * Hand every queued receive descriptor back, cancelled, so that its
+     * owner can submit it to the next operating mode.
+     */
+    void cancelRx();
+
+    /**
+     * Take the digipeater settings from a new configuration.
+     *
+     * @param status: pointer to RTX status data structure.
+     */
+    void configureDigi(const rtxStatus_t *status);
+
+    /**
+     * Give the digipeater its turn: publish its counters and, with the
+     * transmit slot free, submit a frame whose hold has run out.
+     *
+     * @param status: pointer to RTX status data structure.
+     */
+    void serviceDigi(rtxStatus_t *status);
+
+    /** Baseband samples in the double buffer the input stream fills. */
+    static constexpr size_t BASEBAND_SIZE = 2 * APRS_BUF_SIZE;
+
+    /**
      * Phases of one transmission. Each update() call sends one block of
      * baseband, so no call blocks for a frame's airtime.
      */
@@ -172,9 +191,6 @@ private:
         KEYUP, ///< Key the radio and start the encoder.
         SEND,  ///< Send the next block, and unkey after the last one.
     };
-
-    /** Baseband samples in the double buffer the input stream fills. */
-    static constexpr size_t BASEBAND_SIZE = 2 * APRS_BUF_SIZE;
 
     // Opening flags: 300 ms (TXDelay), for the receiver's squelch and clock
     // recovery to settle. Closing flags: about 30 ms.
@@ -197,8 +213,12 @@ private:
     NbRingBuffer<struct pktDesc *, 2> rxPktQueue; ///< Pending RX descriptors
 
     std::atomic<struct pktDesc *> currTxPkt;      ///< Pending TX descriptor.
-    TxPhase txPhase;       ///< Phase of the transmission in progress.
-    struct csmaState csma; ///< p-persistent channel access state.
+    TxPhase txPhase;                ///< Phase of the transmission in progress.
+    struct csmaState csma;          ///< p-persistent channel access state.
+    struct aprsDigi digi;           ///< Fill-in digipeater.
+    struct pktDesc digiDesc;        ///< Descriptor of the frame repeated.
+    uint8_t digiFrame[APRS_PACLEN]; ///< The frame being repeated.
+    uint8_t rxFrame[APRS_PACLEN];   ///< Last frame decoded.
 };
 
 #endif /* OPMODE_APRS_H */

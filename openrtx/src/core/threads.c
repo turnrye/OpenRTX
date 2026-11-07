@@ -209,6 +209,14 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.canRxEn = state.settings.m17_can_rx;
             strncpy(rtx_cfg.source_address,      state.settings.callsign, 10);
             strncpy(rtx_cfg.destination_address, state.settings.m17_dest, 10);
+            #if defined(CONFIG_APRS)
+            rtx_cfg.aprs_digi.mode       = state.settings.aprs_digiMode;
+            rtx_cfg.aprs_digi.delay      = state.settings.aprs_digiDelay;
+            rtx_cfg.aprs_digi.maxHops    = state.settings.aprs_digiHops;
+            rtx_cfg.aprs_digi.directOnly = state.settings.aprs_digiDirect;
+            strncpy(rtx_cfg.aprs_digi.call,  state.settings.aprs_callsign,  10);
+            strncpy(rtx_cfg.aprs_digi.alias, state.settings.aprs_digiAlias, 10);
+            #endif
 
             pthread_mutex_unlock(&rtx_mutex);
 
