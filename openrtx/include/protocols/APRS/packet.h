@@ -47,6 +47,19 @@ extern "C" {
 #define APRS_MSG_ADDRESSEE_LEN 9
 
 /**
+ * @brief Longest message number, up to five alphanumerics per APRS 1.2.
+ */
+#define APRS_MSG_ID_MAX 5
+
+/**
+ * @brief Longest info field of an addressed message or acknowledgement:
+ * ":ADDRESSEE:" + text + "{MM}AA".
+ */
+#define APRS_MSG_INFO_MAX                                   \
+    (1 + APRS_MSG_ADDRESSEE_LEN + 1 + APRS_MSG_TEXT_MAX + 2 \
+     + (2 * APRS_MSG_ID_MAX))
+
+/**
  * One AX.25 address: callsign, SSID, and the has-been-repeated bit.
  */
 // clang-format off
@@ -193,11 +206,63 @@ ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
                        const char *text);
 
 /**
+ * @brief What an addressed message is.
+ */
+enum aprsMsgKind {
+    APRS_MSG_TEXT = 0, /**< Text, possibly numbered for acknowledgement. */
+    APRS_MSG_ACK,      /**< "ackMM": acknowledges message MM.             */
+    APRS_MSG_REJ,      /**< "rejMM": rejects message MM.                  */
+};
+
+/**
+ * @brief Message number and reply-ack of an addressed message.
+ *
+ * Text ends in "{MM" when it wants an acknowledgement. The reply-ack form
+ * "{MM}AA" also acknowledges AA, the sender's last message from us, and a
+ * bare "{MM}" says the sender understands reply-acks. An acknowledgement
+ * echoes the number it answers, "ackMM" or "ackMM}AA".
+ */
+struct aprsMsgId {
+    enum aprsMsgKind kind;
+    char number[APRS_MSG_ID_MAX + 1];   /**< MM, empty if unnumbered. */
+    char replyAck[APRS_MSG_ID_MAX + 1]; /**< AA, empty if none.       */
+    bool replyAckCapable;               /**< A '}' followed MM.       */
+};
+
+/**
+ * @brief Read the kind, message number and reply-ack of an addressed message.
+ *
+ * A malformed number reads as an unnumbered message, which is never
+ * acknowledged.
+ *
+ * @param pkt: packet to read; must be APRS_TYPE_MESSAGE.
+ * @param id: destination; untouched if the packet is not a message.
+ * @return true if the info field is a well-formed addressed message.
+ */
+bool aprsMsgParseId(const struct aprsPacket *pkt, struct aprsMsgId *id);
+
+/**
+ * @brief Check a message addressee or an APRS-IS source: 1 to 9 upper-case
+ * letters, digits and dashes. Wider than aprsCallsignValid(): APRS-IS
+ * carries names AX.25 cannot, such as "WINLINK" or "KD7ZYN-S".
+ */
+bool aprsAddresseeValid(const char *str);
+
+/**
  * @brief Check a digipeater path the user typed: up to eight addresses each
  * valid by aprsCallsignValid(), separated by commas. Empty is valid and
  * means no digipeaters.
  */
 bool aprsPathValid(const char *path);
+
+/**
+ * @brief Make text safe to show: control characters become '.'.
+ *
+ * Bytes from 0x80 up are left alone, so UTF-8 text survives.
+ *
+ * @param s: NUL-terminated text, changed in place.
+ */
+void aprsSanitize(char *s);
 
 /**
  * @brief Write an AX.25 UI frame as a TNC2 monitor line,
@@ -225,6 +290,35 @@ size_t aprsFrameToTnc2(const uint8_t *frame, size_t len, char *out, size_t cap);
  */
 size_t aprsFrameFromTnc2(const char *line, size_t len, uint8_t *buf,
                          size_t cap);
+
+/**
+ * @brief Format an addressed text message with a message number.
+ *
+ * As aprsMsgFormat(), followed by "{MM" and, when @p id is reply-ack capable,
+ * "}" and its reply-ack.
+ *
+ * @param id: number to append; NULL or an empty number appends nothing.
+ * @return number of characters written, or 0 as for aprsMsgFormat() or if
+ *         the number is malformed.
+ */
+size_t aprsMsgFormatId(char *out, size_t len, const char *addressee,
+                       const char *text, const struct aprsMsgId *id);
+
+/**
+ * @brief Format an acknowledgement or rejection of a received message.
+ *
+ * Echoes the number exactly as received, "MM" or "MM}AA", as APRS 1.2
+ * requires.
+ *
+ * @param out: destination buffer; APRS_MSG_INFO_MAX + 1 is always enough.
+ * @param len: size of out.
+ * @param addressee: station that sent the message.
+ * @param kind: APRS_MSG_ACK or APRS_MSG_REJ.
+ * @param id: number of the message being answered.
+ * @return number of characters written, or 0 if the arguments are invalid.
+ */
+size_t aprsAckFormat(char *out, size_t len, const char *addressee,
+                     enum aprsMsgKind kind, const struct aprsMsgId *id);
 
 /**
  * @brief An uncompressed APRS position report, before it is formatted.

@@ -602,6 +602,35 @@ TEST_CASE("APRS message: a formatted message unwraps to what went in", "[aprs]")
     }
 }
 
+TEST_CASE("APRS sanitise: control characters become dots", "[aprs]")
+{
+    char text[] = "a\x01"
+                  "b\x7f"
+                  "c\x1c"
+                  "d\xc3\xa9";
+    aprsSanitize(text);
+    CHECK(std::string(text) == "a.b.c.d\xc3\xa9");
+    aprsSanitize(nullptr);
+}
+
+TEST_CASE("APRS addressee: wider than an AX.25 callsign", "[aprs]")
+{
+    const char *valid[] = { "W1AW",      "K0RET-10", "WINLINK",  "KD7ZYN-S",
+                            "KJ4ERJ-AP", "BLN1",     "ABCDEFGHI" };
+    const char *invalid[] = { "",      "ABCDEFGHIJ", "w1aw",
+                              "W1 AW", "W1AW/P",     "W1AW*" };
+
+    for (const char *a : valid) {
+        INFO(a);
+        CHECK(aprsAddresseeValid(a) == true);
+    }
+    for (const char *a : invalid) {
+        INFO(a);
+        CHECK(aprsAddresseeValid(a) == false);
+    }
+    CHECK(aprsAddresseeValid(nullptr) == false);
+}
+
 TEST_CASE("APRS TNC2: a frame is shown as a monitor line", "[aprs]")
 {
     auto line = [](const char *path, const char *info) {
@@ -693,4 +722,121 @@ TEST_CASE("APRS path: a typed digipeater path is a list of valid addresses",
         CHECK(aprsPathValid(path) == false);
     }
     CHECK(aprsPathValid(nullptr) == false);
+}
+
+TEST_CASE("APRS message: numbers and acknowledgements are read", "[aprs]")
+{
+    struct Case {
+        const char *info;
+        aprsMsgKind kind;
+        const char *number;
+        const char *replyAck;
+        bool capable;
+    };
+
+    const Case cases[] = {
+        { ":W1AW     :ping", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ping{042", APRS_MSG_TEXT, "042", "", false },
+        { ":W1AW     :ping{AB}", APRS_MSG_TEXT, "AB", "", true },
+        { ":W1AW     :ping{AB}CD", APRS_MSG_TEXT, "AB", "CD", true },
+        { ":W1AW     :ping{042\r", APRS_MSG_TEXT, "042", "", false },
+        { ":W1AW     :ping{", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ping{123456", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ping{1-2", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ack042", APRS_MSG_ACK, "042", "", false },
+        { ":W1AW     :ackAB}", APRS_MSG_ACK, "AB", "", true },
+        { ":W1AW     :ackAB}CD", APRS_MSG_ACK, "AB", "CD", true },
+        { ":W1AW     :rej7", APRS_MSG_REJ, "7", "", false },
+        { ":W1AW     :ack042 ", APRS_MSG_ACK, "042", "", false },
+        { ":W1AW     :ack", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :acknowledged", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ACK042", APRS_MSG_TEXT, "", "", false },
+        { ":W1AW     :ack042{7", APRS_MSG_TEXT, "7", "", false },
+    };
+
+    for (const Case &c : cases) {
+        struct aprsTestFrame frame = aprsTest_makeFrame("APRS", 0, "N2BP", 7,
+                                                        c.info);
+        aprsPacket pkt;
+        aprsMsgId id;
+
+        INFO("info field: " << c.info);
+        REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+        REQUIRE(aprsMsgParseId(&pkt, &id) == true);
+        CHECK(id.kind == c.kind);
+        CHECK(std::string(id.number) == c.number);
+        CHECK(std::string(id.replyAck) == c.replyAck);
+        CHECK(id.replyAckCapable == c.capable);
+    }
+
+    struct aprsTestFrame frame = aprsTest_makeFrame("APRS", 0, "N2BP", 7,
+                                                    "!4903.50N/07201.75W-");
+    aprsPacket pkt;
+    aprsMsgId id;
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+    CHECK(aprsMsgParseId(&pkt, &id) == false);
+}
+
+TEST_CASE("APRS message: a numbered message formats as it parses", "[aprs]")
+{
+    char info[APRS_MSG_INFO_MAX + 1];
+    aprsMsgId id = {};
+
+    strcpy(id.number, "AB");
+    REQUIRE(aprsMsgFormatId(info, sizeof(info), "W1AW", "hi", &id) == 16);
+    CHECK(std::string(info) == ":W1AW     :hi{AB");
+
+    id.replyAckCapable = true;
+    REQUIRE(aprsMsgFormatId(info, sizeof(info), "W1AW", "hi", &id) > 0);
+    CHECK(std::string(info) == ":W1AW     :hi{AB}");
+
+    strcpy(id.replyAck, "CD");
+    REQUIRE(aprsMsgFormatId(info, sizeof(info), "W1AW", "hi", &id) > 0);
+    CHECK(std::string(info) == ":W1AW     :hi{AB}CD");
+
+    struct aprsTestFrame frame;
+    aprsPacket pkt;
+    aprsMsgId back;
+    frame.len = (uint8_t)aprsFrame_build(frame.data, sizeof(frame.data),
+                                         APRS_TOCALL, "N0CALL",
+                                         APRS_DEFAULT_PATH, info, strlen(info));
+    REQUIRE(frame.len > 0);
+    REQUIRE(aprsPkt_fromFrame(frame.data, frame.len, &pkt) == 0);
+    REQUIRE(aprsMsgParseId(&pkt, &back) == true);
+    CHECK(std::string(back.number) == "AB");
+    CHECK(std::string(back.replyAck) == "CD");
+
+    /* No number appends nothing; a malformed one is refused. */
+    id = {};
+    REQUIRE(aprsMsgFormatId(info, sizeof(info), "W1AW", "hi", &id) > 0);
+    CHECK(std::string(info) == ":W1AW     :hi");
+    strcpy(id.number, "A-B");
+    CHECK(aprsMsgFormatId(info, sizeof(info), "W1AW", "hi", &id) == 0);
+    strcpy(id.number, "12345");
+    CHECK(aprsMsgFormatId(info, 19, "W1AW", "hi", &id) == 0);
+}
+
+TEST_CASE("APRS message: an acknowledgement echoes the number it answers",
+          "[aprs]")
+{
+    char info[APRS_MSG_INFO_MAX + 1];
+    aprsMsgId id = {};
+
+    strcpy(id.number, "042");
+    REQUIRE(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_ACK, &id) > 0);
+    CHECK(std::string(info) == ":N2BP     :ack042");
+    REQUIRE(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_REJ, &id) > 0);
+    CHECK(std::string(info) == ":N2BP     :rej042");
+
+    strcpy(id.number, "AB");
+    strcpy(id.replyAck, "CD");
+    id.replyAckCapable = true;
+    REQUIRE(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_ACK, &id) > 0);
+    CHECK(std::string(info) == ":N2BP     :ackAB}CD");
+
+    CHECK(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_TEXT, &id) == 0);
+    CHECK(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_ACK, nullptr)
+          == 0);
+    id = {};
+    CHECK(aprsAckFormat(info, sizeof(info), "N2BP", APRS_MSG_ACK, &id) == 0);
 }

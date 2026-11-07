@@ -443,9 +443,201 @@ ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
     return (ssize_t)total;
 }
 
+static bool isAlnum(char c)
+{
+    return ((c >= '0') && (c <= '9')) || ((c >= 'A') && (c <= 'Z'))
+        || ((c >= 'a') && (c <= 'z'));
+}
+
+/**
+ * Read "MM" or "MM}AA" from @p s, which must be exactly that long.
+ */
+static bool parseNumber(const char *s, size_t len, struct aprsMsgId *id)
+{
+    size_t mm = 0;
+    while ((mm < len) && isAlnum(s[mm]))
+        mm++;
+
+    if ((mm == 0) || (mm > APRS_MSG_ID_MAX))
+        return false;
+
+    size_t aa = 0;
+    bool capable = (mm < len) && (s[mm] == '}');
+    if (capable) {
+        while ((mm + 1 + aa < len) && isAlnum(s[mm + 1 + aa]))
+            aa++;
+        if (aa > APRS_MSG_ID_MAX)
+            return false;
+    }
+
+    if ((mm + (capable ? 1 + aa : 0)) != len)
+        return false;
+
+    memcpy(id->number, s, mm);
+    id->number[mm] = '\0';
+    id->replyAck[0] = '\0';
+    if (capable) {
+        memcpy(id->replyAck, &s[mm + 1], aa);
+        id->replyAck[aa] = '\0';
+    }
+    id->replyAckCapable = capable;
+
+    return true;
+}
+
+bool aprsMsgParseId(const struct aprsPacket *pkt, struct aprsMsgId *id)
+{
+    if ((pkt == NULL) || (id == NULL) || (pkt->type != APRS_TYPE_MESSAGE))
+        return false;
+    if ((pkt->infoLen < MSG_TEXT_OFFSET)
+        || (pkt->info[MSG_TEXT_OFFSET - 1] != ':'))
+        return false;
+
+    const char *body = &pkt->info[MSG_TEXT_OFFSET];
+    size_t len = pkt->infoLen - MSG_TEXT_OFFSET;
+
+    /* Some stations end the line with spaces or a CR. */
+    while ((len > 0)
+           && ((body[len - 1] == ' ') || (body[len - 1] == '\r')
+               || (body[len - 1] == '\n')))
+        len--;
+
+    struct aprsMsgId parsed;
+    memset(&parsed, 0, sizeof(parsed));
+    parsed.kind = APRS_MSG_TEXT;
+
+    const char *brace = memchr(body, '{', len);
+    if (brace != NULL) {
+        size_t off = (size_t)(brace - body) + 1;
+        if (!parseNumber(&body[off], len - off, &parsed))
+            memset(&parsed, 0, sizeof(parsed));
+    } else if ((len > 3)
+               && ((memcmp(body, "ack", 3) == 0)
+                   || (memcmp(body, "rej", 3) == 0))) {
+        if (parseNumber(&body[3], len - 3, &parsed))
+            parsed.kind = (body[0] == 'a') ? APRS_MSG_ACK : APRS_MSG_REJ;
+        else
+            memset(&parsed, 0, sizeof(parsed));
+    }
+
+    *id = parsed;
+    return true;
+}
+
 /* ------------------------------------------------------------------------ *
  * Frame construction — the inverse of everything above.
  * ------------------------------------------------------------------------ */
+
+bool aprsAddresseeValid(const char *str)
+{
+    if (str == NULL)
+        return false;
+
+    size_t n = strlen(str);
+    if ((n == 0) || (n >= APRS_ADDR_STR_LEN))
+        return false;
+
+    for (size_t i = 0; i < n; i++) {
+        char c = str[i];
+        if (!(((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'))
+              || (c == '-')))
+            return false;
+    }
+
+    return true;
+}
+
+/**
+ * Write "MM" or "MM}AA" for @p id into @p out, NUL-terminated.
+ *
+ * @return characters written, or 0 if the number is malformed or too long.
+ */
+static size_t formatNumber(char *out, size_t len, const struct aprsMsgId *id)
+{
+    struct aprsMsgId check;
+    char buf[(2 * APRS_MSG_ID_MAX) + 2];
+    size_t mm = strnlen(id->number, sizeof(id->number));
+    size_t aa = id->replyAckCapable ?
+                    strnlen(id->replyAck, sizeof(id->replyAck)) :
+                    0;
+
+    if ((mm >= sizeof(id->number)) || (aa >= sizeof(id->replyAck)))
+        return 0;
+
+    memcpy(buf, id->number, mm);
+    size_t n = mm;
+    if (id->replyAckCapable) {
+        buf[n++] = '}';
+        memcpy(&buf[n], id->replyAck, aa);
+        n += aa;
+    }
+
+    /* Only ever put on the air what parseNumber() would read back. */
+    if (!parseNumber(buf, n, &check) || (n >= len))
+        return 0;
+
+    memcpy(out, buf, n);
+    out[n] = '\0';
+    return n;
+}
+
+size_t aprsMsgFormatId(char *out, size_t len, const char *addressee,
+                       const char *text, const struct aprsMsgId *id)
+{
+    if ((out == NULL) || (len == 0) || (addressee == NULL) || (text == NULL))
+        return 0;
+
+    size_t addrLen = strlen(addressee);
+    size_t textLen = strlen(text);
+
+    if ((addrLen == 0) || (addrLen > APRS_MSG_ADDRESSEE_LEN))
+        return 0;
+    if (textLen > APRS_MSG_TEXT_MAX)
+        return 0;
+
+    char number[(2 * APRS_MSG_ID_MAX) + 2] = "";
+    size_t numLen = 0;
+    if ((id != NULL) && (id->number[0] != '\0')) {
+        numLen = formatNumber(number, sizeof(number), id);
+        if (numLen == 0)
+            return 0;
+    }
+
+    /* ':' + nine addressee characters + ':' + text + "{number" + NUL. */
+    const size_t total = MSG_TEXT_OFFSET + textLen
+                       + ((numLen > 0) ? (1 + numLen) : 0);
+    if (len < (total + 1))
+        return 0;
+
+    out[0] = ':';
+    memcpy(&out[1], addressee, addrLen);
+    for (size_t i = addrLen; i < APRS_MSG_ADDRESSEE_LEN; i++)
+        out[1 + i] = ' ';
+    out[MSG_TEXT_OFFSET - 1] = ':';
+
+    memcpy(&out[MSG_TEXT_OFFSET], text, textLen);
+    if (numLen > 0) {
+        out[MSG_TEXT_OFFSET + textLen] = '{';
+        memcpy(&out[MSG_TEXT_OFFSET + textLen + 1], number, numLen);
+    }
+    out[total] = '\0';
+
+    return total;
+}
+
+size_t aprsAckFormat(char *out, size_t len, const char *addressee,
+                     enum aprsMsgKind kind, const struct aprsMsgId *id)
+{
+    if ((id == NULL) || ((kind != APRS_MSG_ACK) && (kind != APRS_MSG_REJ)))
+        return 0;
+
+    char text[3 + (2 * APRS_MSG_ID_MAX) + 2];
+    memcpy(text, (kind == APRS_MSG_ACK) ? "ack" : "rej", 3);
+    if (formatNumber(&text[3], sizeof(text) - 3, id) == 0)
+        return 0;
+
+    return aprsMsgFormatId(out, len, addressee, text, NULL);
+}
 
 /* An uncompressed coordinate is "DDMM.hh" plus a hemisphere character: the
  * degrees, the minutes, and hundredths of a minute (about 18.5 m). */
@@ -552,6 +744,17 @@ size_t aprsPosFormat(char *out, size_t len, const struct aprsPosReport *rpt)
 
     out[pos] = '\0';
     return pos;
+}
+
+void aprsSanitize(char *s)
+{
+    if (s == NULL)
+        return;
+
+    for (; *s != '\0'; s++) {
+        if (((unsigned char)*s < 0x20) || (*s == 0x7f))
+            *s = '.';
+    }
 }
 
 size_t aprsFrameToTnc2(const uint8_t *frame, size_t len, char *out, size_t cap)
