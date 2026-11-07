@@ -59,6 +59,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/nvmem_access.c',
                'openrtx/src/core/packet_engine.c',
                'openrtx/src/core/messages.c',
+               'openrtx/src/core/beacon.c',
                'openrtx/src/core/csma.c',
                'openrtx/src/core/m17_sms.cpp',
                'openrtx/src/core/aprs_msg.c',
@@ -1369,6 +1370,10 @@ slip_test = executable('slip_test',
                       sources : unit_test_src + ['tests/unit/slip.cpp'],
                       kwargs  : unit_test_opts)
 
+beacon_test = executable('beacon_test',
+                         sources : unit_test_src + ['tests/unit/beacon_test.cpp'],
+                         kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1399,3 +1404,4 @@ test('APRS RX Performance Test', aprs_rx_performance_test)
 test('APRS Modulator Test', aprs_modulator_test)
 test('CSMA Test', csma_test)
 test('Slip Test', slip_test)
+test('Beacon Test', beacon_test)
