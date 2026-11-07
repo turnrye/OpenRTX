@@ -145,6 +145,12 @@ enum settingsAPRSItems
     APRS_BEACON,
     APRS_SYMBOL,
     APRS_PATH,
+    APRS_DIGI,
+    APRS_DIGI_DELAY,
+    APRS_DIGI_HOPS,
+    APRS_DIGI_DIRECT,
+    APRS_DIGI_ALIAS,
+    APRS_DIGI_STATS,
 };
 
 enum settingsBeaconItems

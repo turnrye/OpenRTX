@@ -209,6 +209,12 @@ const char *settings_aprs_items[] =
     "Beacon",
     "Symbol",
     "Path",
+    "Digipeat",
+    "Digi Delay",
+    "Digi Hops",
+    "Digi Direct",
+    "Digi Alias",
+    "Digi Stats",
 };
 const uint8_t settings_aprs_num = sizeof(settings_aprs_items)/sizeof(settings_aprs_items[0]);
 
@@ -2382,6 +2388,7 @@ void ui_updateFSM(bool *sync_rtx)
                             strncpy(state.settings.aprs_callsign,
                                     ui_state.new_callsign,
                                     sizeof(state.settings.aprs_callsign) - 1);
+                            *sync_rtx = true;   // the digipeater repeats as it
                             /* fallthrough */
                         case CALLSIGN_DISCARDED:
                             ui_state.callsign_invalid = false;
@@ -2394,6 +2401,46 @@ void ui_updateFSM(bool *sync_rtx)
                             break;
                         default:
                             break;
+                    }
+                    break;
+                }
+
+                // Text entry for the digipeater alias: a valid callsign or
+                // nothing at all.
+                if(ui_state.edit_mode && (ui_state.menu_selected == APRS_DIGI_ALIAS))
+                {
+                    if(msg.keys & KEY_ENTER)
+                    {
+                        _ui_textInputConfirm(ui_state.new_callsign);
+                        if(strcmp(ui_state.new_callsign, "_") == 0)
+                            ui_state.new_callsign[0] = '\0';
+                        if((ui_state.new_callsign[0] != '\0') &&
+                           (aprsAddr_validate(ui_state.new_callsign) != 0))
+                        {
+                            ui_state.callsign_invalid = true;
+                            break;
+                        }
+                        strncpy(state.settings.aprs_digiAlias,
+                                ui_state.new_callsign,
+                                sizeof(state.settings.aprs_digiAlias) - 1);
+                        *sync_rtx = true;
+                        ui_state.edit_mode = false;
+                    }
+                    else if(msg.keys & KEY_ESC)
+                    {
+                        ui_state.edit_mode        = false;
+                        ui_state.callsign_invalid = false;
+                    }
+                    else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                            msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                    {
+                        ui_state.callsign_invalid = false;
+                        _ui_textInputDel(ui_state.new_callsign);
+                    }
+                    else if(input_isCharPressed(msg))
+                    {
+                        ui_state.callsign_invalid = false;
+                        _ui_textInputKeypad(ui_state.new_callsign, 9, msg, true);
                     }
                     break;
                 }
@@ -2460,6 +2507,42 @@ void ui_updateFSM(bool *sync_rtx)
                             state.settings.aprs_beacon =
                                 !state.settings.aprs_beacon;
                             break;
+                        case APRS_DIGI:
+                        {
+                            uint8_t m = state.settings.aprs_digiMode;
+                            state.settings.aprs_digiMode =
+                                fwd ? (uint8_t)((m + 1) % 3)
+                                    : (uint8_t)((m + 2) % 3);
+                            *sync_rtx = true;
+                            break;
+                        }
+                        case APRS_DIGI_DELAY:
+                        {
+                            uint8_t d = state.settings.aprs_digiDelay;
+                            if(fwd && (d < 9))
+                                d++;
+                            else if(!fwd && (d > 0))
+                                d--;
+                            state.settings.aprs_digiDelay = d;
+                            *sync_rtx = true;
+                            break;
+                        }
+                        case APRS_DIGI_HOPS:
+                        {
+                            uint8_t h = state.settings.aprs_digiHops;
+                            if(fwd && (h < 7))
+                                h++;
+                            else if(!fwd && (h > 1))
+                                h--;
+                            state.settings.aprs_digiHops = h;
+                            *sync_rtx = true;
+                            break;
+                        }
+                        case APRS_DIGI_DIRECT:
+                            state.settings.aprs_digiDirect =
+                                !state.settings.aprs_digiDirect;
+                            *sync_rtx = true;
+                            break;
                         case APRS_SYMBOL:
                         {
                             // A symbol not in the list starts the cycle over.
@@ -2501,6 +2584,14 @@ void ui_updateFSM(bool *sync_rtx)
                                               true, true,
                                               ui_state.new_callsign);
                         }
+                        else if(ui_state.menu_selected == APRS_DIGI_ALIAS)
+                        {
+                            ui_state.callsign_invalid = false;
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
+                        }
+                        else if(ui_state.menu_selected == APRS_DIGI_STATS)
+                            break;   // read-only
                     }
                     ui_state.edit_mode = !ui_state.edit_mode;
                 }

@@ -19,6 +19,7 @@
 #include "core/voicePromptUtils.h"
 #ifdef CONFIG_APRS
 #include "protocols/APRS/symbols.h"
+#include "rtx/rtx.h"
 #endif
 
 #ifdef PLATFORM_TTWRPLUS
@@ -380,6 +381,42 @@ int _ui_getSettingsAPRSValueName(char *buf, uint8_t max_len, uint8_t index)
             else
                 sniprintf(buf, max_len, "%s", last_state.settings.aprs_path);
             break;
+        case APRS_DIGI:
+        {
+            static const char *const modes[] = { "Off", "Fill-in", "Custom" };
+            sniprintf(buf, max_len, "%s",
+                      modes[last_state.settings.aprs_digiMode % 3]);
+            break;
+        }
+        case APRS_DIGI_DELAY:
+            sniprintf(buf, max_len, "%u s",
+                      (unsigned)last_state.settings.aprs_digiDelay);
+            break;
+        case APRS_DIGI_HOPS:
+            sniprintf(buf, max_len, "%u",
+                      (unsigned)last_state.settings.aprs_digiHops);
+            break;
+        case APRS_DIGI_DIRECT:
+            sniprintf(buf, max_len, "%s", (last_state.settings.aprs_digiDirect) ?
+                                              currentLanguage->on :
+                                              currentLanguage->off);
+            break;
+        case APRS_DIGI_ALIAS:
+            if(last_state.settings.aprs_digiAlias[0] == '\0')
+                sniprintf(buf, max_len, "%s", currentLanguage->None);
+            else
+                sniprintf(buf, max_len, "%s", last_state.settings.aprs_digiAlias);
+            break;
+        case APRS_DIGI_STATS:
+        {
+            // heard / repeated / stood down, from the RTX thread
+            const rtxStatus_t *rs = rtx_getStatus();
+            sniprintf(buf, max_len, "%lu/%lu/%lu",
+                      (unsigned long)rs->aprs_digiStats.heard,
+                      (unsigned long)rs->aprs_digiStats.repeated,
+                      (unsigned long)rs->aprs_digiStats.stoodDown);
+            break;
+        }
     }
     return 0;
 }
@@ -1105,6 +1142,29 @@ void _ui_drawSettingsAPRS(ui_state_t* ui_state)
         _ui_drawCallsignInput(ui_state->new_callsign);
         if(ui_state->callsign_invalid)
             gfx_print(layout.bottom_pos, layout.bottom_font, TEXT_ALIGN_CENTER,
+                      color_white, currentLanguage->invalidCallsign);
+        return;
+    }
+
+    if((ui_state->edit_mode) && (ui_state->menu_selected == APRS_DIGI_ALIAS))
+    {
+        // The callsign or alias being typed, in a box like the M17 callsign
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+                               (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                    layout.horizontal_pad, layout.menu_font,
+                    TEXT_ALIGN_LEFT, color_white,
+                    settings_aprs_items[ui_state->menu_selected]);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.input_font,
+                      TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+
+        if(ui_state->callsign_invalid)
+            gfx_print(layout.bottom_pos, layout.menu_font, TEXT_ALIGN_CENTER,
                       color_white, currentLanguage->invalidCallsign);
         return;
     }
