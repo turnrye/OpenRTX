@@ -63,6 +63,7 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/core/csma.c',
                'openrtx/src/core/m17_sms.cpp',
                'openrtx/src/core/aprs_msg.c',
+               'openrtx/src/core/aprs_traffic.c',
                'openrtx/src/core/aprs_beacon.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
@@ -1411,6 +1412,12 @@ aprs_source_test = executable('aprs_source_test',
                                 'c_args'   : linux_c_args + messages_test_defs,
                                 'cpp_args' : linux_cpp_args + messages_test_defs})
 
+aprs_traffic_test = executable('aprs_traffic_test',
+                               sources : ['openrtx/src/core/aprs_traffic.c',
+                                          'openrtx/src/protocols/APRS/packet.c',
+                                          'tests/unit/aprs_traffic_test.cpp'],
+                               kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1446,3 +1453,4 @@ test('APRS Position Test', aprs_position_test)
 test('M17 APRS Packet Test', m17_aprs_packet_test)
 test('APRS Beacon Producer Test', aprs_beacon_test)
 test('APRS Source Test', aprs_source_test)
+test('APRS Traffic Test', aprs_traffic_test)
