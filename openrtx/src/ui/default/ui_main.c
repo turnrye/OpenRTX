@@ -17,6 +17,7 @@
 #include "core/messages.h"
 #ifdef CONFIG_APRS
 #include "core/aprs_beacon.h"
+#include "core/aprs_msg.h"
 #endif
 
 void _ui_drawMainBackground()
@@ -229,6 +230,20 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
         case OPMODE_APRS:
             gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
                       color_white, "APRS");
+            {
+                char alarm[APRS_ADDR_STR_LEN];
+                if(aprs_msg_emergency(alarm, sizeof(alarm), NULL))
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "!EMERG %s!",
+                              alarm);
+#ifdef CONFIG_MESSAGES
+                else
+                    gfx_print(layout.line2_pos, layout.line2_font,
+                              TEXT_ALIGN_CENTER, color_white, "%u/%u",
+                              (unsigned)messages_countUnread(),
+                              (unsigned)messages_count());
+#endif
+            }
             {
                 /* Beacon status: method, position source, and how long since
                  * the last beacon. */

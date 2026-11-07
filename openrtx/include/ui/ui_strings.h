@@ -115,6 +115,10 @@ typedef struct
     const char* msgRejected;
     const char* msgUnacked;
     const char* msgFailed;
+    const char* traffic;
+    const char* noTraffic;
+    const char* stations;
+    const char* noStations;
 }
 stringsTable_t;
 

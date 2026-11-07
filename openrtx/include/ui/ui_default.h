@@ -16,6 +16,9 @@
 #include "hwconfig.h"
 #include "core/ui.h"
 #include "core/messages.h"
+#ifdef CONFIG_APRS
+#include "core/stations.h"
+#endif
 
 // Maximum menu entry length
 #define MAX_ENTRY_LEN 21
@@ -61,7 +64,22 @@ enum uiScreen
     MESSAGES_LIST,
     MESSAGES_DETAIL,
     MESSAGES_COMPOSE,
+#ifdef CONFIG_APRS
+    MENU_APRS,
+    APRS_TRAFFIC,
+    APRS_TRAFFIC_DETAIL,
+    APRS_STATIONS,
+    APRS_STATION_DETAIL,
+#endif
 };
+
+#ifdef CONFIG_APRS
+enum aprsMenuItems
+{
+    A_STATIONS = 0,
+    A_TRAFFIC,
+};
+#endif
 
 enum SetRxTx
 {
@@ -81,6 +99,9 @@ enum menuItems
 #endif
 #ifdef CONFIG_MESSAGES
     M_MESSAGES,
+#endif
+#ifdef CONFIG_APRS
+    M_APRS,
 #endif
     M_SETTINGS,
     M_INFO,
@@ -305,6 +326,11 @@ typedef struct ui_state_t
     // Body scroll offset (pixels) and its current maximum in MESSAGES_DETAIL.
     int16_t detail_scroll;
     int16_t detail_scroll_max;
+#ifdef CONFIG_APRS
+    // Callsign of the station pinned in APRS_STATION_DETAIL: newer stations
+    // reorder the list while it is shown.
+    char station_call[STATION_CALL_LEN];
+#endif
     char compose_recipient[MSG_ADDR_MAX_LEN];
     // Compose draft, MSG_COMPOSE_MAX_LEN bytes on the heap rather than paid
     // for statically: allocated when the compose screen is entered and
@@ -330,6 +356,8 @@ extern const char *settings_radio_items[];
 extern const char *settings_m17_items[];
 #ifdef CONFIG_APRS
 extern const char *settings_aprs_items[];
+extern const char *aprs_menu_items[];
+extern const uint8_t aprs_menu_num;
 extern const uint16_t beacon_intervals[];
 extern const uint8_t beacon_intervals_num;
 #endif

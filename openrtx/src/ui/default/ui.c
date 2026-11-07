@@ -70,6 +70,9 @@
 #include "core/aprs_beacon.h"
 #include "protocols/APRS/packet.h"
 #include "protocols/APRS/symbols.h"
+#include "core/aprs_traffic.h"
+#include "core/aprs_qsy.h"
+#include "core/stations.h"
 #endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
@@ -107,6 +110,12 @@ extern void _ui_drawSettingsM17(ui_state_t* ui_state);
 #ifdef CONFIG_APRS
 extern void _ui_drawSettingsAPRS(ui_state_t* ui_state);
 extern void _ui_drawSettingsBeacon(ui_state_t* ui_state);
+/* APRS screens, their implementation is in "ui_aprs.c" */
+extern void _ui_drawMenuAPRS(ui_state_t* ui_state);
+extern void _ui_drawAprsTraffic(ui_state_t* ui_state);
+extern void _ui_drawAprsTrafficDetail(ui_state_t* ui_state);
+extern void _ui_drawAprsStations(ui_state_t* ui_state);
+extern void _ui_drawAprsStationDetail(ui_state_t* ui_state);
 #endif
 extern void _ui_drawSettingsFM(ui_state_t* ui_state);
 extern void _ui_drawSettingsVoicePrompts(ui_state_t* ui_state);
@@ -124,6 +133,7 @@ extern void _ui_fsmMessagesDetail(ui_state_t *ui_state, kbd_msg_t msg);
 extern void _ui_fsmMessagesCompose(ui_state_t *ui_state, kbd_msg_t msg);
 extern void _ui_endCompose(ui_state_t *ui_state);
 #endif
+
 // TODO: get these from ui strings / currentLanguage
 const char *menu_items[] =
 {
@@ -135,6 +145,9 @@ const char *menu_items[] =
 #endif
 #ifdef CONFIG_MESSAGES
     "Messages",
+#endif
+#ifdef CONFIG_APRS
+    "APRS",
 #endif
     "Settings",
     "Info",
@@ -341,6 +354,15 @@ const uint8_t settings_gps_num = sizeof(settings_gps_items)/sizeof(settings_gps_
 const uint8_t settings_radio_num = sizeof(settings_radio_items)/sizeof(settings_radio_items[0]);
 #ifdef CONFIG_M17
 const uint8_t settings_m17_num = sizeof(settings_m17_items)/sizeof(settings_m17_items[0]);
+#endif
+#ifdef CONFIG_APRS
+
+const char *aprs_menu_items[] =
+{
+    "Stations",
+    "Traffic",
+};
+const uint8_t aprs_menu_num = sizeof(aprs_menu_items)/sizeof(aprs_menu_items[0]);
 #endif
 const uint8_t settings_fm_num = sizeof(settings_fm_items) / sizeof(settings_fm_items[0]);
 const uint8_t settings_accessibility_num = sizeof(settings_accessibility_items)/sizeof(settings_accessibility_items[0]);
@@ -1994,6 +2016,11 @@ void ui_updateFSM(bool *sync_rtx)
                             state.ui_screen = MESSAGES_LIST;
                             break;
 #endif
+#ifdef CONFIG_APRS
+                        case M_APRS:
+                            state.ui_screen = MENU_APRS;
+                            break;
+#endif
                         case M_SETTINGS:
                             state.ui_screen = MENU_SETTINGS;
                             break;
@@ -2772,6 +2799,101 @@ void ui_updateFSM(bool *sync_rtx)
                     _ui_menuBack(MENU_SETTINGS);
                 break;
 #endif
+#ifdef CONFIG_APRS
+            case MENU_APRS:
+                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                    _ui_menuUp(aprs_menu_num);
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                    _ui_menuDown(aprs_menu_num);
+                else if(msg.keys & KEY_ENTER)
+                {
+                    if(ui_state.menu_selected == A_TRAFFIC)
+                        state.ui_screen = APRS_TRAFFIC;
+                    else if(ui_state.menu_selected == A_STATIONS)
+                        state.ui_screen = APRS_STATIONS;
+                    ui_state.menu_selected = 0;
+                }
+                else if(msg.keys & KEY_ESC)
+                    _ui_menuBack(MENU_TOP);
+                break;
+            case APRS_TRAFFIC:
+            {
+                // The log fills in from the top, so the cursor is a row
+                // number, not an entry: what it lands on may have moved.
+                uint8_t count = (uint8_t) aprsTraffic_count();
+                if((msg.keys & KEY_UP || msg.keys & KNOB_LEFT) && (count > 0))
+                    _ui_menuUp(count);
+                else if((msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT) &&
+                        (count > 0))
+                    _ui_menuDown(count);
+                else if((msg.keys & KEY_ENTER) && (count > 0))
+                {
+                    ui_state.detail_scroll     = 0;
+                    ui_state.detail_scroll_max = 0;
+                    state.ui_screen = APRS_TRAFFIC_DETAIL;
+                }
+                else if(msg.keys & KEY_ESC)
+                    _ui_menuBack(MENU_APRS);
+                break;
+            }
+            case APRS_TRAFFIC_DETAIL:
+                if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
+                    ui_state.detail_scroll -= layout.menu_h;
+                else if(msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT)
+                    ui_state.detail_scroll += layout.menu_h;
+                else if(msg.keys & KEY_ESC)
+                    state.ui_screen = APRS_TRAFFIC;
+                break;
+            case APRS_STATIONS:
+            {
+                uint8_t count = (uint8_t) stations_count();
+                if((msg.keys & KEY_UP || msg.keys & KNOB_LEFT) && (count > 0))
+                    _ui_menuUp(count);
+                else if((msg.keys & KEY_DOWN || msg.keys & KNOB_RIGHT) &&
+                        (count > 0))
+                    _ui_menuDown(count);
+                else if((msg.keys & KEY_ENTER) && (count > 0))
+                {
+                    const struct station *s =
+                        stations_get(ui_state.menu_selected);
+                    if(s != NULL)
+                    {
+                        strcpy(ui_state.station_call, s->call);
+                        state.ui_screen = APRS_STATION_DETAIL;
+                    }
+                }
+                else if(msg.keys & KEY_ESC)
+                    _ui_menuBack(MENU_APRS);
+                break;
+            }
+            case APRS_STATION_DETAIL:
+            {
+                // ENTER tunes the VFO to what the station announced, as
+                // Kenwood's TUNE; where it cannot, it goes back as before
+                const struct station *s = stations_find(ui_state.station_call);
+                channel_t ch = (ui_state.last_main_state == MAIN_MEM) ?
+                               state.vfo_channel : state.channel;
+                if((msg.keys & KEY_ENTER) && (s != NULL) &&
+                   (s->valid & STATION_HAS_FREQ) &&
+                   (aprsQsy_tune(&s->freq, &ch) == APRS_QSY_OK))
+                {
+                    state.vfo_channel = ch;
+                    state.channel     = ch;
+                    // The CAN in use is a setting, not part of the channel
+                    if(ch.mode == OPMODE_M17)
+                        state.settings.m17_can = ch.m17.txCan;
+                    ui_state.last_main_state = MAIN_VFO;
+                    *sync_rtx = true;
+                    state.ui_screen = MAIN_VFO;
+                    vp_announceFrequencies(ch.rx_frequency, ch.tx_frequency,
+                                           vpqInit);
+                    vp_play();
+                }
+                else if(msg.keys & KEY_ESC || msg.keys & KEY_ENTER)
+                    state.ui_screen = APRS_STATIONS;
+                break;
+            }
+#endif
             // Radio Settings
             case SETTINGS_RADIO:
                 // If the entry is selected with enter we are in edit_mode
@@ -3322,6 +3444,21 @@ bool ui_updateGUI()
             break;
         case SETTINGS_BEACON:
             _ui_drawSettingsBeacon(&ui_state);
+            break;
+        case MENU_APRS:
+            _ui_drawMenuAPRS(&ui_state);
+            break;
+        case APRS_TRAFFIC:
+            _ui_drawAprsTraffic(&ui_state);
+            break;
+        case APRS_TRAFFIC_DETAIL:
+            _ui_drawAprsTrafficDetail(&ui_state);
+            break;
+        case APRS_STATIONS:
+            _ui_drawAprsStations(&ui_state);
+            break;
+        case APRS_STATION_DETAIL:
+            _ui_drawAprsStationDetail(&ui_state);
             break;
 #endif
         // FM settings screen

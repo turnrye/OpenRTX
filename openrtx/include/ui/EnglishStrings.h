@@ -110,5 +110,9 @@ const stringsTable_t englishStrings =
     .msgRejected       = "Rejected",
     .msgUnacked        = "No ack",
     .msgFailed         = "Failed",
+    .traffic           = "Traffic",
+    .noTraffic         = "Nothing heard yet",
+    .stations          = "Stations",
+    .noStations        = "No stations heard",
 };
 #endif  // ENGLISHSTRINGS_H

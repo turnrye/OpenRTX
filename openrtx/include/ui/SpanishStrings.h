@@ -110,5 +110,9 @@ const stringsTable_t spanishStrings =
     .msgRejected       = "Rechazado",
     .msgUnacked        = "Sin acuse",
     .msgFailed         = "Fallido",
+    .traffic           = "Tráfico",
+    .noTraffic         = "Nada recibido aún",
+    .stations          = "Estaciones",
+    .noStations        = "Sin estaciones",
 };
 #endif  // SPANISHSTRINGS_H
