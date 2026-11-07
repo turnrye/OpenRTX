@@ -1618,3 +1618,330 @@ bool aprsPosParse(const struct aprsPacket *pkt, struct aprsPosition *pos)
     *pos = p;
     return true;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Frequency announcements — aprs.org/info/freqspec.txt.
+ * ------------------------------------------------------------------------ */
+
+static char upperOf(char c)
+{
+    return ((c >= 'a') && (c <= 'z')) ? (char)(c - 'a' + 'A') : c;
+}
+
+/* Case-insensitive match of the @p n characters at @p w against @p word. */
+static bool wordIs(const char *w, size_t n, const char *word)
+{
+    if (strlen(word) != n)
+        return false;
+
+    for (size_t i = 0; i < n; i++) {
+        if (upperOf(w[i]) != word[i])
+            return false;
+    }
+
+    return true;
+}
+
+/**
+ * Read "146.82" or "441.112" into Hz; return the characters read, 0 if none.
+ * The 1 kHz the spec allows cuts 12.5 kHz channels short: 441.112 is read
+ * as 441.1125.
+ */
+static size_t readMhz(const char *s, uint32_t *hz)
+{
+    uint32_t mhz = 0;
+    size_t i = 0;
+    while ((i < 3) && isDigit(s[i]))
+        mhz = (mhz * 10) + (uint32_t)(s[i++] - '0');
+    if ((i < 2) || (s[i] != '.'))
+        return 0;
+    i++;
+
+    uint32_t frac = 0;
+    size_t digits = 0;
+    while ((digits < 4) && isDigit(s[i])) {
+        frac = (frac * 10) + (uint32_t)(s[i++] - '0');
+        digits++;
+    }
+    if (digits < 2)
+        return 0;
+
+    for (size_t d = digits; d < 6; d++)
+        frac *= 10;
+    if ((digits == 3) && (((frac / 1000) % 25) == 12))
+        frac += 500;
+
+    *hz = (mhz * 1000000u) + frac;
+    return i;
+}
+
+/* "Txxx", "Cxxx", "Dxxx", "1750" or "Toff"; lower case is narrow FM. */
+static bool readTone(const char *w, size_t n, struct aprsFreq *f)
+{
+    if ((n == 4) && wordIs(&w[1], 3, "OFF") && (upperOf(w[0]) == 'T')) {
+        f->toneType = APRS_TONE_NONE;
+        f->offset = 0;
+        f->flags |= APRS_FREQ_HAS_OFFSET;
+        return true;
+    }
+
+    if ((n != 4) || !isDigit(w[1]) || !isDigit(w[2]) || !isDigit(w[3]))
+        return false;
+
+    const bool narrow = (w[0] >= 'a') && (w[0] <= 'z');
+    const uint16_t v =
+        (uint16_t)(((w[1] - '0') * 100) + ((w[2] - '0') * 10) + (w[3] - '0'));
+    switch (upperOf(w[0])) {
+        case 'T':
+            f->toneType = APRS_TONE_ENCODE;
+            break;
+        case 'C':
+            f->toneType = APRS_TONE_SQUELCH;
+            break;
+        case 'D':
+            f->toneType = APRS_TONE_DCS;
+            break;
+        case '1':
+        case 'L':
+            if (v != 750)
+                return false;
+            f->toneType = APRS_TONE_BURST;
+            break;
+        default:
+            return false;
+    }
+
+    f->tone = (f->toneType == APRS_TONE_BURST) ? 1750 : v;
+    if (narrow)
+        f->flags |= APRS_FREQ_NARROW;
+    return true;
+}
+
+/* "+060" in 10 kHz, or "FFF.FFFrx" where a split repeater listens. */
+static bool readOffset(const char *w, size_t n, struct aprsFreq *f)
+{
+    if ((n == 4) && ((w[0] == '+') || (w[0] == '-')) && isDigit(w[1])
+        && isDigit(w[2]) && isDigit(w[3])) {
+        int32_t v = ((w[1] - '0') * 100) + ((w[2] - '0') * 10) + (w[3] - '0');
+        f->offset = ((w[0] == '-') ? -v : v) * 10000;
+        f->flags |= APRS_FREQ_HAS_OFFSET;
+        return true;
+    }
+
+    uint32_t rx;
+    size_t used = readMhz(w, &rx);
+    if ((used > 0) && (used + 2 == n) && wordIs(&w[used], 2, "RX")) {
+        f->offset = (int32_t)(rx - f->freq);
+        f->flags |= APRS_FREQ_HAS_OFFSET;
+        return true;
+    }
+
+    return false;
+}
+
+/* "R25m", "R40k", or "E25m" and its kin for ranges by direction. */
+static bool isRange(const char *w, size_t n)
+{
+    if ((n < 3) || (strchr("RNSEW", w[0]) == NULL)
+        || ((w[n - 1] != 'm') && (w[n - 1] != 'k')))
+        return false;
+
+    for (size_t i = 1; i < n - 1; i++) {
+        if (!isDigit(w[i]))
+            return false;
+    }
+
+    return true;
+}
+
+/* "CAN0", "CAN=3"; or 0-15 after a lone "CAN". */
+static bool readCan(const char *w, size_t n, bool afterCan, struct aprsFreq *f)
+{
+    size_t i = 0;
+    if (!afterCan) {
+        if ((n < 4) || !wordIs(w, 3, "CAN"))
+            return false;
+        i = 3;
+        if ((w[i] == '=') || (w[i] == ':'))
+            i++;
+    }
+
+    if ((i == n) || (n - i > 2))
+        return false;
+
+    unsigned v = 0;
+    for (; i < n; i++) {
+        if (!isDigit(w[i]))
+            return false;
+        v = (v * 10) + (unsigned)(w[i] - '0');
+    }
+    if (v > 15)
+        return false;
+
+    f->can = (uint8_t)v;
+    f->flags |= APRS_FREQ_HAS_CAN;
+    return true;
+}
+
+/* Kenwood's Mic-E ends the comment with '=' or '^' for the radio type */
+static bool isSeparator(char c)
+{
+    return (c != '\0') && (strchr(" /,;()=^", c) != NULL);
+}
+
+/**
+ * The fields after the frequency. Tone, offset and range come first; the
+ * first other word ends them, so free text cannot be mistaken for them.
+ * Mode words count anywhere.
+ */
+static void readFields(const char *c, struct aprsFreq *f)
+{
+    bool lead = true;
+    bool afterCan = false;
+    bool m17 = false, data = false, fm = false;
+    uint8_t digital = APRS_FREQ_FM;
+
+    while (*c != '\0') {
+        while (isSeparator(*c))
+            c++;
+        size_t n = 0;
+        while ((c[n] != '\0') && !isSeparator(c[n]))
+            n++;
+        if (n == 0)
+            break;
+        const char *w = c;
+        c += n;
+
+        if (readCan(w, n, afterCan, f)) {
+            afterCan = false;
+            continue;
+        }
+        afterCan = wordIs(w, n, "CAN");
+        if (afterCan)
+            continue;
+
+        if (lead && (readTone(w, n, f) || readOffset(w, n, f) || isRange(w, n)))
+            continue;
+
+        /* "D-STAR>CALLSN A" names the repeater after the mode */
+        const char *gt = memchr(w, '>', n);
+        size_t wn = (gt != NULL) ? (size_t)(gt - w) : n;
+
+        if (wordIs(w, wn, "M17")) {
+            m17 = true;
+        } else if (wordIs(w, wn, "VARA") || wordIs(w, wn, "PACKET")
+                   || wordIs(w, wn, "WINLINK") || wordIs(w, wn, "ARDOP")) {
+            data = true;
+        } else if (wordIs(w, wn, "FM") || wordIs(w, wn, "ANALOG")
+                   || wordIs(w, wn, "ALLSTAR") || wordIs(w, wn, "ECHOLINK")
+                   || wordIs(w, wn, "IRLP")) {
+            fm = true;
+        } else if (wordIs(w, wn, "DMR") || wordIs(w, wn, "MOTOTRBO")) {
+            if (digital == APRS_FREQ_FM)
+                digital = APRS_FREQ_DMR;
+        } else if (wordIs(w, wn, "D-STAR") || wordIs(w, wn, "DSTAR")
+                   || wordIs(w, wn, "DV")) {
+            if (digital == APRS_FREQ_FM)
+                digital = APRS_FREQ_DSTAR;
+        } else if (wordIs(w, wn, "FUSION") || wordIs(w, wn, "C4FM")
+                   || wordIs(w, wn, "YSF")) {
+            if (digital == APRS_FREQ_FM)
+                digital = APRS_FREQ_FUSION;
+        } else if (wordIs(w, wn, "P25")) {
+            if (digital == APRS_FREQ_FM)
+                digital = APRS_FREQ_P25;
+        } else if (wordIs(w, wn, "NXDN")) {
+            if (digital == APRS_FREQ_FM)
+                digital = APRS_FREQ_NXDN;
+        } else {
+            lead = false;
+        }
+    }
+
+    /* A mode this radio works wins; a word for FM marks a mixed repeater */
+    if (m17)
+        f->mode = APRS_FREQ_M17;
+    else if (data)
+        f->mode = APRS_FREQ_DATA;
+    else if (fm)
+        f->mode = APRS_FREQ_FM;
+    else
+        f->mode = digital;
+}
+
+bool aprsFreqParse(const struct aprsPacket *pkt, struct aprsFreq *f)
+{
+    struct aprsPosition pos;
+    char text[APRS_MAX_INFO + 1];
+    const char *c;
+    uint32_t named = 0;
+
+    if ((pkt == NULL) || (f == NULL))
+        return false;
+
+    if (aprsPosParse(pkt, &pos)) {
+        size_t n = (pos.comment != NULL) ? pos.commentLen : 0;
+        if (n > 0)
+            memcpy(text, pos.comment, n);
+        text[n] = '\0';
+        c = text;
+        if (pos.name[0] != '\0')
+            readMhz(pos.name, &named);
+
+        /* Mic-E: the sender's radio type, then perhaps an altitude */
+        const char dti = pkt->info[0];
+        if ((dti == '`') || (dti == '\'') || (dti == 0x1c) || (dti == 0x1d)) {
+            if ((c[0] != '\0') && (strchr("`'>]", c[0]) != NULL))
+                c++;
+            if ((strlen(c) >= 4) && (c[3] == '}'))
+                c += 4;
+        }
+    } else if (pkt->type == APRS_TYPE_STATUS) {
+        memcpy(text, &pkt->info[1], pkt->infoLen - 1);
+        text[pkt->infoLen - 1] = '\0';
+        c = text;
+        bool stamp = (strlen(c) >= 7) && (c[6] == 'z');
+        for (size_t i = 0; stamp && (i < 6); i++)
+            stamp = isDigit(c[i]);
+        if (stamp)
+            c += 7;
+    } else {
+        return false;
+    }
+
+    /* A leading delimiter, or an altitude, may come first */
+    if ((strncmp(c, "/A=", 3) == 0) && (strlen(c) >= 9))
+        c += 9;
+    if ((*c == ' ') || (*c == '/'))
+        c++;
+
+    uint32_t first = 0;
+    size_t used = readMhz(c, &first);
+    if (used > 0) {
+        const char *m = &c[used];
+        if (*m == ' ')
+            m++;
+        if ((m[0] != '\0') && (m[1] != '\0') && wordIs(m, 3, "MHZ"))
+            c = &m[3];
+        else
+            first = 0;
+    }
+
+    if ((named == 0) && (first == 0))
+        return false;
+
+    struct aprsFreq r;
+    memset(&r, 0, sizeof(r));
+    r.freq = (named != 0) ? named : first;
+
+    /* Named for its frequency, a frequency in the comment is where it
+     * listens: a split or crossband repeater. */
+    if ((named != 0) && (first != 0) && (first != named)) {
+        r.offset = (int32_t)(first - named);
+        r.flags |= APRS_FREQ_HAS_OFFSET;
+    }
+
+    readFields(c, &r);
+    *f = r;
+    return true;
+}

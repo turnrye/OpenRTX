@@ -506,6 +506,59 @@ struct aprsPosition {
  */
 bool aprsPosParse(const struct aprsPacket *pkt, struct aprsPosition *pos);
 
+/** Access tone a frequency announcement asks for. */
+enum aprsTone {
+    APRS_TONE_NONE = 0,
+    APRS_TONE_ENCODE,  /**< "Txxx": a CTCSS tone sent on transmit. */
+    APRS_TONE_SQUELCH, /**< "Cxxx": the tone both ways.            */
+    APRS_TONE_DCS,     /**< "Dxxx".                                */
+    APRS_TONE_BURST,   /**< "1750": a 1750 Hz tone burst.          */
+};
+
+/** Mode a frequency is worked in, from words in the comment. */
+enum aprsFreqMode {
+    APRS_FREQ_FM = 0,
+    APRS_FREQ_M17,
+    APRS_FREQ_DMR,
+    APRS_FREQ_DSTAR,
+    APRS_FREQ_FUSION,
+    APRS_FREQ_P25,
+    APRS_FREQ_NXDN,
+    APRS_FREQ_DATA, /**< Packet, VARA and other Winlink gateways. */
+};
+
+enum aprsFreqFlags {
+    APRS_FREQ_HAS_OFFSET = 1, /**< Sent; else the band's standard applies. */
+    APRS_FREQ_NARROW = 2,     /**< A lower-case tone: 12.5 kHz FM.        */
+    APRS_FREQ_HAS_CAN = 4,
+};
+
+/** A frequency a station announces, per aprs.org/info/freqspec.txt. */
+struct aprsFreq {
+    uint32_t freq;        /**< Hz, where the station transmits.       */
+    int32_t offset;       /**< Hz added to transmit to it, if sent.   */
+    uint16_t tone;        /**< Whole Hz, "107" is 107.2; or DCS code. */
+    uint8_t toneType : 4; /**< enum aprsTone.                         */
+    uint8_t mode     : 4; /**< enum aprsFreqMode.                     */
+    uint8_t can      : 4; /**< M17 channel access number.             */
+    uint8_t flags    : 4; /**< enum aprsFreqFlags.                    */
+};
+
+/**
+ * @brief Read the frequency a packet announces.
+ *
+ * Kenwood's TUNE reads the same fields: an object named for the frequency
+ * ("146.82TN"), or "FFF.FFFMHz" opening a position, object or status
+ * comment; then a tone ("T107", "C107", "D023", "1750", lower case for
+ * narrow), an offset in 10 kHz ("-060", "Toff" for simplex) and words
+ * naming the mode ("M17 CAN0", "DMR", "Fusion").
+ *
+ * @param pkt: parsed packet.
+ * @param f: destination; untouched if no frequency is announced.
+ * @return true if a frequency was read.
+ */
+bool aprsFreqParse(const struct aprsPacket *pkt, struct aprsFreq *f);
+
 #ifdef __cplusplus
 }
 #endif

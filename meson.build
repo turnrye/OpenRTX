@@ -1381,7 +1381,8 @@ beacon_test = executable('beacon_test',
 aprs_position_test = executable('aprs_position_test',
                                sources : unit_test_src
                                          + ['tests/unit/APRS_position.cpp',
-                                            'tests/unit/APRS_position_parse.cpp'],
+                                            'tests/unit/APRS_position_parse.cpp',
+                                            'tests/unit/APRS_freq.cpp'],
                                kwargs  : unit_test_opts)
 
 m17_aprs_packet_test = executable('m17_aprs_packet_test',
