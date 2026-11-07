@@ -88,6 +88,12 @@ static int formatTx(const struct message *msg, struct pktDesc *pkt)
     return 0;
 }
 
+/* Protocol byte, text, NUL and the CRC share one packet. */
+#define M17_SMS_TEXT_MAX (M17_MAX_PACKET_DATA - 4)
+
+// clang-format off
 const struct messageOps m17_sms_ops = {
     processRx, formatTx, "M17 SMS", OPMODE_M17, M17_BROADCAST_CALLSIGN,
+    nullptr, M17_SMS_TEXT_MAX,
 };
+// clang-format on

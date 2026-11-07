@@ -66,6 +66,12 @@ extern "C" {
  */
 #define MSG_BODY_MAX_LEN 822
 
+/*
+ * Maximum length of a text being composed, including the NUL. Longer than a
+ * body, so that a text is split into several messages on sending.
+ */
+#define MSG_COMPOSE_MAX_LEN 2048
+
 /* Maximum address (callsign) length, including the NUL terminator. */
 #define MSG_ADDR_MAX_LEN 10
 
@@ -92,6 +98,9 @@ enum messageStatus {
     MSG_STATUS_SENDING,      /**< Transmission in progress. */
     MSG_STATUS_SENT,         /**< Transmission completed.   */
     MSG_STATUS_FAILED,       /**< Transmission failed.      */
+    MSG_STATUS_DELIVERED,    /**< Acknowledged by the recipient.   */
+    MSG_STATUS_REJECTED,     /**< Refused by the recipient.        */
+    MSG_STATUS_UNACKED,      /**< Sent, but never acknowledged.    */
 };
 
 /**
@@ -110,6 +119,9 @@ struct message {
     uint8_t direction; /**< enum messageDirection.                    */
     uint8_t status;    /**< enum messageStatus.                       */
     uint8_t unread;    /**< Nonzero until the user has seen it.       */
+    uint8_t carrier;   /**< Opmode it travels in when not its own,
+                            e.g. OPMODE_M17 for APRS in M17 packet
+                            mode; 0 otherwise.                         */
     char sender[MSG_ADDR_MAX_LEN];    /**< Originating address.        */
     char recipient[MSG_ADDR_MAX_LEN]; /**< Destination address.        */
 };
@@ -119,8 +131,8 @@ struct pktDesc;
 /**
  * Protocol source: translates between packets and message entries.
  *
- * A source is stateless as far as the inbox is concerned: it never keeps
- * messages of its own, it only parses or formats them.
+ * A source never keeps messages of its own, it only parses or formats them;
+ * protocol bookkeeping such as acknowledgements is its own business.
  */
 struct messageOps {
     /**
@@ -155,10 +167,45 @@ struct messageOps {
 
     /**
      * Recipient address that sends a message to everyone, as transmitted on
-     * the air, or NULL if the protocol has no broadcast. Kept last so that
-     * sources without one can leave it out of their initializer.
+     * the air, or NULL if the protocol has no broadcast. This and the fields
+     * after it are optional, so sources can leave them out of their
+     * initializer.
      */
     const char *broadcastAddr;
+
+    /**
+     * Optional periodic hook, called from messages_task() while the source's
+     * mode is current, after received packets and completed transmissions
+     * have been handled. NULL if the source needs none.
+     */
+    void (*task)(void);
+
+    /**
+     * Longest body one message of this protocol carries, in characters. A
+     * longer text is sent as several messages. Zero means the store's own
+     * limit, MSG_BODY_MAX_LEN - 1.
+     */
+    uint16_t maxBodyLen;
+
+    /**
+     * Optional: take a packet received in another source's mode that that
+     * source did not recognise, such as APRS carried in M17 packet mode.
+     *
+     * @param mode: operating mode the packet was received in.
+     * @param pkt: completed receive descriptor, in that mode's layout.
+     * @return zero on success, -EPROTO if the packet is not this source's
+     *         either, another negative error code otherwise.
+     */
+    int (*processGuest)(uint8_t mode, const struct pktDesc *pkt);
+
+    /**
+     * Optional periodic hook, called from messages_task() while another
+     * source's mode is current, e.g. to acknowledge what processGuest()
+     * received.
+     *
+     * @param mode: the current operating mode.
+     */
+    void (*guestTask)(uint8_t mode);
 };
 
 /**
@@ -191,8 +238,8 @@ int messages_registerSource(const struct messageOps *ops);
 /**
  * Periodic update, to be called once per UI loop iteration: allocates or
  * releases the storage following the operating mode, submits receive
- * descriptors, forwards completed packets to their source and reports
- * transmission outcomes to their entry.
+ * descriptors, forwards completed packets to their source, reports
+ * transmission outcomes to their entry and submits waiting messages.
  *
  * @param mode: current operating mode, enum opmode.
  * @return number of unread messages received since the previous call, zero
@@ -292,15 +339,99 @@ const char *messages_broadcastAddr(uint8_t mode);
  * source registered for its operating mode. The entry is created with
  * MSG_STATUS_SENDING and updated to MSG_STATUS_SENT or MSG_STATUS_FAILED once
  * the transmission completes; if the message cannot be handed over at all the
- * entry is left as MSG_STATUS_FAILED.
+ * entry is left as MSG_STATUS_FAILED. While the transmitter is busy the entry
+ * waits in MSG_STATUS_SENDING and messages_task() submits it later.
  *
  * @param msg: template with mode, sender, recipient and body filled in.
- * @return zero on success, -ENOENT if no source is registered for the mode,
- *         -ENODEV if the inbox is inactive, -EBUSY if a transmission is
- *         already in progress, or another negative error code from
- *         messages_store() or the source.
+ * @return zero on success, including a message left waiting, -ENOENT if no
+ *         source is registered for the mode, -ENODEV if the inbox is
+ *         inactive, or another negative error code from messages_store() or
+ *         the source.
  */
 int messages_send(const struct message *msg);
+
+/**
+ * The operating mode a message is sent and received in: its carrier, or its
+ * own mode when it has none.
+ *
+ * @param msg: the message.
+ * @return an opmode, enum opmode.
+ */
+uint8_t messages_travelMode(const struct message *msg);
+
+/**
+ * Length of the next piece of a text being sent as several messages.
+ *
+ * The piece ends at the last space that fits in @p limit, or at the limit
+ * when a single word is longer than that. Leading spaces are skipped, so no
+ * piece begins with one, and a last piece drops its trailing ones.
+ *
+ * @param text: text from the piece to be cut, not necessarily NUL-terminated.
+ * @param len: characters remaining in @p text.
+ * @param limit: longest piece allowed.
+ * @param skip: set to the number of leading characters to leave out.
+ * @return number of characters in the piece after the skipped ones; zero
+ *         once the text is exhausted.
+ */
+size_t messages_split(const char *text, size_t len, size_t limit, size_t *skip);
+
+/**
+ * Longest body one message carries in an operating mode.
+ *
+ * @param mode: operating mode, enum opmode.
+ * @return the source's limit, or zero if no source serves the mode.
+ */
+size_t messages_pieceLimit(uint8_t mode);
+
+/**
+ * Count the messages a text would be sent as, and find the one a cursor is
+ * in.
+ *
+ * @param mode: operating mode, enum opmode.
+ * @param text: text being composed.
+ * @param len: its length.
+ * @param cursor: offset of the cursor in @p text.
+ * @param current: set to the 1-based number of the piece holding the cursor.
+ * @return number of pieces, at least one.
+ */
+size_t messages_pieces(uint8_t mode, const char *text, size_t len,
+                       size_t cursor, size_t *current);
+
+/**
+ * Send a text as one message per piece, in order.
+ *
+ * Like messages_send(), with the body cut by messages_split() at the
+ * source's limit. Pieces already queued stay queued if a later one fails.
+ *
+ * @param msg: template with mode, sender, recipient and body filled in.
+ * @return zero on success, or the first error from messages_send().
+ */
+int messages_sendSplit(const struct message *msg);
+
+/**
+ * Transmit a packet a source built itself, such as an acknowledgement, that
+ * belongs to no entry.
+ *
+ * @param mode: operating mode to transmit in, enum opmode.
+ * @param pkt: packet bytes, copied before returning.
+ * @param len: packet length.
+ * @return zero on success, -EINVAL on bad arguments, -EMSGSIZE if longer than
+ *         MSG_PKT_MAX_SIZE, -ENODEV if the inbox is inactive, -EBUSY if the
+ *         transmitter is busy, or an error from the rtx stage.
+ */
+int messages_sendPacket(uint8_t mode, const void *pkt, size_t len);
+
+/**
+ * Transmit a stored outgoing message again, formatting it afresh through its
+ * source. The entry status is left alone, so a source can retry a message
+ * that already went out.
+ *
+ * @param sequence: sequence number of the entry.
+ * @return zero on success, -ENOENT if no entry has that sequence number,
+ *         -EINVAL if it is not an outgoing message, -EBUSY if the transmitter
+ *         is busy, or an error from the source or the rtx stage.
+ */
+int messages_resend(uint32_t sequence);
 
 #ifdef __cplusplus
 }

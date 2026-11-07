@@ -70,9 +70,18 @@ static int failTx(const struct message *msg, struct pktDesc *pkt)
     return -EIO;
 }
 
+static size_t taskCalls = 0;
+
+static void countTask(void)
+{
+    taskCalls++;
+}
+
 static const struct messageOps fakeOps = { fakeProcessRx, fakeFormatTx, "Fake",
                                            MODE_A };
 static const struct messageOps otherOps = { failRx, failTx, "Other", MODE_B };
+static const struct messageOps taskOps = { failRx, failTx, "Tasked",
+                                           MODE_B, NULL,   countTask };
 
 static void setup()
 {
@@ -81,6 +90,7 @@ static void setup()
     rxCalls = 0;
     txCalls = 0;
     txResult = 0;
+    taskCalls = 0;
     lastRx.clear();
 }
 
@@ -484,6 +494,144 @@ TEST_CASE("messages: a full entry table evicts the oldest entry", "[messages]")
     CHECK(std::string(messages_get(messages_count() - 1)->body) == "filler");
 }
 
+TEST_CASE("messages: a message still being sent is not evicted", "[messages]")
+{
+    activate();
+
+    struct message msg = rxMessage("W1AW", "older");
+    uint32_t older = storeOk(&msg);
+
+    msg = rxMessage("W1AW", "outgoing");
+    msg.direction = MSG_DIR_TX;
+    msg.status = MSG_STATUS_SENDING;
+    uint32_t sending = storeOk(&msg);
+
+    for (size_t i = 2; i < CONFIG_MESSAGES_MAX_ENTRIES; i++) {
+        msg = rxMessage("W1AW", "filler");
+        REQUIRE(messages_store(&msg) > 0);
+    }
+    REQUIRE(messages_count() == CONFIG_MESSAGES_MAX_ENTRIES);
+
+    /* The oldest entry goes first, as usual. */
+    msg = rxMessage("W1AW", "one more");
+    storeOk(&msg);
+    CHECK(messages_findBySequence(older) == SIZE_MAX);
+    CHECK(messages_findBySequence(sending) != SIZE_MAX);
+
+    /* Now the in-flight message is the oldest, and is skipped over. */
+    msg = rxMessage("W1AW", "and another");
+    storeOk(&msg);
+    CHECK(messages_findBySequence(sending) != SIZE_MAX);
+    CHECK(messages_count() == CONFIG_MESSAGES_MAX_ENTRIES);
+    CHECK(std::string(messages_get(messages_count() - 1)->body) == "outgoing");
+
+    /* Once sent it is ordinary again. */
+    messages_setStatus(sending, MSG_STATUS_SENT);
+    msg = rxMessage("W1AW", "last");
+    storeOk(&msg);
+    CHECK(messages_findBySequence(sending) == SIZE_MAX);
+}
+
+TEST_CASE("messages: a long text splits into pieces on word boundaries",
+          "[messages]")
+{
+    const size_t LIMIT = 67;
+    auto pieces = [&](const std::string &text) {
+        std::vector<std::string> out;
+        const char *p = text.c_str();
+        size_t left = text.size();
+        size_t skip = 0;
+        size_t n;
+        while ((n = messages_split(p, left, LIMIT, &skip)) > 0) {
+            out.emplace_back(p + skip, n);
+            p += skip + n;
+            left -= skip + n;
+        }
+        return out;
+    };
+
+    SECTION("short text is one piece")
+    {
+        auto out = pieces("hello world");
+        REQUIRE(out.size() == 1);
+        CHECK(out[0] == "hello world");
+        CHECK(pieces("").empty());
+    }
+
+    SECTION("exactly the limit is one piece")
+    {
+        std::string t(LIMIT, 'x');
+        auto out = pieces(t);
+        REQUIRE(out.size() == 1);
+        CHECK(out[0] == t);
+    }
+
+    SECTION("the cut lands on a space, which neither piece keeps")
+    {
+        std::string head(60, 'a');
+        std::string t = head + " seventeenletters tail";
+        auto out = pieces(t);
+        REQUIRE(out.size() == 2);
+        CHECK(out[0] == head);
+        CHECK(out[1] == "seventeenletters tail");
+    }
+
+    SECTION("a word longer than the limit is cut at the limit")
+    {
+        std::string t(LIMIT + 10, 'z');
+        auto out = pieces(t);
+        REQUIRE(out.size() == 2);
+        CHECK(out[0].size() == LIMIT);
+        CHECK(out[1].size() == 10);
+    }
+
+    SECTION("many pieces in order, nothing lost but the cut spaces")
+    {
+        std::string t;
+        for (int i = 0; i < 40; i++)
+            t += "word" + std::to_string(i) + " ";
+        auto out = pieces(t);
+        REQUIRE(out.size() > 2);
+        std::string joined;
+        for (const auto &piece : out) {
+            CHECK(piece.size() <= LIMIT);
+            CHECK(piece.front() != ' ');
+            joined += piece + " ";
+        }
+        CHECK(joined == t);
+    }
+}
+
+TEST_CASE("messages: sending a long text queues one message per piece",
+          "[messages]")
+{
+    activate();
+
+    /* The fake source has no limit of its own: the store's applies. */
+    CHECK(messages_pieceLimit(MODE_A) == MSG_BODY_MAX_LEN - 1);
+    CHECK(messages_pieceLimit(MODE_B) == 0);
+
+    std::string t;
+    while (t.size() < 2 * MSG_BODY_MAX_LEN + 200)
+        t += "lorem ipsum ";
+
+    struct message msg = txMessage("W1AW", t.c_str());
+    REQUIRE(messages_sendSplit(&msg) == 0);
+    REQUIRE(messages_count() == 3);
+    CHECK(std::string(messages_get(2)->body).rfind("lorem ipsum", 0) == 0);
+    CHECK(messages_get(2)->bodyLen <= MSG_BODY_MAX_LEN - 1);
+    CHECK(messages_get(0)->sequence > messages_get(2)->sequence);
+
+    /* The cursor's piece follows the cuts. */
+    size_t current = 0;
+    CHECK(messages_pieces(MODE_A, t.c_str(), t.size(), 0, &current) == 3);
+    CHECK(current == 1);
+    messages_pieces(MODE_A, t.c_str(), t.size(), t.size() - 1, &current);
+    CHECK(current == 3);
+    CHECK(messages_pieces(MODE_A, "", 0, 0, &current) == 1);
+    CHECK(current == 1);
+}
+
 TEST_CASE("messages: delete stays consistent after the table wraps",
           "[messages]")
 {
@@ -838,17 +986,45 @@ TEST_CASE("messages: send failures leave a failed entry", "[messages]")
     CHECK(messages_send(&msg) == -ENOTSUP);
     rtxStub_setTxResult(0);
 
-    /* Accepted, then a second one while the first is in flight. */
-    REQUIRE(messages_send(&msg) == 0);
-    msg = txMessage("W1AW", "second");
-    CHECK(messages_send(&msg) == -EBUSY);
-
-    REQUIRE(messages_count() == 4);
-    CHECK(std::string(messages_get(0)->body) == "second");
+    REQUIRE(messages_count() == 2);
     CHECK(messages_get(0)->status == MSG_STATUS_FAILED);
-    CHECK(messages_get(1)->status == MSG_STATUS_SENDING);
-    CHECK(messages_get(2)->status == MSG_STATUS_FAILED);
-    CHECK(messages_get(3)->status == MSG_STATUS_FAILED);
+    CHECK(messages_get(1)->status == MSG_STATUS_FAILED);
+}
+
+TEST_CASE("messages: a message waits for a busy transmitter", "[messages]")
+{
+    activate();
+
+    struct message msg = txMessage("W1AW", "first");
+    REQUIRE(messages_send(&msg) == 0);
+    struct pktDesc *desc = rtxStub_txDesc();
+
+    /* The inbox slot is taken by the first message. */
+    msg = txMessage("W1AW", "second");
+    CHECK(messages_send(&msg) == 0);
+    CHECK(rtxStub_txSubmissions() == 1);
+    CHECK(messages_get(0)->status == MSG_STATUS_SENDING);
+
+    desc->status = PKT_STATUS_DONE;
+    messages_task(MODE_A);
+    CHECK(messages_get(1)->status == MSG_STATUS_SENT);
+    CHECK(rtxStub_txSubmissions() == 2);
+    CHECK(memcmp(desc->buffer, "second", 6) == 0);
+
+    /* The opmode is busy with something else, e.g. a beacon. */
+    desc->status = PKT_STATUS_DONE;
+    messages_task(MODE_A);
+    rtxStub_setTxResult(-EBUSY);
+    msg = txMessage("W1AW", "third");
+    CHECK(messages_send(&msg) == 0);
+    messages_task(MODE_A);
+    CHECK(messages_get(0)->status == MSG_STATUS_SENDING);
+    CHECK(rtxStub_txSubmissions() == 2);
+
+    rtxStub_setTxResult(0);
+    messages_task(MODE_A);
+    CHECK(rtxStub_txSubmissions() == 3);
+    CHECK(memcmp(desc->buffer, "third", 5) == 0);
 }
 
 TEST_CASE("messages: send is refused while the inbox is inactive", "[messages]")
@@ -859,4 +1035,211 @@ TEST_CASE("messages: send is refused while the inbox is inactive", "[messages]")
     struct message msg = txMessage("W1AW", "outgoing");
     CHECK(messages_send(&msg) == -ENODEV);
     CHECK(txCalls == 0);
+}
+
+/*
+ * Source-driven transmission
+ */
+
+TEST_CASE("messages: a source task runs only in its mode", "[messages]")
+{
+    activate();
+    REQUIRE(messages_registerSource(&taskOps) == 0);
+
+    messages_task(MODE_A);
+    CHECK(taskCalls == 0);
+
+    messages_task(MODE_B);
+    messages_task(MODE_B);
+    CHECK(taskCalls == 2);
+}
+
+TEST_CASE("messages: a source can transmit a packet of its own", "[messages]")
+{
+    activate();
+
+    CHECK(messages_sendPacket(MODE_A, nullptr, 3) == -EINVAL);
+    CHECK(messages_sendPacket(MODE_A, "ack", 0) == -EINVAL);
+    std::vector<uint8_t> big(MSG_PKT_MAX_SIZE + 1, 'x');
+    CHECK(messages_sendPacket(MODE_A, big.data(), big.size()) == -EMSGSIZE);
+
+    REQUIRE(messages_sendPacket(MODE_A, "ack", 3) == 0);
+    struct pktDesc *desc = rtxStub_txDesc();
+    CHECK(desc->size == 3);
+    CHECK(memcmp(desc->buffer, "ack", 3) == 0);
+    CHECK(messages_sendPacket(MODE_A, "ack", 3) == -EBUSY);
+
+    /* Completion belongs to no entry and leaves the slot free. */
+    desc->status = PKT_STATUS_DONE;
+    messages_task(MODE_A);
+    CHECK(messages_count() == 0);
+    CHECK(messages_sendPacket(MODE_A, "ack", 3) == 0);
+}
+
+TEST_CASE("messages: resend leaves the entry status alone", "[messages]")
+{
+    activate();
+
+    struct message msg = txMessage("W1AW", "again");
+    REQUIRE(messages_send(&msg) == 0);
+    struct pktDesc *desc = rtxStub_txDesc();
+    desc->status = PKT_STATUS_DONE;
+    messages_task(MODE_A);
+    uint32_t seq = messages_get(0)->sequence;
+    REQUIRE(messages_get(0)->status == MSG_STATUS_SENT);
+
+    REQUIRE(messages_resend(seq) == 0);
+    CHECK(rtxStub_txSubmissions() == 2);
+    CHECK(memcmp(desc->buffer, "again", 5) == 0);
+    CHECK(messages_resend(seq) == -EBUSY);
+
+    desc->res = -EIO;
+    desc->status = PKT_STATUS_ERROR;
+    messages_task(MODE_A);
+    CHECK(messages_get(0)->status == MSG_STATUS_SENT);
+
+    CHECK(messages_resend(seq + 100) == -ENOENT);
+    struct message rx = rxMessage("W1AW", "hello");
+    uint32_t rxSeq = storeOk(&rx);
+    CHECK(messages_resend(rxSeq) == -EINVAL);
+}
+
+TEST_CASE("messages: completion does not overwrite a settled status",
+          "[messages]")
+{
+    activate();
+
+    struct message msg = txMessage("W1AW", "quick");
+    REQUIRE(messages_send(&msg) == 0);
+    uint32_t seq = messages_get(0)->sequence;
+
+    /* The source settles the entry before the transmission completes. */
+    REQUIRE(messages_setStatus(seq, MSG_STATUS_FAILED) == 0);
+    rtxStub_txDesc()->status = PKT_STATUS_DONE;
+    messages_task(MODE_A);
+    CHECK(messages_get(0)->status == MSG_STATUS_FAILED);
+}
+
+/*
+ * Guests: a source taking another mode's packets
+ */
+
+static size_t guestRxCalls = 0;
+static size_t guestTaskCalls = 0;
+static uint8_t guestMode = 0;
+
+/* MODE_B's own protocol: packets starting with 'B'. */
+static int pickyRx(const struct pktDesc *pkt)
+{
+    const char *data = static_cast<const char *>(pkt->buffer);
+    return (data[0] == 'B') ? 0 : -EPROTO;
+}
+
+/* The guest carries packets starting with 'G' in any mode. */
+static int guestRx(uint8_t mode, const struct pktDesc *pkt)
+{
+    const char *data = static_cast<const char *>(pkt->buffer);
+    if (data[0] != 'G')
+        return -EPROTO;
+    guestRxCalls++;
+    guestMode = mode;
+    return 0;
+}
+
+static void guestTick(uint8_t mode)
+{
+    guestTaskCalls++;
+    guestMode = mode;
+}
+
+static const struct messageOps pickyOps = { pickyRx, failTx, "Picky", MODE_B };
+static const struct messageOps guestOps = {
+    fakeProcessRx, fakeFormatTx, "Guest", MODE_A, nullptr, nullptr, 0,
+    guestRx,       guestTick,
+};
+
+TEST_CASE("messages: a packet its mode's source rejects is offered to guests",
+          "[messages]")
+{
+    setup();
+    guestRxCalls = 0;
+    guestTaskCalls = 0;
+    REQUIRE(messages_registerSource(&guestOps) == 0);
+    REQUIRE(messages_registerSource(&pickyOps) == 0);
+
+    /* The guest's task runs while MODE_B is current, not in its own mode */
+    messages_task(MODE_B);
+    CHECK(guestTaskCalls == 1);
+    CHECK(guestMode == MODE_B);
+    messages_task(MODE_A);
+    CHECK(guestTaskCalls == 1);
+    messages_task(MODE_B);
+
+    struct pktDesc *desc = rtxStub_rxDesc();
+    deliver(desc, "G from afar");
+    messages_task(MODE_B);
+    CHECK(guestRxCalls == 1);
+    CHECK(guestMode == MODE_B);
+
+    /* MODE_B's own packets stay with it */
+    deliver(desc, "B native");
+    messages_task(MODE_B);
+    CHECK(guestRxCalls == 1);
+
+    /* Nobody's: dropped, and the slot goes back for the next */
+    deliver(desc, "X unknown");
+    messages_task(MODE_B);
+    CHECK(guestRxCalls == 1);
+    CHECK(desc->status == PKT_STATUS_SUBMITTED);
+}
+
+TEST_CASE("messages: a waiting message only goes out in its own mode",
+          "[messages]")
+{
+    setup();
+    REQUIRE(messages_registerSource(&fakeOps) == 0);
+    REQUIRE(messages_registerSource(&otherOps) == 0);
+    messages_task(MODE_A);
+
+    /* Queued behind a busy transmitter */
+    rtxStub_setTxResult(-EBUSY);
+    struct message msg = txMessage("W1AW", "later");
+    REQUIRE(messages_send(&msg) == 0);
+    rtxStub_setTxResult(0);
+    size_t before = rtxStub_txSubmissions();
+
+    /* Another mode's opmode must not be handed its packet */
+    messages_task(MODE_B);
+    CHECK(rtxStub_txSubmissions() == before);
+    CHECK(messages_get(0)->status == MSG_STATUS_SENDING);
+
+    messages_task(MODE_A);
+    CHECK(rtxStub_txSubmissions() == before + 1);
+}
+
+TEST_CASE("messages: a message with a carrier goes out in the carrier's mode",
+          "[messages]")
+{
+    setup();
+    REQUIRE(messages_registerSource(&fakeOps) == 0);
+    REQUIRE(messages_registerSource(&otherOps) == 0);
+    messages_task(MODE_B);
+
+    /* MODE_A's protocol, carried in MODE_B, queued behind a busy slot */
+    rtxStub_setTxResult(-EBUSY);
+    struct message msg = txMessage("W1AW", "carried");
+    msg.carrier = MODE_B;
+    REQUIRE(messages_send(&msg) == 0);
+    CHECK(messages_travelMode(messages_get(0)) == MODE_B);
+    rtxStub_setTxResult(0);
+    size_t before = rtxStub_txSubmissions();
+
+    messages_task(MODE_A);
+    CHECK(rtxStub_txSubmissions() == before);
+
+    messages_task(MODE_B);
+    CHECK(rtxStub_txSubmissions() == before + 1);
+
+    struct message plain = txMessage("W1AW", "own");
+    CHECK(messages_travelMode(&plain) == MODE_A);
 }

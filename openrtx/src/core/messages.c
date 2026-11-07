@@ -136,6 +136,28 @@ static void removeEntry(struct messageCtx *ctx, size_t pos)
 
 /**
  * \internal
+ * Pick the entry to evict when the table is full: the oldest one that is not
+ * still waiting to be transmitted. A message in flight is only lost once
+ * everything else has been.
+ *
+ * @param ctx: inbox storage.
+ * @return position of the entry to remove, oldest first.
+ */
+static size_t evictable(struct messageCtx *ctx)
+{
+    for (size_t i = 0; i < ctx->numEntries; i++) {
+        const struct message *entry = entryAt(ctx, i);
+
+        if ((entry->direction != MSG_DIR_TX)
+            || (entry->status != MSG_STATUS_SENDING))
+            return i;
+    }
+
+    return 0;
+}
+
+/**
+ * \internal
  * Check whether any stored body overlaps a range of the pool.
  *
  * @param ctx: inbox storage.
@@ -238,12 +260,18 @@ static void handleRx(const struct messageOps **sources, size_t numSources,
                      uint8_t mode)
 {
     const struct messageOps *owner;
+    int ret;
 
     switch (slot->desc.status) {
         case PKT_STATUS_DONE:
             owner = findSource(sources, numSources, slot->mode);
-            if (owner != NULL)
-                owner->processRx(&slot->desc);
+            ret = (owner != NULL) ? owner->processRx(&slot->desc) : -EPROTO;
+
+            /* Not the mode's own protocol: another source may carry it. */
+            for (size_t i = 0; (ret == -EPROTO) && (i < numSources); i++) {
+                if ((sources[i] != owner) && (sources[i]->processGuest != NULL))
+                    ret = sources[i]->processGuest(slot->mode, &slot->desc);
+            }
 
             /* fallthrough */
         case PKT_STATUS_ERROR:
@@ -267,6 +295,29 @@ static void handleRx(const struct messageOps **sources, size_t numSources,
 
 /**
  * \internal
+ * Move an entry out of MSG_STATUS_SENDING. A retry or a packet that belongs to
+ * no entry leaves every status alone, as does an entry a source already
+ * settled, e.g. acknowledged while its transmission was still completing.
+ *
+ * @param ctx: inbox storage.
+ * @param sequence: sequence number of the entry.
+ * @param status: status to settle the entry on.
+ */
+static void settle(struct messageCtx *ctx, uint32_t sequence,
+                   enum messageStatus status)
+{
+    size_t idx = messages_findBySequence(sequence);
+
+    if (idx == SIZE_MAX)
+        return;
+
+    struct message *entry = entryAt(ctx, ctx->numEntries - idx - 1);
+    if (entry->status == MSG_STATUS_SENDING)
+        entry->status = status;
+}
+
+/**
+ * \internal
  * Report the outcome of a completed transmission to its entry and free the
  * transmit slot.
  *
@@ -276,12 +327,12 @@ static void handleTx(struct messageCtx *ctx)
 {
     switch (ctx->txSlot.desc.status) {
         case PKT_STATUS_DONE:
-            messages_setStatus(ctx->txSequence, MSG_STATUS_SENT);
+            settle(ctx, ctx->txSequence, MSG_STATUS_SENT);
             ctx->txSlot.desc.status = PKT_STATUS_IDLE;
             break;
 
         case PKT_STATUS_ERROR:
-            messages_setStatus(ctx->txSequence, MSG_STATUS_FAILED);
+            settle(ctx, ctx->txSequence, MSG_STATUS_FAILED);
             ctx->txSlot.desc.status = PKT_STATUS_IDLE;
             break;
 
@@ -294,7 +345,8 @@ static void handleTx(struct messageCtx *ctx)
 /**
  * \internal
  * Transmit a stored message through the source registered for its operating
- * mode. The outcome is reported asynchronously by handleTx().
+ * mode. The outcome is reported asynchronously by handleTx(); -EBUSY means
+ * the transmitter is taken and the message can be tried again later.
  *
  * @param ctx: inbox storage.
  * @param sources: table of registered sources.
@@ -320,6 +372,41 @@ static int transmit(struct messageCtx *ctx, const struct messageOps **sources,
     ctx->txSequence = msg->sequence;
 
     return rtx_addPacketTx(&ctx->txSlot.desc);
+}
+
+/**
+ * \internal
+ * Submit the oldest message still waiting for the transmitter, if any. A
+ * waiting message is one in MSG_STATUS_SENDING while the slot is free.
+ *
+ * @param ctx: inbox storage.
+ * @param sources: table of registered sources.
+ * @param numSources: number of entries in the table.
+ * @param mode: current operating mode.
+ */
+static void sendWaiting(struct messageCtx *ctx,
+                        const struct messageOps **sources, size_t numSources,
+                        uint8_t mode)
+{
+    if (ctx->txSlot.desc.status != PKT_STATUS_IDLE)
+        return;
+
+    for (size_t i = 0; i < ctx->numEntries; i++) {
+        struct message *entry = entryAt(ctx, i);
+
+        /* A message for another mode waits for it: this mode's opmode
+         * would take its packet for one of its own. */
+        if ((entry->direction != MSG_DIR_TX)
+            || (entry->status != MSG_STATUS_SENDING)
+            || (messages_travelMode(entry) != mode))
+            continue;
+
+        int ret = transmit(ctx, sources, numSources, entry);
+        if ((ret != 0) && (ret != -EBUSY))
+            entry->status = MSG_STATUS_FAILED;
+
+        return;
+    }
 }
 
 void messages_init(void)
@@ -382,6 +469,17 @@ size_t messages_task(uint8_t mode)
         return 0;
     }
 
+    /* The sources go first: their acknowledgements are time critical. */
+    if (ops->task != NULL)
+        ops->task();
+
+    for (size_t i = 0; i < numSources; i++) {
+        if ((sources[i] != ops) && (sources[i]->guestTask != NULL))
+            sources[i]->guestTask(mode);
+    }
+
+    sendWaiting(ctx, sources, numSources, mode);
+
     size_t arrivals = ctx->newArrivals;
     ctx->newArrivals = 0;
     return arrivals;
@@ -437,7 +535,7 @@ int32_t messages_store(const struct message *msg)
         return -ENODEV;
 
     if (ctx->numEntries == ARRAY_SIZE(ctx->entries))
-        removeEntry(ctx, 0);
+        removeEntry(ctx, evictable(ctx));
 
     size_t offset = poolAlloc(ctx, msg->bodyLen);
     if (msg->bodyLen > 0)
@@ -498,6 +596,102 @@ const char *messages_broadcastAddr(uint8_t mode)
     return (ops != NULL) ? ops->broadcastAddr : NULL;
 }
 
+size_t messages_split(const char *text, size_t len, size_t limit, size_t *skip)
+{
+    size_t lead = 0;
+    while ((lead < len) && (text[lead] == ' '))
+        lead++;
+    *skip = lead;
+    text += lead;
+    len -= lead;
+
+    if (len <= limit) {
+        while ((len > 0) && (text[len - 1] == ' '))
+            len--;
+        return len;
+    }
+
+    /* Break at the last space that fits, keeping it out of both pieces:
+     * the next call skips it. */
+    for (size_t i = limit; i > 0; i--) {
+        if (text[i] == ' ')
+            return i;
+    }
+
+    return limit;
+}
+
+size_t messages_pieceLimit(uint8_t mode)
+{
+    const struct messageOps *src = findSource(sources, numSources, mode);
+
+    if (src == NULL)
+        return 0;
+
+    return (src->maxBodyLen != 0) ? src->maxBodyLen : MSG_BODY_MAX_LEN - 1;
+}
+
+size_t messages_pieces(uint8_t mode, const char *text, size_t len,
+                       size_t cursor, size_t *current)
+{
+    size_t limit = messages_pieceLimit(mode);
+    size_t count = 0;
+    size_t pos = 0;
+    size_t skip;
+    size_t n;
+
+    if (limit == 0)
+        limit = MSG_BODY_MAX_LEN - 1;
+
+    *current = 1;
+    while ((n = messages_split(text + pos, len - pos, limit, &skip)) > 0) {
+        count++;
+        pos += skip + n;
+        if (cursor >= pos)
+            *current = count + 1;
+    }
+
+    if (count == 0)
+        return 1;
+
+    if (*current > count)
+        *current = count;
+
+    return count;
+}
+
+int messages_sendSplit(const struct message *msg)
+{
+    if ((msg == NULL) || ((msg->body == NULL) && (msg->bodyLen != 0)))
+        return -EINVAL;
+
+    size_t limit = messages_pieceLimit(msg->mode);
+    if (limit == 0)
+        return -ENOENT;
+
+    struct message piece = *msg;
+    const char *text = msg->body;
+    size_t left = msg->bodyLen;
+    size_t skip;
+    size_t n;
+    int ret = 0;
+
+    while ((ret == 0) && ((n = messages_split(text, left, limit, &skip)) > 0)) {
+        piece.body = text + skip;
+        piece.bodyLen = (uint16_t)n;
+        ret = messages_send(&piece);
+        text += skip + n;
+        left -= skip + n;
+    }
+
+    return ret;
+}
+
+uint8_t messages_travelMode(const struct message *msg)
+{
+    return (msg->carrier != 0) ? msg->carrier : msg->mode;
+}
+
 int messages_send(const struct message *msg)
 {
     if (msg == NULL)
@@ -518,11 +712,52 @@ int messages_send(const struct message *msg)
     if (seq < 0)
         return seq;
 
-    /* The entry just stored is the newest one. */
+    /* The entry just stored is the newest one. A busy transmitter is not a
+     * failure: the entry waits in MSG_STATUS_SENDING for messages_task(). */
     struct message *stored = entryAt(ctx, ctx->numEntries - 1);
     int ret = transmit(ctx, sources, numSources, stored);
+    if (ret == -EBUSY)
+        return 0;
+
     if (ret != 0)
         stored->status = MSG_STATUS_FAILED;
 
     return ret;
+}
+
+int messages_sendPacket(uint8_t mode, const void *pkt, size_t len)
+{
+    if ((pkt == NULL) || (len == 0))
+        return -EINVAL;
+
+    if (len > MSG_PKT_MAX_SIZE)
+        return -EMSGSIZE;
+
+    if (ctx == NULL)
+        return -ENODEV;
+
+    if (ctx->txSlot.desc.status != PKT_STATUS_IDLE)
+        return -EBUSY;
+
+    memcpy(ctx->txSlot.buffer, pkt, len);
+    ctx->txSlot.desc.buffer = ctx->txSlot.buffer;
+    ctx->txSlot.desc.size = len;
+    ctx->txSlot.mode = mode;
+    ctx->txSequence = 0;
+
+    return rtx_addPacketTx(&ctx->txSlot.desc);
+}
+
+int messages_resend(uint32_t sequence)
+{
+    size_t idx = messages_findBySequence(sequence);
+
+    if (idx == SIZE_MAX)
+        return -ENOENT;
+
+    const struct message *entry = messages_get(idx);
+    if (entry->direction != MSG_DIR_TX)
+        return -EINVAL;
+
+    return transmit(ctx, sources, numSources, entry);
 }
