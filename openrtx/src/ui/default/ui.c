@@ -2796,8 +2796,11 @@ void ui_updateFSM(bool *sync_rtx)
                             switch(_ui_enterCallsign(msg, &f1Handled))
                             {
                                 case CALLSIGN_CONFIRMED:
-                                    // Save selected callsign
+                                    // Save selected callsign, and push the new
+                                    // identity to the RTX thread now: it is
+                                    // what unicast traffic is matched against
                                     strncpy(state.settings.callsign, ui_state.new_callsign, 10);
+                                    *sync_rtx = true;
                                     /* fallthrough */
                                 case CALLSIGN_DISCARDED:
                                     ui_state.edit_mode = false;

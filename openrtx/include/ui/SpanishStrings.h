@@ -104,5 +104,11 @@ const stringsTable_t spanishStrings =
     .message           = "Mensaje",
     .aprsSettings      = "Ajustes de APRS",
     .invalidCallsign   = "Licencia no válida",
+    .msgSending        = "Enviando",
+    .msgSent           = "Enviado",
+    .msgDelivered      = "Entregado",
+    .msgRejected       = "Rechazado",
+    .msgUnacked        = "Sin acuse",
+    .msgFailed         = "Fallido",
 };
 #endif  // SPANISHSTRINGS_H

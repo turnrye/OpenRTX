@@ -109,6 +109,12 @@ typedef struct
     const char* message;
     const char* aprsSettings;
     const char* invalidCallsign;
+    const char* msgSending;
+    const char* msgSent;
+    const char* msgDelivered;
+    const char* msgRejected;
+    const char* msgUnacked;
+    const char* msgFailed;
 }
 stringsTable_t;
 

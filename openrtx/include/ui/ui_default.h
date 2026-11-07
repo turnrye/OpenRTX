@@ -300,7 +300,7 @@ typedef struct ui_state_t
     int16_t detail_scroll;
     int16_t detail_scroll_max;
     char compose_recipient[MSG_ADDR_MAX_LEN];
-    // Compose draft, MSG_BODY_MAX_LEN bytes on the heap rather than paid
+    // Compose draft, MSG_COMPOSE_MAX_LEN bytes on the heap rather than paid
     // for statically: allocated when the compose screen is entered and
     // freed when it is left, so it is non-NULL exactly while ui_screen ==
     // MESSAGES_COMPOSE.
@@ -309,6 +309,7 @@ typedef struct ui_state_t
     bool compose_editing;
     bool compose_body_editing;
     bool compose_is_reply;
+    uint8_t compose_mode;   // protocol written in: OPMODE_M17 or OPMODE_APRS
 }
 ui_state_t;
 

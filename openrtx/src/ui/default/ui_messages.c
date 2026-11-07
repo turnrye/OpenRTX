@@ -16,6 +16,9 @@
 #include "core/messages.h"
 #include "core/voicePromptUtils.h"
 #include "rtx/rtx.h"
+#ifdef CONFIG_APRS
+#include "protocols/APRS/packet.h"
+#endif
 
 /* Generic menu list renderer, implementation is in "ui_menu.c". Reused here
  * so the message list gets the same scrolling/selection/voice-announcement
@@ -41,9 +44,88 @@ enum composeRow {
 };
 
 /**
+ * \internal Display label for the status of a sent message.
+ */
+static const char *_ui_messageStatusLabel(uint8_t status)
+{
+    switch (status) {
+        case MSG_STATUS_SENDING:
+            return currentLanguage->msgSending;
+        case MSG_STATUS_SENT:
+            return currentLanguage->msgSent;
+        case MSG_STATUS_DELIVERED:
+            return currentLanguage->msgDelivered;
+        case MSG_STATUS_REJECTED:
+            return currentLanguage->msgRejected;
+        case MSG_STATUS_UNACKED:
+            return currentLanguage->msgUnacked;
+        default:
+            return currentLanguage->msgFailed;
+    }
+}
+
+/**
+ * \internal One-character marker leading a list row: '*' for unread, and for
+ * a sent message '>' while sending, '+' once delivered, '!' if it was not.
+ */
+static const char *_ui_messageMarker(const struct message *msg)
+{
+    if (msg->direction == MSG_DIR_RX)
+        return msg->unread ? "*" : " ";
+
+    switch (msg->status) {
+        case MSG_STATUS_SENDING:
+            return ">";
+        case MSG_STATUS_SENT:
+            return " ";
+        case MSG_STATUS_DELIVERED:
+            return "+";
+        default:
+            return "!";
+    }
+}
+
+/**
+ * \internal The protocols a new message can be written in from the current
+ * mode, in the order the list offers them: the mode's own, then APRS carried
+ * in M17 packet mode.
+ *
+ * @param modes: filled with opmodes.
+ * @param max: room in @p modes.
+ * @return how many there are.
+ */
+static size_t composeModes(uint8_t *modes, size_t max)
+{
+    uint8_t mode = last_state.channel.mode;
+    size_t n = 0;
+
+    if ((n < max) && messages_canCompose(mode))
+        modes[n++] = mode;
+#ifdef CONFIG_APRS
+    if ((n < max) && (mode == OPMODE_M17) && messages_canCompose(OPMODE_APRS))
+        modes[n++] = OPMODE_APRS;
+#endif
+    return n;
+}
+
+/**
+ * \internal What a new message in @p mode is called, where there is a choice.
+ */
+static const char *composeLabel(uint8_t mode)
+{
+    uint8_t modes[2];
+
+    if (composeModes(modes, 2) < 2)
+        return currentLanguage->newMessage;
+
+    return (mode == OPMODE_APRS) ? "New APRS" : "New SMS";
+}
+
+/**
  * \internal Callback for _ui_drawMenuList(): formats snapshot entry @p index
  * as "<marker><sender> <body preview>", truncated to fit MAX_ENTRY_LEN. The
- * marker is '!' for a message that failed to send and '*' for an unread one.
+ * marker is '*' for an unread message and, for a sent one, '>' while sending,
+ * '+' once delivered and '!' if it was not.
  * When compose is available, a virtual "New Message" entry is appended after
  * the last real message (at index == messages_count()).
  *
@@ -60,22 +142,20 @@ static int _ui_getMessagesEntryName(char *buf, uint8_t max_len, uint8_t index)
 
         const char *other = (msg->direction == MSG_DIR_TX) ? msg->recipient :
                                                              msg->sender;
-        const char *marker = " ";
-        if (msg->status == MSG_STATUS_FAILED)
-            marker = "!";
-        else if (msg->unread)
-            marker = "*";
-
         /* Full-length callsign, so that e.g. "N0CALL-1" and "N0CALL-2"
-         * stay distinguishable; the preview takes what is left. */
-        sniprintf(buf, max_len, "%s%-*.*s %s", marker, MSG_ADDR_MAX_LEN - 1,
-                  MSG_ADDR_MAX_LEN - 1, other, msg->body);
+         * stay distinguishable; the preview takes what is left. 'm' marks
+         * APRS carried in M17 packet mode. */
+        const char *via = (msg->carrier == OPMODE_M17) ? "m" : " ";
+        sniprintf(buf, max_len, "%s%s%-*.*s %s", _ui_messageMarker(msg), via,
+                  MSG_ADDR_MAX_LEN - 1, MSG_ADDR_MAX_LEN - 1, other, msg->body);
         return 0;
     }
 
-    /* Virtual "New Message" item at the end of the list */
-    if (index == count && messages_canCompose(last_state.channel.mode)) {
-        sniprintf(buf, max_len, "  %s", currentLanguage->newMessage);
+    /* Virtual "New ..." items at the end of the list, one per protocol */
+    uint8_t modes[2];
+    size_t n = composeModes(modes, 2);
+    if (index - count < n) {
+        sniprintf(buf, max_len, "  %s", composeLabel(modes[index - count]));
         return 0;
     }
 
@@ -86,11 +166,13 @@ static size_t _ui_messagesListSelection(const ui_state_t *ui_state)
 {
     uint32_t pinned = ui_state->messages_list_seq;
 
-    /* The virtual "New Message" row only exists while compose is possible;
-     * if the mode changed since it was pinned, fall back to the newest. */
-    if (pinned == UINT32_MAX)
-        return messages_canCompose(last_state.channel.mode) ? messages_count() :
-                                                              0;
+    /* The virtual "New ..." rows only exist while compose is possible; if
+     * the mode changed since one was pinned, fall back to the newest. */
+    if (pinned >= UINT32_MAX - 1) {
+        uint8_t modes[2];
+        size_t row = UINT32_MAX - pinned;
+        return (row < composeModes(modes, 2)) ? messages_count() + row : 0;
+    }
 
     if (pinned != 0) {
         size_t idx = messages_findBySequence(pinned);
@@ -191,15 +273,16 @@ static void announceComposeFocus(const ui_state_t *ui_state)
  *
  * @param recipient: initial recipient string, or NULL to leave it empty.
  * @param is_reply:  whether this compose session was opened via Reply.
+ * @param mode:      protocol the message is written in, enum opmode.
  */
 static void startCompose(ui_state_t *ui_state, const char *recipient,
-                         bool is_reply)
+                         bool is_reply, uint8_t mode)
 {
     /* The draft buffer exists only while the compose screen is up; the
      * draw and input code rely on it, so stay on the current screen if
      * the allocation fails. */
     if (ui_state->compose_body == NULL)
-        ui_state->compose_body = malloc(MSG_BODY_MAX_LEN);
+        ui_state->compose_body = malloc(MSG_COMPOSE_MAX_LEN);
     if (ui_state->compose_body == NULL)
         return;
 
@@ -207,7 +290,7 @@ static void startCompose(ui_state_t *ui_state, const char *recipient,
     if (recipient != NULL)
         strncpy(ui_state->compose_recipient, recipient,
                 sizeof(ui_state->compose_recipient) - 1);
-    memset(ui_state->compose_body, 0, MSG_BODY_MAX_LEN);
+    memset(ui_state->compose_body, 0, MSG_COMPOSE_MAX_LEN);
     ui_state->input_position = 0;
     ui_state->input_number = 0;
     ui_state->input_set = 0;
@@ -218,6 +301,7 @@ static void startCompose(ui_state_t *ui_state, const char *recipient,
      * the empty-draft cursor state matches the COMPOSE_BODY ENTER branch. */
     ui_state->compose_body_editing = true;
     ui_state->compose_is_reply = is_reply;
+    ui_state->compose_mode = mode;
     state.ui_screen = MESSAGES_COMPOSE;
 
     vp_flush();
@@ -237,10 +321,9 @@ void _ui_endCompose(ui_state_t *ui_state)
 
 void _ui_fsmMessagesList(ui_state_t *ui_state, kbd_msg_t msg)
 {
-    uint8_t mode = last_state.channel.mode;
-    bool can_compose = messages_canCompose(mode);
+    uint8_t modes[2];
     size_t count = messages_count();
-    size_t total = count + (can_compose ? 1 : 0);
+    size_t total = count + composeModes(modes, 2);
 
     // Resolve the highlighted row from the pinned sequence number; the
     // messages_list_seq field docs explain why an index cannot be trusted
@@ -264,13 +347,15 @@ void _ui_fsmMessagesList(ui_state_t *ui_state, kbd_msg_t msg)
             return;
         }
 
-        if (idx == count && can_compose) {
-            /* Virtual "New Message" item selected. On M17 the channel's
-             * destination is the natural default recipient. */
+        if (idx < total) {
+            /* A "New ..." item: write in its protocol. Only an SMS starts
+             * from the channel's destination, its natural default
+             * recipient. */
+            uint8_t mode = modes[idx - count];
             const char *dest = (mode == OPMODE_M17) ?
                                    last_state.settings.m17_dest :
                                    NULL;
-            startCompose(ui_state, dest, false);
+            startCompose(ui_state, dest, false, mode);
             return;
         }
     } else if (msg.keys & KEY_ESC) {
@@ -285,8 +370,8 @@ void _ui_fsmMessagesList(ui_state_t *ui_state, kbd_msg_t msg)
     if (idx < count) {
         const struct message *sel = messages_get(idx);
         ui_state->messages_list_seq = (sel != NULL) ? sel->sequence : 0;
-    } else if (idx == count && can_compose) {
-        ui_state->messages_list_seq = UINT32_MAX;
+    } else if (idx < total) {
+        ui_state->messages_list_seq = UINT32_MAX - (uint32_t)(idx - count);
     } else {
         ui_state->messages_list_seq = 0;
     }
@@ -329,12 +414,14 @@ void _ui_fsmMessagesDetail(ui_state_t *ui_state, kbd_msg_t msg)
     } else if (msg.keys & KEY_ESC) {
         state.ui_screen = MESSAGES_LIST;
     } else if (msg.keys & KEY_ENTER) {
-        /* Only received messages of the current mode can be replied to. */
+        /* Only received messages that travel in the current mode can be
+         * replied to, and the reply goes the same way. */
         const struct message *entry = messages_get(idx);
-        if ((entry != NULL) && (entry->mode == last_state.channel.mode)
+        if ((entry != NULL)
+            && (messages_travelMode(entry) == last_state.channel.mode)
             && (entry->direction == MSG_DIR_RX)
             && messages_canCompose(entry->mode)) {
-            startCompose(ui_state, entry->sender, true);
+            startCompose(ui_state, entry->sender, true, entry->mode);
         }
     }
 }
@@ -351,20 +438,34 @@ static void composeRecipientInput(ui_state_t *ui_state, kbd_msg_t msg)
         const char *entered = ui_state->new_callsign;
         if (entered[0] == '_' && entered[1] == '\0')
             entered = "";
+#ifdef CONFIG_APRS
+        /* An APRS message needs a station address */
+        if ((ui_state->compose_mode == OPMODE_APRS)
+            && !aprsAddresseeValid(entered)) {
+            ui_state->callsign_invalid = true;
+            vp_queueStringTableEntry(&currentLanguage->invalidCallsign);
+            vp_play();
+            return;
+        }
+#endif
         memset(ui_state->compose_recipient, 0,
                sizeof(ui_state->compose_recipient));
         strncpy(ui_state->compose_recipient, entered,
                 sizeof(ui_state->compose_recipient) - 1);
         ui_state->compose_editing = false;
+        ui_state->callsign_invalid = false;
         announceComposeFocus(ui_state);
     } else if (msg.keys & KEY_ESC) {
         /* Discard: compose_recipient is left unchanged */
         ui_state->compose_editing = false;
+        ui_state->callsign_invalid = false;
         announceComposeFocus(ui_state);
     } else if (msg.keys & KEY_UP || msg.keys & KEY_DOWN || msg.keys & KEY_LEFT
                || msg.keys & KEY_RIGHT) {
+        ui_state->callsign_invalid = false;
         _ui_textInputDel(ui_state->new_callsign);
     } else if (input_isCharPressed(msg)) {
+        ui_state->callsign_invalid = false;
         _ui_textInputKeypad(ui_state->new_callsign,
                             sizeof(ui_state->new_callsign) - 1, msg, true);
     }
@@ -382,8 +483,8 @@ static void composeBodyInput(ui_state_t *ui_state, kbd_msg_t msg)
         || msg.keys & KNOB_RIGHT) {
         _ui_textInputDel(ui_state->compose_body);
     } else if (input_isCharPressed(msg)) {
-        _ui_textInputKeypad(ui_state->compose_body, MSG_BODY_MAX_LEN - 1, msg,
-                            false);
+        _ui_textInputKeypad(ui_state->compose_body, MSG_COMPOSE_MAX_LEN - 1,
+                            msg, false);
     } else if (msg.keys & KEY_ENTER || msg.keys & KEY_ESC) {
         /* Confirm the pending multi-tap char, leave body editing but stay
          * on the body row. */
@@ -400,33 +501,60 @@ static void composeBodyInput(ui_state_t *ui_state, kbd_msg_t msg)
  */
 static bool composeSend(ui_state_t *ui_state)
 {
-    size_t len = strnlen(ui_state->compose_body, MSG_BODY_MAX_LEN);
+    size_t len = strnlen(ui_state->compose_body, MSG_COMPOSE_MAX_LEN);
     if (len == 0)
         return false;
 
     /* An empty To field means broadcast, which goes on the air as the
      * source's wire address, never the localized display string. */
-    uint8_t mode = last_state.channel.mode;
+    uint8_t mode = ui_state->compose_mode;
     const char *rcpt = composeRecipient(ui_state, messages_broadcastAddr(mode));
     if (rcpt == NULL) {
         vp_announceError(vpqInit | vpqPlayImmediately);
         return false;
     }
 
+#ifdef CONFIG_APRS
+    /* Not a station address, e.g. a reply to an odd one: put the user back
+     * in the To field instead of transmitting. */
+    if ((mode == OPMODE_APRS) && !aprsAddresseeValid(rcpt)) {
+        memset(ui_state->new_callsign, 0, sizeof(ui_state->new_callsign));
+        strncpy(ui_state->new_callsign, rcpt,
+                sizeof(ui_state->new_callsign) - 1);
+        ui_state->input_position = strlen(ui_state->new_callsign) - 1;
+        ui_state->input_set = 0;
+        ui_state->last_keypress = 1;
+        ui_state->input_number = 0;
+        ui_state->compose_focus = COMPOSE_TO;
+        ui_state->compose_editing = true;
+        ui_state->callsign_invalid = true;
+        vp_queueStringTableEntry(&currentLanguage->invalidCallsign);
+        vp_play();
+        return false;
+    }
+#endif
+
     struct message txMsg = { 0 };
     txMsg.body = ui_state->compose_body;
     txMsg.bodyLen = len;
     txMsg.mode = mode;
-    strncpy(txMsg.sender, last_state.settings.callsign,
+    // Each protocol has its own callsign
+    strncpy(txMsg.sender,
+            (mode == OPMODE_APRS) ? last_state.settings.aprs_callsign :
+                                    last_state.settings.callsign,
             sizeof(txMsg.sender) - 1);
     strncpy(txMsg.recipient, rcpt, sizeof(txMsg.recipient) - 1);
+    /* APRS written in M17 travels as M17 packets */
+    if (mode != last_state.channel.mode)
+        txMsg.carrier = last_state.channel.mode;
 
-    /* Close compose regardless of the immediate result: the entry records
-     * its own SENDING/SENT/FAILED status in the inbox, so leaving compose
-     * open on a transient failure (e.g. -EBUSY while a previous send is
-     * still in flight) would only strand the user and store a duplicate
+    /* A text longer than one message carries goes out as several, in
+     * order. Close compose regardless of the immediate result: each entry
+     * records its own SENDING/SENT/FAILED status in the inbox, so leaving
+     * compose open on a transient failure (e.g. -EBUSY while a previous send
+     * is still in flight) would only strand the user and store a duplicate
      * entry on each retry. */
-    messages_send(&txMsg);
+    messages_sendSplit(&txMsg);
     return true;
 }
 
@@ -477,6 +605,7 @@ void _ui_fsmMessagesCompose(ui_state_t *ui_state, kbd_msg_t msg)
                                        sizeof(ui_state->new_callsign));
                 }
                 ui_state->compose_editing = true;
+                ui_state->callsign_invalid = false;
                 vp_announceBuffer(&currentLanguage->to, true, true,
                                   ui_state->compose_recipient);
                 break;
@@ -487,7 +616,8 @@ void _ui_fsmMessagesCompose(ui_state_t *ui_state, kbd_msg_t msg)
                  * any existing text, so re-entering to continue typing does
                  * not clobber what is already there. */
                 ui_state->compose_body_editing = true;
-                size_t blen = strnlen(ui_state->compose_body, MSG_BODY_MAX_LEN);
+                size_t blen = strnlen(ui_state->compose_body,
+                                      MSG_COMPOSE_MAX_LEN);
                 if (blen > 0) {
                     ui_state->input_position = blen - 1;
                     ui_state->last_keypress = 1;
@@ -517,7 +647,8 @@ void _ui_drawMessagesList(ui_state_t *ui_state)
               currentLanguage->messages);
 
     size_t count = messages_count();
-    bool can_compose = messages_canCompose(last_state.channel.mode);
+    uint8_t modes[2];
+    bool can_compose = (composeModes(modes, 2) > 0);
 
     if (count == 0 && !can_compose) {
         gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
@@ -597,8 +728,11 @@ void _ui_drawMessagesDetail(ui_state_t *ui_state)
 
     point_t bot_pos = { layout.bottom_pos.x,
                         CONFIG_SCREEN_HEIGHT - layout.bottom_h / 2 };
-    if ((msg->mode == last_state.channel.mode) && (msg->direction == MSG_DIR_RX)
-        && messages_canCompose(msg->mode))
+    if (msg->direction == MSG_DIR_TX)
+        gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_LEFT, color_black,
+                  _ui_messageStatusLabel(msg->status));
+    else if ((messages_travelMode(msg) == last_state.channel.mode)
+             && messages_canCompose(msg->mode))
         gfx_print(bot_pos, layout.top_font, TEXT_ALIGN_LEFT, color_black,
                   currentLanguage->reply);
 
@@ -616,9 +750,20 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
     /* Title bar */
     const char *title = ui_state->compose_is_reply ?
                             currentLanguage->reply :
-                            currentLanguage->newMessage;
+                            composeLabel(ui_state->compose_mode);
     gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER, color_white,
               title);
+
+    if (ui_state->compose_body_editing) {
+        /* Which of the messages the text will be sent as the cursor is in */
+        size_t len = strnlen(ui_state->compose_body, MSG_COMPOSE_MAX_LEN);
+        size_t current;
+        size_t count = messages_pieces(ui_state->compose_mode,
+                                       ui_state->compose_body, len,
+                                       ui_state->input_position, &current);
+        gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_RIGHT,
+                  color_white, "%u/%u", (unsigned)current, (unsigned)count);
+    }
 
     /* ---- To row ---- */
     point_t to_rpos = layout.line1_pos;
@@ -633,8 +778,11 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
 
     color_t to_col = to_selected ? color_black : color_white;
     {
-        const char *rcpt = composeRecipient(ui_state,
-                                            currentLanguage->broadcast);
+        /* An empty To field is a broadcast only where there is one */
+        const char *bcast = currentLanguage->broadcast;
+        if (messages_broadcastAddr(ui_state->compose_mode) == NULL)
+            bcast = "";
+        const char *rcpt = composeRecipient(ui_state, bcast);
         char val[11] = { 0 };
         sniprintf(val, sizeof(val), "%.10s", rcpt);
         gfx_print(to_rpos, layout.menu_font, TEXT_ALIGN_LEFT, to_col, "%s",
@@ -671,7 +819,7 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
      * end of the text in view instead. */
     size_t cursor = ui_state->input_position;
     if (!body_editing) {
-        size_t blen = strnlen(ui_state->compose_body, MSG_BODY_MAX_LEN);
+        size_t blen = strnlen(ui_state->compose_body, MSG_COMPOSE_MAX_LEN);
         cursor = (blen > 0) ? blen - 1 : 0;
     }
 
@@ -713,5 +861,14 @@ void _ui_drawMessagesCompose(ui_state_t *ui_state)
                       CONFIG_SCREEN_HEIGHT - layout.bottom_h,
                       layout.horizontal_pad, layout.input_font,
                       TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+        if (ui_state->callsign_invalid) {
+            /* Over the Send row, which is not reachable while editing */
+            point_t hint_pos = { 0, (int16_t)(layout.bottom_pos.y
+                                              - layout.menu_h + 3) };
+            gfx_drawRect(hint_pos, CONFIG_SCREEN_WIDTH, layout.menu_h,
+                         color_black, true);
+            gfx_print(layout.bottom_pos, layout.menu_font, TEXT_ALIGN_CENTER,
+                      color_white, currentLanguage->invalidCallsign);
+        }
     }
 }

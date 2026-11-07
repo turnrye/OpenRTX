@@ -104,5 +104,11 @@ const stringsTable_t englishStrings =
     .message           = "Message",
     .aprsSettings      = "APRS Settings",
     .invalidCallsign   = "Invalid callsign",
+    .msgSending        = "Sending",
+    .msgSent           = "Sent",
+    .msgDelivered      = "Delivered",
+    .msgRejected       = "Rejected",
+    .msgUnacked        = "No ack",
+    .msgFailed         = "Failed",
 };
 #endif  // ENGLISHSTRINGS_H
