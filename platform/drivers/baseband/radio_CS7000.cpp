@@ -346,6 +346,14 @@ void radio_enableTx()
             C6000.startAnalogTx(TxAudioSource::LINE_IN, FmConfig::BW_25kHz);
             break;
 
+        case OPMODE_APRS:
+            // From LINE_IN like M17 baseband, with pre-emphasis as on the
+            // UV3x0
+            C6000.disableTones();
+            C6000.startAnalogTx(TxAudioSource::LINE_IN,
+                                FmConfig::BW_25kHz | FmConfig::PREEMPH_EN);
+            break;
+
         default:
             break;
     }
