@@ -8,6 +8,7 @@
 #define APRS_PACKET_H
 
 #include "protocols/APRS/constants.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -190,6 +191,83 @@ ssize_t aprsFrame_build(uint8_t *buf, size_t cap, const char *dest,
  */
 ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
                        const char *text);
+
+/**
+ * @brief Check a digipeater path the user typed: up to eight addresses each
+ * valid by aprsCallsignValid(), separated by commas. Empty is valid and
+ * means no digipeaters.
+ */
+bool aprsPathValid(const char *path);
+
+/**
+ * @brief Write an AX.25 UI frame as a TNC2 monitor line,
+ * "SRC>DEST,PATH:info", with only the last address a digipeater has used
+ * marked '*', as the format has it.
+ *
+ * @param frame: AX.25 frame without its FCS.
+ * @param len: its length.
+ * @param out: destination, NUL-terminated on success.
+ * @param cap: size of out.
+ * @return line length without the NUL, or 0 if the frame is malformed or
+ *         the line does not fit.
+ */
+size_t aprsFrameToTnc2(const uint8_t *frame, size_t len, char *out, size_t cap);
+
+/**
+ * @brief Build an AX.25 UI frame from a TNC2 monitor line,
+ * "SRC>DEST,PATH:info", the inverse of how traffic is shown.
+ *
+ * @param line: the line, not necessarily NUL-terminated.
+ * @param len: its length.
+ * @param buf: destination for the frame, without its FCS.
+ * @param cap: size of buf.
+ * @return frame length, or 0 if the line is malformed or does not fit.
+ */
+size_t aprsFrameFromTnc2(const char *line, size_t len, uint8_t *buf,
+                         size_t cap);
+
+/**
+ * @brief An uncompressed APRS position report, before it is formatted.
+ *
+ * Positions are held the way the GPS layer reports them — latitude and
+ * longitude in millionths of a degree, altitude in metres, speed in km/h —
+ * so a caller can hand a gps_t snapshot straight in. aprsPosFormat() does the
+ * conversion to the units APRS puts on the air (minutes, feet, knots).
+ */
+struct aprsPosReport {
+    int32_t latitude;    /**< Millionths of a degree, positive north. */
+    int32_t longitude;   /**< Millionths of a degree, positive east.  */
+    char symbolTable;    /**< Symbol table id, e.g. '/' (primary).    */
+    char symbolCode;     /**< Symbol code, e.g. '>' (car).            */
+    bool hasCourseSpeed; /**< Emit the course/speed extension.        */
+    uint16_t course;     /**< Course over ground, degrees, 0-360.     */
+    uint16_t speed;      /**< Ground speed in km/h; emitted as knots. */
+    bool hasAltitude;    /**< Emit the /A= altitude extension.        */
+    int16_t altitude;    /**< Altitude in metres MSL; emitted as feet.*/
+    const char *comment; /**< Trailing free text, or NULL for none.   */
+};
+
+/**
+ * @brief Format the info field of an uncompressed position report.
+ *
+ * Produces "=DDMM.hhN/DDDMM.hhW$..." — the with-messaging, no-timestamp
+ * position report ('=') that a beacon transmits. The coordinate is written to
+ * hundredth-of-a-minute resolution (about 18.5 m) with correct rounding, the
+ * optional course/speed and altitude extensions follow in that order, and any
+ * comment comes last.
+ *
+ * Optional fields are dropped, whole, to keep the result within @p len: the
+ * comment goes first, then altitude, then course/speed. The coordinate and
+ * symbol always fit — a caller must give at least 21 bytes — and a comment
+ * that does not fit is truncated rather than dropping the fields before it.
+ *
+ * @param out: destination buffer for the info field, NUL-terminated.
+ * @param len: size of out; at least 21 bytes for the coordinate alone.
+ * @param rpt: the position report to format.
+ * @return number of characters written, not counting the NUL, or 0 if the
+ *         arguments are invalid or the coordinate does not fit.
+ */
+size_t aprsPosFormat(char *out, size_t len, const struct aprsPosReport *rpt);
 
 #ifdef __cplusplus
 }

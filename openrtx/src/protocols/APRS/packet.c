@@ -24,8 +24,6 @@ enum addrFlags {
     ADDR_CMD_OR_H = 0x80,  ///< Command bit, or H bit on a digipeater.
 };
 
-/* ":ADDRESSEE:" — the separator after the padded addressee is at a fixed
- * offset. */
 /*
  * Control and protocol identifier of an APRS frame: a UI frame carrying no
  * layer 3 protocol.
@@ -443,4 +441,225 @@ ssize_t aprsMsg_format(char *out, size_t len, const char *addressee,
     out[total] = '\0';
 
     return (ssize_t)total;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Frame construction — the inverse of everything above.
+ * ------------------------------------------------------------------------ */
+
+/* An uncompressed coordinate is "DDMM.hh" plus a hemisphere character: the
+ * degrees, the minutes, and hundredths of a minute (about 18.5 m). */
+#define POS_LAT_MAX_MICRO 90000000
+#define POS_LON_MAX_MICRO 180000000
+
+/* Longest each optional extension can be once formatted. */
+#define POS_CS_LEN 7  /* "ddd/sss"   */
+#define POS_ALT_LEN 9 /* "/A=aaaaaa" */
+
+/**
+ * Convert a coordinate in millionths of a degree to the degrees, whole
+ * minutes and hundredths of a minute that APRS puts on the air.
+ *
+ * The fraction is scaled as frac*6/1000, not frac*6000/1000000: the latter
+ * overflows a 32-bit integer near a whole degree. Rounding to the nearest
+ * hundredth of a minute can push the value up to a full 60.00', which must
+ * carry into the degrees rather than print as an impossible minute count.
+ */
+static void toMinutes(int32_t micro, uint32_t *deg, uint32_t *min,
+                      uint32_t *hundredths)
+{
+    uint32_t u = (micro < 0) ? (uint32_t)(-micro) : (uint32_t)micro;
+
+    *deg = u / 1000000u;
+
+    uint32_t frac = u % 1000000u;
+    uint32_t mh = (frac * 6u + 500u) / 1000u;
+
+    if (mh >= 6000u) {
+        mh -= 6000u;
+        *deg += 1u;
+    }
+
+    *min = mh / 100u;
+    *hundredths = mh % 100u;
+}
+
+size_t aprsPosFormat(char *out, size_t len, const struct aprsPosReport *rpt)
+{
+    if ((out == NULL) || (rpt == NULL))
+        return 0;
+    if ((rpt->latitude < -POS_LAT_MAX_MICRO)
+        || (rpt->latitude > POS_LAT_MAX_MICRO)
+        || (rpt->longitude < -POS_LON_MAX_MICRO)
+        || (rpt->longitude > POS_LON_MAX_MICRO))
+        return 0;
+
+    uint32_t latDeg, latMin, latHun, lonDeg, lonMin, lonHun;
+    toMinutes(rpt->latitude, &latDeg, &latMin, &latHun);
+    toMinutes(rpt->longitude, &lonDeg, &lonMin, &lonHun);
+
+    const char latHemi = (rpt->latitude < 0) ? 'S' : 'N';
+    const char lonHemi = (rpt->longitude < 0) ? 'W' : 'E';
+
+    /* "=DDMM.hhN<tbl>DDDMM.hhW<code>": the coordinate, symbol table and code.
+     * Always present, always exactly this long, so a short buffer is rejected
+     * rather than producing a coordinate missing its symbol. */
+    char coord[21];
+    int n = snprintf(coord, sizeof(coord),
+                     "=%02u%02u.%02u%c%c%03u%02u.%02u%c%c", (unsigned)latDeg,
+                     (unsigned)latMin, (unsigned)latHun, latHemi,
+                     rpt->symbolTable, (unsigned)lonDeg, (unsigned)lonMin,
+                     (unsigned)lonHun, lonHemi, rpt->symbolCode);
+    if ((n != 20) || (len < (size_t)n + 1))
+        return 0;
+
+    memcpy(out, coord, (size_t)n);
+    size_t pos = (size_t)n;
+
+    /* Course and speed, if asked for and there is room for the whole field.
+     * Speed is transmitted in knots; course wraps 360 back to zero. */
+    if (rpt->hasCourseSpeed && ((pos + POS_CS_LEN) < len)) {
+        unsigned course = (rpt->course >= 360u) ? 0u : rpt->course;
+        unsigned knots = ((unsigned)rpt->speed * 1000u + 926u) / 1852u;
+        if (knots > 999u)
+            knots = 999u;
+
+        pos += (size_t)snprintf(&out[pos], len - pos, "%03u/%03u", course,
+                                knots);
+    }
+
+    /* Altitude, if asked for and it fits, in whole feet. */
+    if (rpt->hasAltitude && ((pos + POS_ALT_LEN) < len)) {
+        unsigned feet = 0u;
+        if (rpt->altitude > 0)
+            feet = ((unsigned)rpt->altitude * 10000u + 1524u) / 3048u;
+        if (feet > 999999u)
+            feet = 999999u;
+
+        pos += (size_t)snprintf(&out[pos], len - pos, "/A=%06u", feet);
+    }
+
+    /* Comment last, truncated to whatever room is left: it is the least
+     * important part of the report and the only field that survives partial. */
+    if (rpt->comment != NULL) {
+        size_t room = (len - 1) - pos;
+        size_t clen = strlen(rpt->comment);
+        if (clen > room)
+            clen = room;
+        memcpy(&out[pos], rpt->comment, clen);
+        pos += clen;
+    }
+
+    out[pos] = '\0';
+    return pos;
+}
+
+size_t aprsFrameToTnc2(const uint8_t *frame, size_t len, char *out, size_t cap)
+{
+    if ((frame == NULL) || (out == NULL) || (cap == 0) || (len > APRS_PACLEN))
+        return 0;
+
+    size_t count = countAddresses(frame, len);
+    size_t info = (size_t)count * APRS_ADDR_LEN + APRS_CTRL_PID_LEN;
+    if ((count == 0) || (info > len))
+        return 0;
+
+    uint8_t lastUsed = 0;
+    for (uint8_t i = 2; i < count; i++) {
+        if (frame[i * APRS_ADDR_LEN + APRS_ADDR_LEN - 1] & ADDR_CMD_OR_H)
+            lastUsed = i;
+    }
+
+    /* Source first, then destination, then the path */
+    size_t pos = 0;
+    for (uint8_t k = 0; k < count; k++) {
+        uint8_t i = (k == 0) ? 1 : ((k == 1) ? 0 : k);
+        struct aprsAddress addr;
+        char call[APRS_ADDR_STR_LEN];
+
+        memset(&addr, 0, sizeof(addr));
+        parseAddress(&frame[i * APRS_ADDR_LEN], &addr);
+        size_t n = aprsAddr_toStr(&addr, call, sizeof(call));
+        const char *sep = (k == 0) ? "" : ((k == 1) ? ">" : ",");
+        const char *mark = ((i >= 2) && (i == lastUsed)) ? "*" : "";
+
+        size_t need = strlen(sep) + n + strlen(mark);
+        if (pos + need >= cap)
+            return 0;
+        pos += (size_t)snprintf(&out[pos], cap - pos, "%s%s%s", sep, call,
+                                mark);
+    }
+
+    size_t infoLen = len - info;
+    if (pos + 1 + infoLen >= cap)
+        return 0;
+    out[pos++] = ':';
+    memcpy(&out[pos], &frame[info], infoLen);
+    pos += infoLen;
+    out[pos] = '\0';
+
+    return pos;
+}
+
+size_t aprsFrameFromTnc2(const char *line, size_t len, uint8_t *buf, size_t cap)
+{
+    char header[APRS_MAX_ADDRESSES * APRS_ADDR_STR_LEN];
+
+    if ((line == NULL) || (buf == NULL))
+        return 0;
+
+    /* No address contains a colon: the first one ends the header. */
+    const char *colon = memchr(line, ':', len);
+    if ((colon == NULL) || ((size_t)(colon - line) >= sizeof(header)))
+        return 0;
+
+    size_t hlen = (size_t)(colon - line);
+    memcpy(header, line, hlen);
+    header[hlen] = '\0';
+
+    char *gt = strchr(header, '>');
+    if ((gt == NULL) || (gt == header))
+        return 0;
+    *gt = '\0';
+
+    const char *src = header;
+    char *dest = gt + 1;
+    char *path = strchr(dest, ',');
+    if (path != NULL)
+        *path++ = '\0';
+
+    const char *info = colon + 1;
+    size_t infoLen = len - hlen - 1;
+    if (infoLen == 0)
+        return 0;
+
+    const ssize_t n = aprsFrame_build(buf, cap, dest, src, path, info, infoLen);
+    return (n > 0) ? (size_t)n : 0;
+}
+
+bool aprsPathValid(const char *path)
+{
+    if (path == NULL)
+        return false;
+    if (path[0] == '\0')
+        return true;
+
+    unsigned hops = 0;
+    const char *p = path;
+    while (true) {
+        const char *comma = strchr(p, ',');
+        size_t len = (comma != NULL) ? (size_t)(comma - p) : strlen(p);
+        char hop[APRS_ADDR_STR_LEN];
+
+        if ((len == 0) || (len >= sizeof(hop)) || (++hops > 8))
+            return false;
+        memcpy(hop, p, len);
+        hop[len] = '\0';
+        if (aprsAddr_validate(hop) != 0)
+            return false;
+
+        if (comma == NULL)
+            return true;
+        p = comma + 1;
+    }
 }

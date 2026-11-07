@@ -1374,6 +1374,11 @@ beacon_test = executable('beacon_test',
                          sources : unit_test_src + ['tests/unit/beacon_test.cpp'],
                          kwargs  : unit_test_opts)
 
+aprs_position_test = executable('aprs_position_test',
+                               sources : unit_test_src
+                                         + ['tests/unit/APRS_position.cpp'],
+                               kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
@@ -1405,3 +1410,4 @@ test('APRS Modulator Test', aprs_modulator_test)
 test('CSMA Test', csma_test)
 test('Slip Test', slip_test)
 test('Beacon Test', beacon_test)
+test('APRS Position Test', aprs_position_test)

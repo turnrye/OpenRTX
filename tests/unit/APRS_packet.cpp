@@ -601,3 +601,96 @@ TEST_CASE("APRS message: a formatted message unwraps to what went in", "[aprs]")
         REQUIRE(aprsMsg_format(info, 12, "W1AW", "hello") == -ENOSPC);
     }
 }
+
+TEST_CASE("APRS TNC2: a frame is shown as a monitor line", "[aprs]")
+{
+    auto line = [](const char *path, const char *info) {
+        uint8_t frame[APRS_PACLEN];
+        ssize_t n = aprsFrame_build(frame, APRS_PACLEN, "APORT1", "K1ABC-9",
+                                    path, info, strlen(info));
+        REQUIRE(n > 0);
+        char out[APRS_PACLEN + 64];
+        size_t m = aprsFrameToTnc2(frame, n, out, sizeof(out));
+        REQUIRE(m == strlen(out));
+        return std::string(out);
+    };
+
+    CHECK(line(nullptr, ">hi") == "K1ABC-9>APORT1:>hi");
+    CHECK(line("WIDE1-1,WIDE2-1", ":W1AW     :yo{01")
+          == "K1ABC-9>APORT1,WIDE1-1,WIDE2-1::W1AW     :yo{01");
+
+    /* Only the last used hop is starred, as TNC2 writes it */
+    CHECK(line("N2GH*,W2UB*,WIDE2-1", "x")
+          == "K1ABC-9>APORT1,N2GH,W2UB*,WIDE2-1:x");
+
+    /* Back again to the same frame */
+    uint8_t frame[APRS_PACLEN], again[APRS_PACLEN];
+    const char *info = "=4903.50N/07201.75W-";
+    ssize_t n = aprsFrame_build(frame, APRS_PACLEN, "APORT1", "K1ABC-9",
+                                "WIDE1-1", info, strlen(info));
+    char out[APRS_PACLEN + 64];
+    size_t m = aprsFrameToTnc2(frame, n, out, sizeof(out));
+    CHECK(aprsFrameFromTnc2(out, m, again, sizeof(again)) == n);
+    CHECK(memcmp(frame, again, n) == 0);
+
+    /* Too small, or not a frame */
+    CHECK(aprsFrameToTnc2(frame, n, out, 10) == 0);
+    CHECK(aprsFrameToTnc2(frame, 5, out, sizeof(out)) == 0);
+}
+
+TEST_CASE("APRS TNC2: a monitor line builds the frame it shows", "[aprs]")
+{
+    auto build = [](const char *line) {
+        uint8_t frame[APRS_PACLEN];
+        size_t n = aprsFrameFromTnc2(line, strlen(line), frame, sizeof(frame));
+        if (n == 0)
+            return std::string();
+        struct aprsPacket pkt;
+        REQUIRE(aprsPkt_fromFrame(frame, n, &pkt) == 0);
+        char src[APRS_ADDR_STR_LEN], dst[APRS_ADDR_STR_LEN], path[80];
+        aprsAddr_toStr(&pkt.addresses[1], src, sizeof(src));
+        aprsAddr_toStr(&pkt.addresses[0], dst, sizeof(dst));
+        aprsPath_toStr(&pkt, path, sizeof(path));
+        std::string out = std::string(src) + ">" + dst;
+        if (path[0] != '\0')
+            out += std::string(",") + path;
+        return out + ":" + std::string(pkt.info, pkt.infoLen);
+    };
+
+    CHECK(build("W1AW>APRS:>status") == "W1AW>APRS:>status");
+    CHECK(build("N2BP-7>APORT1,WIDE1-1,WIDE2-1::K1ABC    :hi{01")
+          == "N2BP-7>APORT1,WIDE1-1,WIDE2-1::K1ABC    :hi{01");
+    CHECK(build("W9XYZ>APZ,N2GH*,WIDE2-1:x") == "W9XYZ>APZ,N2GH*,WIDE2-1:x");
+
+    /* Colons in the info stay in the info */
+    CHECK(build("W1AW>APRS::W2UB     :a:b") == "W1AW>APRS::W2UB     :a:b");
+
+    CHECK(build("") == "");
+    CHECK(build("W1AW:no destination") == "");
+    CHECK(build(">APRS:no source") == "");
+    CHECK(build("W1AW>APRS:") == "");
+    CHECK(build("W1AW>APRS,BAD ADDR:x") == "");
+}
+
+TEST_CASE("APRS path: a typed digipeater path is a list of valid addresses",
+          "[aprs]")
+{
+    const char *valid[] = {
+        "", "WIDE1-1", "WIDE1-1,WIDE2-1", "W1AW-1,WIDE2-2", "A,B,C,D,E,F,G,H",
+    };
+    const char *invalid[] = {
+        ",",       "WIDE1-1,",        ",WIDE1-1", "WIDE1-1,,WIDE2-1",
+        "wide1-1", "WIDE1-1 WIDE2-1", "WIDE1-1*", "A,B,C,D,E,F,G,H,I",
+        "ABCDEFG",
+    };
+
+    for (const char *path : valid) {
+        INFO("path: " << path);
+        CHECK(aprsPathValid(path) == true);
+    }
+    for (const char *path : invalid) {
+        INFO("path: " << path);
+        CHECK(aprsPathValid(path) == false);
+    }
+    CHECK(aprsPathValid(nullptr) == false);
+}
