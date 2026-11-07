@@ -214,6 +214,15 @@ void radio_enableTx()
             C6000.startAnalogTx(TxAudioSource::LINE_IN, FmConfig::BW_25kHz);
             break;
 
+        case OPMODE_APRS:
+            // The MCU synthesises the AFSK, so it goes in through LINE_IN as
+            // M17's baseband does. Pre-emphasis and 25 kHz bring the tone
+            // twist to +1.9 dB, measured off the air against a Kenwood TH-D75
+            // (-2.2 dB with flat audio).
+            C6000.startAnalogTx(TxAudioSource::LINE_IN,
+                                FmConfig::BW_25kHz | FmConfig::PREEMPH_EN);
+            break;
+
         default:
             break;
     }
