@@ -5,6 +5,8 @@
  */
 
 #include "interfaces/radio.h"
+#include "interfaces/platform.h"
+#include "interfaces/delays.h"
 #include "hwconfig.h"
 #include <string.h>
 #include "rtx/rtx.h"
@@ -17,6 +19,15 @@ static rtxStatus_t        rtxStatus;    // RTX driver status
 static rssi_t             rssi;         // Current RSSI in dBm
 static bool               reinitFilter; // Flag for RSSI filter re-initialisation
 
+static long long          watchHopTime; // Dual watch: earliest time of next hop
+
+/*
+ * Dual watch timings, in ms. The dwell has to span at least three RTX updates
+ * of 30ms each: the first RSSI sample after a retune is discarded.
+ */
+static const long long WATCH_DWELL = 100;   // Stay on a VFO with no signal
+static const long long WATCH_HANG  = 3000;  // Stay after a signal or a TX
+
 static OpMode  *currMode;               // Pointer to currently active opMode handler
 static OpMode     noMode;               // Empty opMode handler for opmode::NONE
 static OpMode_FM  fmMode;               // FM mode handler
@@ -24,6 +35,73 @@ static OpMode_FM  fmMode;               // FM mode handler
 static OpMode_M17 m17Mode;              // M17 mode handler
 #endif
 
+/**
+ * Trade the RX parameters of the selected VFO with those of the watched one.
+ * The caller has to forward the change to the radio driver.
+ */
+static void swapWatchParams()
+{
+    freq_t   freq   = rtxStatus.rxFrequency;
+    uint8_t  bw     = rtxStatus.bandwidth;
+    uint8_t  sql    = rtxStatus.sqlLevel;
+    uint16_t toneEn = rtxStatus.rxToneEn;
+    uint16_t tone   = rtxStatus.rxTone;
+
+    rtxStatus.rxFrequency = rtxStatus.watchFrequency;
+    rtxStatus.bandwidth   = rtxStatus.watchBandwidth;
+    rtxStatus.sqlLevel    = rtxStatus.watchSqlLevel;
+    rtxStatus.rxToneEn    = rtxStatus.watchToneEn;
+    rtxStatus.rxTone      = rtxStatus.watchTone;
+
+    rtxStatus.watchFrequency = freq;
+    rtxStatus.watchBandwidth = bw;
+    rtxStatus.watchSqlLevel  = sql;
+    rtxStatus.watchToneEn    = toneEn;
+    rtxStatus.watchTone      = tone;
+
+    rtxStatus.onWatch = !rtxStatus.onWatch;
+}
+
+/**
+ * Dual watch: with no signal, alternate the receiver between the selected VFO
+ * and the watched one. A signal holds the receiver where it is. The selected
+ * VFO is restored before a transmission, which never uses the watched one.
+ *
+ * @return true if the receiver has been retuned.
+ */
+static bool dualWatchUpdate()
+{
+    bool hop = false;
+    long long now = getTick();
+    bool ptt = platform_getPttStatus() && (rtxStatus.txDisable == 0);
+
+    if((rtxStatus.dualWatch == 0) || (rtxStatus.opStatus != RX) || ptt)
+    {
+        // Not watching, or about to transmit: stay on the selected VFO
+        hop = (rtxStatus.onWatch == 1);
+        watchHopTime = now + WATCH_HANG;
+    }
+    else
+    {
+        // Carrier check with the opening threshold of the FM squelch, so
+        // that also a signal with the wrong tone holds the receiver.
+        rssi_t squelch = -127 + (rtxStatus.sqlLevel * 66) / 15;
+        if(currMode->rxSquelchOpen() || (rssi > (squelch + 1)))
+            watchHopTime = now + WATCH_HANG;
+        else if(now >= watchHopTime)
+            hop = true;
+    }
+
+    if(hop)
+    {
+        swapWatchParams();
+        radio_updateConfiguration();
+        if(rtxStatus.dualWatch == 1)
+            watchHopTime = now + WATCH_DWELL;
+    }
+
+    return hop;
+}
 
 void rtx_init(pthread_mutex_t *m)
 {
@@ -38,6 +116,8 @@ void rtx_init(pthread_mutex_t *m)
     rtxStatus.bandwidth     = BW_25;
     rtxStatus.txDisable     = 0;
     rtxStatus.opStatus      = OFF;
+    rtxStatus.dualWatch     = 0;
+    rtxStatus.onWatch       = 0;
     rtxStatus.rxFrequency   = 430000000;
     rtxStatus.txFrequency   = 430000000;
     rtxStatus.txPower       = 0.0f;
@@ -104,8 +184,16 @@ void rtx_task()
         {
             // Copy new configuration and override opStatus flags
             uint8_t tmp = rtxStatus.opStatus;
+            bool onWatch = (rtxStatus.onWatch == 1);
+            freq_t tuned = rtxStatus.rxFrequency;
             memcpy(&rtxStatus, newCnf, sizeof(rtxStatus_t));
             rtxStatus.opStatus = tmp;
+
+            // Dual watch: stay on the watched VFO if the receiver is there
+            rtxStatus.onWatch = 0;
+            if(onWatch && (rtxStatus.dualWatch == 1) &&
+               (tuned == rtxStatus.watchFrequency))
+                swapWatchParams();
 
             reconfigure = true;
             newCnf = NULL;
@@ -155,6 +243,14 @@ void rtx_task()
         radio_updateConfiguration();
     }
 
+    // A dual watch hop retunes the receiver like a new configuration does
+    bool retuned = reconfigure;
+    if(dualWatchUpdate())
+    {
+        retuned = true;
+        reinitFilter = true;
+    }
+
     /*
      * RSSI update block, run only when radio is in RX mode.
      *
@@ -173,7 +269,7 @@ void rtx_task()
     if(rtxStatus.opStatus == RX)
     {
 
-        if(!reconfigure)
+        if(!retuned)
         {
             if(!reinitFilter)
             {

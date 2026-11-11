@@ -24,7 +24,8 @@ typedef struct
             txDisable : 1,  /**< Disable TX operation          */
             scan      : 1,  /**< Scan enabled                  */
             opStatus  : 2,  /**< Operating status (OFF, ...)   */
-            _padding  : 2;  /**< Padding to 8 bits             */
+            dualWatch : 1,  /**< Dual watch enabled            */
+            onWatch   : 1;  /**< Receiver is on the watched VFO */
 
     freq_t rxFrequency;     /**< RX frequency, in Hz           */
     freq_t txFrequency;     /**< TX frequency, in Hz           */
@@ -43,6 +44,16 @@ typedef struct
     uint8_t  m17_can   : 4;  /**< M17 Channel Access Number     */
     bool     canRxEn;       /**< M17 Check CAN on RX           */
 
+    /*
+     * Dual watch: RX parameters of the watched VFO. While onWatch is set they
+     * trade places with rxFrequency, bandwidth, sqlLevel, rxToneEn and rxTone,
+     * so that these always describe what the receiver is tuned to.
+     */
+    freq_t   watchFrequency;    /**< Watched RX frequency, in Hz   */
+    uint8_t  watchBandwidth;    /**< Watched channel bandwidth     */
+    uint8_t  watchSqlLevel;     /**< Watched squelch opening level */
+    uint16_t watchToneEn : 1,   /**< Watched RX CTC/DCS tone enable */
+             watchTone   : 15;  /**< Watched RX CTC/DCS tone       */
 
     char     source_address[10];       /**< M17 call source address    */
     char     destination_address[10];  /**< M17 call routing address   */
