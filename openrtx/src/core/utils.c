@@ -65,6 +65,11 @@ void stripTrailingZeroes(char *str)
     }
 }
 
+rssi_t sqlLevelToRssi(const uint8_t level)
+{
+    return -127 + (level * 66) / 15;
+}
+
 uint8_t rssiToSlevel(const rssi_t rssi)
 {
     // RSSI >= -53dB is S11 (S9 + 20 dB)

@@ -8,6 +8,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
 #include "hwconfig.h"
+#include "core/utils.h"
 #include <string.h>
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
@@ -87,7 +88,7 @@ static bool dualWatchUpdate()
     {
         // Carrier check with the opening threshold of the FM squelch, so
         // that also a signal with the wrong tone holds the receiver.
-        rssi_t squelch = -127 + (rtxStatus.sqlLevel * 66) / 15;
+        rssi_t squelch = sqlLevelToRssi(rtxStatus.sqlLevel);
         if(currMode->rxSquelchOpen() || (rssi > (squelch + 1)))
         {
             // The VFO left unheard reads no signal
@@ -257,6 +258,9 @@ void rtx_task()
     {
         retuned = true;
         reinitFilter = true;
+
+        // The level of the VFO just left must not open the squelch of this one
+        rssi = -127;
     }
 
     /*
