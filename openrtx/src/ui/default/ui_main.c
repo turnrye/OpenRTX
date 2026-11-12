@@ -263,8 +263,8 @@ void _ui_drawFrequency()
 
 /**
  * Dual VFO: print the letter of the selected VFO beside its frequency and the
- * VFO not selected on the first line. The latter is marked while the receiver
- * hears a signal on it.
+ * VFO not selected on the first line, followed by its own signal meter. The
+ * line is marked while the receiver hears a signal on it.
  */
 static void _ui_drawDualVfo()
 {
@@ -275,11 +275,25 @@ static void _ui_drawDualVfo()
     rtxStatus_t status = rtx_getCurrentStatus();
     bool heard = status.onWatch && rtx_rxSquelchOpen();
     freq_t freq = tuner_get_rx_frequency(&last_state.tuner_alt);
-    gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
-              heard ? yellow_fab413 : color_white, "%c%c %03lu.%05lu",
-              heard ? '>' : ' ', selB ? 'A' : 'B',
-              (unsigned long)(freq / 1000000),
+    color_t color = heard ? yellow_fab413 : color_white;
+    char str[16] = { 0 };
+    sniprintf(str, sizeof(str), "%c%c %03lu.%05lu", heard ? '>' : ' ',
+              selB ? 'A' : 'B', (unsigned long)(freq / 1000000),
               (unsigned long)((freq % 1000000) / 10));
+    gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_LEFT, color,
+              "%s", str);
+
+    // Signal meter in the rest of the line: S0 to S9+20 over a base line
+    uint16_t x = layout.line1_pos.x
+               + gfx_getTextWidth(layout.line1_font, str)
+               + layout.horizontal_pad;
+    uint16_t width = CONFIG_SCREEN_WIDTH - layout.horizontal_pad - x;
+    uint16_t height = gfx_getFontHeight(layout.line1_font) / 2;
+    uint16_t level = (rssiToSlevel(last_state.rssi_alt) * width) / 11;
+    point_t base = { x, layout.line1_pos.y };
+    point_t bar = { x, (uint16_t)(layout.line1_pos.y - height) };
+    gfx_drawRect(base, width, 1, color_grey, true);
+    gfx_drawRect(bar, level, height, color, true);
 }
 
 void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
