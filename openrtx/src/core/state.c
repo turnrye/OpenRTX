@@ -155,6 +155,7 @@ void state_init()
     state.v_bat = platform_getVbat();
     state.charge = battery_getCharge(state.v_bat);
     state.rssi = -127.0f;
+    state.rssi_alt = -127;
     state.volume = platform_getVolumeLevel();
 
     state.channel_index = 0; // Set default channel index (it is 0-based)
@@ -218,7 +219,8 @@ void state_task()
     state.volume = vol / 2;
 
     state.charge = battery_getCharge(state.v_bat);
-    state.rssi = rtx_getRssi();
+    state.rssi = rtx_getVfoRssi(false);
+    state.rssi_alt = rtx_getVfoRssi(true);
 
 #ifdef CONFIG_RTC
     state.time = platform_getCurrentTime();

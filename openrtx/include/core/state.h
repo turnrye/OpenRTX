@@ -29,7 +29,8 @@ typedef struct {
     datetime_t time;
     uint16_t v_bat;
     uint8_t charge;
-    rssi_t rssi;
+    rssi_t rssi;     // RSSI of the selected VFO
+    rssi_t rssi_alt; // RSSI of the VFO not selected
     uint8_t volume;
 
     uint8_t ui_screen;
