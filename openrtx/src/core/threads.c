@@ -34,6 +34,22 @@ pthread_mutex_t rtx_mutex;
 /**
  * \internal Thread managing user input and UI
  */
+/**
+ * Check if the radio has a receiver for an operating mode.
+ *
+ * @param mode: operating mode, from enum opmode.
+ * @return true if the mode can be received.
+ */
+static bool opmodeReceivable(const uint8_t mode)
+{
+    #ifdef CONFIG_M17
+    if(mode == OPMODE_M17)
+        return true;
+    #endif
+
+    return (mode == OPMODE_FM);
+}
+
 void *ui_threadFunc(void *arg)
 {
     (void) arg;
@@ -89,16 +105,21 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.txPower     = tuner_get_power(&state.tuner);
             rtx_cfg.toneEn      = state.tone_enabled;
 
-            // Dual watch works between two FM VFOs on different frequencies
+            // Dual watch works between two VFOs that differ in frequency or
+            // mode, each in a mode the radio can receive
             const struct tuner *watch = &state.tuner_alt;
             fmInfo_t watchFm = { 0 };
+            uint8_t watchMode = tuner_get_opmode(watch);
 
             tuner_get_FM_params(watch, &watchFm);
             rtx_cfg.dualWatch      = state.settings.dualVfo
-                                  && (rtx_cfg.opMode == OPMODE_FM)
-                                  && (tuner_get_opmode(watch) == OPMODE_FM)
-                                  && (tuner_get_rx_frequency(watch) !=
-                                      rtx_cfg.rxFrequency);
+                                  && opmodeReceivable(rtx_cfg.opMode)
+                                  && opmodeReceivable(watchMode)
+                                  && ((watchMode != rtx_cfg.opMode) ||
+                                      (tuner_get_rx_frequency(watch) !=
+                                       rtx_cfg.rxFrequency));
+            rtx_cfg.watchOpMode    = watchMode;
+            rtx_cfg.watchCan       = tuner_get_m17_can(watch);
             rtx_cfg.watchFrequency = tuner_get_rx_frequency(watch);
             rtx_cfg.watchBandwidth = tuner_get_bandwidth(watch);
             rtx_cfg.watchSqlLevel  = tuner_get_sql_level(watch);

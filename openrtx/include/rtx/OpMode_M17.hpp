@@ -82,6 +82,17 @@ public:
         return dataValid;
     }
 
+    /**
+     * Check if the demodulator is locked on a stream, also before its link
+     * setup data is known.
+     *
+     * @return true if the demodulator is locked.
+     */
+    virtual bool rxActive() override
+    {
+        return locked || dataValid;
+    }
+
 private:
 
     /**

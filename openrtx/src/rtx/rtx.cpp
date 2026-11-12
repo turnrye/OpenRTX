@@ -24,11 +24,14 @@ static long long          watchHopTime; // Dual watch: earliest time of next hop
 static rssi_t             vfoRssi[2];   // RSSI of the selected and watched VFO
 
 /*
- * Dual watch timings, in ms. The dwell has to span at least three RTX updates
- * of 30ms each: the first RSSI sample after a retune is discarded.
+ * Dual watch timings, in ms. The FM dwell has to span at least three RTX
+ * updates of 30ms each: the first RSSI sample after a retune is discarded.
+ * The M17 dwell covers the restart of the baseband sampling and the search
+ * for two sync words, 40ms apart.
  */
-static const long long WATCH_DWELL = 100;   // Stay on a VFO with no signal
-static const long long WATCH_HANG  = 3000;  // Stay after a signal or a TX
+static const long long WATCH_DWELL_FM  = 100;   // Stay on a quiet FM VFO
+static const long long WATCH_DWELL_M17 = 240;   // Stay on a quiet M17 VFO
+static const long long WATCH_HANG      = 3000;  // Stay after a signal or a TX
 
 static OpMode  *currMode;               // Pointer to currently active opMode handler
 static OpMode     noMode;               // Empty opMode handler for opmode::NONE
@@ -43,18 +46,24 @@ static OpMode_M17 m17Mode;              // M17 mode handler
  */
 static void swapWatchParams()
 {
+    uint8_t  mode   = rtxStatus.opMode;
+    uint8_t  can    = rtxStatus.m17_can;
     freq_t   freq   = rtxStatus.rxFrequency;
     uint8_t  bw     = rtxStatus.bandwidth;
     uint8_t  sql    = rtxStatus.sqlLevel;
     uint16_t toneEn = rtxStatus.rxToneEn;
     uint16_t tone   = rtxStatus.rxTone;
 
+    rtxStatus.opMode      = rtxStatus.watchOpMode;
+    rtxStatus.m17_can     = rtxStatus.watchCan;
     rtxStatus.rxFrequency = rtxStatus.watchFrequency;
     rtxStatus.bandwidth   = rtxStatus.watchBandwidth;
     rtxStatus.sqlLevel    = rtxStatus.watchSqlLevel;
     rtxStatus.rxToneEn    = rtxStatus.watchToneEn;
     rtxStatus.rxTone      = rtxStatus.watchTone;
 
+    rtxStatus.watchOpMode    = mode;
+    rtxStatus.watchCan       = can;
     rtxStatus.watchFrequency = freq;
     rtxStatus.watchBandwidth = bw;
     rtxStatus.watchSqlLevel  = sql;
@@ -65,9 +74,38 @@ static void swapWatchParams()
 }
 
 /**
+ * Make the handler of rtxStatus.opMode the current one, if it is not already.
+ * The handler taking over starts from the OFF operating status.
+ */
+static void switchOpMode()
+{
+    if(currMode->getID() == rtxStatus.opMode)
+        return;
+
+    // Forward opMode change also to radio driver
+    radio_setOpmode(static_cast< enum opmode >(rtxStatus.opMode));
+
+    currMode->disable();
+    rtxStatus.opStatus = OFF;
+
+    switch(rtxStatus.opMode)
+    {
+        case OPMODE_NONE: currMode = &noMode;  break;
+        case OPMODE_FM:   currMode = &fmMode;  break;
+        #ifdef CONFIG_M17
+        case OPMODE_M17:  currMode = &m17Mode; break;
+        #endif
+        default:   currMode = &noMode;
+    }
+
+    currMode->enable();
+}
+
+/**
  * Dual watch: with no signal, alternate the receiver between the selected VFO
- * and the watched one. A signal holds the receiver where it is. The selected
- * VFO is restored before a transmission, which never uses the watched one.
+ * and the watched one, each in its own operating mode. A signal holds the
+ * receiver where it is. The selected VFO is restored before a transmission,
+ * which never uses the watched one.
  *
  * @return true if the receiver has been retuned.
  */
@@ -77,34 +115,39 @@ static bool dualWatchUpdate()
     long long now = getTick();
     bool ptt = platform_getPttStatus() && (rtxStatus.txDisable == 0);
 
-    if((rtxStatus.dualWatch == 0) || (rtxStatus.opStatus != RX) || ptt)
+    if((rtxStatus.dualWatch == 0) || (rtxStatus.opStatus == TX) || ptt)
     {
         // Not watching, or about to transmit: stay on the selected VFO
         hop = (rtxStatus.onWatch == 1);
         watchHopTime = now + WATCH_HANG;
         vfoRssi[1] = -127;
     }
-    else
+    else if(rtxStatus.opStatus == RX)
     {
-        // Carrier check with the opening threshold of the FM squelch, so
+        // FM carrier check with the opening threshold of the squelch, so
         // that also a signal with the wrong tone holds the receiver.
         rssi_t squelch = sqlLevelToRssi(rtxStatus.sqlLevel);
-        if(currMode->rxSquelchOpen() || (rssi > (squelch + 1)))
+        bool carrier = (rtxStatus.opMode == OPMODE_FM)
+                    && (rssi > (squelch + 1));
+
+        if(currMode->rxSquelchOpen() || carrier)
         {
             // The VFO left unheard reads no signal
             watchHopTime = now + WATCH_HANG;
             vfoRssi[rtxStatus.onWatch ? 0 : 1] = -127;
         }
-        else if(now >= watchHopTime)
+        else if((now >= watchHopTime) && (currMode->rxActive() == false))
             hop = true;
     }
 
     if(hop)
     {
         swapWatchParams();
+        switchOpMode();
         radio_updateConfiguration();
         if(rtxStatus.dualWatch == 1)
-            watchHopTime = now + WATCH_DWELL;
+            watchHopTime = now + ((rtxStatus.opMode == OPMODE_M17)
+                                  ? WATCH_DWELL_M17 : WATCH_DWELL_FM);
     }
 
     return hop;
@@ -125,6 +168,7 @@ void rtx_init(pthread_mutex_t *m)
     rtxStatus.opStatus      = OFF;
     rtxStatus.dualWatch     = 0;
     rtxStatus.onWatch       = 0;
+    rtxStatus.watchOpMode   = OPMODE_NONE;
     rtxStatus.rxFrequency   = 430000000;
     rtxStatus.txFrequency   = 430000000;
     rtxStatus.txPower       = 0.0f;
@@ -195,13 +239,22 @@ void rtx_task()
             uint8_t tmp = rtxStatus.opStatus;
             bool onWatch = (rtxStatus.onWatch == 1);
             freq_t tuned = rtxStatus.rxFrequency;
+            uint8_t tunedMode = rtxStatus.opMode;
             memcpy(&rtxStatus, newCnf, sizeof(rtxStatus_t));
             rtxStatus.opStatus = tmp;
+
+            // Force TX and RX tone squelch off for OpModes other than FM
+            if(rtxStatus.opMode != OPMODE_FM)
+            {
+                rtxStatus.txToneEn = 0;
+                rtxStatus.rxToneEn = 0;
+            }
 
             // Dual watch: stay on the watched VFO if the receiver is there
             rtxStatus.onWatch = 0;
             if(onWatch && (rtxStatus.dualWatch == 1) &&
-               (tuned == rtxStatus.watchFrequency))
+               (tuned == rtxStatus.watchFrequency) &&
+               (tunedMode == rtxStatus.watchOpMode))
                 swapWatchParams();
 
             reconfigure = true;
@@ -213,13 +266,6 @@ void rtx_task()
 
     if(reconfigure)
     {
-        // Force TX and RX tone squelch to off for OpModes different from FM.
-        if(rtxStatus.opMode != OPMODE_FM)
-        {
-            rtxStatus.txToneEn = 0;
-            rtxStatus.rxToneEn = 0;
-        }
-
         /*
          * Handle change of opMode:
          * - deactivate current opMode and switch operating status to "OFF";
@@ -227,26 +273,7 @@ void rtx_task()
          *   selected mode;
          * - enable the new mode handler
          */
-        if(currMode->getID() != rtxStatus.opMode)
-        {
-            // Forward opMode change also to radio driver
-            radio_setOpmode(static_cast< enum opmode >(rtxStatus.opMode));
-
-            currMode->disable();
-            rtxStatus.opStatus = OFF;
-
-            switch(rtxStatus.opMode)
-            {
-                case OPMODE_NONE: currMode = &noMode;  break;
-                case OPMODE_FM:   currMode = &fmMode;  break;
-                #ifdef CONFIG_M17
-                case OPMODE_M17:  currMode = &m17Mode; break;
-                #endif
-                default:   currMode = &noMode;
-            }
-
-            currMode->enable();
-        }
+        switchOpMode();
 
         // Tell radio driver that there was a change in its configuration.
         radio_updateConfiguration();

@@ -84,6 +84,17 @@ public:
     {
         return false;
     }
+
+    /**
+     * Check if the receiver is following a signal, also one that has not
+     * opened the squelch yet.
+     *
+     * @return true if a signal is being received.
+     */
+    virtual bool rxActive()
+    {
+        return rxSquelchOpen();
+    }
 };
 
 #endif /* OPMODE_H */

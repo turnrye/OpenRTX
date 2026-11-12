@@ -46,9 +46,12 @@ typedef struct
 
     /*
      * Dual watch: RX parameters of the watched VFO. While onWatch is set they
-     * trade places with rxFrequency, bandwidth, sqlLevel, rxToneEn and rxTone,
-     * so that these always describe what the receiver is tuned to.
+     * trade places with opMode, rxFrequency, bandwidth, sqlLevel, rxToneEn,
+     * rxTone and m17_can, so that these always describe what the receiver is
+     * tuned to.
      */
+    uint8_t  watchOpMode : 4,   /**< Watched operating mode        */
+             watchCan    : 4;   /**< Watched M17 CAN               */
     freq_t   watchFrequency;    /**< Watched RX frequency, in Hz   */
     uint8_t  watchBandwidth;    /**< Watched channel bandwidth     */
     uint8_t  watchSqlLevel;     /**< Watched squelch opening level */
