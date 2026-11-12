@@ -609,6 +609,15 @@ static uint8_t _ui_mainScreen(void)
 }
 
 /**
+ * Keep the main screen on the one for the mode of the selected tuner.
+ */
+static void _ui_followTunerMode(void)
+{
+    if((state.ui_screen == MAIN_VFO) || (state.ui_screen == MAIN_MEM))
+        state.ui_screen = _ui_mainScreen();
+}
+
+/**
  * Dual VFO: select the other tuner, the main screen follows its mode.
  */
 static void _ui_fsm_swapVfo(bool *sync_rtx)
@@ -1428,6 +1437,9 @@ static enum vpGPSInfoFlags GetGPSDirectionOrSpeedChanged()
 
 void ui_updateFSM(bool *sync_rtx)
 {
+    // Tuners restored at boot may be in memory mode
+    _ui_followTunerMode();
+
     // Check for events
     if(evQueue_wrPos == evQueue_rdPos) return;
 
@@ -1582,8 +1594,6 @@ void ui_updateFSM(bool *sync_rtx)
                 {
                     if(msg.keys & KEY_ENTER)
                     {
-                        // Save current main state
-                        ui_state.last_main_state = state.ui_screen;
                         // Open Menu
                         state.ui_screen = MENU_TOP;
                         // The selected item will be announced when the item is first selected.
@@ -1791,8 +1801,6 @@ void ui_updateFSM(bool *sync_rtx)
                 {
                     if(msg.keys & KEY_ENTER)
                     {
-                        // Save current main state
-                        ui_state.last_main_state = state.ui_screen;
                         // Open Menu
                         state.ui_screen = MENU_TOP;
                     }
@@ -2336,6 +2344,7 @@ void ui_updateFSM(bool *sync_rtx)
                                msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
                             {
                                 state.settings.dualVfo = !state.settings.dualVfo;
+                                *sync_rtx = true;
                             }
                             break;
                         default:
@@ -2617,6 +2626,7 @@ void ui_updateFSM(bool *sync_rtx)
                     {
                         ui_state.edit_mode = false;
                         state_resetSettingsAndVfo();
+                        *sync_rtx = true;
                         _ui_menuBack(MENU_SETTINGS);
                     }
                     else if(msg.keys & KEY_ESC)
@@ -2628,19 +2638,8 @@ void ui_updateFSM(bool *sync_rtx)
                 break;
         }
 
-        // There is a single main view: its screen follows the mode of the
-        // selected tuner, also when coming back from a menu
-        if((state.ui_screen == MAIN_VFO) || (state.ui_screen == MAIN_MEM))
-            state.ui_screen = _ui_mainScreen();
-
-        // Dual watch runs whenever the dual VFO is on, whatever the mode of
-        // each tuner, also behind the menus
-        bool dualWatch = state.settings.dualVfo;
-        if (state.dual_watch != dualWatch)
-        {
-            state.dual_watch = dualWatch;
-            *sync_rtx = true;
-        }
+        // There is a single main view, also when coming back from a menu
+        _ui_followTunerMode();
 
         // Enable Tx only if in MAIN_VFO or MAIN_MEM states
         bool inMemOrVfo = (state.ui_screen == MAIN_VFO) || (state.ui_screen == MAIN_MEM);

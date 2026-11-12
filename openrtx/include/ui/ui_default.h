@@ -230,8 +230,6 @@ typedef struct ui_state_t
 #endif
     char new_callsign[10];
     freq_t new_offset;
-    // Which state to return to when we exit menu
-    uint8_t last_main_state;
 #if defined(CONFIG_UI_NO_KEYBOARD)
     uint8_t macro_menu_selected;
 #endif // UI_NO_KEYBOARD
