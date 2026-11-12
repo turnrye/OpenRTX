@@ -52,7 +52,7 @@ void MetaText::getBlock(meta_t &meta, uint8_t index)
     }
 }
 
-void MetaText::setText(char *srcText)
+void MetaText::setText(const char *srcText)
 {
     memset(text, 0, META_TEXT_MAX_LEN);
 

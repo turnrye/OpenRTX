@@ -76,7 +76,7 @@ public:
      * @param srcText The char array of text to transmit. Only the first 52
      * characters will be used. Can be nullptr to clear the text.
      */
-    void setText(char *meta);
+    void setText(const char *meta);
 
     /**
      * @brief Add a received metadata block to the accumulator.
