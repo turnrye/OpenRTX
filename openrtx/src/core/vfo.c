@@ -9,10 +9,17 @@
 #include "core/data_slicer.h"
 #include "core/cps.h"
 #include "core/vfo.h"
+#include "core/tuner.h"
+
+/*
+ * Tag of the stored VFO data. The top bits keep it different from
+ * CPS_VERSION_NUMBER, which tagged the VFO when it was stored as a channel_t.
+ */
+#define VFO_DATA_TAG ((uint16_t)(0xF000 | TUNER_VERSION))
 
 struct vfo_data {
     uint16_t version;
-    channel_t vfo;
+    struct tuner_core vfo;
 } __attribute__((packed));
 
 struct vfo_storage {
@@ -31,7 +38,7 @@ void vfo_init(const uint32_t nvm_dev, const uint32_t nvm_part)
     storage.full_write_needed = false;
 }
 
-int vfo_load(channel_t *vfo)
+int vfo_load(struct tuner_core *vfo)
 {
     struct vfo_data saved_vfo;
     int err = 0;
@@ -41,24 +48,23 @@ int vfo_load(channel_t *vfo)
     if (err)
         return err;
 
-    if (saved_vfo.version != CPS_VERSION_NUMBER) {
-        *vfo = cps_getDefaultChannel();
+    if (saved_vfo.version != VFO_DATA_TAG) {
         storage.full_write_needed = true;
         return -1;
     }
 
-    memcpy(vfo, &saved_vfo.vfo, sizeof(channel_t));
+    memcpy(vfo, &saved_vfo.vfo, sizeof(struct tuner_core));
 
     return 0;
 }
 
-int vfo_save(const channel_t *vfo)
+int vfo_save(const struct tuner_core *vfo)
 {
     const struct nvmInfo *ni = nvm_getDevInfo(storage.dev);
     struct vfo_data vfo_data;
     int ret = 0;
 
-    vfo_data.version = CPS_VERSION_NUMBER;
+    vfo_data.version = VFO_DATA_TAG;
     vfo_data.vfo = *vfo;
 
     if (storage.full_write_needed && (ni->device_info & NVM_ERASE)) {

@@ -118,6 +118,12 @@ void state_init()
     }
 
     /*
+     * The loaded channel is not stored, and the UI starts on the VFO screen:
+     * always start in VFO mode.
+     */
+    tuner_switch_mode(&state.tuner, TUNER_VFO);
+
+    /*
      * Initialise remaining fields
      */
 #ifdef CONFIG_RTC
@@ -129,6 +135,7 @@ void state_init()
     state.volume = platform_getVolumeLevel();
 
     state.channel_index = 0; // Set default channel index (it is 0-based)
+    state.bank_enabled = false;
     state.rtxStatus = RTX_OFF;
     state.emergency = false;
     state.txDisable = false;

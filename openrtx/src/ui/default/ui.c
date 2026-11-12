@@ -601,30 +601,29 @@ static bool _ui_drawDarkOverlay()
 
 static int _ui_fsm_loadChannel(int16_t channel_index, bool *sync_rtx)
 {
-    // TODO. I think this should call tuner_set_mode_bank and bank_mode should be added back to state struct
+    // Load into a copy, so that an invalid channel leaves the tuner untouched
+    struct tuner tuner = state.tuner;
+    int result;
 
-    channel_t channel;
-    int32_t selected_channel = channel_index;
-    // If a bank is active, get index from current bank
-    if(tuner_get_mode(&state.tuner) == TUNER_BANK)
-    {
-        bankHdr_t bank = { 0 };
-        cps_readBankHeader(&bank, state.tuner.core.bank_index);
-        if((channel_index < 0) || (channel_index >= bank.ch_count))
-            return -1;
-        channel_index = cps_readBankData(state.tuner.core.bank_index, channel_index);
-    }
+    if(channel_index < 0)
+        return -1;
 
-    int result = cps_readChannel(&channel, channel_index);
-    // Read successful and channel is valid
-    if((result != -1) && _ui_channel_valid(&channel))
-    {
-        // Set new channel index
-        state.channel_index = selected_channel;
-        // Copy channel read to state
-        state.channel = channel;
-        *sync_rtx = true;
-    }
+    if(state.bank_enabled)
+        result = tuner_set_mode_bank(&tuner, tuner.core.bank_index,
+                                     channel_index);
+    else
+        result = tuner_set_mode_channel(&tuner, channel_index);
+
+    if(result < 0)
+        return -1;
+
+    if(!_ui_channel_valid(&tuner.cache.channel))
+        return result;
+
+    // Set new channel index and make the channel current
+    state.channel_index = channel_index;
+    state.tuner = tuner;
+    *sync_rtx = true;
 
     return result;
 }
@@ -656,14 +655,14 @@ static void _ui_fsm_confirmVFOInput(bool *sync_rtx)
         if(_ui_freq_check_limits(ui_state.new_rx_frequency) &&
            _ui_freq_check_limits(ui_state.new_tx_frequency))
         {
-            state.channel.rx_frequency = ui_state.new_rx_frequency;
-            state.channel.tx_frequency = ui_state.new_tx_frequency;
+            tuner_set_rx_frequency(&state.tuner, ui_state.new_rx_frequency);
+            tuner_set_tx_frequency(&state.tuner, ui_state.new_tx_frequency);
             *sync_rtx = true;
             // force init to clear any prompts in progress.
             // defer play because play is called at the end of the function
             //due to above freq queuing.
-            vp_announceFrequencies(state.channel.rx_frequency,
-                                   state.channel.tx_frequency, vpqInit);
+            vp_announceFrequencies(tuner_get_rx_frequency(&state.tuner),
+                                   tuner_get_tx_frequency(&state.tuner), vpqInit);
         }
         else
         {
@@ -725,12 +724,12 @@ static void _ui_fsm_insertVFONumber(kbd_msg_t msg, bool *sync_rtx)
             if(_ui_freq_check_limits(ui_state.new_rx_frequency) &&
                _ui_freq_check_limits(ui_state.new_tx_frequency))
             {
-                state.channel.rx_frequency = ui_state.new_rx_frequency;
-                state.channel.tx_frequency = ui_state.new_tx_frequency;
+                tuner_set_rx_frequency(&state.tuner, ui_state.new_rx_frequency);
+                tuner_set_tx_frequency(&state.tuner, ui_state.new_tx_frequency);
                 *sync_rtx = true;
                 // play is called at end.
-                vp_announceFrequencies(state.channel.rx_frequency,
-                                       state.channel.tx_frequency, vpqInit);
+                vp_announceFrequencies(tuner_get_rx_frequency(&state.tuner),
+                                       tuner_get_tx_frequency(&state.tuner), vpqInit);
             }
 
             state.ui_screen = MAIN_VFO;
@@ -790,8 +789,8 @@ static void _ui_changeMacroLatch(bool newVal)
 #ifdef CONFIG_M17
 static inline void _ui_changeM17Can(int variation)
 {
-    uint8_t can = state.channel.m17_can;
-    state.channel.m17_can = (can + variation) % 16;
+    uint8_t can = tuner_get_m17_can(&state.tuner);
+    tuner_set_m17_can(&state.tuner, (can + variation) % 16);
 }
 #endif
 
@@ -889,11 +888,51 @@ static bool _ui_exitStandby(long long now)
     return true;
 }
 
+/**
+ * Get the FM parameters in use, all zero if they can't be read.
+ */
+static fmInfo_t _ui_getFmParams(void)
+{
+    fmInfo_t fm = { 0 };
+
+    tuner_get_FM_params(&state.tuner, &fm);
+    return fm;
+}
+
+/**
+ * Step the CTCSS tone in use, the same for RX and TX.
+ */
+static void _ui_stepCtcssTone(bool up)
+{
+    fmInfo_t fm = _ui_getFmParams();
+
+    if (up)
+        fm.txTone = (fm.txTone + 1) % CTCSS_FREQ_NUM;
+    else if (fm.txTone == 0)
+        fm.txTone = CTCSS_FREQ_NUM - 1;
+    else
+        fm.txTone--;
+
+    fm.rxTone = fm.txTone;
+    tuner_set_FM_params(&state.tuner, &fm);
+}
+
+/**
+ * Announce the CTCSS settings in use.
+ */
+static void _ui_announceCtcss(const enum vpQueueFlags flags)
+{
+    fmInfo_t fm = _ui_getFmParams();
+
+    vp_announceCTCSS(fm.rxToneEn, fm.rxTone, fm.txToneEn, fm.txTone, flags);
+}
+
 // TODO: find a better home for this function
 int _ui_handleToneSelectScroll(bool direction_up)
 {
-    bool tone_tx_enable = state.channel.fm.txToneEn;
-    bool tone_rx_enable = state.channel.fm.rxToneEn;
+    fmInfo_t fm = _ui_getFmParams();
+    bool tone_tx_enable = fm.txToneEn;
+    bool tone_rx_enable = fm.rxToneEn;
     uint8_t tone_flags = tone_tx_enable << 1 | tone_rx_enable;
 
     if(direction_up)
@@ -904,8 +943,9 @@ int _ui_handleToneSelectScroll(bool direction_up)
     tone_flags %= 4;
     tone_tx_enable = tone_flags >> 1;
     tone_rx_enable = tone_flags & 1;
-    state.channel.fm.txToneEn = tone_tx_enable;
-    state.channel.fm.rxToneEn = tone_rx_enable;
+    fm.txToneEn = tone_tx_enable;
+    fm.rxToneEn = tone_rx_enable;
+    tuner_set_FM_params(&state.tuner, &fm);
 
     return 1;
 }
@@ -938,93 +978,70 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
     switch(ui_state.input_number)
     {
         case 1:
-            if(state.channel.mode == OPMODE_FM)
+            if(tuner_get_opmode(&state.tuner) == OPMODE_FM)
             {
                 _ui_handleToneSelectScroll(true);
                 *sync_rtx                 = true;
-                vp_announceCTCSS(
-                    state.channel.fm.rxToneEn, state.channel.fm.rxTone,
-                    state.channel.fm.txToneEn, state.channel.fm.txTone,
-                    queueFlags | vpqIncludeDescriptions);
+                _ui_announceCtcss(queueFlags | vpqIncludeDescriptions);
             }
             break;
         case 2:
-            if (state.channel.mode == OPMODE_FM)
+            if (tuner_get_opmode(&state.tuner) == OPMODE_FM)
             {
-                if (state.channel.fm.txTone == 0)
-                {
-                    state.channel.fm.txTone = CTCSS_FREQ_NUM-1;
-                }
-                else
-                {
-                    state.channel.fm.txTone--;
-                }
-
-                state.channel.fm.txTone %= CTCSS_FREQ_NUM;
-                state.channel.fm.rxTone = state.channel.fm.txTone;
+                _ui_stepCtcssTone(false);
                 *sync_rtx = true;
-                vp_announceCTCSS(state.channel.fm.rxToneEn,
-                                 state.channel.fm.rxTone,
-                                 state.channel.fm.txToneEn,
-                                 state.channel.fm.txTone,
-                                 queueFlags);
+                _ui_announceCtcss(queueFlags);
             }
             break;
 
         case 3:
-            if(state.channel.mode == OPMODE_FM)
+            if(tuner_get_opmode(&state.tuner) == OPMODE_FM)
             {
-                state.channel.fm.txTone++;
-                state.channel.fm.txTone %= CTCSS_FREQ_NUM;
-                state.channel.fm.rxTone = state.channel.fm.txTone;
+                _ui_stepCtcssTone(true);
                 *sync_rtx = true;
-                vp_announceCTCSS(state.channel.fm.rxToneEn,
-                                 state.channel.fm.rxTone,
-                                 state.channel.fm.txToneEn,
-                                 state.channel.fm.txTone,
-                                 queueFlags |vpqIncludeDescriptions);
+                _ui_announceCtcss(queueFlags | vpqIncludeDescriptions);
             }
             break;
         case 4:
-            if(state.channel.mode == OPMODE_FM)
+            if(tuner_get_opmode(&state.tuner) == OPMODE_FM)
             {
-                state.channel.bandwidth++;
-                state.channel.bandwidth %= 2;
+                tuner_set_bandwidth(&state.tuner,
+                                    (tuner_get_bandwidth(&state.tuner) + 1) % 2);
                 *sync_rtx = true;
-                vp_announceBandwidth(state.channel.bandwidth, queueFlags);
+                vp_announceBandwidth(tuner_get_bandwidth(&state.tuner), queueFlags);
             }
             break;
         case 5:
             // Cycle through radio modes
             #ifdef CONFIG_M17
-            if(state.channel.mode == OPMODE_FM)
-                state.channel.mode = OPMODE_M17;
-            else if(state.channel.mode == OPMODE_M17)
-                state.channel.mode = OPMODE_FM;
+            if(tuner_get_opmode(&state.tuner) == OPMODE_FM)
+                tuner_set_opmode(&state.tuner, OPMODE_M17);
+            else if(tuner_get_opmode(&state.tuner) == OPMODE_M17)
+                tuner_set_opmode(&state.tuner, OPMODE_FM);
             else //catch any invalid states so they don't get locked out
             #endif
-                state.channel.mode = OPMODE_FM;
+                tuner_set_opmode(&state.tuner, OPMODE_FM);
             *sync_rtx = true;
-            vp_announceRadioMode(state.channel.mode, queueFlags);
+            vp_announceRadioMode(tuner_get_opmode(&state.tuner), queueFlags);
             break;
         case 6:
 
-            switch(state.channel.power)
+            switch(tuner_get_power(&state.tuner))
             {
                 case 1000:
-                    state.channel.power = 2500;
+                    tuner_set_power(&state.tuner, 2500);
                     break;
 
                 case 2500:
-                    state.channel.power = 5000;
+                    tuner_set_power(&state.tuner, 5000);
                     break;
 
                 default:
-                    state.channel.power = 1000;
+                    tuner_set_power(&state.tuner, 1000);
             }
 
             *sync_rtx = true;
-            vp_announcePower(state.channel.power, queueFlags);
+            vp_announcePower(tuner_get_power(&state.tuner), queueFlags);
             break;
 #ifdef CONFIG_SCREEN_BRIGHTNESS
         case 7:
@@ -1053,13 +1070,14 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
 #endif // PLATFORM_TTWRPLUS
     {
 #ifdef CONFIG_KNOB_ABSOLUTE // If the radio has an absolute position knob
-        state.channel.sqlLevel = platform_getChSelector() - 1;
+        tuner_set_sql_level(&state.tuner, platform_getChSelector() - 1);
 #endif // CONFIG_KNOB_ABSOLUTE
-        if(state.channel.sqlLevel > 0)
+        if(tuner_get_sql_level(&state.tuner) > 0)
         {
-            state.channel.sqlLevel -= 1;
+            tuner_set_sql_level(&state.tuner,
+                                tuner_get_sql_level(&state.tuner) - 1);
             *sync_rtx = true;
-            vp_announceSquelch(state.channel.sqlLevel, queueFlags);
+            vp_announceSquelch(tuner_get_sql_level(&state.tuner), queueFlags);
         }
     }
 
@@ -1070,13 +1088,14 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
 #endif // PLATFORM_TTWRPLUS
     {
 #ifdef CONFIG_KNOB_ABSOLUTE
-        state.channel.sqlLevel = platform_getChSelector() - 1;
+        tuner_set_sql_level(&state.tuner, platform_getChSelector() - 1);
 #endif
-        if(state.channel.sqlLevel < 15)
+        if(tuner_get_sql_level(&state.tuner) < 15)
         {
-            state.channel.sqlLevel += 1;
+            tuner_set_sql_level(&state.tuner,
+                                tuner_get_sql_level(&state.tuner) + 1);
             *sync_rtx = true;
-            vp_announceSquelch(state.channel.sqlLevel, queueFlags);
+            vp_announceSquelch(tuner_get_sql_level(&state.tuner), queueFlags);
         }
     }
 }
@@ -1494,7 +1513,7 @@ void ui_updateFSM(bool *sync_rtx)
 
                 // Break out of the FSM if the keypad is locked but allow the
                 // use of the hash key in FM mode for the 1750Hz tone.
-                bool skipLock =  (state.channel.mode == OPMODE_FM)
+                bool skipLock =  (tuner_get_opmode(&state.tuner) == OPMODE_FM)
                               && (msg.keys == KEY_HASH);
 
                 if ((ui_state.input_locked == true) && (skipLock == false))
@@ -1503,13 +1522,13 @@ void ui_updateFSM(bool *sync_rtx)
                 if(ui_state.edit_mode)
                 {
                     #ifdef CONFIG_M17
-                    if(state.channel.mode == OPMODE_M17)
+                    if(tuner_get_opmode(&state.tuner) == OPMODE_M17)
                     {
                         if(msg.keys & KEY_ENTER)
                         {
                             _ui_textInputConfirm(ui_state.new_callsign);
                             // Save selected dst ID and disable input mode
-                            strncpy(state.channel.m17_dest, ui_state.new_callsign, 10);
+                            tuner_set_m17_dest(&state.tuner, ui_state.new_callsign);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                             vp_announceM17Info(NULL,  ui_state.edit_mode,
@@ -1518,7 +1537,7 @@ void ui_updateFSM(bool *sync_rtx)
                         else if(msg.keys & KEY_HASH)
                         {
                             // Save selected dst ID and disable input mode
-                            strncpy(state.channel.m17_dest, "", 1);
+                            tuner_set_m17_dest(&state.tuner, "");
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                             vp_announceM17Info(NULL,  ui_state.edit_mode,
@@ -1548,8 +1567,6 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else if(msg.keys & KEY_ESC)
                     {
-                        // Save VFO channel
-                        state.vfo_channel = state.channel;
                         int result = _ui_fsm_loadChannel(state.channel_index, sync_rtx);
                         // Read successful and channel is valid
                         if(result != -1)
@@ -1557,7 +1574,7 @@ void ui_updateFSM(bool *sync_rtx)
                             // Switch to MEM screen
                             state.ui_screen = MAIN_MEM;
                             // anounce the active channel name.
-                            vp_announceChannelName(&state.channel,
+                            vp_announceChannelName(&state.tuner.cache.channel,
                                                    state.channel_index,
                                                    queueFlags);
                         }
@@ -1566,7 +1583,7 @@ void ui_updateFSM(bool *sync_rtx)
                     {
                         #ifdef CONFIG_M17
                         // Only enter edit mode when using M17
-                        if(state.channel.mode == OPMODE_M17)
+                        if(tuner_get_opmode(&state.tuner) == OPMODE_M17)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
@@ -1589,28 +1606,32 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                     {
                         // Increment TX and RX frequency of 12.5KHz
-                        if(_ui_freq_check_limits(state.channel.rx_frequency + freq_steps[state.step_index]) &&
-                           _ui_freq_check_limits(state.channel.tx_frequency + freq_steps[state.step_index]))
+                        if(_ui_freq_check_limits(tuner_get_rx_frequency(&state.tuner) + freq_steps[state.step_index]) &&
+                           _ui_freq_check_limits(tuner_get_tx_frequency(&state.tuner) + freq_steps[state.step_index]))
                         {
-                            state.channel.rx_frequency += freq_steps[state.step_index];
-                            state.channel.tx_frequency += freq_steps[state.step_index];
+                            tuner_set_rx_frequency(&state.tuner,
+                                tuner_get_rx_frequency(&state.tuner) + freq_steps[state.step_index]);
+                            tuner_set_tx_frequency(&state.tuner,
+                                tuner_get_tx_frequency(&state.tuner) + freq_steps[state.step_index]);
                             *sync_rtx = true;
-                            vp_announceFrequencies(state.channel.rx_frequency,
-                                                   state.channel.tx_frequency,
+                            vp_announceFrequencies(tuner_get_rx_frequency(&state.tuner),
+                                                   tuner_get_tx_frequency(&state.tuner),
                                                    queueFlags);
                         }
                     }
                     else if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
                     {
                         // Decrement TX and RX frequency of 12.5KHz
-                        if(_ui_freq_check_limits(state.channel.rx_frequency - freq_steps[state.step_index]) &&
-                           _ui_freq_check_limits(state.channel.tx_frequency - freq_steps[state.step_index]))
+                        if(_ui_freq_check_limits(tuner_get_rx_frequency(&state.tuner) - freq_steps[state.step_index]) &&
+                           _ui_freq_check_limits(tuner_get_tx_frequency(&state.tuner) - freq_steps[state.step_index]))
                         {
-                            state.channel.rx_frequency -= freq_steps[state.step_index];
-                            state.channel.tx_frequency -= freq_steps[state.step_index];
+                            tuner_set_rx_frequency(&state.tuner,
+                                tuner_get_rx_frequency(&state.tuner) - freq_steps[state.step_index]);
+                            tuner_set_tx_frequency(&state.tuner,
+                                tuner_get_tx_frequency(&state.tuner) - freq_steps[state.step_index]);
                             *sync_rtx = true;
-                            vp_announceFrequencies(state.channel.rx_frequency,
-                                                   state.channel.tx_frequency,
+                            vp_announceFrequencies(tuner_get_rx_frequency(&state.tuner),
+                                                   tuner_get_tx_frequency(&state.tuner),
                                                    queueFlags);
                         }
                     }
@@ -1619,8 +1640,8 @@ void ui_updateFSM(bool *sync_rtx)
                         if (state.settings.vpLevel > vpBeep)
                         {// quick press repeat vp, long press summary.
                             if (msg.long_press)
-                                vp_announceChannelSummary(&state.channel, 0,
-                                                          state.bank, vpAllInfo);
+                                vp_announceTunerSummary(&state.tuner,
+                                                        vpAllInfo);
                             else
                                 vp_replayLastPrompt();
                             f1Handled = true;
@@ -1699,14 +1720,14 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             _ui_textInputConfirm(ui_state.new_callsign);
                             // Save selected dst ID and disable input mode
-                            strncpy(state.channel.m17_dest, ui_state.new_callsign, 10);
+                            tuner_set_m17_dest(&state.tuner, ui_state.new_callsign);
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                         }
                         else if(msg.keys & KEY_HASH)
                         {
                             // Save selected dst ID and disable input mode
-                            strncpy(state.channel.m17_dest, "", 1);
+                            tuner_set_m17_dest(&state.tuner, "");
                             ui_state.edit_mode = false;
                             *sync_rtx = true;
                         }
@@ -1720,11 +1741,8 @@ void ui_updateFSM(bool *sync_rtx)
                                 // Quick press repeat vp, long press summary.
                                 if (msg.long_press)
                                 {
-                                    vp_announceChannelSummary(
-                                            &state.channel,
-                                            state.channel_index,
-                                            state.bank,
-                                            vpAllInfo);
+                                    vp_announceTunerSummary(&state.tuner,
+                                                            vpAllInfo);
                                 }
                                 else
                                 {
@@ -1753,8 +1771,8 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     else if(msg.keys & KEY_ESC)
                     {
-                        // Restore VFO channel
-                        state.channel = state.vfo_channel;
+                        // Back to the VFO
+                        tuner_switch_mode(&state.tuner, TUNER_VFO);
                         // Update RTX configuration
                         *sync_rtx = true;
                         // Switch to VFO screen
@@ -1763,7 +1781,7 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_HASH)
                     {
                         // Only enter edit mode when using M17
-                        if(state.channel.mode == OPMODE_M17)
+                        if(tuner_get_opmode(&state.tuner) == OPMODE_M17)
                         {
                             // Enable dst ID input
                             ui_state.edit_mode = true;
@@ -1786,9 +1804,8 @@ void ui_updateFSM(bool *sync_rtx)
                         {// quick press repeat vp, long press summary.
                             if (msg.long_press)
                             {
-                                vp_announceChannelSummary(&state.channel,
-                                                          state.channel_index+1,
-                                                          state.bank, vpAllInfo);
+                                vp_announceTunerSummary(&state.tuner,
+                                                        vpAllInfo);
                             }
                             else
                             {
@@ -1801,14 +1818,14 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                     {
                         _ui_fsm_loadChannel(state.channel_index + 1, sync_rtx);
-                        vp_announceChannelName(&state.channel,
+                        vp_announceChannelName(&state.tuner.cache.channel,
                                                state.channel_index+1,
                                                queueFlags);
                     }
                     else if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
                     {
                         _ui_fsm_loadChannel(state.channel_index - 1, sync_rtx);
-                        vp_announceChannelName(&state.channel,
+                        vp_announceChannelName(&state.tuner.cache.channel,
                                                state.channel_index+1,
                                                queueFlags);
                     }
@@ -1903,10 +1920,8 @@ void ui_updateFSM(bool *sync_rtx)
                         }
                         if(result != -1)
                         {
-                            state.bank = ui_state.menu_selected - 1;
-                            // If we were in VFO mode, save VFO channel
-                            if(ui_state.last_main_state == MAIN_VFO)
-                                state.vfo_channel = state.channel;
+                            if(state.bank_enabled)
+                                state.tuner.core.bank_index = ui_state.menu_selected - 1;
                             // Load bank first channel
                             _ui_fsm_loadChannel(0, sync_rtx);
                             // Switch to MEM screen
@@ -1915,9 +1930,6 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                     if(state.ui_screen == MENU_CHANNEL)
                     {
-                        // If we were in VFO mode, save VFO channel
-                        if(ui_state.last_main_state == MAIN_VFO)
-                            state.vfo_channel = state.channel;
                         _ui_fsm_loadChannel(ui_state.menu_selected, sync_rtx);
                         // Switch to MEM screen
                         state.ui_screen = MAIN_MEM;
@@ -2225,10 +2237,10 @@ void ui_updateFSM(bool *sync_rtx)
 #endif
                                 // Apply new offset if it is within the hardware
                                 // limits of the radio
-                                freq_t new_freq = state.channel.rx_frequency + ui_state.new_offset;
+                                freq_t new_freq = tuner_get_rx_frequency(&state.tuner) + ui_state.new_offset;
                                 if (_ui_freq_check_limits(new_freq))
                                 {
-                                    state.channel.tx_frequency = new_freq;
+                                    tuner_set_tx_frequency(&state.tuner, new_freq);
                                     vp_queueStringTableEntry(&currentLanguage->offset);
                                     vp_queueFrequency(ui_state.new_offset);
                                     ui_state.edit_mode = false;
@@ -2239,7 +2251,7 @@ void ui_updateFSM(bool *sync_rtx)
                             {
                                 // Announce old frequency offset
                                 vp_queueStringTableEntry(&currentLanguage->offset);
-                                vp_queueFrequency((int32_t)state.channel.tx_frequency - (int32_t)state.channel.rx_frequency);
+                                vp_queueFrequency((int32_t)tuner_get_tx_frequency(&state.tuner) - (int32_t)tuner_get_rx_frequency(&state.tuner));
                             }
                             else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
                                     msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
@@ -2267,10 +2279,10 @@ void ui_updateFSM(bool *sync_rtx)
                                msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
                             {
                                 // Invert frequency offset direction
-                                if (state.channel.tx_frequency >= state.channel.rx_frequency)
-                                    state.channel.tx_frequency -= 2 * ((int32_t)state.channel.tx_frequency - (int32_t)state.channel.rx_frequency);
-                                else // Switch to positive offset
-                                    state.channel.tx_frequency -= 2 * ((int32_t)state.channel.tx_frequency - (int32_t)state.channel.rx_frequency);
+                                // TX mirrors around RX: tx - 2 * (tx - rx)
+                                freq_t rx = tuner_get_rx_frequency(&state.tuner);
+                                freq_t tx = tuner_get_tx_frequency(&state.tuner);
+                                tuner_set_tx_frequency(&state.tuner, 2 * rx - tx);
                             }
                             break;
                         case R_STEP:
@@ -2356,11 +2368,11 @@ void ui_updateFSM(bool *sync_rtx)
                             {
                                 _ui_textInputConfirm(ui_state.new_meta_text);
                                 // Save selected message and disable input mode
-                                strncpy(state.channel.M17_meta_text, ui_state.new_meta_text, 52);
+                                tuner_set_m17_meta_text(&state.tuner, ui_state.new_meta_text);
                                 ui_state.edit_meta_text = false;
                                 ui_state.edit_mode = false;
                                 vp_announceBuffer(&currentLanguage->metaText,
-                                                  false, true, state.channel.M17_meta_text);
+                                                  false, true, tuner_get_m17_meta_text(&state.tuner));
                             }
                             else if(msg.keys & KEY_ESC)
                             {
@@ -2368,7 +2380,7 @@ void ui_updateFSM(bool *sync_rtx)
                                 ui_state.edit_meta_text = false;
                                 ui_state.edit_mode = false;
                                 vp_announceBuffer(&currentLanguage->metaText,
-                                                  false, true, state.channel.M17_meta_text);
+                                                  false, true, tuner_get_m17_meta_text(&state.tuner));
                             }
                             else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
                                      msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
@@ -2464,24 +2476,14 @@ void ui_updateFSM(bool *sync_rtx)
                         case CTCSS_Tone:
                             if (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
                             {
-                                if (state.channel.fm.txTone == 0)
-                                {
-                                    state.channel.fm.txTone =
-                                        CTCSS_FREQ_NUM - 1;
-                                }
-                                else
-                                {
-                                    state.channel.fm.txTone--;
-                                }
+                                _ui_stepCtcssTone(false);
                             }
                             else if (msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                             {
-                                state.channel.fm.txTone++;
+                                _ui_stepCtcssTone(true);
                             } else if (msg.keys & KEY_ENTER) {
                                 ui_state.edit_mode = false;
                             }
-                            state.channel.fm.txTone %= CTCSS_FREQ_NUM;
-                            state.channel.fm.rxTone = state.channel.fm.txTone;
                             *sync_rtx = true;
                             break;
                         case CTCSS_Enabled:

@@ -14,6 +14,7 @@
 #include <errno.h>
 #include "core/gps.h"
 #include "core/state.h"
+#include "core/tuner.h"
 #include "core/utils.h"
 #include "rtx/rtx.h"
 
@@ -322,8 +323,8 @@ void OpMode_M17::txState(rtxStatus_t *const status)
 
         lsf.setType(type);
 
-        if(strlen(state.channel.M17_meta_text) > 0) {
-            metaText.setText(state.channel.M17_meta_text);
+        if(strlen(tuner_get_m17_meta_text(&state.tuner)) > 0) {
+            metaText.setText(tuner_get_m17_meta_text(&state.tuner));
             metaText.getNextBlock(lsf.metadata());
         }
 
@@ -368,7 +369,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     // the upcoming superframe.
     if(encoder.superframeBoundary())
     {
-        if(strlen(state.channel.M17_meta_text) > 0) {
+        if(strlen(tuner_get_m17_meta_text(&state.tuner)) > 0) {
             auto lsf = encoder.getCurrentLsf();
             metaText.getNextBlock(lsf.metadata());
             encoder.updateLsfData(lsf);

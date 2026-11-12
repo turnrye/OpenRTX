@@ -5,6 +5,7 @@
  */
 
 #include "core/state.h"
+#include "core/vfo.h"
 #include <stdio.h>
 #include <stdint.h>
 #include "ui/ui_mod17.h"
@@ -340,7 +341,7 @@ static void _ui_changeBrightness(int variation)
 
 static void _ui_changeM17CAN(int variation)
 {
-    int8_t can = state.tuner.core.vfo.m17.can + variation;
+    int8_t can = tuner_get_m17_can(&state.tuner) + variation;
 
     // M17 CAN ranges from 0 to 15
     if(can > 15)
@@ -349,7 +350,7 @@ static void _ui_changeM17CAN(int variation)
     if(can < 0)
         can = 15;
 
-    state.tuner.core.vfo.m17.can = can;
+    tuner_set_m17_can(&state.tuner, can);
 }
 
 static void _ui_changeWiper(uint16_t *wiper, int variation)
@@ -515,8 +516,9 @@ void ui_updateFSM(bool *sync_rtx)
                     {
                         _ui_textInputConfirm(ui_state.new_callsign);
                         // Save selected callsign and disable input mode
-                        strncpy(state.tuner.core.vfo.m17_dest, ui_state.new_callsign, 9);
-                        nvm_writeSettingsAndVfo(&state.settings, &state.channel);
+                        tuner_set_m17_dest(&state.tuner, ui_state.new_callsign);
+                        settings_save(&state.settings);
+                        vfo_save(&state.tuner.core);
                         *sync_rtx = true;
                         ui_state.edit_mode = false;
                     }
@@ -531,9 +533,9 @@ void ui_updateFSM(bool *sync_rtx)
                     {
                         _ui_textInputConfirm(ui_state.new_meta_text);
                         // Save selected message and disable input mode
-                        strncpy(state.channel.M17_meta_text, ui_state.new_meta_text, 52);
+                        tuner_set_m17_meta_text(&state.tuner, ui_state.new_meta_text);
                         ui_state.edit_meta_text = false;
-                        vfo_save(&state.channel);
+                        vfo_save(&state.tuner.core);
                         *sync_rtx = true;
                     }
                     else if(msg.keys & KEY_ESC)
@@ -701,7 +703,7 @@ void ui_updateFSM(bool *sync_rtx)
                         _ui_textInputConfirm(ui_state.new_meta_text);
                         // Save selected message and disable input mode
                         strncpy(state.settings.M17_meta_text, ui_state.new_message, 52);
-                        vfo_save(&state.channel);
+                        vfo_save(&state.tuner.core);
                         ui_state.edit_mode = false;
                     }
                     else if(msg.keys & KEY_ESC)
@@ -768,7 +770,8 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_ESC)
                     {
                         *sync_rtx = true;
-                        nvm_writeSettingsAndVfo(&state.settings, &state.channel);
+                        settings_save(&state.settings);
+                        vfo_save(&state.tuner.core);
                         _ui_menuBack(MENU_SETTINGS);
                     }
                 }

@@ -8,6 +8,7 @@
 #define VOICE_PROMPT_UTILS_H
 
 #include "core/cps.h"
+#include "core/tuner.h"
 #include "ui/ui_strings.h"
 #include "core/voicePrompts.h"
 
@@ -58,12 +59,11 @@ void vp_announceBandwidth(const uint8_t bandwidth,
                           const enum vpQueueFlags flags);
 
 /**
- * channelNumber is 1-based, channelIndex is 0-based.
+ * Announce a summary of the tuner: VFO or channel name, frequencies, mode,
+ * mode-specific information, power and bank, as selected by infoFlags.
  */
-void vp_announceChannelSummary(const channel_t *channel,
-                               const uint16_t channelNumber,
-                               const uint16_t bank,
-                               const enum vpSummaryInfoFlags infoFlags);
+void vp_announceTunerSummary(const struct tuner *t,
+                             const enum vpSummaryInfoFlags infoFlags);
 
 /**
  *

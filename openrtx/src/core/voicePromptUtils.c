@@ -206,7 +206,7 @@ void vp_announceTunerSummary(const struct tuner *t,
     if ((infoFlags & vpModeSpecificInfo) != 0) {
         switch (tuner_get_opmode(t)) {
             case OPMODE_FM: {
-                vp_announceBandwidth(t->core.vfo.bandwidth, localFlags);
+                vp_announceBandwidth(tuner_get_bandwidth(t), localFlags);
                 addSilenceIfNeeded(localFlags);
                 fmInfo_t fm;
                 tuner_get_FM_params(t, &fm);
@@ -483,17 +483,13 @@ void vp_announceM17Info(const m17Info_t *m17, bool isEditing,
     if (flags & vpqIncludeDescriptions) {
         vp_queuePrompt(PROMPT_DEST_ID);
     }
-    if(m17 == NULL)
-    {
-        playIfNeeded(flags);
-        return;
-    }
+    const char *dest = tuner_get_m17_dest(&state.tuner);
 
     if (isEditing) {
         vp_queuePrompt(PROMPT_EDIT);
-    } else if (m17->dest[0] != '\0') {
-        vp_queueString(m17->dest, vpAnnounceCommonSymbols);
-    } else if (m17->contact_index != 0) {
+    } else if (dest[0] != '\0') {
+        vp_queueString(dest, vpAnnounceCommonSymbols);
+    } else if ((m17 != NULL) && (m17->contact_index != 0)) {
         if (!vp_announceContactWithIndex(m17->contact_index, flags))
             vp_queueStringTableEntry(&currentLanguage->broadcast);
     } else {
@@ -802,6 +798,8 @@ void vp_announceScreen(uint8_t ui_screen)
                                             | vpRadioMode;
 
     switch (ui_screen) {
+        case MAIN_VFO:
+        case MAIN_MEM:
             vp_announceTunerSummary(&state.tuner, infoFlags);
             break;
 

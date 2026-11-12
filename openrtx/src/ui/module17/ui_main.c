@@ -39,7 +39,7 @@ void _ui_drawMainTop()
 
 static void _ui_drawModeInfo(ui_state_t* ui_state)
 {
-    switch(last_state.channel.mode)
+    switch(tuner_get_opmode(&last_state.tuner))
     {
         case OPMODE_M17:
         {
@@ -122,7 +122,7 @@ static void _ui_drawModeInfo(ui_state_t* ui_state)
 
                 // Print CAN
                 gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_RIGHT,
-                          color_white, "CAN %02d", state.channel.m17_can);
+                          color_white, "CAN %02d", tuner_get_m17_can(&last_state.tuner));
                 gfx_print(layout.line3_pos, layout.line2_font, TEXT_ALIGN_CENTER,
                           color_white, last);
                 // Print M17 Destination ID on line 2

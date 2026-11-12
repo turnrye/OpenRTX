@@ -105,9 +105,9 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             tuner_get_FM_params(&last_state.tuner, &fm);
 
             // Get Bandwidth string
-            if(last_state.tuner.core.vfo.bandwidth == BW_12_5)
+            if(tuner_get_bandwidth(&last_state.tuner) == BW_12_5)
                 sniprintf(bw_str, 8, "NFM");
-            else if(last_state.tuner.core.vfo.bandwidth == BW_25)
+            else if(tuner_get_bandwidth(&last_state.tuner) == BW_25)
                 sniprintf(bw_str, 8, "FM");
 
             // Get encdec string
@@ -320,22 +320,14 @@ void _ui_drawMainBottom()
 {
     // Squelch bar
     rssi_t   rssi = last_state.rssi;
-
-    uint8_t  squelch = 0;
-    if(tuner_get_opmode(&state.tuner)==OPMODE_FM)
-    {
-        fmInfo_t fm;
-        tuner_get_FM_params(&state.tuner, &fm);
-        squelch = fm.sqlLevel;
-    }
-
+    uint8_t  squelch = tuner_get_sql_level(&last_state.tuner);
     uint8_t  volume = last_state.volume;
     uint16_t meter_width = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
     uint16_t meter_height = layout.bottom_h;
     point_t meter_pos = { layout.horizontal_pad,
                           CONFIG_SCREEN_HEIGHT - meter_height - layout.bottom_pad};
     uint8_t mic_level = platform_getMicLevel();
-    switch(tuner_get_opmode(&state.tuner))
+    switch(tuner_get_opmode(&last_state.tuner))
     {
         case OPMODE_FM:
             gfx_drawSmeter(meter_pos,

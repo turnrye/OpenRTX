@@ -36,6 +36,7 @@ typedef struct {
     uint8_t tuner_mode;
 
     uint16_t channel_index;
+    bool bank_enabled; // Memory mode browses a bank, not all channels
     struct tuner tuner;
 
     uint8_t rtxStatus;

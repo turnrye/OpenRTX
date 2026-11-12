@@ -184,19 +184,19 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
             return 0;
         case M_METATEXT:
             // limit display to 8 characters
-            if (strlen(last_state.channel.M17_meta_text) > 7)
+            if (strlen(tuner_get_m17_meta_text(&last_state.tuner)) > 7)
             {
                 char tmp[8];
-                memcpy(tmp, last_state.channel.M17_meta_text, 7);
+                memcpy(tmp, tuner_get_m17_meta_text(&last_state.tuner), 7);
                 tmp[7] = 0;
                 // append asterisk to indicate more characters than displayed
                 snprintf(buf, max_len, "%s*", tmp);
             }
             else
-                snprintf(buf, max_len, "%s", last_state.channel.M17_meta_text);
+                snprintf(buf, max_len, "%s", tuner_get_m17_meta_text(&last_state.tuner));
             break;
         case M_CAN:
-            sniprintf(buf, max_len, "%d", last_state.channel.m17_can);
+            sniprintf(buf, max_len, "%d", tuner_get_m17_can(&last_state.tuner));
             break;
         case M_CAN_RX:
             snprintf(buf, max_len, "%s", (last_state.settings.m17_can_rx) ? "on" : "off");
