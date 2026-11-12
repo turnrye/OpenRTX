@@ -165,6 +165,7 @@ const char *settings_radio_items[] =
     "Offset",
     "Direction",
     "Step",
+    "Dual VFO",
 };
 
 const char * settings_m17_items[] =
@@ -597,6 +598,28 @@ static bool _ui_drawDarkOverlay()
     point_t origin = {0, 0};
     gfx_drawRect(origin, CONFIG_SCREEN_WIDTH, CONFIG_SCREEN_HEIGHT, alpha_grey, true);
     return true;
+}
+
+/**
+ * Main screen for the mode of the selected tuner.
+ */
+static uint8_t _ui_mainScreen(void)
+{
+    return (tuner_get_mode(&state.tuner) == TUNER_VFO) ? MAIN_VFO : MAIN_MEM;
+}
+
+/**
+ * Dual VFO: select the other tuner, the main screen follows its mode.
+ */
+static void _ui_fsm_swapVfo(bool *sync_rtx)
+{
+    if(state.settings.dualVfo == false)
+        return;
+
+    state_swapVfo();
+    state.ui_screen = _ui_mainScreen();
+    *sync_rtx = true;
+    vp_announceTunerSummary(&state.tuner, vpChannelNameOrVFO | vpFrequencies);
 }
 
 static int _ui_fsm_loadChannel(int16_t channel_index, bool *sync_rtx)
@@ -1647,6 +1670,10 @@ void ui_updateFSM(bool *sync_rtx)
                             f1Handled = true;
                         }
                     }
+                    else if(msg.keys & KEY_STAR)
+                    {
+                        _ui_fsm_swapVfo(sync_rtx);
+                    }
                     else if(input_isNumberPressed(msg))
                     {
                         // Open Frequency input screen
@@ -1815,6 +1842,10 @@ void ui_updateFSM(bool *sync_rtx)
                             f1Handled = true;
                         }
                     }
+                    else if(msg.keys & KEY_STAR)
+                    {
+                        _ui_fsm_swapVfo(sync_rtx);
+                    }
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                     {
                         _ui_fsm_loadChannel(state.channel_index + 1, sync_rtx);
@@ -1869,7 +1900,7 @@ void ui_updateFSM(bool *sync_rtx)
                     ui_state.menu_selected = 0;
                 }
                 else if(msg.keys & KEY_ESC)
-                    _ui_menuBack(ui_state.last_main_state);
+                    _ui_menuBack(_ui_mainScreen());
                 break;
             // Zone menu screen
             case MENU_BANK:
@@ -2299,6 +2330,14 @@ void ui_updateFSM(bool *sync_rtx)
                                 state.step_index %= n_freq_steps;
                             }
                             break;
+                        case R_DUAL_VFO:
+                            if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                               msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT ||
+                               msg.keys & KNOB_LEFT || msg.keys & KNOB_RIGHT)
+                            {
+                                state.settings.dualVfo = !state.settings.dualVfo;
+                            }
+                            break;
                         default:
                             state.ui_screen = SETTINGS_RADIO;
                     }
@@ -2587,6 +2626,20 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
                 break;
+        }
+
+        // There is a single main view: its screen follows the mode of the
+        // selected tuner, also when coming back from a menu
+        if((state.ui_screen == MAIN_VFO) || (state.ui_screen == MAIN_MEM))
+            state.ui_screen = _ui_mainScreen();
+
+        // Dual watch runs whenever the dual VFO is on, whatever the mode of
+        // each tuner, also behind the menus
+        bool dualWatch = state.settings.dualVfo;
+        if (state.dual_watch != dualWatch)
+        {
+            state.dual_watch = dualWatch;
+            *sync_rtx = true;
         }
 
         // Enable Tx only if in MAIN_VFO or MAIN_MEM states

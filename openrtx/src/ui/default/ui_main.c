@@ -261,6 +261,27 @@ void _ui_drawFrequency()
               color_white, "%s", small_str);
 }
 
+/**
+ * Dual VFO: print the letter of the selected VFO beside its frequency and the
+ * VFO not selected on the first line. The latter is marked while the receiver
+ * hears a signal on it.
+ */
+static void _ui_drawDualVfo()
+{
+    bool selB = (last_state.settings.vfoSelected == VFO_B);
+    gfx_print(layout.line3_large_pos, layout.line1_font, TEXT_ALIGN_LEFT,
+              color_white, "%c", selB ? 'B' : 'A');
+
+    rtxStatus_t status = rtx_getCurrentStatus();
+    bool heard = status.onWatch && rtx_rxSquelchOpen();
+    freq_t freq = tuner_get_rx_frequency(&last_state.tuner_alt);
+    gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
+              heard ? yellow_fab413 : color_white, "%c%c %03lu.%05lu",
+              heard ? '>' : ' ', selB ? 'A' : 'B',
+              (unsigned long)(freq / 1000000),
+              (unsigned long)((freq % 1000000) / 10));
+}
+
 void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
 {
     // Add inserted number to string, skipping "Rx: "/"Tx: " and "."
@@ -373,7 +394,11 @@ void _ui_drawMainVFO(ui_state_t* ui_state)
     rtxStatus_t status = rtx_getCurrentStatus();
     if((status.opMode != OPMODE_M17) || (status.lsfOk == false))
     #endif
+    {
         _ui_drawFrequency();
+        if(last_state.settings.dualVfo)
+            _ui_drawDualVfo();
+    }
 
     _ui_drawMainBottom();
 }
