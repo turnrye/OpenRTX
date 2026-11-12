@@ -9,10 +9,12 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/time.h>
 #include "file_source.h"
 #include "interfaces/delays.h"
 #include "emulator/emulator.h"
 
+static long long nextChunk;  // Time the next chunk is due, in us
 static const char *basePath; // File played on a frequency with none of its own
 static uint32_t openFreq;    // RX frequency the open file belongs to
 
@@ -65,6 +67,7 @@ static int fileSource_start(const uint8_t instance, const void *config,
 
     ctx->running = 1;
     basePath = config;
+    nextChunk = 0;
 
     FILE *fp = openForFrequency(ctx);
     if (fp == NULL) {
@@ -124,9 +127,20 @@ static int fileSource_sync(struct streamCtx *ctx, uint8_t dirty)
         size /= 2;
 
     // Simulate the time needed to get a new chunck of data from an equivalent
-    // hardware peripheral.
-    uint32_t waitTime = (1000000 * size) / ctx->sampleRate;
-    usleep(waitTime);
+    // hardware peripheral. Chunks are due at fixed intervals, whatever the
+    // time spent processing them, so that the stream runs in real time.
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long now = (tv.tv_sec * 1000000LL) + tv.tv_usec;
+    long long waitTime = (1000000LL * size) / ctx->sampleRate;
+
+    // First chunk, or too late to catch up: restart the schedule
+    if ((nextChunk == 0) || ((now - nextChunk) > (10 * waitTime)))
+        nextChunk = now;
+
+    nextChunk += waitTime;
+    if (nextChunk > now)
+        usleep(nextChunk - now);
 
     return 0;
 }
