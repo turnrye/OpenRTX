@@ -296,6 +296,38 @@ bool Demodulator::update(const bool invertPhase)
     return newFrame;
 }
 
+void Demodulator::discard()
+{
+    if(audioPath_getStatus(basebandPath) != PATH_OPEN)
+        return;
+
+    inputStream_getData(basebandId);
+}
+
+void Demodulator::resync()
+{
+    sampleIndex     = 0;
+    frameIndex      = 0;
+    sampleCount     = 0;
+    samplingPoint   = 0;
+    syncSign        = 0;
+    missedSyncs     = 0;
+    lastSyncValid   = false;
+    newFrame        = false;
+    resetClockRec   = false;
+    updateSampPoint = false;
+
+    // The init time lets the estimates settle: not needed when they are kept
+    if(demodState != DemodState::INIT)
+        demodState = DemodState::UNLOCKED;
+
+    rrc_24k.reset();
+    correlator.reset();
+    lsfSync.reset();
+    devEstimator.init({0, 0});
+    clockRec.reset();
+}
+
 void Demodulator::quantize(stream_sample_t sample)
 {
     auto outerDeviation = devEstimator.outerDeviation();

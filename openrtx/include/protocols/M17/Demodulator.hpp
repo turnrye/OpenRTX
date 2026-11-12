@@ -82,6 +82,17 @@ public:
     bool update(const bool invertPhase = false);
 
     /**
+     * Consume a whole ADC buffer without demodulating it.
+     */
+    void discard();
+
+    /**
+     * Restart the search for a sync word from an empty sample history,
+     * keeping the estimates of the DC offset and of the signal level.
+     */
+    void resync();
+
+    /**
      * Process a single baseband sample through the demodulation chain.
      *
      * @param rawSample: signed 16-bit baseband sample.
