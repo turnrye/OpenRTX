@@ -19,7 +19,7 @@
 
 struct vfo_data {
     uint16_t version;
-    struct tuner_core vfo;
+    struct tuner_core vfo[VFO_NUM];
 } __attribute__((packed));
 
 struct vfo_storage {
@@ -38,7 +38,7 @@ void vfo_init(const uint32_t nvm_dev, const uint32_t nvm_part)
     storage.full_write_needed = false;
 }
 
-int vfo_load(struct tuner_core *vfo)
+int vfo_load(struct tuner_core vfos[VFO_NUM])
 {
     struct vfo_data saved_vfo;
     int err = 0;
@@ -53,19 +53,19 @@ int vfo_load(struct tuner_core *vfo)
         return -1;
     }
 
-    memcpy(vfo, &saved_vfo.vfo, sizeof(struct tuner_core));
+    memcpy(vfos, saved_vfo.vfo, sizeof(saved_vfo.vfo));
 
     return 0;
 }
 
-int vfo_save(const struct tuner_core *vfo)
+int vfo_save(const struct tuner_core vfos[VFO_NUM])
 {
     const struct nvmInfo *ni = nvm_getDevInfo(storage.dev);
     struct vfo_data vfo_data;
     int ret = 0;
 
     vfo_data.version = VFO_DATA_TAG;
-    vfo_data.vfo = *vfo;
+    memcpy(vfo_data.vfo, vfos, sizeof(vfo_data.vfo));
 
     if (storage.full_write_needed && (ni->device_info & NVM_ERASE)) {
         ret = nvm_erasePartition(storage.dev, storage.part);

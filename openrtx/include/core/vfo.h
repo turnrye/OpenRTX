@@ -8,8 +8,12 @@
 #define VFO_H
 
 #include <stdint.h>
+#include "core/tuner.h"
 
-struct tuner_core;
+/**
+ * Number of VFOs stored in nonvolatile memory, saved and loaded together.
+ */
+#define VFO_NUM 1
 
 /**
  * Initialize VFO data storage.
@@ -20,22 +24,22 @@ struct tuner_core;
 void vfo_init(const uint32_t nvm_dev, const uint32_t nvm_part);
 
 /**
- * Load device VFO data from nonvolatile memory.
+ * Load the data of all the VFOs from nonvolatile memory.
  *
  * On failure, the VFO data is left untouched.
  *
- * @param vfo: pointer to the tuner data receiving the VFO.
+ * @param vfos: array of VFO_NUM tuners receiving the VFO data.
  * @return 0 if successful, a negative error code otherwise
  */
-int vfo_load(struct tuner_core *vfo);
+int vfo_load(struct tuner_core vfos[VFO_NUM]);
 
 /**
- * Save VFO data to nonvolatile memory.
+ * Save the data of all the VFOs to nonvolatile memory.
  * Will not perform any actual write if VFO data haven't changed.
  *
- * @param vfo: pointer to the tuner data holding the VFO.
+ * @param vfos: array of VFO_NUM tuners holding the VFO data.
  * @return 0 if successful, a negative error code otherwise
  */
-int vfo_save(const struct tuner_core *vfo);
+int vfo_save(const struct tuner_core vfos[VFO_NUM]);
 
 #endif
