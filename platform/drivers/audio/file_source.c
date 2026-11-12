@@ -84,6 +84,7 @@ static void fileSource_stop(struct streamCtx *ctx)
 
     FILE *fp = (FILE *)ctx->priv;
     fclose(fp);
+    ctx->running = 0;
 }
 
 static void fileSource_halt(struct streamCtx *ctx)
@@ -93,6 +94,7 @@ static void fileSource_halt(struct streamCtx *ctx)
 
     FILE *fp = (FILE *)ctx->priv;
     fclose(fp);
+    ctx->running = 0;
 }
 
 #pragma GCC diagnostic ignored "-Wpedantic"
