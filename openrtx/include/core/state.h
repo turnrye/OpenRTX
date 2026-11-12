@@ -37,10 +37,10 @@ typedef struct {
     uint8_t tuner_mode;
 
     uint16_t channel_index;
-    bool bank_enabled; // Memory mode browses a bank, not all channels
+    bool bank_enabled;     // Memory mode browses a bank, not all channels
+    bool bank_enabled_alt; // Same, for the VFO not selected
     struct tuner tuner;     // Selected VFO
     struct tuner tuner_alt; // VFO not selected
-    bool dual_watch;        // Receive also on the VFO not selected
 
     uint8_t rtxStatus;
     bool tone_enabled;

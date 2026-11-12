@@ -69,8 +69,7 @@ struct oldSettings
     uint8_t vpLevel         : 3,  // Voice prompt level
             vpPhoneticSpell : 1,  // Phonetic spell enabled
             macroMenuLatch  : 1,  // Automatic latch of macro menu
-            dualVfo         : 1,  // Dual VFO with dual watch
-            _reserved       : 2;
+            _reserved       : 3;
     bool    m17_can_rx;           // Check M17 CAN on RX
     char    m17_dest[10];         // M17 destination
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage

@@ -94,7 +94,7 @@ void *ui_threadFunc(void *arg)
             fmInfo_t watchFm = { 0 };
 
             tuner_get_FM_params(watch, &watchFm);
-            rtx_cfg.dualWatch      = state.dual_watch
+            rtx_cfg.dualWatch      = state.settings.dualVfo
                                   && (rtx_cfg.opMode == OPMODE_FM)
                                   && (tuner_get_opmode(watch) == OPMODE_FM)
                                   && (tuner_get_rx_frequency(watch) !=

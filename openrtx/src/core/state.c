@@ -144,7 +144,6 @@ void state_init()
         if (vfos[i].tuner_mode != TUNER_VFO)
             savedModes[i] = vfos[i].tuner_mode;
     }
-    state.dual_watch = false;
 
     /*
      * Initialise remaining fields
@@ -160,6 +159,7 @@ void state_init()
 
     state.channel_index = 0; // Set default channel index (it is 0-based)
     state.bank_enabled = false;
+    state.bank_enabled_alt = false;
     state.rtxStatus = RTX_OFF;
     state.emergency = false;
     state.txDisable = false;
@@ -255,20 +255,22 @@ void state_loadTuners()
 
     state.channel_index = state.tuner.core.channel_index;
     state.bank_enabled = (tuner_get_mode(&state.tuner) == TUNER_BANK);
+    state.bank_enabled_alt = (tuner_get_mode(&state.tuner_alt) == TUNER_BANK);
 }
 
 void state_swapVfo()
 {
     struct tuner tmp = state.tuner;
+    bool bank = state.bank_enabled;
 
     state.tuner = state.tuner_alt;
     state.tuner_alt = tmp;
+    state.bank_enabled = state.bank_enabled_alt;
+    state.bank_enabled_alt = bank;
     state.settings.vfoSelected = !state.settings.vfoSelected;
 
     // The channel cursor follows the selected VFO
     state.channel_index = state.tuner.core.channel_index;
-    if (tuner_get_mode(&state.tuner) != TUNER_VFO)
-        state.bank_enabled = (tuner_get_mode(&state.tuner) == TUNER_BANK);
 }
 
 int state_saveVfos()
