@@ -93,6 +93,21 @@ public:
         return locked || dataValid;
     }
 
+    /**
+     * Stop demodulating while the receiver is briefly tuned elsewhere. On
+     * resume the sync word search restarts, once the samples taken across
+     * the retune are gone.
+     *
+     * @param suspend: true to suspend the reception, false to resume it.
+     */
+    virtual void rxSuspend(const bool suspend) override
+    {
+        if(suspended && (suspend == false))
+            resuming = true;
+
+        suspended = suspend;
+    }
+
 private:
 
     /**
@@ -139,6 +154,8 @@ private:
     bool startRx;                      ///< Flag for RX management.
     bool startTx;                      ///< Flag for TX management.
     bool locked;                       ///< Demodulator locked on data stream.
+    bool suspended;                    ///< Reception suspended.
+    bool resuming;                     ///< Reception resumes at next buffer.
     bool dataValid;                    ///< Demodulated data is valid
     bool extendedCall;                 ///< Extended callsign data received
     bool invertTxPhase;                ///< TX signal phase inversion setting.

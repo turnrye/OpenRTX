@@ -21,6 +21,7 @@ static rssi_t             rssi;         // Current RSSI in dBm
 static bool               reinitFilter; // Flag for RSSI filter re-initialisation
 
 static long long          watchHopTime; // Dual watch: earliest time of next hop
+static bool               watchPeek;    // Dual watch: peeking at the other VFO
 static rssi_t             vfoRssi[2];   // RSSI of the selected and watched VFO
 
 /*
@@ -31,6 +32,7 @@ static rssi_t             vfoRssi[2];   // RSSI of the selected and watched VFO
  */
 static const long long WATCH_DWELL_FM  = 100;   // Stay on a quiet FM VFO
 static const long long WATCH_DWELL_M17 = 240;   // Stay on a quiet M17 VFO
+static const long long WATCH_CONFIRM   = 500;   // Stay after a carrier is found
 static const long long WATCH_HANG      = 3000;  // Stay after a signal or a TX
 
 static OpMode  *currMode;               // Pointer to currently active opMode handler
@@ -74,6 +76,25 @@ static void swapWatchParams()
 }
 
 /**
+ * Dual watch: start or end a peek. The receiver goes to the frequency of the
+ * other VFO, or comes back from it, while the handler of the current mode
+ * stays in place with its reception suspended. The caller has to forward the
+ * change to the radio driver.
+ *
+ * @param peek: true to start a peek, false to end it.
+ */
+static void setWatchPeek(const bool peek)
+{
+    freq_t freq = rtxStatus.rxFrequency;
+
+    rtxStatus.rxFrequency    = rtxStatus.watchFrequency;
+    rtxStatus.watchFrequency = freq;
+
+    currMode->rxSuspend(peek);
+    watchPeek = peek;
+}
+
+/**
  * Make the handler of rtxStatus.opMode the current one, if it is not already.
  * The handler taking over starts from the OFF operating status.
  */
@@ -107,22 +128,35 @@ static void switchOpMode()
  * receiver where it is. The selected VFO is restored before a transmission,
  * which never uses the watched one.
  *
+ * An FM VFO shows a signal by its carrier, a mode demodulated by the MCU only
+ * to its demodulator. Between the two the receiver rests on the latter and
+ * peeks at the FM one: a short retune for an RSSI sample, see
+ * dualWatchPeekEnd(), with no change of handler.
+ *
  * @return true if the receiver has been retuned.
  */
 static bool dualWatchUpdate()
 {
     bool hop = false;
+    bool peek = false;
     long long now = getTick();
     bool ptt = platform_getPttStatus() && (rtxStatus.txDisable == 0);
 
     if((rtxStatus.dualWatch == 0) || (rtxStatus.opStatus == TX) || ptt)
     {
         // Not watching, or about to transmit: stay on the selected VFO
+        if(watchPeek)
+        {
+            setWatchPeek(false);
+            radio_updateConfiguration();
+            peek = true;
+        }
+
         hop = (rtxStatus.onWatch == 1);
         watchHopTime = now + WATCH_HANG;
         vfoRssi[1] = -127;
     }
-    else if(rtxStatus.opStatus == RX)
+    else if((rtxStatus.opStatus == RX) && (watchPeek == false))
     {
         // FM carrier check with the opening threshold of the squelch, so
         // that also a signal with the wrong tone holds the receiver.
@@ -137,20 +171,66 @@ static bool dualWatchUpdate()
             vfoRssi[rtxStatus.onWatch ? 0 : 1] = -127;
         }
         else if((now >= watchHopTime) && (currMode->rxActive() == false))
-            hop = true;
+        {
+            if((rtxStatus.opMode != OPMODE_FM) &&
+               (rtxStatus.watchOpMode == OPMODE_FM))
+            {
+                setWatchPeek(true);
+                radio_updateConfiguration();
+                peek = true;
+            }
+            else
+                hop = true;
+        }
     }
 
     if(hop)
     {
+        OpMode *prevMode = currMode;
+
         swapWatchParams();
         switchOpMode();
         radio_updateConfiguration();
+
+        // A hop inside the same mode keeps the handler: restart its reception
+        if(currMode == prevMode)
+        {
+            currMode->rxSuspend(true);
+            currMode->rxSuspend(false);
+        }
+
         if(rtxStatus.dualWatch == 1)
             watchHopTime = now + ((rtxStatus.opMode == OPMODE_M17)
                                   ? WATCH_DWELL_M17 : WATCH_DWELL_FM);
     }
 
-    return hop;
+    return hop || peek;
+}
+
+/**
+ * Dual watch: end a peek once the RSSI of the other VFO has been sampled. A
+ * carrier above its squelch takes the receiver there, with the handler of its
+ * mode; otherwise the receiver goes back and the reception resumes.
+ */
+static void dualWatchPeekEnd()
+{
+    long long now = getTick();
+    rssi_t squelch = sqlLevelToRssi(rtxStatus.watchSqlLevel);
+    bool carrier = (rssi > (squelch + 1));
+
+    vfoRssi[rtxStatus.onWatch ? 0 : 1] = rssi;
+    setWatchPeek(false);
+
+    if(carrier)
+    {
+        swapWatchParams();
+        switchOpMode();
+        watchHopTime = now + WATCH_CONFIRM;
+    }
+    else
+        watchHopTime = now + WATCH_DWELL_M17;
+
+    radio_updateConfiguration();
 }
 
 void rtx_init(pthread_mutex_t *m)
@@ -169,6 +249,7 @@ void rtx_init(pthread_mutex_t *m)
     rtxStatus.dualWatch     = 0;
     rtxStatus.onWatch       = 0;
     rtxStatus.watchOpMode   = OPMODE_NONE;
+    watchPeek               = false;
     rtxStatus.rxFrequency   = 430000000;
     rtxStatus.txFrequency   = 430000000;
     rtxStatus.txPower       = 0.0f;
@@ -237,6 +318,10 @@ void rtx_task()
         {
             // Copy new configuration and override opStatus flags
             uint8_t tmp = rtxStatus.opStatus;
+            // A peek ends with the configuration it belongs to
+            if(watchPeek)
+                setWatchPeek(false);
+
             bool onWatch = (rtxStatus.onWatch == 1);
             freq_t tuned = rtxStatus.rxFrequency;
             uint8_t tunedMode = rtxStatus.opMode;
@@ -326,7 +411,15 @@ void rtx_task()
                 reinitFilter = false;
             }
 
-            vfoRssi[rtxStatus.onWatch] = rssi;
+            if(watchPeek)
+            {
+                // The sample belongs to the other VFO, and to no handler
+                dualWatchPeekEnd();
+                reinitFilter = true;
+                rssi = -127;
+            }
+            else
+                vfoRssi[rtxStatus.onWatch] = rssi;
         }
     }
     else

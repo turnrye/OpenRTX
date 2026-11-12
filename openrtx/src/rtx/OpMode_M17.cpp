@@ -50,6 +50,8 @@ void OpMode_M17::enable()
     extendedCall = false;
     startRx      = true;
     startTx      = false;
+    suspended    = false;
+    resuming     = false;
 }
 
 void OpMode_M17::disable()
@@ -171,8 +173,23 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         startRx = false;
     }
 
-    bool newData = demodulator.update(invertRxPhase);
-    bool lock    = demodulator.isLocked();
+    // Samples taken away from this VFO, or across a retune, are dropped
+    bool newData = false;
+    if(suspended || resuming)
+    {
+        demodulator.discard();
+        if(suspended == false)
+        {
+            demodulator.resync();
+            resuming = false;
+        }
+    }
+    else
+    {
+        newData = demodulator.update(invertRxPhase);
+    }
+
+    bool lock = demodulator.isLocked();
 
     // Reset frame decoder when transitioning from unlocked to locked state.
     if((lock == true) && (locked == false))

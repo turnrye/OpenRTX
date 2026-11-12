@@ -95,6 +95,17 @@ public:
     {
         return rxSquelchOpen();
     }
+
+    /**
+     * Suspend the reception while the receiver is briefly tuned elsewhere, so
+     * that a signal which is not the one of this mode is not processed.
+     *
+     * @param suspend: true to suspend the reception, false to resume it.
+     */
+    virtual void rxSuspend(const bool suspend)
+    {
+        (void) suspend;
+    }
 };
 
 #endif /* OPMODE_H */
