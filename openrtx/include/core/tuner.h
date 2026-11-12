@@ -9,8 +9,13 @@
 
 #include "core/cps.h"
 #include "rtx/rtx.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Current tuner layout version. Increase this number when updating the tuner
 layout*/
@@ -34,7 +39,13 @@ struct vfo {
     m17Info_t m17;
     dmrInfo_t dmr;
 
-} __attribute__((packed)); // 26 B
+    // Parameters kept outside of the per-mode info blocks, as in channel_t
+    uint8_t sqlLevel;           ///< FM squelch level
+    uint8_t m17_can;            ///< M17 Channel Access Number
+    char m17_dest[10];          ///< M17 destination
+    char M17_meta_text[53];     ///< M17 meta text to send
+
+} __attribute__((packed));
 
 struct tuner_core {
     uint8_t tuner_mode;
@@ -44,7 +55,7 @@ struct tuner_core {
 
     uint16_t bank_index;
     uint16_t channel_index;
-} __attribute__((packed)); // 35 B
+} __attribute__((packed));
 
 struct tuner {
     struct tuner_core core;
@@ -86,7 +97,7 @@ uint32_t tuner_get_tx_frequency(const struct tuner *t);
 uint32_t tuner_get_rx_frequency(const struct tuner *t);
 
 /**
- * @brief Get the current tuner transmission power.
+ * @brief Get the current tuner transmission power, accounting for the tuner mode.
  *
  * @param t pointer to a tuner struct
  * @return uint32_t Power in mW
@@ -182,7 +193,8 @@ int tuner_set_mode_bank(struct tuner *t, const uint16_t bank, const uint16_t cha
 int tuner_set_mode_channel(struct tuner *t, const uint16_t channel);
 
 /**
- * @brief Sets the tuner transmission power
+ * @brief Sets the transmission power in use: the VFO power in VFO mode, the
+ * loaded copy of the channel otherwise
  *
  * @param t pointer to tuner struct
  * @param power power in mW
@@ -213,5 +225,128 @@ void tuner_set_vfo_rx_frequency(struct tuner *t, const uint32_t freq);
  * @param params pointer to the adequate operating mode info structure
  */
 void tuner_set_vfo_opmode(struct tuner *t, const uint8_t opmode, const void *params);
+
+/**
+ * @brief Copy the radio parameters of a channel into the VFO, without
+ * changing the tuner mode.
+ *
+ * @param t pointer to tuner struct
+ * @param c channel to copy the parameters from
+ */
+void tuner_set_vfo_from_channel(struct tuner *t, const channel_t *c);
+
+/**
+ * @brief Get the FM squelch level, accounting for the tuner mode.
+ *
+ * @param t pointer to a tuner struct
+ * @return uint8_t squelch level, 0 to 15
+ */
+uint8_t tuner_get_sql_level(const struct tuner *t);
+
+/**
+ * @brief Get the M17 Channel Access Number, accounting for the tuner mode.
+ *
+ * @param t pointer to a tuner struct
+ * @return uint8_t M17 CAN
+ */
+uint8_t tuner_get_m17_can(const struct tuner *t);
+
+/**
+ * @brief Get the M17 destination, accounting for the tuner mode.
+ *
+ * @param t pointer to a tuner struct
+ * @return const char* NUL-terminated destination
+ */
+const char *tuner_get_m17_dest(const struct tuner *t);
+
+/**
+ * @brief Get the M17 meta text, accounting for the tuner mode.
+ *
+ * @param t pointer to a tuner struct
+ * @return const char* NUL-terminated meta text
+ */
+const char *tuner_get_m17_meta_text(const struct tuner *t);
+
+/**
+ * @brief Whether transmission is forbidden by the current channel.
+ *
+ * @param t pointer to a tuner struct
+ * @return true if the current channel is RX only, false in VFO mode
+ */
+bool tuner_is_rx_only(const struct tuner *t);
+
+/*
+ * The setters below change the parameter in use, accounting for the tuner
+ * mode: the VFO in VFO mode, the loaded copy of the channel otherwise. Changes
+ * to a channel last until another channel is loaded and are not saved to the
+ * codeplug.
+ */
+
+/**
+ * @brief Set the RX frequency in use.
+ * @param t pointer to tuner struct
+ * @param freq RX frequency in Hz
+ */
+void tuner_set_rx_frequency(struct tuner *t, const uint32_t freq);
+
+/**
+ * @brief Set the TX frequency in use.
+ * @param t pointer to tuner struct
+ * @param freq TX frequency in Hz
+ */
+void tuner_set_tx_frequency(struct tuner *t, const uint32_t freq);
+
+/**
+ * @brief Set the operating mode in use, keeping its parameters.
+ * @param t pointer to tuner struct
+ * @param opmode operating mode
+ */
+void tuner_set_opmode(struct tuner *t, const uint8_t opmode);
+
+/**
+ * @brief Set the bandwidth in use.
+ * @param t pointer to tuner struct
+ * @param bw bandwidth
+ */
+void tuner_set_bandwidth(struct tuner *t, const enum bandwidth bw);
+
+/**
+ * @brief Set the FM parameters in use.
+ * @param t pointer to tuner struct
+ * @param fm FM parameters
+ */
+void tuner_set_FM_params(struct tuner *t, const fmInfo_t *fm);
+
+/**
+ * @brief Set the FM squelch level in use.
+ * @param t pointer to tuner struct
+ * @param level squelch level, 0 to 15
+ */
+void tuner_set_sql_level(struct tuner *t, const uint8_t level);
+
+/**
+ * @brief Set the M17 Channel Access Number in use.
+ * @param t pointer to tuner struct
+ * @param can M17 CAN, 0 to 15
+ */
+void tuner_set_m17_can(struct tuner *t, const uint8_t can);
+
+/**
+ * @brief Set the M17 destination in use.
+ * @param t pointer to tuner struct
+ * @param dest NUL-terminated destination, empty for broadcast
+ */
+void tuner_set_m17_dest(struct tuner *t, const char *dest);
+
+/**
+ * @brief Set the M17 meta text in use.
+ * @param t pointer to tuner struct
+ * @param text NUL-terminated meta text
+ */
+void tuner_set_m17_meta_text(struct tuner *t, const char *text);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

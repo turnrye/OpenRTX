@@ -16,42 +16,14 @@
 
 struct tuner tuner_getDefault(void)
 {
-    struct tuner t = {
-        .core = {
-            .tuner_mode = TUNER_VFO,
-            .power = 1000, // 1W
-            .bank_index = 0,
-            .channel_index = 0,
-            .vfo = {
-                #ifdef PLATFORM_MOD17
-                .op_mode = OPMODE_M17,
-                #else
-                .op_mode = OPMODE_FM,
-                #endif
-                .m17 = {
-                    .can = 0,
-                    .encr = PLAIN,
-                    .gps_mode = NO_GPS,
-                    .mode = DIGITAL_VOICE,
-                    .dest = "ALL",
-                },
-                #ifndef PLATFORM_MOD17
-                .fm = {
-                    .rxToneEn = 0,
-                    .rxTone = 0,
-                    .txToneEn = 0,
-                    .txTone = 0,
-                    .sqlLevel = 4,  // S3
-                },
-                .rx_frequency = 433500000,
-                .tx_frequency = 433500000
-                #else
-                .rx_frequency = 433475000,
-                .tx_frequency = 433475000
-                #endif
-            },
-        },
-    };
+    struct tuner t;
+    const channel_t def = cps_getDefaultChannel();
+
+    memset(&t, 0, sizeof(t));
+    t.core.tuner_mode    = TUNER_VFO;
+    t.core.bank_index    = 0;
+    t.core.channel_index = 0;
+    tuner_set_vfo_from_channel(&t, &def);
 
     return t;
 }
@@ -90,7 +62,10 @@ uint32_t tuner_get_power(const struct tuner *t)
     if(t == NULL)
         return 0;
 
-    return t->core.power;
+    if(t->core.tuner_mode == TUNER_VFO)
+        return t->core.power;
+
+    return t->cache.channel.power;
 }
 
 uint8_t tuner_get_opmode(const struct tuner *t)
@@ -183,17 +158,7 @@ enum bandwidth tuner_get_bandwidth(const struct tuner *t)
         return BW_12_5;
 
     if(tuner_get_mode(t) == TUNER_VFO)
-    {
-        switch(tuner_get_opmode(t))
-        {
-            case OPMODE_FM:
-                return t->core.vfo.bandwidth;
-            case OPMODE_DMR:
-            case OPMODE_M17:
-            default:
-                return BW_12_5;
-        }
-    }
+        return t->core.vfo.bandwidth;
 
     return t->cache.channel.bandwidth;
 }
@@ -224,8 +189,9 @@ int tuner_set_mode_bank(struct tuner *t, const uint16_t bank, const uint16_t cha
     t->core.bank_index = bank;
     t->core.channel_index = channel;
 
-    cps_readBankHeader(&(t->cache.bank), t->core.bank_index);
-    if(t->core.bank_index > t->cache.bank.ch_count)
+    if(cps_readBankHeader(&(t->cache.bank), t->core.bank_index) < 0)
+        return -EINVAL;
+    if(channel >= t->cache.bank.ch_count)
         return -EINVAL;
     int ch = cps_readBankData(bank, channel);
     if(ch < 0)
@@ -249,7 +215,11 @@ void tuner_set_power(struct tuner *t, const uint32_t power)
 {
     if(t == NULL)
         return;
-    t->core.power = power;
+
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.power = power;
+    else
+        t->cache.channel.power = power;
 }
 
 void tuner_set_vfo_rx_frequency(struct tuner *t, const uint32_t freq)
@@ -289,4 +259,152 @@ void tuner_set_vfo_opmode(struct tuner *t, const uint8_t opmode, const void *par
             return;
     }
 
+}
+
+void tuner_set_vfo_from_channel(struct tuner *t, const channel_t *c)
+{
+    if((t == NULL) || (c == NULL))
+        return;
+
+    struct vfo *v = &t->core.vfo;
+
+    v->op_mode      = c->mode;
+    v->rx_frequency = c->rx_frequency;
+    v->tx_frequency = c->tx_frequency;
+    v->bandwidth    = c->bandwidth;
+    v->sqlLevel     = c->sqlLevel;
+    v->m17_can      = c->m17_can;
+    memcpy(v->m17_dest, c->m17_dest, sizeof(v->m17_dest));
+    memcpy(v->M17_meta_text, c->M17_meta_text, sizeof(v->M17_meta_text));
+
+    switch(c->mode)
+    {
+        case OPMODE_FM:
+            v->fm = c->fm;
+            break;
+        case OPMODE_M17:
+            v->m17 = c->m17;
+            break;
+        case OPMODE_DMR:
+            v->dmr = c->dmr;
+            break;
+    }
+
+    t->core.power = c->power;
+}
+
+uint8_t tuner_get_sql_level(const struct tuner *t)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        return t->core.vfo.sqlLevel;
+
+    return t->cache.channel.sqlLevel;
+}
+
+uint8_t tuner_get_m17_can(const struct tuner *t)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        return t->core.vfo.m17_can;
+
+    return t->cache.channel.m17_can;
+}
+
+const char *tuner_get_m17_dest(const struct tuner *t)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        return t->core.vfo.m17_dest;
+
+    return t->cache.channel.m17_dest;
+}
+
+const char *tuner_get_m17_meta_text(const struct tuner *t)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        return t->core.vfo.M17_meta_text;
+
+    return t->cache.channel.M17_meta_text;
+}
+
+bool tuner_is_rx_only(const struct tuner *t)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        return false;
+
+    return t->cache.channel.rx_only;
+}
+
+void tuner_set_rx_frequency(struct tuner *t, const uint32_t freq)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.rx_frequency = freq;
+    else
+        t->cache.channel.rx_frequency = freq;
+}
+
+void tuner_set_tx_frequency(struct tuner *t, const uint32_t freq)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.tx_frequency = freq;
+    else
+        t->cache.channel.tx_frequency = freq;
+}
+
+void tuner_set_opmode(struct tuner *t, const uint8_t opmode)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.op_mode = opmode;
+    else
+        t->cache.channel.mode = opmode;
+}
+
+void tuner_set_bandwidth(struct tuner *t, const enum bandwidth bw)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.bandwidth = bw;
+    else
+        t->cache.channel.bandwidth = bw;
+}
+
+void tuner_set_FM_params(struct tuner *t, const fmInfo_t *fm)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.fm = *fm;
+    else
+        t->cache.channel.fm = *fm;
+}
+
+void tuner_set_sql_level(struct tuner *t, const uint8_t level)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.sqlLevel = level;
+    else
+        t->cache.channel.sqlLevel = level;
+}
+
+void tuner_set_m17_can(struct tuner *t, const uint8_t can)
+{
+    if(t->core.tuner_mode == TUNER_VFO)
+        t->core.vfo.m17_can = can & 0x0F;
+    else
+        t->cache.channel.m17_can = can & 0x0F;
+}
+
+void tuner_set_m17_dest(struct tuner *t, const char *dest)
+{
+    char *d = (t->core.tuner_mode == TUNER_VFO) ? t->core.vfo.m17_dest
+                                                : t->cache.channel.m17_dest;
+    const size_t n = sizeof(t->core.vfo.m17_dest);
+
+    strncpy(d, dest, n - 1);
+    d[n - 1] = '\0';
+}
+
+void tuner_set_m17_meta_text(struct tuner *t, const char *text)
+{
+    char *d = (t->core.tuner_mode == TUNER_VFO) ? t->core.vfo.M17_meta_text
+                                                : t->cache.channel.M17_meta_text;
+    const size_t n = sizeof(t->core.vfo.M17_meta_text);
+
+    strncpy(d, text, n - 1);
+    d[n - 1] = '\0';
 }
