@@ -9,9 +9,12 @@
 #include <cstdio>
 #include <string>
 
+static const rtxStatus_t *config;    // Radio configuration
+
 void radio_init(const rtxStatus_t *rtxState)
 {
-    (void) rtxState;
+    config = rtxState;
+    emulator_state.rxFrequency = config->rxFrequency;
     puts("radio_linux: init() called");
 }
 
@@ -54,13 +57,17 @@ void radio_disableRtx()
 
 void radio_updateConfiguration()
 {
+    emulator_state.rxFrequency = config->rxFrequency;
     puts("radio_linux: updateConfiguration() called");
 }
 
 rssi_t radio_getRssi()
 {
-    // Commented to reduce verbosity on Linux
-    // printf("radio_linux: requested RSSI at freq %d, returning -100dBm\n", rxFreq);
+    // The signal may be limited to one frequency, the others are quiet
+    if((emulator_state.rssiFrequency != 0) &&
+       (emulator_state.rssiFrequency != emulator_state.rxFrequency))
+        return -127;
+
     return static_cast< rssi_t >(emulator_state.RSSI);
 }
 

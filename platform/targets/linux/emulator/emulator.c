@@ -27,7 +27,9 @@ emulator_state_t emulator_state = {
     4,       // volume level
     1,       // chSelector
     false,   // PTT status
-    false    // power off
+    false,   // power off
+    0,       // RX frequency
+    0        // RSSI on all frequencies
 };
 
 typedef int (*_climenu_fn)(void *self, int argc, char **argv);
@@ -257,6 +259,26 @@ static int setFloat(void *_self, int _argc, char **_argv)
     return SH_CONTINUE; // continue
 }
 
+/**
+ * Shell command: set or print the only frequency the rssi level applies to.
+ *
+ * @param _self: command entry.
+ * @param _argc: number of arguments.
+ * @param _argv: frequency in Hz, 0 for all frequencies.
+ * @return SH_CONTINUE.
+ */
+static int setRssiFreq(void *_self, int _argc, char **_argv)
+{
+    (void)_self;
+
+    if (_argc > 0 && _argv[0] != NULL)
+        emulator_state.rssiFrequency = strtoul(_argv[0], NULL, 10);
+
+    printf("rssifreq is %u\n", (unsigned)emulator_state.rssiFrequency);
+
+    return SH_CONTINUE;
+}
+
 static int toggleVariable(void *_self, int _argc, char **_argv)
 {
     (void)_argc;
@@ -323,6 +345,7 @@ static int shell_help(void *_self, int _argc, char **_argv);
 static _climenu_option _options[] = {
     /* name/shortcut   description            var reference, if available    method to call */
     {"rssi",    "Set rssi",     (void *) &emulator_state.RSSI,        setFloat },
+    {"rssifreq", "Apply rssi to one RX frequency in Hz only, 0 for all", NULL, setRssiFreq },
     {"vbat",    "Set vbat",     (void *) &emulator_state.vbat,        setFloat },
     {"mic",     "Set miclevel", (void *) &emulator_state.micLevel,    setFloat },
     {"volume",  "Set volume",   (void *) &emulator_state.volumeLevel, setFloat },

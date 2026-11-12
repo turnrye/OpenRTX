@@ -39,6 +39,8 @@ typedef struct {
     float chSelector;
     bool PTTstatus;
     bool powerOff;
+    uint32_t rxFrequency;   // Frequency the receiver is tuned to, in Hz
+    uint32_t rssiFrequency; // Only frequency with a signal, in Hz; 0 for all
 } emulator_state_t;
 
 extern emulator_state_t emulator_state;
