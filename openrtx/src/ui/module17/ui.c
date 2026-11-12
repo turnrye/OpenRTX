@@ -518,7 +518,7 @@ void ui_updateFSM(bool *sync_rtx)
                         // Save selected callsign and disable input mode
                         tuner_set_m17_dest(&state.tuner, ui_state.new_callsign);
                         settings_save(&state.settings);
-                        vfo_save(&state.tuner.core);
+                        state_saveVfos();
                         *sync_rtx = true;
                         ui_state.edit_mode = false;
                     }
@@ -535,7 +535,7 @@ void ui_updateFSM(bool *sync_rtx)
                         // Save selected message and disable input mode
                         tuner_set_m17_meta_text(&state.tuner, ui_state.new_meta_text);
                         ui_state.edit_meta_text = false;
-                        vfo_save(&state.tuner.core);
+                        state_saveVfos();
                         *sync_rtx = true;
                     }
                     else if(msg.keys & KEY_ESC)
@@ -703,7 +703,7 @@ void ui_updateFSM(bool *sync_rtx)
                         _ui_textInputConfirm(ui_state.new_meta_text);
                         // Save selected message and disable input mode
                         strncpy(state.settings.M17_meta_text, ui_state.new_message, 52);
-                        vfo_save(&state.tuner.core);
+                        state_saveVfos();
                         ui_state.edit_mode = false;
                     }
                     else if(msg.keys & KEY_ESC)
@@ -771,7 +771,7 @@ void ui_updateFSM(bool *sync_rtx)
                     {
                         *sync_rtx = true;
                         settings_save(&state.settings);
-                        vfo_save(&state.tuner.core);
+                        state_saveVfos();
                         _ui_menuBack(MENU_SETTINGS);
                     }
                 }

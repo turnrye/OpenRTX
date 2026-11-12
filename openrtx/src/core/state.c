@@ -27,6 +27,9 @@ const uint32_t freq_steps[] = { 1000,  5000,  6250,  10000, 12500,
                                 15000, 20000, 25000, 50000, 100000 };
 const size_t n_freq_steps = sizeof(freq_steps) / sizeof(freq_steps[0]);
 
+// Tuner mode of each stored VFO, restored by state_loadTuners()
+static uint8_t savedModes[VFO_NUM];
+
 static void migrateSettings(struct settings *new_settings,
                             const settings_t *old_settings)
 {
@@ -85,7 +88,13 @@ void state_init()
 {
     settings_t oldSettings;
     channel_t oldVfo;
+    struct tuner_core vfos[VFO_NUM];
     int settingsRead, vfoRead;
+
+    for (size_t i = 0; i < VFO_NUM; i++) {
+        vfos[i].tuner_mode = TUNER_VFO;
+        savedModes[i] = TUNER_VFO;
+    }
 
     pthread_mutex_init(&state_mutex, NULL);
 
@@ -108,20 +117,34 @@ void state_init()
      * TODO: remove in OpenRTX v0.6.x
      */
     state.tuner = tuner_getDefault();
-    if (vfo_load(&state.tuner.core) < 0) {
+    state.tuner_alt = state.tuner;
+    if (vfo_load(vfos) == 0) {
+        state.tuner.core = vfos[state.settings.vfoSelected];
+        state.tuner_alt.core = vfos[!state.settings.vfoSelected];
+    } else {
         if ((settingsRead == 0) && (vfoRead == 0)) {
             channel_t vfo;
 
             migrateVfo(&vfo, &oldVfo, &oldSettings);
             tuner_set_vfo_from_channel(&state.tuner, &vfo);
         }
+
+        // Only one VFO was stored: VFO B starts as a copy of VFO A
+        state.tuner_alt = state.tuner;
+        state.settings.vfoSelected = VFO_A;
     }
 
     /*
-     * The loaded channel is not stored, and the UI starts on the VFO screen:
-     * always start in VFO mode.
+     * The channels in use are not stored: until state_loadTuners() reads
+     * them from the codeplug, both tuners stay in VFO mode.
      */
-    tuner_switch_mode(&state.tuner, TUNER_VFO);
+    state.tuner.core.tuner_mode = TUNER_VFO;
+    state.tuner_alt.core.tuner_mode = TUNER_VFO;
+    for (size_t i = 0; i < VFO_NUM; i++) {
+        if (vfos[i].tuner_mode != TUNER_VFO)
+            savedModes[i] = vfos[i].tuner_mode;
+    }
+    state.dual_watch = false;
 
     /*
      * Initialise remaining fields
@@ -155,7 +178,7 @@ void state_terminate()
     }
 
     settings_save(&state.settings);
-    vfo_save(&state.tuner.core);
+    state_saveVfos();
     pthread_mutex_destroy(&state_mutex);
 }
 
@@ -210,4 +233,48 @@ void state_resetSettingsAndVfo()
 {
     state.settings = default_settings;
     state.tuner = tuner_getDefault();
+    state.tuner_alt = state.tuner;
+}
+
+/**
+ * Put a tuner back in its stored mode, reading its channel from the codeplug.
+ * Falls back to VFO mode if the channel can't be read.
+ */
+static void loadTuner(struct tuner *t, const uint8_t mode)
+{
+    if (tuner_switch_mode(t, mode) < 0)
+        tuner_switch_mode(t, TUNER_VFO);
+}
+
+void state_loadTuners()
+{
+    loadTuner(&state.tuner, savedModes[state.settings.vfoSelected]);
+    loadTuner(&state.tuner_alt, savedModes[!state.settings.vfoSelected]);
+
+    state.channel_index = state.tuner.core.channel_index;
+    state.bank_enabled = (tuner_get_mode(&state.tuner) == TUNER_BANK);
+}
+
+void state_swapVfo()
+{
+    struct tuner tmp = state.tuner;
+
+    state.tuner = state.tuner_alt;
+    state.tuner_alt = tmp;
+    state.settings.vfoSelected = !state.settings.vfoSelected;
+
+    // The channel cursor follows the selected VFO
+    state.channel_index = state.tuner.core.channel_index;
+    if (tuner_get_mode(&state.tuner) != TUNER_VFO)
+        state.bank_enabled = (tuner_get_mode(&state.tuner) == TUNER_BANK);
+}
+
+int state_saveVfos()
+{
+    struct tuner_core vfos[VFO_NUM];
+
+    vfos[state.settings.vfoSelected] = state.tuner.core;
+    vfos[!state.settings.vfoSelected] = state.tuner_alt.core;
+
+    return vfo_save(vfos);
 }

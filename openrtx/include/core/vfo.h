@@ -13,7 +13,7 @@
 /**
  * Number of VFOs stored in nonvolatile memory, saved and loaded together.
  */
-#define VFO_NUM 1
+#define VFO_NUM 2
 
 /**
  * Initialize VFO data storage.

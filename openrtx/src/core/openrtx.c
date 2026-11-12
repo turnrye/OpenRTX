@@ -52,6 +52,9 @@ void openrtx_init()
         }
     }
 
+    // Tuners in memory mode need the codeplug to load their channel
+    state_loadTuners();
+
     // Display splash screen, turn on backlight after a suitable time to
     // hide random pixels during render process
     ui_drawSplashScreen();

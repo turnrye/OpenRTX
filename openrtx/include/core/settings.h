@@ -47,6 +47,14 @@ typedef enum
 }
 display_timer_t;
 
+/**
+ * VFOs of the dual VFO, as stored in the vfoSelected setting.
+ */
+enum VfoSelect {
+    VFO_A = 0, ///< First VFO, upper band of the dual VFO screen
+    VFO_B,     ///< Second VFO, lower band of the dual VFO screen
+};
+
 struct oldSettings
 {
     uint8_t brightness;           // Display brightness
@@ -61,7 +69,8 @@ struct oldSettings
     uint8_t vpLevel         : 3,  // Voice prompt level
             vpPhoneticSpell : 1,  // Phonetic spell enabled
             macroMenuLatch  : 1,  // Automatic latch of macro menu
-            _reserved       : 3;
+            dualVfo         : 1,  // Dual VFO with dual watch
+            _reserved       : 2;
     bool    m17_can_rx;           // Check M17 CAN on RX
     char    m17_dest[10];         // M17 destination
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage
@@ -96,7 +105,9 @@ struct settings
              gpsSetTime      : 1,  ///< Use GPS to ajust RTC time
              m17_can_rx      : 1,  ///< Check M17 CAN on RX
              showBatteryIcon : 1,  ///< Battery display true: icon, false: percentage
-             _reserved       : 19; ///< Reserved for future use, keep set to 0
+             dualVfo         : 1,  ///< Dual VFO with dual watch
+             vfoSelected     : 1,  ///< Selected VFO, see enum VfoSelect
+             _reserved       : 17; ///< Reserved for future use, keep set to 0
 }
 __attribute__((packed));
 
@@ -119,6 +130,8 @@ static const struct settings default_settings =
     false,                        // Don't update RTC with GPS
     false,                        // Do not check M17 CAN on RX
     false,                        // No battery icon
+    false,                        // Dual VFO off
+    VFO_A,                        // VFO A selected
     0,                            // not used
 };
 

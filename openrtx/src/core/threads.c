@@ -89,6 +89,22 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.txPower     = tuner_get_power(&state.tuner);
             rtx_cfg.toneEn      = state.tone_enabled;
 
+            // Dual watch works between two FM VFOs on different frequencies
+            const struct tuner *watch = &state.tuner_alt;
+            fmInfo_t watchFm = { 0 };
+
+            tuner_get_FM_params(watch, &watchFm);
+            rtx_cfg.dualWatch      = state.dual_watch
+                                  && (rtx_cfg.opMode == OPMODE_FM)
+                                  && (tuner_get_opmode(watch) == OPMODE_FM)
+                                  && (tuner_get_rx_frequency(watch) !=
+                                      rtx_cfg.rxFrequency);
+            rtx_cfg.watchFrequency = tuner_get_rx_frequency(watch);
+            rtx_cfg.watchBandwidth = tuner_get_bandwidth(watch);
+            rtx_cfg.watchSqlLevel  = tuner_get_sql_level(watch);
+            rtx_cfg.watchToneEn    = watchFm.rxToneEn;
+            rtx_cfg.watchTone      = ctcss_tone[watchFm.rxTone];
+
             // Enable Tx if channel allows it and we are in UI main screen
             rtx_cfg.txDisable = tuner_is_rx_only(&state.tuner)
                               || state.txDisable;

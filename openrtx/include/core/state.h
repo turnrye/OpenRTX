@@ -37,7 +37,9 @@ typedef struct {
 
     uint16_t channel_index;
     bool bank_enabled; // Memory mode browses a bank, not all channels
-    struct tuner tuner;
+    struct tuner tuner;     // Selected VFO
+    struct tuner tuner_alt; // VFO not selected
+    bool dual_watch;        // Receive also on the VFO not selected
 
     uint8_t rtxStatus;
     bool tone_enabled;
@@ -101,6 +103,24 @@ void state_task();
  * Reset the fields of radio state containing user settings and VFO channel.
  */
 void state_resetSettingsAndVfo();
+
+/**
+ * Put both tuners back in the mode they were saved in, loading their channels
+ * from the codeplug. To be called once the codeplug is open.
+ */
+void state_loadTuners();
+
+/**
+ * Select the other VFO: the selected VFO and the one not selected trade places.
+ */
+void state_swapVfo();
+
+/**
+ * Save both VFOs to nonvolatile memory, VFO A first, whichever is selected.
+ *
+ * @return 0 if successful, a negative error code otherwise.
+ */
+int state_saveVfos();
 
 #ifdef __cplusplus
 } // extern "C"
