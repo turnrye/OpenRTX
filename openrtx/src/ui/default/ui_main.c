@@ -314,6 +314,11 @@ static void _ui_drawVfoBand(uint8_t vfo, uint16_t top, uint16_t height,
     bool tuned = (selected != (status->onWatch == 1));
     bool busy = tuned && rtx_rxSquelchOpen();
     bool tx = selected && (status->opStatus == TX);
+
+    // With a status row, the callsign of an M17 station takes the place of
+    // the mode and of the BUSY flag
+    bool call = tuned && status->lsfOk && (opmode == OPMODE_M17)
+             && (compact == false);
     color_t text = tx ? color_tx : color_white;
 
     // Signal meter at the bottom of the band: S0 to S9+20 over a base line,
@@ -358,7 +363,10 @@ static void _ui_drawVfoBand(uint8_t vfo, uint16_t top, uint16_t height,
         if(strnlen(dst, 10) == 0)
             dst = currentLanguage->broadcast;
 
-        if(selected && (compact == false))
+        // Station heard on this band, else the destination of the selected one
+        if(call)
+            sniprintf(mode, sizeof(mode), "%s", status->M17_src);
+        else if(selected && (compact == false))
             sniprintf(mode, sizeof(mode), "M17 #%s", dst);
         else
             sniprintf(mode, sizeof(mode), "M17");
@@ -439,13 +447,15 @@ static void _ui_drawVfoBand(uint8_t vfo, uint16_t top, uint16_t height,
     else
     {
         // Cut the status to the room left, before the BUSY flag if shown
-        uint16_t room = (busy ? (uint16_t)(flag.x - gap) : right) - pos.x;
+        bool showFlag = busy && (call == false);
+        uint16_t room = (showFlag ? (uint16_t)(flag.x - gap) : right) - pos.x;
         size_t len = strlen(mode);
         while((len > 0) && (gfx_getTextWidth(font, mode) > room))
             mode[--len] = '\0';
 
-        gfx_print(pos, font, TEXT_ALIGN_LEFT, color_white, "%s", mode);
-        if(busy)
+        gfx_print(pos, font, TEXT_ALIGN_LEFT,
+                  call ? yellow_fab413 : color_white, "%s", mode);
+        if(showFlag)
             gfx_print(flag, font, TEXT_ALIGN_LEFT, yellow_fab413, "BUSY");
     }
 
@@ -597,7 +607,9 @@ void _ui_drawMainVFO(ui_state_t* ui_state)
 
     // Dual VFO: both bands take the place of the single VFO layout, which
     // stays in use while an M17 destination is being typed
-    if(last_state.settings.dualVfo && showFreq && !ui_state->edit_mode)
+    // M17 call data of the VFO not selected stays inside its band
+    if(last_state.settings.dualVfo && !ui_state->edit_mode
+       && (showFreq || (status.onWatch == 1)))
     {
         _ui_drawDualVfo(&status);
         return;
@@ -633,7 +645,9 @@ void _ui_drawMainMEM(ui_state_t* ui_state)
 
     // Dual VFO: the same two bands as in VFO mode, each tuner showing its
     // own frequency or channel
-    if(last_state.settings.dualVfo && showFreq && !ui_state->edit_mode)
+    // M17 call data of the VFO not selected stays inside its band
+    if(last_state.settings.dualVfo && !ui_state->edit_mode
+       && (showFreq || (status.onWatch == 1)))
     {
         _ui_drawDualVfo(&status);
         return;
