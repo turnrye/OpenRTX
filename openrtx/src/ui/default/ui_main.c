@@ -226,11 +226,19 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
     }
 }
 
-void _ui_drawFrequency()
+/**
+ * Print a frequency in MHz with its last two digits in a smaller font,
+ * centred inside a horizontal span.
+ *
+ * @param freq: frequency, in Hz.
+ * @param x: left end of the span.
+ * @param width: width of the span.
+ * @param y: vertical position of the text line.
+ * @param font: font of the main digits.
+ */
+static void _ui_printFrequency(freq_t freq, uint16_t x, uint16_t width,
+                               uint16_t y, fontSize_t font)
 {
-    freq_t freq = platform_getPttStatus() ? tuner_get_tx_frequency(&last_state.tuner)
-                                          : tuner_get_rx_frequency(&last_state.tuner);
-
     char freq_str[16] = {0};
     sniprintf(freq_str, sizeof(freq_str), "%03lu.%05lu",
               (freq / 1000000lu), (freq % 1000000lu) / 10);
@@ -242,58 +250,220 @@ void _ui_drawFrequency()
     strncpy(small_str, freq_str + len - 2, 2);
 
     fontSize_t small_font = FONT_SIZE_5PT;
-    if (layout.line3_large_font > FONT_SIZE_6PT)
+    if (font > FONT_SIZE_6PT)
     {
-        small_font = (fontSize_t)(layout.line3_large_font - 2);
+        small_font = (fontSize_t)(font - 2);
     }
 
-    uint16_t main_width = gfx_getTextWidth(layout.line3_large_font, main_str);
+    uint16_t main_width = gfx_getTextWidth(font, main_str);
     uint16_t small_width = gfx_getTextWidth(small_font, small_str);
     uint16_t total_width = main_width + small_width;
-    int16_t start_x = (CONFIG_SCREEN_WIDTH - total_width) / 2;
+    int16_t start_x = x + (width - total_width) / 2;
 
-    point_t main_pos = { (uint16_t)start_x, layout.line3_large_pos.y };
-    gfx_print(main_pos, layout.line3_large_font, TEXT_ALIGN_LEFT,
-              color_white, "%s", main_str);
+    point_t main_pos = { (uint16_t)start_x, y };
+    gfx_print(main_pos, font, TEXT_ALIGN_LEFT, color_white, "%s", main_str);
 
-    point_t small_pos = { (uint16_t)(start_x + main_width), layout.line3_large_pos.y };
+    point_t small_pos = { (uint16_t)(start_x + main_width), y };
     gfx_print(small_pos, small_font, TEXT_ALIGN_LEFT,
               color_white, "%s", small_str);
 }
 
+void _ui_drawFrequency()
+{
+    freq_t freq = platform_getPttStatus() ? tuner_get_tx_frequency(&last_state.tuner)
+                                          : tuner_get_rx_frequency(&last_state.tuner);
+
+    _ui_printFrequency(freq, 0, CONFIG_SCREEN_WIDTH, layout.line3_large_pos.y,
+                       layout.line3_large_font);
+}
+
 /**
- * Dual VFO: print the letter of the selected VFO beside its frequency and the
- * VFO not selected on the first line, followed by its own signal meter. The
- * line is marked while the receiver hears a signal on it.
+ * Dual VFO: draw one of the two bands. VFO A is always the upper band and
+ * VFO B the lower one, the selected one carries the MAIN tag. Each band has
+ * its own mode, frequency, BUSY flag and signal meter.
+ *
+ * Screens taller than 64 pixels have a status row above the frequency. The
+ * others have room for one row only: letter, frequency and mode. There the
+ * letter of the selected band is reversed in place of the tag, and the BUSY
+ * flag takes the place of the mode.
+ *
+ * @param vfo: band to draw, VFO_A or VFO_B.
+ * @param top: vertical position of the top of the band.
+ * @param height: height of the band.
+ */
+static void _ui_drawVfoBand(uint8_t vfo, uint16_t top, uint16_t height)
+{
+    const bool compact = (CONFIG_SCREEN_HEIGHT <= 64);
+    bool selected = (vfo == last_state.settings.vfoSelected);
+    const struct tuner *t = selected ? &last_state.tuner
+                                     : &last_state.tuner_alt;
+    const uint8_t opmode = tuner_get_opmode(t);
+    fmInfo_t fm = { 0 };
+    tuner_get_FM_params(t, &fm);
+    rssi_t rssi = selected ? last_state.rssi : last_state.rssi_alt;
+
+    // The receiver is on the selected VFO unless it sits on the watched one
+    rtxStatus_t status = rtx_getCurrentStatus();
+    bool tuned = (selected != (status.onWatch == 1));
+    bool busy = tuned && rtx_rxSquelchOpen();
+
+    // Signal meter at the bottom of the band: S0 to S9+20 over a base line,
+    // with a mark at the squelch level
+    uint16_t meter_h = compact ? 3 : 5;
+    uint16_t width = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
+    uint16_t level = (rssiToSlevel(rssi) * width) / 11;
+    point_t base = { layout.horizontal_pad, (uint16_t)(top + height - 2) };
+    point_t bar = { base.x, (uint16_t)(base.y - meter_h) };
+    gfx_drawRect(base, width, 1, color_grey, true);
+    gfx_drawRect(bar, level, meter_h, busy ? yellow_fab413 : color_white,
+                 true);
+
+    if(opmode == OPMODE_FM)
+    {
+        rssi_t squelch = -127 + (tuner_get_sql_level(t) * 66) / 15;
+        point_t mark = { (uint16_t)(base.x
+                                    + (rssiToSlevel(squelch) * width) / 11),
+                         (uint16_t)(bar.y - 1) };
+        gfx_drawRect(mark, 1, meter_h + 2, yellow_fab413, true);
+    }
+
+    // Mode, with the tone on the screens that have a status row
+    char mode[24] = "DMR";
+    if(opmode == OPMODE_FM)
+    {
+        const char *bw = (tuner_get_bandwidth(t) == BW_12_5) ? "NFM" : "FM";
+        uint16_t tone = ctcss_tone[fm.txTone];
+        const char *dir = _ui_getToneEnabledString(fm.txToneEn,
+                                                   fm.rxToneEn, true);
+        if((fm.txToneEn == 0) && (fm.rxToneEn == 0))
+            sniprintf(mode, sizeof(mode), "%s", bw);
+        else if(compact)
+            sniprintf(mode, sizeof(mode), "%s %s", bw, dir);
+        else
+            sniprintf(mode, sizeof(mode), "%s %d.%d %s", bw, tone / 10,
+                      tone % 10, dir);
+    }
+    #ifdef CONFIG_M17
+    else if(opmode == OPMODE_M17)
+    {
+        const char *dst = status.destination_address;
+        if(strnlen(dst, 10) == 0)
+            dst = currentLanguage->broadcast;
+
+        if(selected && (compact == false))
+            sniprintf(mode, sizeof(mode), "M17 #%s", dst);
+        else
+            sniprintf(mode, sizeof(mode), "M17");
+    }
+    #endif
+
+    // A tuner in memory mode shows its channel name: before the mode on the
+    // status row, in place of the frequency on the single row screens
+    char name[CPS_STR_SIZE + 1] = { 0 };
+    tuner_get_channel_name(t, name, sizeof(name) - 1);
+    bool memory = (tuner_get_mode(t) != TUNER_VFO);
+    if(memory && (compact == false))
+    {
+        char tmp[sizeof(mode)];
+        sniprintf(tmp, sizeof(tmp), "%.10s %.12s", name, mode);
+        memcpy(mode, tmp, sizeof(mode));
+    }
+
+    // Text lines: the frequency sits above the meter, the status either on
+    // its own row at the top of the band or on the line of the frequency
+    fontSize_t font = layout.line1_font;
+    uint16_t font_h = gfx_getFontHeight(font);
+    uint16_t gap = compact ? 2 : layout.horizontal_pad;
+    uint16_t freq_y = bar.y - (compact ? 3 : 6);
+    uint16_t text_y = compact ? freq_y : (uint16_t)(top + font_h);
+    uint16_t right = CONFIG_SCREEN_WIDTH - layout.horizontal_pad;
+
+    // Letter and MAIN tag. With one row there is no room for the tag: the
+    // letter of the selected band is drawn reversed instead.
+    point_t pos = { layout.horizontal_pad, text_y };
+    const char *letter = (vfo == VFO_B) ? "B" : "A";
+    uint16_t letter_w = gfx_getTextWidth(font, "B");
+    uint16_t tag_w = gfx_getTextWidth(font, "MAIN") + 2;
+    point_t box = { pos.x, (uint16_t)(text_y - font_h + 1) };
+    if(compact)
+    {
+        point_t txt = { (uint16_t)(pos.x + 1), text_y };
+        if(selected)
+            gfx_drawRect(box, letter_w + 2, font_h + 1, color_white, true);
+        gfx_print(txt, font, TEXT_ALIGN_LEFT,
+                  selected ? color_black : color_white, "%s", letter);
+        pos.x += letter_w + 2 + gap;
+    }
+    else
+    {
+        gfx_print(pos, font, TEXT_ALIGN_LEFT, color_white, "%s", letter);
+        pos.x += letter_w + gap;
+        if(selected)
+        {
+            point_t txt = { (uint16_t)(pos.x + 1), text_y };
+            box.x = pos.x;
+            gfx_drawRect(box, tag_w, font_h + 1, color_white, true);
+            gfx_print(txt, font, TEXT_ALIGN_LEFT, color_black, "MAIN");
+        }
+        pos.x += tag_w + gap;
+    }
+
+    // Mode and BUSY flag
+    point_t flag = { (uint16_t)(right - gfx_getTextWidth(font, "BUSY")),
+                     text_y };
+    if(compact)
+    {
+        point_t mode_pos = { (uint16_t)(right - gfx_getTextWidth(font, mode)),
+                             text_y };
+        if(busy)
+            gfx_print(flag, font, TEXT_ALIGN_LEFT, color_white, "BUSY");
+        else
+            gfx_print(mode_pos, font, TEXT_ALIGN_LEFT, color_white, "%s",
+                      mode);
+    }
+    else
+    {
+        // Cut the status to the room left, before the BUSY flag if shown
+        uint16_t room = (busy ? (uint16_t)(flag.x - gap) : right) - pos.x;
+        size_t len = strlen(mode);
+        while((len > 0) && (gfx_getTextWidth(font, mode) > room))
+            mode[--len] = '\0';
+
+        gfx_print(pos, font, TEXT_ALIGN_LEFT, color_white, "%s", mode);
+        if(busy)
+            gfx_print(flag, font, TEXT_ALIGN_LEFT, yellow_fab413, "BUSY");
+    }
+
+    // Frequency: full width under the status row, or between tag and mode
+    freq_t freq = (selected && platform_getPttStatus())
+                ? tuner_get_tx_frequency(t)
+                : tuner_get_rx_frequency(t);
+    if(compact && memory)
+    {
+        point_t name_pos = { pos.x, freq_y };
+        gfx_print(name_pos, FONT_SIZE_8PT, TEXT_ALIGN_LEFT, color_white,
+                  "%.10s", name);
+    }
+    else if(compact)
+        _ui_printFrequency(freq, pos.x, flag.x - pos.x, freq_y,
+                           FONT_SIZE_8PT);
+    else
+        _ui_printFrequency(freq, 0, CONFIG_SCREEN_WIDTH, freq_y,
+                           layout.line3_large_font);
+}
+
+/**
+ * Dual VFO: draw the two bands below the top bar, VFO A over VFO B.
  */
 static void _ui_drawDualVfo()
 {
-    bool selB = (last_state.settings.vfoSelected == VFO_B);
-    gfx_print(layout.line3_large_pos, layout.line1_font, TEXT_ALIGN_LEFT,
-              color_white, "%c", selB ? 'B' : 'A');
+    uint16_t top = layout.top_h + 1;
+    uint16_t height = (CONFIG_SCREEN_HEIGHT - top) / 2;
 
-    rtxStatus_t status = rtx_getCurrentStatus();
-    bool heard = status.onWatch && rtx_rxSquelchOpen();
-    freq_t freq = tuner_get_rx_frequency(&last_state.tuner_alt);
-    color_t color = heard ? yellow_fab413 : color_white;
-    char str[16] = { 0 };
-    sniprintf(str, sizeof(str), "%c%c %03lu.%05lu", heard ? '>' : ' ',
-              selB ? 'A' : 'B', (unsigned long)(freq / 1000000),
-              (unsigned long)((freq % 1000000) / 10));
-    gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_LEFT, color,
-              "%s", str);
-
-    // Signal meter in the rest of the line: S0 to S9+20 over a base line
-    uint16_t x = layout.line1_pos.x
-               + gfx_getTextWidth(layout.line1_font, str)
-               + layout.horizontal_pad;
-    uint16_t width = CONFIG_SCREEN_WIDTH - layout.horizontal_pad - x;
-    uint16_t height = gfx_getFontHeight(layout.line1_font) / 2;
-    uint16_t level = (rssiToSlevel(last_state.rssi_alt) * width) / 11;
-    point_t base = { x, layout.line1_pos.y };
-    point_t bar = { x, (uint16_t)(layout.line1_pos.y - height) };
-    gfx_drawRect(base, width, 1, color_grey, true);
-    gfx_drawRect(bar, level, height, color, true);
+    gfx_drawHLine(layout.top_h, layout.hline_h, color_grey);
+    _ui_drawVfoBand(VFO_A, top, height);
+    gfx_drawHLine(top + height, layout.hline_h, color_grey);
+    _ui_drawVfoBand(VFO_B, top + height + 1, height - 1);
 }
 
 void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
@@ -401,18 +571,26 @@ void _ui_drawMainVFO(ui_state_t* ui_state)
 {
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
-    _ui_drawModeInfo(ui_state);
 
     #ifdef CONFIG_M17
     // Show VFO frequency if the OpMode is not M17 or there is no valid LSF data
     rtxStatus_t status = rtx_getCurrentStatus();
-    if((status.opMode != OPMODE_M17) || (status.lsfOk == false))
+    bool showFreq = (status.opMode != OPMODE_M17) || (status.lsfOk == false);
+    #else
+    bool showFreq = true;
     #endif
+
+    // Dual VFO: both bands take the place of the single VFO layout, which
+    // stays in use while an M17 destination is being typed
+    if(last_state.settings.dualVfo && showFreq && !ui_state->edit_mode)
     {
-        _ui_drawFrequency();
-        if(last_state.settings.dualVfo)
-            _ui_drawDualVfo();
+        _ui_drawDualVfo();
+        return;
     }
+
+    _ui_drawModeInfo(ui_state);
+    if(showFreq)
+        _ui_drawFrequency();
 
     _ui_drawMainBottom();
 }
@@ -429,13 +607,25 @@ void _ui_drawMainMEM(ui_state_t* ui_state)
 {
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
-    _ui_drawModeInfo(ui_state);
 
     #ifdef CONFIG_M17
     // Show channel data if the OpMode is not M17 or there is no valid LSF data
     rtxStatus_t status = rtx_getCurrentStatus();
-    if((status.opMode != OPMODE_M17) || (status.lsfOk == false))
+    bool showFreq = (status.opMode != OPMODE_M17) || (status.lsfOk == false);
+    #else
+    bool showFreq = true;
     #endif
+
+    // Dual VFO: the same two bands as in VFO mode, each tuner showing its
+    // own frequency or channel
+    if(last_state.settings.dualVfo && showFreq && !ui_state->edit_mode)
+    {
+        _ui_drawDualVfo();
+        return;
+    }
+
+    _ui_drawModeInfo(ui_state);
+    if(showFreq)
     {
         _ui_drawBankChannel();
         _ui_drawFrequency();
