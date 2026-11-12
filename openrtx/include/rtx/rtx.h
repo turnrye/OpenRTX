@@ -138,6 +138,15 @@ void rtx_task();
 rssi_t rtx_getRssi();
 
 /**
+ * Get the RSSI last measured on one of the two VFOs. With dual watch off the
+ * selected VFO reads as rtx_getRssi(). A VFO the receiver is not listening
+ * to reads -127dBm.
+ * @param watched: true for the watched VFO, false for the selected one.
+ * @return RSSI value in dBm.
+ */
+rssi_t rtx_getVfoRssi(const bool watched);
+
+/**
  * Get current status of the RX squelch. This function is thread-safe and can
  * be called also from threads other than the one running the RTX task.
  * @return true if RX squelch is open.

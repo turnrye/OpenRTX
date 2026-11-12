@@ -20,6 +20,7 @@ static rssi_t             rssi;         // Current RSSI in dBm
 static bool               reinitFilter; // Flag for RSSI filter re-initialisation
 
 static long long          watchHopTime; // Dual watch: earliest time of next hop
+static rssi_t             vfoRssi[2];   // RSSI of the selected and watched VFO
 
 /*
  * Dual watch timings, in ms. The dwell has to span at least three RTX updates
@@ -80,6 +81,7 @@ static bool dualWatchUpdate()
         // Not watching, or about to transmit: stay on the selected VFO
         hop = (rtxStatus.onWatch == 1);
         watchHopTime = now + WATCH_HANG;
+        vfoRssi[1] = -127;
     }
     else
     {
@@ -87,7 +89,11 @@ static bool dualWatchUpdate()
         // that also a signal with the wrong tone holds the receiver.
         rssi_t squelch = -127 + (rtxStatus.sqlLevel * 66) / 15;
         if(currMode->rxSquelchOpen() || (rssi > (squelch + 1)))
+        {
+            // The VFO left unheard reads no signal
             watchHopTime = now + WATCH_HANG;
+            vfoRssi[rtxStatus.onWatch ? 0 : 1] = -127;
+        }
         else if(now >= watchHopTime)
             hop = true;
     }
@@ -146,6 +152,8 @@ void rtx_init(pthread_mutex_t *m)
      */
     rssi         = radio_getRssi();
     reinitFilter = false;
+    vfoRssi[0]   = rssi;
+    vfoRssi[1]   = -127;
 }
 
 void rtx_terminate()
@@ -286,6 +294,8 @@ void rtx_task()
                 rssi = radio_getRssi();
                 reinitFilter = false;
             }
+
+            vfoRssi[rtxStatus.onWatch] = rssi;
         }
     }
     else
@@ -305,6 +315,11 @@ void rtx_task()
 rssi_t rtx_getRssi()
 {
     return rssi;
+}
+
+rssi_t rtx_getVfoRssi(const bool watched)
+{
+    return vfoRssi[watched ? 1 : 0];
 }
 
 bool rtx_rxSquelchOpen()
