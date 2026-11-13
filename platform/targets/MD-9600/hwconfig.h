@@ -38,6 +38,8 @@ extern const struct spiCustomDevice pll_spi;
 extern const struct spiDevice spi2;
 extern const struct lmx2571 pllVhf;
 extern const struct lmx2571 pllUhf;
+extern const struct sky73210 skyVhf;
+extern const struct sky73210 skyUhf;
 extern const struct spiCustomDevice if_spi;
 extern const struct ak2365a ifVhf;
 extern const struct ak2365a ifUhf;

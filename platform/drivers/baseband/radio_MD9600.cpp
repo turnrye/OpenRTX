@@ -15,6 +15,13 @@
  * M17, at the stock firmware's PA drives.
  * There is no lock detect and no temperature, SWR or power sensing on this
  * board.
+ *
+ * The V1-V3 boards have a SKY72310 synthesizer and an AK2365A IF chip per
+ * band instead, and only receive. Their sequence and values are ported from
+ * RadioFoundry, boards/md9600/rfseq_md9600.c md9600_rf_rx() and
+ * rfplan_md9600.c plan_sky72310(), measured on a V1-V3 radio,
+ * https://github.com/radiofoundry/radiofoundry, Copyright (c) 2026 The
+ * RadioFoundry Authors, MIT licence.
  */
 
 #include "interfaces/delays.h"
@@ -28,8 +35,10 @@
 #include "core/utils.h"
 #include "drivers/audio/stm32_adc.h"
 #include "drivers/SPI/spi_bitbang.h"
+#include "drivers/baseband/AK2365A.h"
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/LMX2571.h"
+#include "drivers/baseband/SKY72310.h"
 #include "drivers/baseband/radioUtils.h"
 #include "hwconfig.h"
 
@@ -101,6 +110,26 @@ static constexpr uint8_t M17_TX_DEVIATION[2] = { 0x5A, 0x22 };
  */
 static constexpr int32_t RSSI_FLOOR[] = { 121, 94 };
 
+/*
+ * V1-V3 boards, by band (VHF, UHF), from RadioFoundry (file header): the
+ * SKY72310 reference divider, 2.8 and 4.2 MHz at the phase detector, and the
+ * VCO, at twice the LO on VHF. The settle times are RadioFoundry's: no lock
+ * detect, and the AK2365A calibration takes 1.3 ms.
+ */
+static constexpr uint8_t SKY_REF_DIV[] = { 6, 4 };
+static constexpr uint8_t SKY_VCO_MULT[] = { 2, 1 };
+static constexpr uint8_t SKY_PD_GAIN = 31;
+static constexpr unsigned int SKY_SETTLE_MS = 2;
+static constexpr unsigned int IF_CAL_MS = 2;
+static constexpr unsigned int V1V3_RX_SETTLE_MS = 3;
+
+/*
+ * V1-V3 RSSI, by band (VHF, UHF): dBm at a reading of 0, then half a dB per
+ * count. RadioFoundry's fit, docs/spec/hardware-md9600.md section 5.7, not a
+ * measurement.
+ */
+static constexpr rssi_t V1V3_RSSI_FLOOR[] = { -135, -145 };
+
 /**
  * RF section of a board revision: its synthesizers and IF stage. Supplies,
  * front-end tuning, audio switches and the HR_C6000 are the same on all.
@@ -130,8 +159,10 @@ static streamCtx ctcssCtx;
 static int16_t *prevCtcssBuf;
 static CtcssDetector ctcss(ctcssCoeffs2k, (CTCSS_SAMPLE_RATE / 4), 20.0f);
 
-// Synthesizers, indexed by enum Band
+// Synthesizers and IF chips, indexed by enum Band
 static const struct lmx2571 *const pll[] = { &pllVhf, &pllUhf };
+static const struct sky73210 *const skyPll[] = { &skyVhf, &skyUhf };
+static const struct ak2365a *const ifChip[] = { &ifVhf, &ifUhf };
 
 HR_C6000 C6000((const struct spiDevice *)&c6000_spi, { DMR_CS });
 
@@ -250,6 +281,85 @@ static const struct rf_ops v5Ops = {
     v5RxPowerUp, // rxPowerUp
     v5RxOff,     // rxOff
     v5Rssi,      // rssi
+};
+
+/**
+ * V1-V3: the synthesizer and IF chip buses. The chips are written on every
+ * power-up of the receivers, which also powers the IF chips.
+ */
+static void v1v3Init()
+{
+    spiBitbang_init(&pll_spi);
+    spiBitbang_init(&if_spi);
+}
+
+/**
+ * V1-V3: power up and tune the receivers, as RadioFoundry (file header):
+ * both receivers powered on their receive VCOs, the band's synthesizer on the
+ * LO, the front-end tuned, then the band's IF chip set up. The IF chips share
+ * their reset line: the other band's is left in standby.
+ */
+static void v1v3RxPowerUp()
+{
+    const bool wide = (config->bandwidth != BW_12_5)
+                   || (config->opMode == OPMODE_M17);
+
+    gpio_clearPin(RF_APC_EN);
+    gpio_clearPin(RF_T5_UHF);
+    gpio_clearPin(RF_T5_VHF);
+
+    gpio_setPin(RF_R5_UHF);
+    gpio_setPin(RF_R5_VHF);
+    gpio_setPin(RF_C5_UHF);
+    gpio_setPin(RF_C5_VHF);
+    gpio_setPin(VCO_SEL_UHF);
+    gpio_setPin(VCO_SEL_VHF);
+
+    freq_t lo = config->rxFrequency - IF_FREQ;
+    if (rxBand == BND_VHF)
+        lo = config->rxFrequency + IF_FREQ;
+
+    SKY73210_init(skyPll[rxBand], SKY_PD_GAIN);
+    SKY73210_setFrequency(skyPll[rxBand], lo * SKY_VCO_MULT[rxBand],
+                          SKY_REF_DIV[rxBand]);
+    sleepFor(0, SKY_SETTLE_MS);
+
+    setFrontEndTune(rxBand, rxTune);
+
+    if (wide)
+        AK2365A_setupRx(ifChip[rxBand], AK2365A_BPF_6, true);
+    else
+        AK2365A_setupRx(ifChip[rxBand], AK2365A_BPF_3, false);
+
+    sleepFor(0, IF_CAL_MS + V1V3_RX_SETTLE_MS);
+}
+
+/**
+ * V1-V3: hold both IF chips in reset while their supply is off.
+ */
+static void v1v3RxOff()
+{
+    AK2365A_terminate(&ifVhf);
+    AK2365A_terminate(&ifUhf);
+}
+
+/**
+ * V1-V3: the RSSI reading on RadioFoundry's fit.
+ *
+ * @param band: receiving band.
+ * @param raw: 8-bit RSSI reading.
+ * @return the RSSI, in dBm.
+ */
+static rssi_t v1v3Rssi(const enum Band band, const int32_t raw)
+{
+    return V1V3_RSSI_FLOOR[band] + (raw / 2);
+}
+
+static const struct rf_ops v1v3Ops = {
+    v1v3Init,      // init
+    v1v3RxPowerUp, // rxPowerUp
+    v1v3RxOff,     // rxOff
+    v1v3Rssi,      // rssi
 };
 
 /**
@@ -390,11 +500,20 @@ void radio_init(const rtxStatus_t *rtxState)
     config = rtxState;
     radioStatus = OFF;
 
-    // The RF section of other boards is different: leave it alone
+    /*
+     * Nothing tells a V4 board from a V1-V3 one: both have the AK2365A IF
+     * chips, and the V4's synthesizer is write-only. A V4 gets the V1-V3
+     * words and can only mistune its receiver. Neither transmits. RadioFoundry,
+     * docs/spec/hardware-md9600.md section 16.
+     */
+    const uint16_t flags = platform_getHwInfo()->flags;
     rf = NULL;
-    if (platform_getHwInfo()->flags & MD9600_FLAGS_V5)
+    if (flags & MD9600_FLAGS_V5)
         rf = &v5Ops;
+    else if (flags & MD9600_FLAGS_V1_V4)
+        rf = &v1v3Ops;
 
+    // Unknown board: leave the RF section alone
     if (rf == NULL)
         return;
 

@@ -8,6 +8,7 @@
 #include "drivers/SPI/spi_bitbang.h"
 #include "drivers/baseband/LMX2571.h"
 #include "drivers/baseband/AK2365A.h"
+#include "drivers/baseband/SKY72310.h"
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "drivers/SPI/spi_stm32.h"
@@ -159,6 +160,25 @@ const struct lmx2571 pllUhf =
     .spi = (const struct spiDevice *) &pll_spi,
     .cfg = &pllUhfCfg,
     .cs  = { PLL_CS_UHF }
+};
+
+/*
+ * SKY72310 synthesizers of the V1-V3 boards, on the same bus and chip selects
+ * as the V5's LMX2571: RadioFoundry, docs/spec/hardware-md9600.md section
+ * 5.3, https://github.com/radiofoundry/radiofoundry
+ */
+const struct sky73210 skyVhf =
+{
+    .spi    = (const struct spiDevice *) &pll_spi,
+    .cs     = { PLL_CS_VHF },
+    .refClk = 16800000
+};
+
+const struct sky73210 skyUhf =
+{
+    .spi    = (const struct spiDevice *) &pll_spi,
+    .cs     = { PLL_CS_UHF },
+    .refClk = 16800000
 };
 
 const struct gpsDevice gps =
