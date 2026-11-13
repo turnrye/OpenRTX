@@ -1012,20 +1012,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
             break;
         case 6:
 
-            switch(state.channel.power)
-            {
-                case 1000:
-                    state.channel.power = 2500;
-                    break;
-
-                case 2500:
-                    state.channel.power = 5000;
-                    break;
-
-                default:
-                    state.channel.power = 1000;
-            }
-
+            state.channel.power = cps_nextTxPower(state.channel.power);
             *sync_rtx = true;
             vp_announcePower(state.channel.power, queueFlags);
             break;
