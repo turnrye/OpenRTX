@@ -64,6 +64,14 @@ static constexpr uint8_t CTCSS_DEVIATION = 0x20;
 static constexpr uint8_t TONE_DEVIATION = 0x1E;
 static constexpr uint32_t TONE_BURST_FREQ = 1750;
 
+/*
+ * Supply range for transmission, in mV: RadioFoundry's cutoff and maximum,
+ * docs/spec/hardware-md9600.md section 10.3. The stock firmware also ends
+ * transmissions on supply faults.
+ */
+static constexpr uint16_t TX_MIN_SUPPLY_MV = 10000;
+static constexpr uint16_t TX_MAX_SUPPLY_MV = 15000;
+
 // Power levels offered (hwconfig.h), one per PA level, lowest first
 static constexpr uint32_t PA_LEVEL_MW[] = { CONFIG_TX_POWER_LEVELS };
 static_assert(ARRAY_SIZE(PA_LEVEL_MW) == MD9600_PA_LEVELS,
@@ -417,6 +425,11 @@ void radio_enableTx()
     // FM only, on a board detected as V5, inside a band
     if ((!rfEnabled) || (config->txDisable == 1) || (txBand == BND_NONE)
         || (config->opMode != OPMODE_FM))
+        return;
+
+    // Not on a supply out of range: there is no other PA protection
+    const uint16_t supply = platform_getVbat();
+    if ((supply < TX_MIN_SUPPLY_MV) || (supply > TX_MAX_SUPPLY_MV))
         return;
 
     txRetune();
