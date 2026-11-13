@@ -20,10 +20,75 @@
 #include "drivers/GPS/gps_stm32.h"
 #include "drivers/chSelector/chSelector.h"
 #include "drivers/audio/Cx000_dac.h"
+#include "drivers/SPI/spi_bitbang.h"
+#include "drivers/baseband/AK2365A.h"
 #include "core/gps.h"
+#include <errno.h>
 
 static hwInfo_t hwInfo;
 static bool pwrBtnPressed = true;   // Power button status at the previous call
+
+/**
+ * Drive a gpio as an output.
+ */
+static void setOutput(GPIO_TypeDef *port, uint8_t pin, bool high)
+{
+    gpio_setMode(port, pin, OUTPUT);
+
+    if(high)
+        gpio_setPin(port, pin);
+    else
+        gpio_clearPin(port, pin);
+}
+
+/**
+ * Power both receivers, transmitters off. The AK2365A IF chips of the V1-V4
+ * boards run from the receiver supplies. The supplies take the SWD pins: from
+ * here on, a debugger connects under reset only.
+ */
+static void receiversOn(bool on)
+{
+    setOutput(RF_APC_EN, false);
+    setOutput(RF_T5_UHF, false);
+    setOutput(RF_T5_VHF, false);
+    setOutput(VCO_SEL_UHF, on);
+    setOutput(VCO_SEL_VHF, on);
+    setOutput(RF_C5_UHF, on);
+    setOutput(RF_C5_VHF, on);
+    setOutput(RF_R5_UHF, on);
+    setOutput(RF_R5_VHF, on);
+}
+
+/**
+ * Tell the board revisions apart: the V1-V4 boards have an AK2365A IF chip
+ * per band, the V4A/V5 boards none, and no other readable part differs.
+ * Sequence from RadioFoundry, boards/md9600/rfseq_md9600.c
+ * md9600_rf_if_detect() and docs/spec/hardware-md9600.md sections 5.4 and 16,
+ * https://github.com/radiofoundry/radiofoundry
+ *
+ * @return MD9600_FLAGS_V5 when neither chip drives its data line,
+ * MD9600_FLAGS_V1_V4 when either answers, 0 when unsure.
+ */
+static uint16_t detectRevision()
+{
+    receiversOn(true);
+    delayMs(3);
+
+    spiBitbang_init(&if_spi);
+    int vhf = AK2365A_probe(&ifVhf);
+    int uhf = AK2365A_probe(&ifUhf);
+    spiBitbang_terminate(&if_spi);
+
+    receiversOn(false);
+
+    if((vhf == 0) || (uhf == 0))
+        return MD9600_FLAGS_V1_V4;
+
+    if((vhf == -ENODEV) && (uhf == -ENODEV))
+        return MD9600_FLAGS_V5;
+
+    return 0;
+}
 
 void platform_init()
 {
@@ -57,6 +122,7 @@ void platform_init()
 
     nvm_init();                      /* Initialise non volatile memory manager */
     nvm_readHwInfo(&hwInfo);         /* Load hardware information data         */
+    hwInfo.flags = detectRevision(); /* Board revision                         */
     toneGen_init();                  /* Initialise tone generator              */
     rtc_init();                      /* Initialise RTC                         */
     backlight_init();                /* Initialize Backlight                   */

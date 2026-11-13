@@ -106,6 +106,16 @@ extern "C" {
 #define IF_ROUTE_VHF GPIOE,13
 #define IF_ROUTE_UHF GPIOE,14
 
+/*
+ * AK2365A IF chips of the V1-V4 boards, on the same pins as the V5 IF lines:
+ * probed at boot to tell the boards apart
+ */
+#define AK2365A_CS_VHF &GpioE,11
+#define AK2365A_CS_UHF &GpioE,12
+#define AK2365A_DATA   GPIOE,13
+#define AK2365A_CLK    GPIOE,14
+#define AK2365A_RST    &GpioE,15
+
 /* Front-end tuning */
 #define TUNE_UHF GPIOA,4       /* DAC1                                */
 #define TUNE_VHF GPIOA,5       /* DAC2, PA power reference in TX      */

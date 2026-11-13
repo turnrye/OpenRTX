@@ -7,6 +7,7 @@
 #include "drivers/SPI/spi_custom.h"
 #include "drivers/SPI/spi_bitbang.h"
 #include "drivers/baseband/LMX2571.h"
+#include "drivers/baseband/AK2365A.h"
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "drivers/SPI/spi_stm32.h"
@@ -84,9 +85,34 @@ static const struct spiConfig pllSpiCfg =
     .flags     = SPI_HALF_DUPLEX
 };
 
+static const struct spiConfig ifSpiCfg =
+{
+    .clk       = { AK2365A_CLK  },
+    .mosi      = { AK2365A_DATA },
+    .miso      = { AK2365A_DATA },
+    .clkPeriod = SCK_PERIOD_FROM_FREQ(1000000),
+    .flags     = SPI_HALF_DUPLEX
+};
+
 SPI_CUSTOM_DEVICE_DEFINE(c6000_spi, spiC6000_func, NULL, &c6000_mutex)
 SPI_STM32_DEVICE_DEFINE(spi2, SPI2, &spi2Mutex)
 SPI_BITBANG_DEVICE_DEFINE(pll_spi, pllSpiCfg, NULL)
+SPI_BITBANG_DEVICE_DEFINE(if_spi, ifSpiCfg, NULL)
+
+/* IF chips of the V1-V4 boards, probed at boot */
+const struct ak2365a ifVhf =
+{
+    .spi = (const struct spiDevice *) &if_spi,
+    .cs  = { AK2365A_CS_VHF },
+    .res = { AK2365A_RST }
+};
+
+const struct ak2365a ifUhf =
+{
+    .spi = (const struct spiDevice *) &if_spi,
+    .cs  = { AK2365A_CS_UHF },
+    .res = { AK2365A_RST }
+};
 ADC_STM32_DEVICE_DEFINE(adc1, ADC1, &adcMutex, ADC_COUNTS_TO_UV(3300000, 12))
 
 /*

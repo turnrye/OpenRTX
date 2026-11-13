@@ -16,6 +16,7 @@
 
 #include "interfaces/delays.h"
 #include "interfaces/nvmem.h"
+#include "interfaces/platform.h"
 #include "interfaces/radio.h"
 #include "peripherals/adc.h"
 #include "peripherals/gpio.h"
@@ -32,6 +33,7 @@ static constexpr unsigned int PLL_RESET_MS = 10;
 static constexpr unsigned int RX_SETTLE_MS = 4;
 static constexpr rssi_t RSSI_LOW_DBM = -120;
 static constexpr rssi_t RSSI_HIGH_DBM = -70;
+static constexpr rssi_t RSSI_NO_SIGNAL = -154;
 
 /*
  * Provisional, until a bench measurement: the 8-bit RSSI reading taken as
@@ -46,6 +48,7 @@ static struct md9600Calib calData;
 static enum Band rxBand = BND_NONE;
 static uint8_t rxTune;
 static enum opstatus radioStatus;
+static bool rfEnabled; // Only on a board detected as V5
 
 // Synthesizers, indexed by enum Band
 static const struct lmx2571 *const pll[] = { &pllVhf, &pllUhf };
@@ -122,6 +125,11 @@ void radio_init(const rtxStatus_t *rtxState)
 {
     config = rtxState;
     radioStatus = OFF;
+
+    // The RF section of other boards is different: leave it alone
+    rfEnabled = (platform_getHwInfo()->flags & MD9600_FLAGS_V5) != 0;
+    if (!rfEnabled)
+        return;
 
     /*
      * RF control lines, all off. The receiver supplies take the SWD pins: from
@@ -201,7 +209,7 @@ void radio_disableAfOutput()
 
 void radio_enableRx()
 {
-    if (rxBand == BND_NONE)
+    if ((!rfEnabled) || (rxBand == BND_NONE))
         return;
 
     C6000.setModOffset(calData.band[rxBand].refTune);
@@ -258,6 +266,9 @@ rssi_t radio_getRssi()
      * The RSSI line, 8 bits, is mapped linearly from the band's floor with
      * the slope of the two calibration points at -120 and -70 dBm.
      */
+    if (!rfEnabled)
+        return RSSI_NO_SIGNAL;
+
     uint32_t channel = ADC_RSSI_UHF_CH;
     enum Band band = BND_UHF;
     if (rxBand == BND_VHF) {

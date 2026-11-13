@@ -37,7 +37,16 @@ extern const struct spiCustomDevice pll_spi;
 extern const struct spiDevice spi2;
 extern const struct lmx2571 pllVhf;
 extern const struct lmx2571 pllUhf;
+extern const struct spiCustomDevice if_spi;
+extern const struct ak2365a ifVhf;
+extern const struct ak2365a ifUhf;
 extern const struct Adc adc1;
+
+/* Board revision, in hwInfo.flags */
+enum md9600Flags {
+    MD9600_FLAGS_V5 = 1,    ///< V4A/V5: LMX2571 synthesizers, no IF chip
+    MD9600_FLAGS_V1_V4 = 2, ///< V1-V4: AK2365A IF chips
+};
 
 /* Device has a working real time clock */
 #define CONFIG_RTC
