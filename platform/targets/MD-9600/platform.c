@@ -82,6 +82,41 @@ void platform_terminate()
     while(1) ;
 }
 
+void platform_enterBootloader()
+{
+    /*
+     * The TYT bootloader has no software entry: it stays in DFU only when the
+     * keys are held at power on or when the application's initial stack
+     * pointer fails (SP & 0x2FFE0000) == 0x20000000. Clear the stack pointer's
+     * top byte at 0x0800C003 (programming only clears bits, no erase needed)
+     * and reset. The next firmware write restores it. The bootloader in
+     * sectors 0-2 is never touched.
+     *
+     * Approach from RadioFoundry, docs/spec/hardware-dm1701.md section 15.4.
+     */
+    volatile uint8_t *spTop = (volatile uint8_t *) 0x0800C003;
+
+    gpio_clearPin(PWR_SW);
+    __disable_irq();
+
+    if(FLASH->CR & FLASH_CR_LOCK)
+    {
+        FLASH->KEYR = 0x45670123;
+        FLASH->KEYR = 0xCDEF89AB;
+    }
+
+    while(FLASH->SR & FLASH_SR_BSY) ;
+    FLASH->SR = FLASH_SR_PGSERR | FLASH_SR_PGPERR | FLASH_SR_PGAERR
+              | FLASH_SR_WRPERR;
+    FLASH->CR = FLASH_CR_PG;            /* Byte-wide programming */
+    *spTop = 0x00;
+    while(FLASH->SR & FLASH_SR_BSY) ;
+    FLASH->CR = FLASH_CR_LOCK;
+
+    NVIC_SystemReset();
+    while(1) ;
+}
+
 uint16_t platform_getVbat()
 {
     /*

@@ -164,6 +164,15 @@ const hwInfo_t *platform_getHwInfo();
 const struct gpsDevice *platform_initGps();
 #endif
 
+#ifdef CONFIG_BOOTLOADER_ENTRY
+/**
+ * Restart the radio into its bootloader, ready for a firmware update over USB.
+ * The radio stays in the bootloader until new firmware is written.
+ * This function does not return.
+ */
+void platform_enterBootloader();
+#endif
+
 #ifdef CONFIG_VIBRATION
 /**
  * This function turns on the vibration motor.

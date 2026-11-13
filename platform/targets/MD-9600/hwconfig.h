@@ -54,6 +54,9 @@ extern const struct Adc adc1;
 /* Battery type */
 #define CONFIG_BAT_NONE
 
+/* Restart into the TYT bootloader from the settings menu */
+#define CONFIG_BOOTLOADER_ENTRY
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
