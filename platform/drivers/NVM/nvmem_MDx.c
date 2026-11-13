@@ -16,11 +16,7 @@
 
 static const struct W25QxCfg eflashCfg =
 {
-    #ifdef PLATFORM_MD9600
-    .spi = &spi2,
-    #else
     .spi = &nvm_spi,
-    #endif
     .cs  = { FLASH_CS }
 };
 
@@ -62,13 +58,11 @@ const struct nvmTable nvmTab = {
 
 void nvm_init()
 {
-    #ifndef PLATFORM_MD9600
     gpio_setMode(FLASH_CLK, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(FLASH_SDO, ALTERNATE | ALTERNATE_FUNC(5));
     gpio_setMode(FLASH_SDI, ALTERNATE | ALTERNATE_FUNC(5));
 
     spiStm32_init(&nvm_spi, 21000000, 0);
-    #endif
 
     W25Qx_init(&eflash);
 }
@@ -144,11 +138,7 @@ void nvm_readHwInfo(hwInfo_t *info)
     nvm_devRead(&secReg, 0x3000, info->name, 8);
     nvm_devRead(&secReg, 0x3014, &freqMin, 2);
     nvm_devRead(&secReg, 0x3016, &freqMax, 2);
-    #ifdef PLATFORM_MD9600
-    nvm_devRead(&secReg, 0x3035, &info->hw_version, 1);
-    #else
     nvm_devRead(&secReg, 0x301D, &info->hw_version, 1);
-    #endif
 
     // Ensure correct null-termination of device name by removing the 0xff.
     for(uint8_t i = 0; i < sizeof(info->name); i++)

@@ -166,7 +166,6 @@ openrtx_def += {'GIT_VERSION': git_version}
 
 mdx_src = ['platform/drivers/NVM/W25Qx.c',
            'platform/drivers/NVM/nvmem_settings_MDx.c',
-           'platform/drivers/NVM/nvmem_MDx.c',
            'platform/drivers/audio/audio_MDx.cpp',
            'platform/drivers/baseband/HR_Cx000.cpp',
            'platform/drivers/baseband/HR_C6000.cpp',
@@ -418,7 +417,8 @@ endif
 ##
 ## TYT MD-3x0 family
 ##
-md3x0_src = ['platform/drivers/CPS/cps_io_native_MD3x0.c',
+md3x0_src = ['platform/drivers/NVM/nvmem_MDx.c',
+             'platform/drivers/CPS/cps_io_native_MD3x0.c',
              'platform/drivers/baseband/SKY72310.c',
              'platform/drivers/baseband/radio_MD3x0.cpp',
              'platform/drivers/baseband/HR_C5000_MDx.cpp',
@@ -440,7 +440,8 @@ md3x0_def += openrtx_def + stm32f405_def
 ##
 ## TYT MD-UV380
 ##
-mduv3x0_src = ['platform/drivers/CPS/cps_io_native_MDUV3x0.c',
+mduv3x0_src = ['platform/drivers/NVM/nvmem_MDx.c',
+               'platform/drivers/CPS/cps_io_native_MDUV3x0.c',
                'platform/targets/MD-UV3x0/platform.c',
                'platform/targets/MD-UV3x0/hwconfig.c',
                'platform/drivers/GPS/gps_stm32.cpp',
@@ -465,6 +466,7 @@ mduv3x0_def += openrtx_def + stm32f405_def
 ## TYT MD-9600
 ##
 md9600_src = ['platform/targets/MD-9600/platform.c',
+              'platform/drivers/NVM/nvmem_MD9600.c',
               'platform/targets/MD-9600/hwconfig.c',
               'platform/drivers/GPS/gps_stm32.cpp',
               'platform/drivers/GPS/nmea_rbuf.c',
@@ -595,7 +597,8 @@ cs7000p_def += openrtx_def + stm32h743_def + miosix_cm7_def
 ##
 ## Baofeng DM-1701
 ##
-dm1701_src = ['platform/targets/DM-1701/platform.c',
+dm1701_src = ['platform/drivers/NVM/nvmem_MDx.c',
+              'platform/targets/DM-1701/platform.c',
               'platform/targets/DM-1701/hwconfig.c',
               'platform/drivers/keyboard/keyboard_DM1701.c',
               'platform/drivers/CPS/cps_io_native_MDUV3x0.c',
