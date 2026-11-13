@@ -86,6 +86,9 @@ enum md9600Flags {
  */
 #define CONFIG_TX_POWER_LEVELS 5000, 10000, 25000, 40000
 
+/* The volume knob is analog, after the audio switches: nothing to show */
+#define CONFIG_VOLUME_ANALOG_ONLY
+
 /* Transmit time-out, in seconds: a mobile PA with no thermal protection */
 #define CONFIG_TX_TIMEOUT_S 180
 
