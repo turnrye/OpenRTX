@@ -5,8 +5,17 @@
  */
 
 #include "interfaces/delays.h"
-#include <math.h>
 #include "drivers/baseband/SKY72310.h"
+
+/*
+ * Main divide ratio, fractional mode: the register holds the whole part less
+ * N_OFFSET, the dividend the fraction in FRAC_BITS bits.
+ */
+enum {
+    N_OFFSET = 32,
+    FRAC_BITS = 18,
+    FRAC_MASK = (1 << FRAC_BITS) - 1,
+};
 
 static inline void writeReg(const struct sky73210 *dev, const uint16_t value)
 {
@@ -51,24 +60,25 @@ void SKY73210_setFrequency(const struct sky73210 *dev, const uint32_t freq,
     if (clkDiv > 32)
         clkDiv = 32;
 
-    float clk = ((float)dev->refClk) / ((float)clkDiv);
-    float K = ((float)freq) / clk;
-    float Ndiv = floor(K) - 32.0;
-    float Ndnd = round(262144 * (K - Ndiv - 32.0));
-
     /*
-     * With PLL in fractional mode, dividend range is [-131017 +131071].
-     * When converting from float to uint32_t we have to cast the value to a
-     * signed 18-bit one and increment the divider by one if dividend is negative.
+     * Divide ratio in steps of 2^-18, rounded to the nearest step, then split
+     * into the nearest whole number and a fraction of -0.5 to +0.5, sent as
+     * an 18-bit two's complement dividend. Integer arithmetic, as in
+     * RadioFoundry, drivers/rf/sky72310/sky72310.c sky72310_ratio(),
+     * https://github.com/radiofoundry/radiofoundry, Copyright (c) 2026 The
+     * RadioFoundry Authors, MIT licence: single precision floats were off by
+     * up to three steps.
      */
-    uint32_t dnd = ((uint32_t)Ndnd) & 0x03FFFF;
-    if (dnd & 0x20000)
-        Ndiv += 1;
+    const uint64_t ratio = ((uint64_t)freq * clkDiv) << FRAC_BITS;
+    const uint64_t steps = (ratio + (dev->refClk / 2)) / dev->refClk;
+    const uint64_t whole = (steps + (1 << (FRAC_BITS - 1))) >> FRAC_BITS;
+    const uint32_t dnd = (steps - (whole << FRAC_BITS)) & FRAC_MASK;
+    const uint16_t Ndiv = whole - N_OFFSET;
 
     uint16_t dndMsb = dnd >> 8;
     uint16_t dndLsb = dnd & 0x00FF;
 
-    writeReg(dev, (uint16_t)Ndiv);                  // Divider register
+    writeReg(dev, Ndiv);                            // Divider register
     writeReg(dev, 0x2000 | dndLsb);                 // Dividend LSB register
     writeReg(dev, 0x1000 | dndMsb);                 // Dividend MSB register
     writeReg(dev, 0x5000 | ((uint16_t)clkDiv - 1)); // Reference clock divider

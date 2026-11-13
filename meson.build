@@ -1210,6 +1210,12 @@ lmx2571_test = executable('lmx2571_test',
                                     ['platform/drivers/baseband/LMX2571.c',
                                      'tests/unit/LMX2571.cpp'],
                           kwargs  : unit_test_opts)
+
+sky72310_test = executable('sky72310_test',
+                           sources : unit_test_src +
+                                     ['platform/drivers/baseband/SKY72310.c',
+                                      'tests/unit/SKY72310.cpp'],
+                           kwargs  : unit_test_opts)
                  
 # Test signals shared by the M17 tests (tests/platform/M17Signal.hpp)
 m17_signal_src = ['tests/platform/NoisyChannel.cpp', 'tests/platform/M17Signal.cpp']
@@ -1296,4 +1302,5 @@ test('DSP DC Block Test',    dsp_dcblock_test)
 test('GFX Text Test',        gfx_text_test)
 test('Audio Codec Test',     audio_codec_test)
 test('LMX2571 Test',         lmx2571_test)
+test('SKY72310 Test',        sky72310_test)
 test('M17 Baseband Replay Test', m17_replay_test, timeout : 120) # ~40 s in CI with coverage
