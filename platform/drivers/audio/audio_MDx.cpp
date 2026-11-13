@@ -211,8 +211,8 @@ void audio_connect(const enum AudioSource source, const enum AudioSink sink)
         // Anti-pop: unmute speaker after 10ms from amp. power on
         #ifndef PLATFORM_MD9600
         gpio_setPin(AUDIO_AMP_EN);
-        #endif
         sleepFor(0, 10);
+        #endif
         gpio_clearPin(SPK_MUTE);
     }
 }
