@@ -11,7 +11,9 @@
  * values follow the stock S126.061 firmware, checked against RadioFoundry,
  * docs/spec/hardware-md9600.md, https://github.com/radiofoundry/radiofoundry
  *
- * Receive only: transmission is not supported yet.
+ * Transmission: FM only, at the stock firmware's PA drives, no CTCSS yet.
+ * There is no lock detect and no temperature, SWR or power sensing on this
+ * board.
  */
 
 #include "interfaces/delays.h"
@@ -38,6 +40,33 @@ static constexpr rssi_t RSSI_HIGH_DBM = -70;
 static constexpr rssi_t RSSI_NO_SIGNAL = -154;
 static constexpr uint32_t CTCSS_SAMPLE_RATE = 2000;
 
+// No lock detect: settle time of the synthesizer before the PA, as RadioFoundry
+static constexpr unsigned int TX_SETTLE_MS = 12;
+
+/*
+ * PA ramps of the stock S126.061 firmware (tables at 0x080c7378 and
+ * 0x080c7388): fractions of the drive, over 255, one step every 100 us.
+ */
+static constexpr unsigned int RAMP_STEP_US = 100;
+static constexpr uint8_t RAMP_UP[] = {
+    0, 0, 0, 0, 80, 160, 180, 200, 210, 220, 230, 240, 250, 255, 255, 255,
+};
+static constexpr uint8_t RAMP_DOWN[] = {
+    250, 240, 230, 220, 200, 180, 160, 100, 50, 0, 0, 0, 0, 0, 0,
+};
+
+// Factory labels of the PA levels, in mW, lowest first
+static constexpr uint32_t PA_LEVEL_MW[] = { 5000, 10000, 25000, 40000 };
+
+/*
+ * HR_C6000 modulation factor, by band (VHF, UHF) and width (12.5 kHz, wider),
+ * from the stock S126.061 firmware (0x0804fb58).
+ */
+static constexpr uint8_t TX_DEVIATION[2][2] = {
+    { 0x32, 0x64 },
+    { 0x14, 0x28 },
+};
+
 /*
  * Provisional, until a bench measurement: the 8-bit RSSI reading taken as
  * -120 dBm, per band (VHF, UHF). The calibration's RSSI points are in the
@@ -50,6 +79,11 @@ static const rtxStatus_t *config;
 static struct md9600Calib calData;
 static enum Band rxBand = BND_NONE;
 static uint8_t rxTune;
+static enum Band txBand = BND_NONE;
+static uint8_t txDrive; // PA drive (APC DAC), 8 bit
+static uint8_t txModI;
+static uint8_t txModQ;
+static uint8_t txDeviation;
 static enum opstatus radioStatus;
 static bool rfEnabled; // Only on a board detected as V5
 
@@ -129,6 +163,118 @@ static void rxPowerUp()
 
     vhf ? gpio_setPin(IF_ROUTE_VHF) : gpio_clearPin(IF_ROUTE_VHF);
     vhf ? gpio_clearPin(IF_ROUTE_UHF) : gpio_setPin(IF_ROUTE_UHF);
+}
+
+/**
+ * Number of calibration points of a band.
+ *
+ * @param band: band.
+ * @return the number of points.
+ */
+static uint8_t calPoints(const enum Band band)
+{
+    if (band == BND_VHF)
+        return MD9600_CAL_POINTS_VHF;
+
+    return MD9600_CAL_POINTS_UHF;
+}
+
+/**
+ * PA level for a requested power: the highest whose factory label does not
+ * exceed it, the lowest otherwise.
+ *
+ * @param power: requested power, in mW.
+ * @return the PA level.
+ */
+static uint8_t paLevel(const uint32_t power)
+{
+    uint8_t level = MD9600_PA_LEVEL_5W;
+
+    for (uint8_t i = 0; i < MD9600_PA_LEVELS; i++) {
+        if (power >= PA_LEVEL_MW[i])
+            level = i;
+    }
+
+    return level;
+}
+
+/**
+ * Step the PA drive (APC reference, DAC2) through a ramp table.
+ *
+ * @param table: fractions of the drive, over 255.
+ * @param len: number of steps.
+ */
+static void paRamp(const uint8_t *table, const size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        DAC->DHR12L2 = txDrive * table[i];
+        delayUs(RAMP_STEP_US);
+    }
+}
+
+/**
+ * Retune for transmission, as the stock firmware (S126.061 at 0x08049800):
+ * PA loop and receivers off, then the band's TX VCO, supply and modulation
+ * switch, then the synthesizer on the carrier.
+ */
+static void txRetune()
+{
+    gpio_clearPin(RF_APC_EN);
+    gpio_clearPin(RF_T5_UHF);
+    gpio_clearPin(RF_T5_VHF);
+    gpio_clearPin(FM_MUTE);
+    gpio_clearPin(RF_R5_UHF);
+    gpio_clearPin(RF_R5_VHF);
+    gpio_clearPin(IF_ROUTE_UHF);
+    gpio_clearPin(IF_ROUTE_VHF);
+
+    // In RX, PA5 holds the VHF front-end tune, above full drive: clear it
+    DAC->DHR12R2 = 0;
+    DAC->DHR12R1 = 0;
+
+    if (txBand == BND_VHF) {
+        gpio_clearPin(VCO_SEL_VHF);
+        gpio_setPin(RF_C5_VHF);
+        gpio_clearPin(RF_C5_UHF);
+        gpio_setPin(MOD_SW);
+    } else {
+        gpio_clearPin(VCO_SEL_UHF);
+        gpio_setPin(RF_C5_UHF);
+        gpio_clearPin(RF_C5_VHF);
+        gpio_clearPin(MOD_SW);
+    }
+
+    LMX2571_setFrequency(pll[txBand], config->txFrequency);
+}
+
+/**
+ * Power the PA: drive at zero, the band's transmitter supply and the power
+ * loop on, then the stock firmware's ramp (S126.061 at 0x0806f19e).
+ */
+static void paOn()
+{
+    DAC->DHR12R2 = 0;
+
+    if (txBand == BND_VHF)
+        gpio_setPin(RF_T5_VHF);
+    else
+        gpio_setPin(RF_T5_UHF);
+
+    gpio_setPin(RF_APC_EN);
+    paRamp(RAMP_UP, ARRAY_SIZE(RAMP_UP));
+}
+
+/**
+ * Ramp the PA down, then drive at zero and supply and power loop off, as the
+ * stock firmware (S126.061 at 0x0806f256, 0x0806f288).
+ */
+static void paOff()
+{
+    paRamp(RAMP_DOWN, ARRAY_SIZE(RAMP_DOWN));
+    DAC->DHR12R2 = 0;
+    gpio_clearPin(RF_T5_UHF);
+    gpio_clearPin(RF_T5_VHF);
+    gpio_clearPin(RF_APC_EN);
 }
 
 void radio_init(const rtxStatus_t *rtxState)
@@ -257,10 +403,32 @@ void radio_enableRx()
 
 void radio_enableTx()
 {
+    // FM only, on a board detected as V5, inside a band
+    if ((!rfEnabled) || (config->txDisable == 1) || (txBand == BND_NONE)
+        || (config->opMode != OPMODE_FM))
+        return;
+
+    txRetune();
+
+    C6000.setModOffset(calData.band[txBand].refTune);
+    C6000.setModAmplitude(txModI, txModQ);
+    C6000.setModFactor(txDeviation);
+    C6000.startAnalogTx(TxAudioSource::MIC, FmConfig::PREEMPH_EN);
+    gpio_clearPin(FM_SW);
+
+    sleepFor(0, TX_SETTLE_MS);
+    paOn();
+    radioStatus = TX;
 }
 
 void radio_disableRtx()
 {
+    if (radioStatus == TX) {
+        paOff();
+        C6000.stopAnalogTx();
+        gpio_setPin(FM_SW);
+    }
+
     gpio_clearPin(FM_MUTE);
     gpio_clearPin(IF_ROUTE_UHF);
     gpio_clearPin(IF_ROUTE_VHF);
@@ -288,17 +456,29 @@ void radio_disableRtx()
 
 void radio_updateConfiguration()
 {
+    // Transmission, applied at the next key-up
+    txBand = getBandFromFrequency(config->txFrequency);
+    if (txBand != BND_NONE) {
+        const struct md9600BandCalib *cal = &calData.band[txBand];
+        const freq_t freq = config->txFrequency;
+        const uint8_t points = calPoints(txBand);
+        const uint8_t level = paLevel(config->txPower);
+        const bool wide = (config->bandwidth != BW_12_5);
+
+        txDrive = interpCalParameter(freq, cal->rxFreq, cal->paDrive[level],
+                                     points);
+        txModI = interpCalParameter(freq, cal->rxFreq, cal->fmModI, points);
+        txModQ = interpCalParameter(freq, cal->rxFreq, cal->fmModQ, points);
+        txDeviation = TX_DEVIATION[txBand][wide];
+    }
+
     rxBand = getBandFromFrequency(config->rxFrequency);
     if (rxBand == BND_NONE)
         return;
 
     const struct md9600BandCalib *cal = &calData.band[rxBand];
-    uint8_t points = MD9600_CAL_POINTS_UHF;
-    if (rxBand == BND_VHF)
-        points = MD9600_CAL_POINTS_VHF;
-
     rxTune = interpCalParameter(config->rxFrequency, cal->rxFreq, cal->rxTune,
-                                points);
+                                calPoints(rxBand));
 
     if (radioStatus == RX)
         radio_enableRx();
