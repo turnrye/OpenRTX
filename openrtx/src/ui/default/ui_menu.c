@@ -1096,6 +1096,25 @@ void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state)
     drawcnt++;
 }
 
+#ifdef CONFIG_BOOTLOADER_ENTRY
+void _ui_drawSettingsFlashMode(ui_state_t* ui_state)
+{
+    (void) ui_state;
+
+    gfx_clearScreen();
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+              color_white, currentLanguage->flashMode);
+    gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                  layout.horizontal_pad, layout.top_font,
+                  TEXT_ALIGN_CENTER, color_white,
+                  currentLanguage->toFlashFirmware);
+    gfx_printLine(2, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                  layout.horizontal_pad, layout.top_font,
+                  TEXT_ALIGN_CENTER, color_white,
+                  currentLanguage->pressEnterTwice);
+}
+#endif
+
 void _ui_drawSettingsRadio(ui_state_t* ui_state)
 {
     gfx_clearScreen();

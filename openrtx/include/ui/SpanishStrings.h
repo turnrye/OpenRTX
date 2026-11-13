@@ -95,5 +95,7 @@ const stringsTable_t spanishStrings =
     .CAN               = "CAN",
     .canRxCheck        = "CAN RX Check",
     .metaText          = "Meta Txt",
+    .flashMode         = "Modo de carga",
+    .toFlashFirmware   = "Para cargar firmware:",
 };
 #endif  // SPANISHSTRINGS_H

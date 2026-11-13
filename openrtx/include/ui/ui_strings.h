@@ -100,6 +100,8 @@ typedef struct
     const char* CAN;
     const char* canRxCheck;
     const char* metaText;
+    const char* flashMode;
+    const char* toFlashFirmware;
 }
 stringsTable_t;
 

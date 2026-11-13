@@ -52,6 +52,9 @@ enum uiScreen
     SETTINGS_FM,
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
+#ifdef CONFIG_BOOTLOADER_ENTRY
+    SETTINGS_FLASHMODE,
+#endif
     LOW_BAT
 };
 
@@ -92,6 +95,9 @@ enum settingsItems
     S_FM,
     S_ACCESSIBILITY,
     S_RESET2DEFAULTS,
+#ifdef CONFIG_BOOTLOADER_ENTRY
+    S_FLASHMODE,
+#endif
 };
 
 enum backupRestoreItems

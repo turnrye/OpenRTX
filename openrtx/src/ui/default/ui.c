@@ -101,6 +101,9 @@ extern void _ui_drawSettingsM17(ui_state_t* ui_state);
 extern void _ui_drawSettingsFM(ui_state_t* ui_state);
 extern void _ui_drawSettingsVoicePrompts(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
+#ifdef CONFIG_BOOTLOADER_ENTRY
+extern void _ui_drawSettingsFlashMode(ui_state_t* ui_state);
+#endif
 extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
@@ -133,7 +136,10 @@ const char *settings_items[] =
 #endif
     "FM",
     "Accessibility",
-    "Default Settings"
+    "Default Settings",
+#ifdef CONFIG_BOOTLOADER_ENTRY
+    "Flash Mode",
+#endif
 };
 
 const char *display_items[] =
@@ -1979,6 +1985,11 @@ void ui_updateFSM(bool *sync_rtx)
                         case S_RESET2DEFAULTS:
                             state.ui_screen = SETTINGS_RESET2DEFAULTS;
                             break;
+#ifdef CONFIG_BOOTLOADER_ENTRY
+                        case S_FLASHMODE:
+                            state.ui_screen = SETTINGS_FLASHMODE;
+                            break;
+#endif
                         default:
                             state.ui_screen = MENU_SETTINGS;
                     }
@@ -2582,6 +2593,25 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
                 break;
+#ifdef CONFIG_BOOTLOADER_ENTRY
+            case SETTINGS_FLASHMODE:
+                // Two ENTER presses, as for resetting to defaults
+                if(! ui_state.edit_mode){
+                    if(msg.keys & KEY_ENTER)
+                        ui_state.edit_mode = true;
+                    else if(msg.keys & KEY_ESC)
+                        _ui_menuBack(MENU_SETTINGS);
+                } else {
+                    if(msg.keys & KEY_ENTER)
+                        platform_enterBootloader();
+                    else if(msg.keys & KEY_ESC)
+                    {
+                        ui_state.edit_mode = false;
+                        _ui_menuBack(MENU_SETTINGS);
+                    }
+                }
+                break;
+#endif
         }
 
         // Enable Tx only if in MAIN_VFO or MAIN_MEM states
@@ -2746,6 +2776,12 @@ bool ui_updateGUI()
         case SETTINGS_RESET2DEFAULTS:
             _ui_drawSettingsReset2Defaults(&ui_state);
             break;
+#ifdef CONFIG_BOOTLOADER_ENTRY
+        // Screen to restart into the bootloader for a firmware update
+        case SETTINGS_FLASHMODE:
+            _ui_drawSettingsFlashMode(&ui_state);
+            break;
+#endif
         // Screen to set frequency offset and step
         case SETTINGS_RADIO:
             _ui_drawSettingsRadio(&ui_state);
