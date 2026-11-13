@@ -59,6 +59,29 @@ const struct spiCustomDevice name =                          \
 int spiBitbang_init(const struct spiCustomDevice *dev);
 
 /**
+ * Read from a device on a three-wire bus, where one line carries data both
+ * ways: assert the chip select, clock out a header on the rising edges,
+ * release the data line with the given pull and wait for it to settle, then
+ * sample one bit after each falling edge, MSB first. The data line is driven
+ * low again once the chip select is released. The device must be configured
+ * with SPI_HALF_DUPLEX.
+ *
+ * @param dev: SPI bitbang device descriptor.
+ * @param cs: chip select of the device to read.
+ * @param header: header bits, MSB first.
+ * @param headerBits: number of header bits, at most 32.
+ * @param pull: mode of the released data line, INPUT_PULL_UP or
+ * INPUT_PULL_DOWN.
+ * @param settleUs: wait after releasing the data line, in microseconds.
+ * @param bits: number of bits to read, at most 32.
+ * @return the bits read.
+ */
+uint32_t spiBitbang_read3wire(const struct spiCustomDevice *dev,
+                              const struct gpioPin *cs, const uint32_t header,
+                              const uint8_t headerBits, const uint16_t pull,
+                              const uint32_t settleUs, const uint8_t bits);
+
+/**
  * Shut down a bitbang SPI driver.
  *
  * @param dev: SPI bitbang device descriptor.

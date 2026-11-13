@@ -66,6 +66,59 @@ int spiBitbang_init(const struct spiCustomDevice *dev)
     return 0;
 }
 
+uint32_t spiBitbang_read3wire(const struct spiCustomDevice *dev,
+                              const struct gpioPin *cs, const uint32_t header,
+                              const uint8_t headerBits, const uint16_t pull,
+                              const uint32_t settleUs, const uint8_t bits)
+{
+    const struct spiConfig *cfg = (const struct spiConfig *) dev->priv;
+    uint32_t value = 0;
+
+    gpioPin_clear(cs);
+    delayUs(cfg->clkPeriod);
+
+    // Header, latched by the device on the rising edges
+    for(uint32_t mask = 1UL << (headerBits - 1); mask != 0; mask >>= 1)
+    {
+        gpio_clearPin(cfg->clk.port, cfg->clk.pin);
+
+        if((header & mask) != 0)
+            gpio_setPin(cfg->mosi.port, cfg->mosi.pin);
+        else
+            gpio_clearPin(cfg->mosi.port, cfg->mosi.pin);
+
+        delayUs(cfg->clkPeriod);
+        gpio_setPin(cfg->clk.port, cfg->clk.pin);
+        delayUs(cfg->clkPeriod);
+    }
+
+    // Turn the line around with the clock high, then sample after each
+    // falling edge
+    gpio_setMode(cfg->mosi.port, cfg->mosi.pin, pull);
+    delayUs(settleUs);
+
+    for(uint8_t i = 0; i < bits; i++)
+    {
+        gpio_clearPin(cfg->clk.port, cfg->clk.pin);
+        delayUs(cfg->clkPeriod);
+        value = (value << 1) | gpio_readPin(cfg->mosi.port, cfg->mosi.pin);
+
+        if((i + 1) < bits)
+        {
+            gpio_setPin(cfg->clk.port, cfg->clk.pin);
+            delayUs(cfg->clkPeriod);
+        }
+    }
+
+    // Release the device before driving the data line again
+    delayUs(cfg->clkPeriod);
+    gpioPin_set(cs);
+    gpio_setMode(cfg->mosi.port, cfg->mosi.pin, OUTPUT);
+    gpio_clearPin(cfg->mosi.port, cfg->mosi.pin);
+
+    return value;
+}
+
 void spiBitbang_terminate(const struct spiCustomDevice* dev)
 {
     const struct spiConfig *cfg = (const struct spiConfig *) dev->priv;
