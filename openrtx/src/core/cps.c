@@ -6,6 +6,18 @@
 
 #include "interfaces/platform.h"
 #include "core/cps.h"
+#include "core/utils.h"
+
+/*
+ * Transmit power levels the radio offers, in mW, lowest first. A target
+ * defines CONFIG_TX_POWER_LEVELS in its hwconfig.h; the default suits a 5 W
+ * handheld.
+ */
+#ifndef CONFIG_TX_POWER_LEVELS
+#define CONFIG_TX_POWER_LEVELS 1000, 2500, 5000
+#endif
+
+static const uint32_t txPowerLevels[] = { CONFIG_TX_POWER_LEVELS };
 
 const uint16_t ctcss_tone[CTCSS_FREQ_NUM] =
 {
@@ -25,7 +37,7 @@ channel_t cps_getDefaultChannel()
     channel.mode      = OPMODE_FM;
     #endif
     channel.bandwidth = BW_25;
-    channel.power     = 1000;   // 1W
+    channel.power     = txPowerLevels[0];   // Lowest power level
     channel.rx_only   = false;  // Enable tx by default
 
     // Set initial frequency based on supported bands
@@ -46,4 +58,15 @@ channel_t cps_getDefaultChannel()
     channel.fm.txToneEn = 0;
     channel.fm.txTone   = 0;
     return channel;
+}
+
+uint32_t cps_nextTxPower(const uint32_t power)
+{
+    for(size_t i = 0; i < ARRAY_SIZE(txPowerLevels); i++)
+    {
+        if(txPowerLevels[i] > power)
+            return txPowerLevels[i];
+    }
+
+    return txPowerLevels[0];
 }

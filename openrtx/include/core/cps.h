@@ -311,4 +311,14 @@ __attribute__((packed)) cps_header_t; // 88B
  */
 channel_t cps_getDefaultChannel();
 
+/**
+ * Next transmit power level the radio offers, cycling: the lowest level above
+ * the given power, or the lowest level after the highest. The levels come from
+ * CONFIG_TX_POWER_LEVELS in the target's hwconfig.h.
+ *
+ * @param power: current power, in mW.
+ * @return the next power level, in mW.
+ */
+uint32_t cps_nextTxPower(const uint32_t power);
+
 #endif // CPS_H
