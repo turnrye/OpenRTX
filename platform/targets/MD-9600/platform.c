@@ -33,13 +33,14 @@ void platform_init()
 
     gpio_setMode(PTT_SW, INPUT);
 
-    gpio_setMode(AIN_VBAT,  ANALOG);
-    gpio_setMode(AIN_MIC,   ANALOG);
-    gpio_setMode(AIN_RSSI,  ANALOG);
-    gpio_setMode(AIN_SW2,   ANALOG);
-    gpio_setMode(AIN_SW1,   ANALOG);
-    gpio_setMode(AIN_RSSI2, ANALOG);
-    gpio_setMode(AIN_HTEMP, ANALOG);
+    gpio_setMode(AIN_VBAT,      ANALOG);
+    gpio_setMode(AIN_MIC,       ANALOG);
+    gpio_setMode(AIN_RSSI_VHF,  ANALOG);
+    gpio_setMode(AIN_RSSI_UHF,  ANALOG);
+    gpio_setMode(AIN_SW2,       ANALOG);
+    gpio_setMode(AIN_SW1,       ANALOG);
+    gpio_setMode(AIN_NOISE_UHF, ANALOG);
+    gpio_setMode(AIN_NOISE_VHF, ANALOG);
 
     /* Initialise ADC1, for vbat, RSSI, ... */
     adcStm32_init(&adc1);
@@ -137,15 +138,10 @@ uint8_t platform_getMicLevel()
 uint8_t platform_getVolumeLevel()
 {
     /*
-     * Knob position corresponds to an analog signal in the range 0 - 1600mV,
-     * converted to a value in range 0 - 255 using fixed point math: divide by
-     * 1600 and then multiply by 256.
+     * The volume knob is analog only, after the audio switches, and no ADC
+     * input reads it: RadioFoundry, docs/spec/hardware-md9600.md section 6.1.
      */
-    uint16_t value = adc_getVoltage(&adc1, ADC_VOL_CH) / 1000;
-    if(value > 1599) value = 1599;
-    uint32_t level = value << 16;
-    level /= 1600;
-    return ((uint8_t) (level >> 8));
+    return 0;
 }
 
 bool platform_getPttStatus()

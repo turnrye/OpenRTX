@@ -21,14 +21,14 @@ extern "C" {
 #endif
 
 enum adcChannel {
-    ADC_VOL_CH = 0,
+    ADC_RSSI_VHF_CH = 0,
     ADC_VBAT_CH = 1,
     ADC_VOX_CH = 3,
-    ADC_RSSI_CH = 8,
+    ADC_RSSI_UHF_CH = 8,
     ADC_SW1_CH = 7,
     ADC_SW2_CH = 6,
-    ADC_RSSI2_CH = 9,
-    ADC_HTEMP_CH = 15
+    ADC_NOISE_UHF_CH = 9,
+    ADC_NOISE_VHF_CH = 15
 };
 
 extern const struct gpsDevice gps;
