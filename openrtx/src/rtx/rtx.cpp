@@ -5,17 +5,29 @@
  */
 
 #include "interfaces/radio.h"
+#include "interfaces/platform.h"
+#include "interfaces/delays.h"
 #include "hwconfig.h"
 #include <string.h>
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
 
+/*
+ * Transmit time-out, in seconds: a target defines CONFIG_TX_TIMEOUT_S in its
+ * hwconfig.h. Zero, the default, means no time-out.
+ */
+#ifndef CONFIG_TX_TIMEOUT_S
+#define CONFIG_TX_TIMEOUT_S 0
+#endif
+
 static pthread_mutex_t   *cfgMutex;     // Mutex for incoming config messages
 static const rtxStatus_t *newCnf;       // Pointer for incoming config messages
 static rtxStatus_t        rtxStatus;    // RTX driver status
 static rssi_t             rssi;         // Current RSSI in dBm
 static bool               reinitFilter; // Flag for RSSI filter re-initialisation
+static long long          pttStart;     // When the PTT was pressed, 0 if released
+static bool               pttTimedOut;  // Time-out reached, until the PTT is released
 
 static OpMode  *currMode;               // Pointer to currently active opMode handler
 static OpMode     noMode;               // Empty opMode handler for opmode::NONE
@@ -214,4 +226,26 @@ rssi_t rtx_getRssi()
 bool rtx_rxSquelchOpen()
 {
     return currMode->rxSquelchOpen();
+}
+
+bool rtx_pttPressed()
+{
+    if(platform_getPttStatus() == false)
+    {
+        pttStart    = 0;
+        pttTimedOut = false;
+        return false;
+    }
+
+    if(CONFIG_TX_TIMEOUT_S == 0)
+        return true;
+
+    long long now = getTick();
+    if(pttStart == 0)
+        pttStart = now;
+
+    if((now - pttStart) >= (CONFIG_TX_TIMEOUT_S * 1000LL))
+        pttTimedOut = true;
+
+    return !pttTimedOut;
 }

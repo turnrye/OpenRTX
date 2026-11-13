@@ -133,6 +133,14 @@ rssi_t rtx_getRssi();
  */
 bool rtx_rxSquelchOpen();
 
+/**
+ * State of the push-to-talk for the operating modes, with the transmit
+ * time-out applied: after CONFIG_TX_TIMEOUT_S seconds held, it reads released
+ * until the key is let go. Without CONFIG_TX_TIMEOUT_S there is no time-out.
+ * @return true if a transmission may go on.
+ */
+bool rtx_pttPressed();
+
 #ifdef __cplusplus
 }
 #endif
