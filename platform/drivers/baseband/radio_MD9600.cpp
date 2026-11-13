@@ -55,8 +55,10 @@ static constexpr uint8_t RAMP_DOWN[] = {
     250, 240, 230, 220, 200, 180, 160, 100, 50, 0, 0, 0, 0, 0, 0,
 };
 
-// Factory labels of the PA levels, in mW, lowest first
-static constexpr uint32_t PA_LEVEL_MW[] = { 5000, 10000, 25000, 40000 };
+// Power levels offered (hwconfig.h), one per PA level, lowest first
+static constexpr uint32_t PA_LEVEL_MW[] = { CONFIG_TX_POWER_LEVELS };
+static_assert(ARRAY_SIZE(PA_LEVEL_MW) == MD9600_PA_LEVELS,
+              "One power level per PA drive row");
 
 /*
  * HR_C6000 modulation factor, by band (VHF, UHF) and width (12.5 kHz, wider),

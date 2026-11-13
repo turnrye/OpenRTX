@@ -80,6 +80,12 @@ enum md9600Flags {
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/*
+ * Transmit power levels, in mW: the factory labels of the four PA drive rows
+ * in the calibration, lowest first
+ */
+#define CONFIG_TX_POWER_LEVELS 5000, 10000, 25000, 40000
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
