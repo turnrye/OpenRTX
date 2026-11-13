@@ -54,7 +54,7 @@ extern "C" {
 #define KB_COL4 GPIOE,1
 
 /* Tone generator  */
-#define CTCSS_OUT GPIOC,7   /* CTCSS tone    */
+#define CTCSS_OUT GPIOC,7   /* Reference oscillator modulation, released */
 #define BEEP_OUT  GPIOC,8   /* System "beep" */
 
 /* SPI2, connected to external flash and LCD */
