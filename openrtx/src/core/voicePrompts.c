@@ -21,6 +21,14 @@
 #include "core/beeps.h"
 #include <errno.h>
 
+/*
+ * Time, in ms, from opening the speaker path to the speaker sounding, for
+ * targets whose amplifier is slow to start. Beeps and prompts wait for it.
+ */
+#ifndef CONFIG_SPK_STARTUP_MS
+#define CONFIG_SPK_STARTUP_MS 0
+#endif
+
 static const uint32_t VOICE_PROMPTS_DATA_MAGIC = 0x5056;   //'VP'
 static const uint32_t VOICE_PROMPTS_DATA_VERSION = 0x1000; // v1000 OpenRTX
 
@@ -86,6 +94,7 @@ static bool delayBeepUntilTick = false;
 
 static pathId vpAudioPath;
 static long long vpStartTime;
+static long long spkReadyTime;
 
 #ifdef VP_USE_FILESYSTEM
 static FILE *vpFile = NULL;
@@ -245,6 +254,7 @@ static inline void enableSpkOutput()
     // avoid overwriting the path ID with a -1, locking everything.
     if (audioPath_getStatus(vpAudioPath) == PATH_CLOSED) {
         vpAudioPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_PROMPT);
+        spkReadyTime = getTick() + CONFIG_SPK_STARTUP_MS;
     }
 }
 
@@ -285,6 +295,9 @@ static bool beep_tick()
 {
     if (currentBeepDuration > 0) {
         if (delayBeepUntilTick) {
+            if (getTick() < spkReadyTime)
+                return true;
+
             platform_beepStart(beepSeriesBuffer[beepSeriesIndex].freq);
             delayBeepUntilTick = false;
         }
@@ -521,10 +534,12 @@ void vp_tick()
     // TODO: remove this once switched to hardware-based I2C driver for AT1846S
     // management.
     if ((vpStartTime > 0) && ((getTick() - vpStartTime) > 50)) {
-        vpStartTime = 0;
-        voicePromptActive = true;
         enableSpkOutput();
-        codec_startDecode(vpAudioPath);
+        if (getTick() >= spkReadyTime) {
+            vpStartTime = 0;
+            voicePromptActive = true;
+            codec_startDecode(vpAudioPath);
+        }
     }
 
     if (voicePromptActive == false)
@@ -605,8 +620,11 @@ void vp_beep(uint16_t freq, uint16_t duration)
     beepSeriesBuffer[1].duration = 0;
     currentBeepDuration = duration;
     beepSeriesIndex = 0;
-    platform_beepStart(freq);
     enableSpkOutput();
+    if (getTick() < spkReadyTime)
+        delayBeepUntilTick = true;
+    else
+        platform_beepStart(freq);
 }
 
 void vp_beepSeries(const uint16_t *beepSeries)
