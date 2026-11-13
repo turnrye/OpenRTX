@@ -68,6 +68,13 @@ extern const struct Adc adc1;
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
 
+/*
+ * The speaker amplifier takes about 60 ms from unmute to sound. Value from
+ * RadioFoundry, boards/md9600/c6000_md9600.c speaker_lead_ms,
+ * https://github.com/radiofoundry/radiofoundry
+ */
+#define CONFIG_SPK_STARTUP_MS 80
+
 #ifdef __cplusplus
 }
 #endif
