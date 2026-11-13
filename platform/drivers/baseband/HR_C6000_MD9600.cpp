@@ -188,31 +188,41 @@ void HR_Cx000< M >::startAnalogTx(const TxAudioSource source, const FmConfig cfg
      * "Linein1" input, while signal coming from the tone generator is connected
      *  to "Mic_p".
      */
+    /*
+     * FM transmit set-up of the stock MD-9600 firmware S126.061 (0x0804fec6,
+     * 0x0804f830). It writes 0x34 the same for both channel widths: the
+     * width is set by the modulation factor (setModFactor()), so cfg is not
+     * used here.
+     */
+    (void) cfg;
+
     uint8_t audioCfg = 0x81;
     if(source == TxAudioSource::MIC)     audioCfg |= 0x40;
     if(source == TxAudioSource::LINE_IN) audioCfg |= 0x02;
 
-    // writeReg(M::CONFIG, 0xE2, 0x00);    // Mic preamp disabled, anti-pop disabled
     writeReg(M::CONFIG, 0xE0, audioCfg);
     writeReg(M::CONFIG, 0xC2, 0x00);    // Codec AGC gain
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Unknown (Default value = 0A)
+    writeReg(M::CONFIG, 0xA1, 0x00);    // Tone generator off
     writeReg(M::CONFIG, 0x25, 0x0E);    // Undocumented Register
-    writeReg(M::CONFIG, 0x83, 0xFF);    // Clear all Interrupts
-    writeReg(M::CONFIG, 0x87, 0x00);    // Clear Int Masks
-    writeReg(M::CONFIG, 0xA1, 0x80);    // FM_mod, all modes cleared
+    writeReg(M::CONFIG, 0x26, 0xFE);    // Undocumented Register
     writeReg(M::CONFIG, 0x83, 0xFF);    // Clear all interrupt flags
     writeReg(M::CONFIG, 0x87, 0x00);    // Disable all interrupt sources
-    writeReg(M::CONFIG, 0x34, static_cast< uint8_t >(cfg));
+    writeReg(M::CONFIG, 0x3F, 0x04);    // FM limiting modulation factor
+    writeReg(M::CONFIG, 0x34, 0x3C);    // Pre-emphasis, 25 kHz filters
+    writeReg(M::CONFIG, 0x3E, 0x08);    // FM Modulation frequency deviation coefficient at the receiving end
+    writeReg(M::CONFIG, 0x37, 0xC2);
     writeReg(M::AUX,    0x50, 0x00);
     writeReg(M::AUX,    0x51, 0x00);
-    writeReg(M::CONFIG, 0x3E, 0x08);    // FM Modulation frequency deviation coefficient at the receiving end
     writeReg(M::CONFIG, 0x60, 0x80);    // Start analog transmission
+    writeReg(M::CONFIG, 0x10, 0xF3);    // Transmit, as stock before the PA
 }
 
 template< class M >
 void HR_Cx000< M >::stopAnalogTx()
 {
+    // Stop sequence of the stock S126.061 firmware (0x0804bb98)
     writeReg(M::CONFIG, 0x60, 0x00);    // Stop analog transmission
+    writeReg(M::CONFIG, 0x10, 0x4F);    // Back to the receive mode set
     writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
-    writeReg(M::CONFIG, 0x34, 0x98);    // FM bpf enabled, 25kHz bandwidth
 }
