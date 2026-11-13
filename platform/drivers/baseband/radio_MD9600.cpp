@@ -101,6 +101,17 @@ static constexpr uint8_t M17_TX_DEVIATION[2] = { 0x5A, 0x22 };
  */
 static constexpr int32_t RSSI_FLOOR[] = { 121, 94 };
 
+/**
+ * RF section of a board revision: its synthesizers and IF stage. Supplies,
+ * front-end tuning, audio switches and the HR_C6000 are the same on all.
+ */
+struct rf_ops {
+    void (*init)();      ///< Set up, receivers off.
+    void (*rxPowerUp)(); ///< Power up the receivers, tuned on rxBand.
+    void (*rxOff)();     ///< Revision's own receive lines off.
+    rssi_t (*rssi)(const enum Band band, const int32_t raw); ///< 8-bit RSSI.
+};
+
 static const rtxStatus_t *config;
 static struct md9600Calib calData;
 static enum Band rxBand = BND_NONE;
@@ -111,7 +122,7 @@ static uint8_t txModI;
 static uint8_t txModQ;
 static uint8_t txDeviation;
 static enum opstatus radioStatus;
-static bool rfEnabled; // Only on a board detected as V5
+static const struct rf_ops *rf; // RF section of the board, NULL if unknown
 
 // CTCSS detection on the sub-audio input, as on the CS7000
 static int16_t __attribute__((section(".bss2"))) ctcssSamples[128];
@@ -152,11 +163,28 @@ static void setFrontEndTune(const enum Band band, const uint8_t value)
 }
 
 /**
- * Power up and tune the receivers, in the order of the stock firmware's RX
- * entry (S126.061 at 0x08049a74): both receivers are powered, only the
+ * V5: IF filter and route lines off, then reset both synthesizers once, as
+ * the stock firmware does at boot.
+ */
+static void v5Init()
+{
+    setOutputLow(IF_BW_UHF);
+    setOutputLow(IF_BW_VHF);
+    setOutputLow(IF_ROUTE_UHF);
+    setOutputLow(IF_ROUTE_VHF);
+
+    spiBitbang_init(&pll_spi);
+    LMX2571_init(&pllVhf);
+    LMX2571_init(&pllUhf);
+    sleepFor(0, PLL_RESET_MS);
+}
+
+/**
+ * V5: power up and tune the receivers, in the order of the stock firmware's
+ * RX entry (S126.061 at 0x08049a74): both receivers are powered, only the
  * current band is tuned and routed to the HR_C6000.
  */
-static void rxPowerUp()
+static void v5RxPowerUp()
 {
     const bool vhf = (rxBand == BND_VHF);
     const bool wide = (config->bandwidth != BW_12_5)
@@ -190,6 +218,39 @@ static void rxPowerUp()
     vhf ? gpio_setPin(IF_ROUTE_VHF) : gpio_clearPin(IF_ROUTE_VHF);
     vhf ? gpio_clearPin(IF_ROUTE_UHF) : gpio_setPin(IF_ROUTE_UHF);
 }
+
+/**
+ * V5: disconnect both IFs from the HR_C6000.
+ */
+static void v5RxOff()
+{
+    gpio_clearPin(IF_ROUTE_UHF);
+    gpio_clearPin(IF_ROUTE_VHF);
+}
+
+/**
+ * V5: the RSSI reading mapped linearly from the band's floor with the slope
+ * of the two calibration points at -120 and -70 dBm.
+ *
+ * @param band: receiving band.
+ * @param raw: 8-bit RSSI reading.
+ * @return the RSSI, in dBm.
+ */
+static rssi_t v5Rssi(const enum Band band, const int32_t raw)
+{
+    const int32_t span = calData.rssiHigh - calData.rssiLow;
+
+    return RSSI_LOW_DBM
+         + ((raw - RSSI_FLOOR[band]) * (RSSI_HIGH_DBM - RSSI_LOW_DBM)) / span;
+}
+
+// C++14 has no designated initializers: fields in declaration order
+static const struct rf_ops v5Ops = {
+    v5Init,      // init
+    v5RxPowerUp, // rxPowerUp
+    v5RxOff,     // rxOff
+    v5Rssi,      // rssi
+};
 
 /**
  * Band of a frequency, from the band edges in the radio's hardware info: the
@@ -330,8 +391,11 @@ void radio_init(const rtxStatus_t *rtxState)
     radioStatus = OFF;
 
     // The RF section of other boards is different: leave it alone
-    rfEnabled = (platform_getHwInfo()->flags & MD9600_FLAGS_V5) != 0;
-    if (!rfEnabled)
+    rf = NULL;
+    if (platform_getHwInfo()->flags & MD9600_FLAGS_V5)
+        rf = &v5Ops;
+
+    if (rf == NULL)
         return;
 
     /*
@@ -348,10 +412,6 @@ void radio_init(const rtxStatus_t *rtxState)
     setOutputLow(VCO_SEL_UHF);
     setOutputLow(VCO_SEL_VHF);
     setOutputLow(MOD_SW);
-    setOutputLow(IF_BW_UHF);
-    setOutputLow(IF_BW_VHF);
-    setOutputLow(IF_ROUTE_UHF);
-    setOutputLow(IF_ROUTE_VHF);
     setOutputLow(FM_SW);
     setOutputLow(AF_BAND);
     setOutputLow(FM_MUTE);
@@ -374,12 +434,7 @@ void radio_init(const rtxStatus_t *rtxState)
     stm32adc_init(STM32_ADC_ADC3);
 
     nvm_readCalibData(&calData);
-
-    // Reset both synthesizers once, as the stock firmware does at boot
-    spiBitbang_init(&pll_spi);
-    LMX2571_init(&pllVhf);
-    LMX2571_init(&pllUhf);
-    sleepFor(0, PLL_RESET_MS);
+    rf->init();
 }
 
 void radio_terminate()
@@ -435,11 +490,11 @@ void radio_disableAfOutput()
 
 void radio_enableRx()
 {
-    if ((!rfEnabled) || (rxBand == BND_NONE))
+    if ((rf == NULL) || (rxBand == BND_NONE))
         return;
 
     C6000.setModOffset(calData.band[rxBand].refTune);
-    rxPowerUp();
+    rf->rxPowerUp();
 
     if ((config->opMode == OPMODE_FM) && (config->rxToneEn == true))
         stm32_adc_audio_driver.start(STM32_ADC_ADC3, (void *)ADC_CTCSS_CH,
@@ -452,7 +507,7 @@ void radio_enableTx()
 {
     // FM and M17, on a board detected as V5, inside a band
     const bool m17 = (config->opMode == OPMODE_M17);
-    if ((!rfEnabled) || (config->txDisable == 1) || (txBand == BND_NONE)
+    if ((rf != &v5Ops) || (config->txDisable == 1) || (txBand == BND_NONE)
         || ((config->opMode != OPMODE_FM) && (!m17)))
         return;
 
@@ -499,8 +554,8 @@ void radio_disableRtx()
     }
 
     gpio_clearPin(FM_MUTE);
-    gpio_clearPin(IF_ROUTE_UHF);
-    gpio_clearPin(IF_ROUTE_VHF);
+    if (rf != NULL)
+        rf->rxOff();
     gpio_clearPin(RF_R5_UHF);
     gpio_clearPin(RF_R5_VHF);
     gpio_clearPin(RF_C5_UHF);
@@ -557,11 +612,7 @@ void radio_updateConfiguration()
 
 rssi_t radio_getRssi()
 {
-    /*
-     * The RSSI line, 8 bits, is mapped linearly from the band's floor with
-     * the slope of the two calibration points at -120 and -70 dBm.
-     */
-    if (!rfEnabled)
+    if (rf == NULL)
         return RSSI_NO_SIGNAL;
 
     uint32_t channel = ADC_RSSI_UHF_CH;
@@ -571,11 +622,8 @@ rssi_t radio_getRssi()
         band = BND_VHF;
     }
 
-    const int32_t raw = adc_getRawSample(&adc1, channel) >> 4;
-    const int32_t span = calData.rssiHigh - calData.rssiLow;
-
-    return RSSI_LOW_DBM
-         + ((raw - RSSI_FLOOR[band]) * (RSSI_HIGH_DBM - RSSI_LOW_DBM)) / span;
+    // The RSSI line, 8 bits
+    return rf->rssi(band, adc_getRawSample(&adc1, channel) >> 4);
 }
 
 enum opstatus radio_getStatus()
