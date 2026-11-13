@@ -11,8 +11,8 @@
  * values follow the stock S126.061 firmware, checked against RadioFoundry,
  * docs/spec/hardware-md9600.md, https://github.com/radiofoundry/radiofoundry
  *
- * Transmission: FM only, at the stock firmware's PA drives, with CTCSS and
- * the 1750 Hz tone from the HR_C6000.
+ * Transmission: FM, with CTCSS and the 1750 Hz tone from the HR_C6000, and
+ * M17, at the stock firmware's PA drives.
  * There is no lock detect and no temperature, SWR or power sensing on this
  * board.
  */
@@ -85,6 +85,13 @@ static constexpr uint8_t TX_DEVIATION[2][2] = {
     { 0x32, 0x64 },
     { 0x14, 0x28 },
 };
+
+/*
+ * Modulation factor for M17's baseband on PC8, by band (VHF, UHF): the stock
+ * firmware's wide setting for audio it sends on PC8 (DTMF, 0x08046f44). To be
+ * set by measuring the M17 deviation.
+ */
+static constexpr uint8_t M17_TX_DEVIATION[2] = { 0x5A, 0x22 };
 
 /*
  * Provisional, until a bench measurement: the 8-bit RSSI reading taken as
@@ -443,9 +450,10 @@ void radio_enableRx()
 
 void radio_enableTx()
 {
-    // FM only, on a board detected as V5, inside a band
+    // FM and M17, on a board detected as V5, inside a band
+    const bool m17 = (config->opMode == OPMODE_M17);
     if ((!rfEnabled) || (config->txDisable == 1) || (txBand == BND_NONE)
-        || (config->opMode != OPMODE_FM))
+        || ((config->opMode != OPMODE_FM) && (!m17)))
         return;
 
     // Not on a supply out of range: there is no other PA protection
@@ -459,15 +467,22 @@ void radio_enableTx()
     C6000.setModAmplitude(txModI, txModQ);
     C6000.setModFactor(txDeviation);
 
-    // Sub-audio and tone burst from the HR_C6000, as on the CS7000
-    if (config->txToneEn)
-        C6000.setTxCtcss(config->txTone, CTCSS_DEVIATION);
-    else if (config->toneEn)
-        C6000.sendTone(TONE_BURST_FREQ, TONE_DEVIATION);
-    else
+    if (m17) {
+        // Baseband as PWM on PC8 into the HR_C6000, as stock sends DTMF
         C6000.disableTones();
+        C6000.startAnalogTx(TxAudioSource::LINE_IN, FmConfig::BW_25kHz);
+    } else {
+        // Sub-audio and tone burst from the HR_C6000, as on the CS7000
+        if (config->txToneEn)
+            C6000.setTxCtcss(config->txTone, CTCSS_DEVIATION);
+        else if (config->toneEn)
+            C6000.sendTone(TONE_BURST_FREQ, TONE_DEVIATION);
+        else
+            C6000.disableTones();
 
-    C6000.startAnalogTx(TxAudioSource::MIC, FmConfig::PREEMPH_EN);
+        C6000.startAnalogTx(TxAudioSource::MIC, FmConfig::PREEMPH_EN);
+    }
+
     gpio_clearPin(FM_SW);
 
     sleepFor(0, TX_SETTLE_MS);
@@ -524,6 +539,8 @@ void radio_updateConfiguration()
         txModI = interpCalParameter(freq, cal->rxFreq, cal->fmModI, points);
         txModQ = interpCalParameter(freq, cal->rxFreq, cal->fmModQ, points);
         txDeviation = TX_DEVIATION[txBand][wide];
+        if (config->opMode == OPMODE_M17)
+            txDeviation = M17_TX_DEVIATION[txBand];
     }
 
     rxBand = bandOf(config->rxFrequency);
