@@ -28,7 +28,8 @@ enum adcChannel {
     ADC_SW1_CH = 7,
     ADC_SW2_CH = 6,
     ADC_NOISE_UHF_CH = 9,
-    ADC_NOISE_VHF_CH = 15
+    ADC_NOISE_VHF_CH = 15,
+    ADC_CTCSS_CH = 2,
 };
 
 extern const struct gpsDevice gps;

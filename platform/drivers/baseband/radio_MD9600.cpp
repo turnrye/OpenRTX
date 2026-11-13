@@ -21,7 +21,9 @@
 #include "peripherals/adc.h"
 #include "peripherals/gpio.h"
 #include "calibration/calibInfo_MD9600.h"
+#include "core/ctcssDetector.hpp"
 #include "core/utils.h"
+#include "drivers/audio/stm32_adc.h"
 #include "drivers/SPI/spi_bitbang.h"
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/LMX2571.h"
@@ -34,6 +36,7 @@ static constexpr unsigned int RX_SETTLE_MS = 4;
 static constexpr rssi_t RSSI_LOW_DBM = -120;
 static constexpr rssi_t RSSI_HIGH_DBM = -70;
 static constexpr rssi_t RSSI_NO_SIGNAL = -154;
+static constexpr uint32_t CTCSS_SAMPLE_RATE = 2000;
 
 /*
  * Provisional, until a bench measurement: the 8-bit RSSI reading taken as
@@ -49,6 +52,12 @@ static enum Band rxBand = BND_NONE;
 static uint8_t rxTune;
 static enum opstatus radioStatus;
 static bool rfEnabled; // Only on a board detected as V5
+
+// CTCSS detection on the sub-audio input, as on the CS7000
+static int16_t __attribute__((section(".bss2"))) ctcssSamples[128];
+static streamCtx ctcssCtx;
+static int16_t *prevCtcssBuf;
+static CtcssDetector ctcss(ctcssCoeffs2k, (CTCSS_SAMPLE_RATE / 4), 20.0f);
 
 // Synthesizers, indexed by enum Band
 static const struct lmx2571 *const pll[] = { &pllVhf, &pllUhf };
@@ -162,6 +171,15 @@ void radio_init(const rtxStatus_t *rtxState)
     DAC->DHR12R1 = 0;
     DAC->DHR12R2 = 0;
 
+    // ADC3 stream for CTCSS detection
+    gpio_setMode(AIN_CTCSS, ANALOG);
+    ctcssCtx.buffer = ctcssSamples;
+    ctcssCtx.bufSize = ARRAY_SIZE(ctcssSamples);
+    ctcssCtx.bufMode = BUF_CIRC_DOUBLE;
+    ctcssCtx.sampleRate = CTCSS_SAMPLE_RATE;
+    ctcssCtx.running = 0;
+    stm32adc_init(STM32_ADC_ADC3);
+
     nvm_readCalibData(&calData);
 
     // Reset both synthesizers once, as the stock firmware does at boot
@@ -191,7 +209,20 @@ void radio_setOpmode(const enum opmode mode)
 
 bool radio_checkRxDigitalSquelch()
 {
-    return false;
+    int16_t *data;
+
+    // Sampling stopped: no tone squelch requested, or not receiving
+    if (ctcssCtx.running == 0)
+        return false;
+
+    // Update the detector each time the ADC has new data
+    size_t len = stm32_adc_audio_driver.data(&ctcssCtx, &data);
+    if (data != prevCtcssBuf) {
+        prevCtcssBuf = data;
+        ctcss.update(data, len);
+    }
+
+    return ctcss.toneDetected(ctcssFreqToIndex(config->rxTone));
 }
 
 void radio_enableAfOutput()
@@ -216,6 +247,11 @@ void radio_enableRx()
 
     C6000.setModOffset(calData.band[rxBand].refTune);
     rxPowerUp();
+
+    if ((config->opMode == OPMODE_FM) && (config->rxToneEn == true))
+        stm32_adc_audio_driver.start(STM32_ADC_ADC3, (void *)ADC_CTCSS_CH,
+                                     &ctcssCtx);
+
     radioStatus = RX;
 }
 
@@ -240,6 +276,12 @@ void radio_disableRtx()
 
     DAC->DHR12R1 = 0;
     DAC->DHR12R2 = 0;
+
+    // Stop CTCSS sampling and reset the detector
+    if (ctcssCtx.running) {
+        stm32_adc_audio_driver.terminate(&ctcssCtx);
+        ctcss.reset();
+    }
 
     radioStatus = OFF;
 }
