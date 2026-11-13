@@ -24,6 +24,16 @@ enum
     PROBE_PULL_US   = 50,   // Reset line, through the pin's pull
 };
 
+/*
+ * Timings: reset low for at least 1us (data sheet section 12), and 500us
+ * from every stage on to the start of the calibration (section 16).
+ */
+enum
+{
+    RESET_US     = 100,
+    CAL_READY_US = 500,
+};
+
 static const uint8_t probePatterns[] = { 0x5A, 0xA5 };
 
 static inline void writeReg(const struct ak2365a *dev, uint8_t reg, uint8_t value)
@@ -36,6 +46,21 @@ static inline void writeReg(const struct ak2365a *dev, uint8_t reg, uint8_t valu
     gpioPin_clear(&dev->cs);
     spi_send(dev->spi, &data, 2);
     gpioPin_set(&dev->cs);
+}
+
+/**
+ * Hardware reset: chip select released, reset pulsed low.
+ */
+static void reset(const struct ak2365a *dev)
+{
+    gpioPin_setMode(&dev->cs, OUTPUT);
+    gpioPin_setMode(&dev->res, OUTPUT);
+
+    gpioPin_clear(&dev->res);
+    gpioPin_set(&dev->cs);
+
+    delayUs(RESET_US);
+    gpioPin_set(&dev->res);
 }
 
 /**
@@ -96,14 +121,7 @@ static bool probeFloated(uint16_t samples[2][ARRAY_SIZE(probePatterns)])
 
 void AK2365A_init(const struct ak2365a *dev)
 {
-    gpioPin_setMode(&dev->cs, OUTPUT);
-    gpioPin_setMode(&dev->res, OUTPUT);
-
-    gpioPin_clear(&dev->res);
-    gpioPin_set(&dev->cs);
-
-    delayUs(100);
-    gpioPin_set(&dev->res);
+    reset(dev);
 
     writeReg(dev, 0x04, 0xAA);   // Software reset
     writeReg(dev, 0x01, 0xC1);   // Operating mode 6, LO freq 50.4MHz
@@ -162,4 +180,29 @@ void AK2365A_setFilterBandwidth(const struct ak2365a *dev, const uint8_t bw)
     writeReg(dev, 0x03, 0x00);   // IF buffer gain 5dB
     writeReg(dev, 0x0B, reg0B);  // BPF_BW[2], AGC auto
     writeReg(dev, 0x0C, 0x80);   // AGC2 gain 12dB
+}
+
+void AK2365A_setupRx(const struct ak2365a *dev, const enum AK2365A_BPF bw,
+                     const bool wide)
+{
+    uint8_t reg01 = AK2365A_REG01_BS(7)          // Mode 7, every stage on
+                  | AK2365A_REG01_BPF_BW(bw)
+                  | AK2365A_REG01_LOFREQ(1);     // 50.4MHz
+    if(wide)
+        reg01 |= AK2365A_REG01_BAND;
+
+    reset(dev);
+    writeReg(dev, 0x04, AK2365A_REG04_SRST);
+    writeReg(dev, 0x01, reg01);
+    delayUs(CAL_READY_US);
+
+    // AGC at the recommended speed: AGC_FAST and AGC1_STEP clear, AGC_TIME 3
+    writeReg(dev, 0x02, AK2365A_REG02_RSVD4
+                      | AK2365A_REG02_AGC_TIME(3)
+                      | AK2365A_REG02_CAL);
+    writeReg(dev, 0x03, AK2365A_REG03_IFOG(0));  // 6dB
+
+    // Automatic gain control, manual gains at their reset values
+    writeReg(dev, 0x0B, AK2365A_REG0B_BPF_BW2(bw) | AK2365A_REG0B_AGC1_G(1));
+    writeReg(dev, 0x0C, AK2365A_REG0C_RSVD7 | AK2365A_REG0C_AGC2_G(0));
 }

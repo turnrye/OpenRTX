@@ -1216,6 +1216,12 @@ sky72310_test = executable('sky72310_test',
                                      ['platform/drivers/baseband/SKY72310.c',
                                       'tests/unit/SKY72310.cpp'],
                            kwargs  : unit_test_opts)
+
+ak2365a_test = executable('ak2365a_test',
+                          sources : unit_test_src +
+                                    ['platform/drivers/baseband/AK2365A.c',
+                                     'tests/unit/AK2365A.cpp'],
+                          kwargs  : unit_test_opts)
                  
 # Test signals shared by the M17 tests (tests/platform/M17Signal.hpp)
 m17_signal_src = ['tests/platform/NoisyChannel.cpp', 'tests/platform/M17Signal.cpp']
@@ -1303,4 +1309,5 @@ test('GFX Text Test',        gfx_text_test)
 test('Audio Codec Test',     audio_codec_test)
 test('LMX2571 Test',         lmx2571_test)
 test('SKY72310 Test',        sky72310_test)
+test('AK2365A Test',         ak2365a_test)
 test('M17 Baseband Replay Test', m17_replay_test, timeout : 120) # ~40 s in CI with coverage
