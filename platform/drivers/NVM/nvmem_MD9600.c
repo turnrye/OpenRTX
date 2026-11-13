@@ -18,22 +18,35 @@
  * https://github.com/radiofoundry/radiofoundry
  */
 struct calLayout {
-    uint16_t freqs;   ///< Frequency list: RX and TX pairs, BCD, 10 Hz units.
-    uint16_t rxTune;  ///< Front-end tuning row.
-    uint16_t refTune; ///< Reference oscillator offset.
-    uint8_t points;   ///< Number of calibration points.
+    uint16_t freqs;  ///< Frequency list: RX and TX pairs, BCD, 10 Hz units.
+    uint16_t rxTune; ///< Front-end tuning row.
+    uint16_t paDrive[MD9600_PA_LEVELS]; ///< PA drive rows, by power level.
+    uint16_t fmModI;                    ///< FM two-point modulation row, I.
+    uint16_t fmModQ;                    ///< FM two-point modulation row, Q.
+    uint16_t refTune;                   ///< Reference oscillator offset.
+    uint8_t points;                     ///< Number of calibration points.
 };
 
+/*
+ * The power level to row mapping is the stock S126.061 firmware's
+ * (0x0806eea4): rows 0x20, 0x1A0, 0x190, 0x10, plus 9 on VHF.
+ */
 static const struct calLayout calLayout[] = {
     [BND_VHF] = {
         .freqs   = 0x2000,
         .rxTune  = 0x1039,
+        .paDrive = { 0x1029, 0x20A9, 0x2099, 0x1019 },
+        .fmModI  = 0x2079,
+        .fmModQ  = 0x2089,
         .refTune = 0x100C,
         .points  = MD9600_CAL_POINTS_VHF,
     },
     [BND_UHF] = {
         .freqs   = 0x20B0,
         .rxTune  = 0x1030,
+        .paDrive = { 0x1020, 0x20A0, 0x2090, 0x1010 },
+        .fmModI  = 0x2070,
+        .fmModQ  = 0x2080,
         .refTune = 0x1009,
         .points  = MD9600_CAL_POINTS_UHF,
     },
@@ -86,6 +99,26 @@ const struct nvmTable nvmTab = {
 };
 
 /**
+ * Read a calibration row. On the UHF band the factory measures the even
+ * points only and the stock firmware rebuilds the odd ones as the mean of
+ * their neighbours (S126.061 at 0x0802c5c8): do the same.
+ *
+ * @param row: destination.
+ * @param addr: row address.
+ * @param points: number of calibration points.
+ */
+static void readRow(uint8_t *row, const uint16_t addr, const uint8_t points)
+{
+    nvm_devRead(&secReg, addr, row, points);
+
+    if (points != MD9600_CAL_POINTS_UHF)
+        return;
+
+    for (size_t i = 1; i < (size_t)(points - 1); i += 2)
+        row[i] = (row[i - 1] + row[i + 1]) / 2;
+}
+
+/**
  * Read the calibration of one band.
  *
  * @param cal: destination.
@@ -98,8 +131,13 @@ static void readBandCalib(struct md9600BandCalib *cal,
 
     nvm_devRead(&secReg, layout->freqs, freqs,
                 layout->points * 2 * sizeof(uint32_t));
-    nvm_devRead(&secReg, layout->rxTune, cal->rxTune, layout->points);
+    readRow(cal->rxTune, layout->rxTune, layout->points);
+    readRow(cal->fmModI, layout->fmModI, layout->points);
+    readRow(cal->fmModQ, layout->fmModQ, layout->points);
     nvm_devRead(&secReg, layout->refTune, &cal->refTune, 1);
+
+    for (size_t i = 0; i < MD9600_PA_LEVELS; i++)
+        readRow(cal->paDrive[i], layout->paDrive[i], layout->points);
 
     // Frequencies are stored in units of 10 Hz, RX first in each pair
     for (size_t i = 0; i < layout->points; i++)

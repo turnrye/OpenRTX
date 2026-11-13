@@ -18,11 +18,26 @@ enum md9600CalPoints {
 };
 
 /**
+ * Transmit power levels, one PA drive row each, lowest first. The factory
+ * labels them 5, 10, 25 and 40 W; the output they give is not measured.
+ */
+enum md9600PaLevel {
+    MD9600_PA_LEVEL_5W = 0,  ///< Lowest drive.
+    MD9600_PA_LEVEL_10W = 1, ///< Second drive.
+    MD9600_PA_LEVEL_25W = 2, ///< Third drive.
+    MD9600_PA_LEVEL_40W = 3, ///< Highest drive.
+    MD9600_PA_LEVELS = 4,    ///< Number of levels.
+};
+
+/**
  * Factory calibration of one band of the TYT MD-9600.
  */
 struct md9600BandCalib {
-    uint32_t rxFreq[MD9600_CAL_POINTS_UHF]; ///< RX calibration points, in Hz.
+    uint32_t rxFreq[MD9600_CAL_POINTS_UHF]; ///< Calibration points, in Hz.
     uint8_t rxTune[MD9600_CAL_POINTS_UHF];  ///< Front-end tuning DAC, 8 bit.
+    uint8_t paDrive[MD9600_PA_LEVELS][MD9600_CAL_POINTS_UHF]; ///< APC DAC.
+    uint8_t fmModI[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, I.
+    uint8_t fmModQ[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, Q.
     uint8_t refTune; ///< Reference oscillator offset, stored + 128.
 };
 
