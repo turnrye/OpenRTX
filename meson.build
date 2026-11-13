@@ -1328,6 +1328,11 @@ aprs_test = executable('aprs-test',
                        sources : unit_test_src + ['tests/unit/APRS.cpp'],
                        kwargs  : unit_test_opts)
 
+# Counts the frames decoded from a recording, see the file for a benchmark
+aprs_replay_tool = executable('aprs_replay_tool',
+                              sources : unit_test_src + ['tests/platform/aprs_replay_tool.cpp'],
+                              kwargs  : unit_test_opts)
+
 slip_test = executable('slip_test',
                       sources : unit_test_src + ['tests/unit/slip.cpp'],
                       kwargs  : unit_test_opts)
