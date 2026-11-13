@@ -476,6 +476,7 @@ md9600_src = ['platform/targets/MD-9600/platform.c',
               'platform/drivers/chSelector/chSelector_MD9600.c',
               'platform/drivers/audio/Cx000_dac.cpp',
               'platform/drivers/baseband/radio_MD9600.cpp',
+              'platform/drivers/baseband/LMX2571.c',
               'platform/drivers/CPS/cps_io_native_MD9600.c',
               'platform/drivers/baseband/HR_C6000_MD9600.cpp']
 
@@ -1202,6 +1203,12 @@ m17_callsign_test = executable('m17_callsign_test',
 m17_metatext_test = executable('m17_metatext_test',
                       sources : unit_test_src + ['tests/unit/M17_metatext.cpp'],
                       kwargs  : unit_test_opts)
+
+lmx2571_test = executable('lmx2571_test',
+                          sources : unit_test_src +
+                                    ['platform/drivers/baseband/LMX2571.c',
+                                     'tests/unit/LMX2571.cpp'],
+                          kwargs  : unit_test_opts)
                  
 # Test signals shared by the M17 tests (tests/platform/M17Signal.hpp)
 m17_signal_src = ['tests/platform/NoisyChannel.cpp', 'tests/platform/M17Signal.cpp']
@@ -1287,4 +1294,5 @@ test('DSP Oversampling Test', dsp_oversampling_test)
 test('DSP DC Block Test',    dsp_dcblock_test)
 test('GFX Text Test',        gfx_text_test)
 test('Audio Codec Test',     audio_codec_test)
+test('LMX2571 Test',         lmx2571_test)
 test('M17 Baseband Replay Test', m17_replay_test, timeout : 120) # ~40 s in CI with coverage
