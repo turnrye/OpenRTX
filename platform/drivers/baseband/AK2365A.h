@@ -63,6 +63,23 @@ void AK2365A_terminate(const struct ak2365a *dev);
  */
 void AK2365A_setFilterBandwidth(const struct ak2365a *dev, const uint8_t bw);
 
+/**
+ * Check whether the chip is fitted and answers. Two patterns are written to
+ * a read-write register and read back, each with the data line pulled down
+ * and then up while released; the chip is then reset by software. The reset
+ * line is only pulsed through its pull resistors, never driven. Needs a
+ * bitbang bus and the chip powered.
+ *
+ * Read test from RadioFoundry, boards/md9600/rfseq_md9600.c
+ * md9600_rf_if_detect() and rev_md9600.c md9600_if_verdict(),
+ * https://github.com/radiofoundry/radiofoundry
+ *
+ * @param dev: pointer to device data.
+ * @return 0 if the chip read back both patterns, -ENODEV if every sample
+ * followed the pull (nothing drives the line), -EIO otherwise.
+ */
+int AK2365A_probe(const struct ak2365a *dev);
+
 #ifdef __cplusplus
 }
 #endif
