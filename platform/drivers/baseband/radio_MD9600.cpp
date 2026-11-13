@@ -11,7 +11,8 @@
  * values follow the stock S126.061 firmware, checked against RadioFoundry,
  * docs/spec/hardware-md9600.md, https://github.com/radiofoundry/radiofoundry
  *
- * Transmission: FM only, at the stock firmware's PA drives, no CTCSS yet.
+ * Transmission: FM only, at the stock firmware's PA drives, with CTCSS and
+ * the 1750 Hz tone from the HR_C6000.
  * There is no lock detect and no temperature, SWR or power sensing on this
  * board.
  */
@@ -54,6 +55,14 @@ static constexpr uint8_t RAMP_UP[] = {
 static constexpr uint8_t RAMP_DOWN[] = {
     250, 240, 230, 220, 200, 180, 160, 100, 50, 0, 0, 0, 0, 0, 0,
 };
+
+/*
+ * HR_C6000 tone generator deviations for CTCSS and the 1750 Hz tone, the
+ * CS7000's values: to be checked off air on the MD-9600.
+ */
+static constexpr uint8_t CTCSS_DEVIATION = 0x20;
+static constexpr uint8_t TONE_DEVIATION = 0x1E;
+static constexpr uint32_t TONE_BURST_FREQ = 1750;
 
 // Power levels offered (hwconfig.h), one per PA level, lowest first
 static constexpr uint32_t PA_LEVEL_MW[] = { CONFIG_TX_POWER_LEVELS };
@@ -415,6 +424,15 @@ void radio_enableTx()
     C6000.setModOffset(calData.band[txBand].refTune);
     C6000.setModAmplitude(txModI, txModQ);
     C6000.setModFactor(txDeviation);
+
+    // Sub-audio and tone burst from the HR_C6000, as on the CS7000
+    if (config->txToneEn)
+        C6000.setTxCtcss(config->txTone, CTCSS_DEVIATION);
+    else if (config->toneEn)
+        C6000.sendTone(TONE_BURST_FREQ, TONE_DEVIATION);
+    else
+        C6000.disableTones();
+
     C6000.startAnalogTx(TxAudioSource::MIC, FmConfig::PREEMPH_EN);
     gpio_clearPin(FM_SW);
 

@@ -192,7 +192,8 @@ void HR_Cx000< M >::startAnalogTx(const TxAudioSource source, const FmConfig cfg
      * FM transmit set-up of the stock MD-9600 firmware S126.061 (0x0804fec6,
      * 0x0804f830). It writes 0x34 the same for both channel widths: the
      * width is set by the modulation factor (setModFactor()), so cfg is not
-     * used here.
+     * used here. The tone generator is left to the caller: set it, or turn
+     * it off, before starting.
      */
     (void) cfg;
 
@@ -203,7 +204,6 @@ void HR_Cx000< M >::startAnalogTx(const TxAudioSource source, const FmConfig cfg
     writeReg(M::CONFIG, 0xE0, audioCfg);
     writeReg(M::CONFIG, 0xC2, 0x00);    // Codec AGC gain
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Unknown (Default value = 0A)
-    writeReg(M::CONFIG, 0xA1, 0x00);    // Tone generator off
     writeReg(M::CONFIG, 0x25, 0x0E);    // Undocumented Register
     writeReg(M::CONFIG, 0x26, 0xFE);    // Undocumented Register
     writeReg(M::CONFIG, 0x83, 0xFF);    // Clear all interrupt flags
