@@ -15,6 +15,16 @@
 #include "core/utils.h"
 #include "ui/utils.h"
 
+/*
+ * A target whose volume knob acts on the audio only, out of the MCU's reach,
+ * defines CONFIG_VOLUME_ANALOG_ONLY: it has no volume level to show.
+ */
+#ifdef CONFIG_VOLUME_ANALOG_ONLY
+static const bool drawVolume = false;
+#else
+static const bool drawVolume = true;
+#endif
+
 void _ui_drawMainBackground()
 {
     // Print top bar line of hline_h pixel height
@@ -327,7 +337,7 @@ void _ui_drawMainBottom()
                            rssi,
                            squelch,
                            volume,
-                           true,
+                           drawVolume,
                            yellow_fab413);
             break;
         case OPMODE_DMR:
@@ -337,7 +347,7 @@ void _ui_drawMainBottom()
                                 rssi,
                                 mic_level,
                                 volume,
-                                true);
+                                drawVolume);
             break;
         #ifdef CONFIG_M17
         case OPMODE_M17:
@@ -347,7 +357,7 @@ void _ui_drawMainBottom()
                                 rssi,
                                 mic_level,
                                 volume,
-                                true);
+                                drawVolume);
             break;
         #endif
     }
