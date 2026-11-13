@@ -86,6 +86,9 @@ enum md9600Flags {
  */
 #define CONFIG_TX_POWER_LEVELS 5000, 10000, 25000, 40000
 
+/* Transmit time-out, in seconds: a mobile PA with no thermal protection */
+#define CONFIG_TX_TIMEOUT_S 180
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
