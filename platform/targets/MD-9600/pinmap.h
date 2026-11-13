@@ -31,6 +31,7 @@ extern "C" {
 #define AIN_RSSI_UHF  GPIOB,0
 #define AIN_NOISE_UHF GPIOB,1
 #define AIN_NOISE_VHF GPIOC,5
+#define AIN_RTX       GPIOC,3   /* Receive baseband, 2T/5T filter on V1-V3 */
 
 /*
  * Channel selection rotary encoder, in the order that makes the position

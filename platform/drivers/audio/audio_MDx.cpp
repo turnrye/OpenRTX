@@ -119,9 +119,9 @@ const struct audioDevice inputDevices[] =
 void audio_init()
 {
     gpio_setMode(AIN_MIC,  ANALOG);
+    gpio_setMode(AIN_RTX,  ANALOG);
     gpio_setMode(SPK_MUTE, OUTPUT);
     #ifndef PLATFORM_MD9600
-    gpio_setMode(AIN_RTX,      ANALOG);
     gpio_setMode(AUDIO_AMP_EN, OUTPUT);
     #ifndef MDx_ENABLE_SWD
     gpio_setMode(MIC_PWR,      OUTPUT);
