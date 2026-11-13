@@ -90,7 +90,8 @@ static void setFrontEndTune(const enum Band band, const uint8_t value)
 static void rxPowerUp()
 {
     const bool vhf = (rxBand == BND_VHF);
-    const bool wide = (config->bandwidth != BW_12_5);
+    const bool wide = (config->bandwidth != BW_12_5)
+                   || (config->opMode == OPMODE_M17);
 
     gpio_clearPin(RF_APC_EN);
     gpio_clearPin(RF_T5_UHF);
@@ -181,7 +182,8 @@ void radio_terminate()
 
 void radio_setOpmode(const enum opmode mode)
 {
-    if (mode == OPMODE_FM)
+    // M17 is received through the same FM stages, from the discriminator
+    if ((mode == OPMODE_FM) || (mode == OPMODE_M17))
         gpio_setPin(FM_SW);
     else
         gpio_clearPin(FM_SW);

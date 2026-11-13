@@ -76,6 +76,9 @@ enum md9600Flags {
 /* Restart into the TYT bootloader from the settings menu */
 #define CONFIG_BOOTLOADER_ENTRY
 
+/* Device supports M17 mode */
+#define CONFIG_M17
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
