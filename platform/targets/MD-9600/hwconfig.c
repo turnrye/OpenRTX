@@ -5,6 +5,8 @@
  */
 
 #include "drivers/SPI/spi_custom.h"
+#include "drivers/SPI/spi_bitbang.h"
+#include "drivers/baseband/LMX2571.h"
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
 #include "drivers/SPI/spi_stm32.h"
@@ -73,9 +75,65 @@ static void gpsDisable(void *priv)
 static pthread_mutex_t spi2Mutex;
 static pthread_mutex_t adcMutex;
 
+static const struct spiConfig pllSpiCfg =
+{
+    .clk       = { PLL_CLK  },
+    .mosi      = { PLL_DATA },
+    .miso      = { PLL_DATA },
+    .clkPeriod = SCK_PERIOD_FROM_FREQ(1000000),
+    .flags     = SPI_HALF_DUPLEX
+};
+
 SPI_CUSTOM_DEVICE_DEFINE(c6000_spi, spiC6000_func, NULL, &c6000_mutex)
 SPI_STM32_DEVICE_DEFINE(spi2, SPI2, &spi2Mutex)
+SPI_BITBANG_DEVICE_DEFINE(pll_spi, pllSpiCfg, NULL)
 ADC_STM32_DEVICE_DEFINE(adc1, ADC1, &adcMutex, ADC_COUNTS_TO_UV(3300000, 12))
+
+/*
+ * LMX2571 setup of the V5 board, as written by the stock S126.061 firmware
+ * (literals at 0x0806f694-0x0806f784) and documented by RadioFoundry,
+ * boards/md9600/rfplan_md9600.c, https://github.com/radiofoundry/radiofoundry:
+ * 16.8 MHz reference, pre-divider 8 on VHF and 4 on UHF.
+ */
+static const struct lmx2571Config pllVhfCfg =
+{
+    .refClk    = 16800000,
+    .r0        = 0x003E,
+    .r6        = 0x8581,
+    .r7        = 0x1024,
+    .r8        = 0x0430,
+    .r41       = 0x0230,
+    .r42       = 0x0108,
+    .refDiv    = 8,
+    .fracOrder = 3
+};
+
+static const struct lmx2571Config pllUhfCfg =
+{
+    .refClk    = 16800000,
+    .r0        = 0x003E,
+    .r6        = 0x8581,
+    .r7        = 0x1024,
+    .r8        = 0x0430,
+    .r41       = 0x0230,
+    .r42       = 0x0108,
+    .refDiv    = 4,
+    .fracOrder = 3
+};
+
+const struct lmx2571 pllVhf =
+{
+    .spi = (const struct spiDevice *) &pll_spi,
+    .cfg = &pllVhfCfg,
+    .cs  = { PLL_CS_VHF }
+};
+
+const struct lmx2571 pllUhf =
+{
+    .spi = (const struct spiDevice *) &pll_spi,
+    .cfg = &pllUhfCfg,
+    .cs  = { PLL_CS_UHF }
+};
 
 const struct gpsDevice gps =
 {

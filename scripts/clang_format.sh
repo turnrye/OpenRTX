@@ -216,7 +216,6 @@ platform/drivers/baseband/radioUtils.h
 platform/drivers/baseband/radio_CS7000.cpp
 platform/drivers/baseband/radio_GDx.cpp
 platform/drivers/baseband/radio_MD3x0.cpp
-platform/drivers/baseband/radio_MD9600.cpp
 platform/drivers/baseband/radio_Mod17.cpp
 platform/drivers/baseband/radio_UV3x0.cpp
 platform/drivers/baseband/radio_linux.cpp

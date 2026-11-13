@@ -33,7 +33,10 @@ enum adcChannel {
 
 extern const struct gpsDevice gps;
 extern const struct spiCustomDevice c6000_spi;
+extern const struct spiCustomDevice pll_spi;
 extern const struct spiDevice spi2;
+extern const struct lmx2571 pllVhf;
+extern const struct lmx2571 pllUhf;
 extern const struct Adc adc1;
 
 /* Device has a working real time clock */
