@@ -185,6 +185,27 @@ static void rxPowerUp()
 }
 
 /**
+ * Band of a frequency, from the band edges in the radio's hardware info: the
+ * MD-9600's UHF band reaches 480 MHz, past the shared band table.
+ *
+ * @param freq: frequency, in Hz.
+ * @return the band, BND_NONE outside both.
+ */
+static enum Band bandOf(const freq_t freq)
+{
+    static constexpr freq_t MHZ = 1000000;
+    const hwInfo_t *hw = platform_getHwInfo();
+
+    if ((freq >= hw->vhf_minFreq * MHZ) && (freq <= hw->vhf_maxFreq * MHZ))
+        return BND_VHF;
+
+    if ((freq >= hw->uhf_minFreq * MHZ) && (freq <= hw->uhf_maxFreq * MHZ))
+        return BND_UHF;
+
+    return BND_NONE;
+}
+
+/**
  * Number of calibration points of a band.
  *
  * @param band: band.
@@ -490,7 +511,7 @@ void radio_disableRtx()
 void radio_updateConfiguration()
 {
     // Transmission, applied at the next key-up
-    txBand = getBandFromFrequency(config->txFrequency);
+    txBand = bandOf(config->txFrequency);
     if (txBand != BND_NONE) {
         const struct md9600BandCalib *cal = &calData.band[txBand];
         const freq_t freq = config->txFrequency;
@@ -505,7 +526,7 @@ void radio_updateConfiguration()
         txDeviation = TX_DEVIATION[txBand][wide];
     }
 
-    rxBand = getBandFromFrequency(config->rxFrequency);
+    rxBand = bandOf(config->rxFrequency);
     if (rxBand == BND_NONE)
         return;
 
