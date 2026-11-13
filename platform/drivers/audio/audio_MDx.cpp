@@ -64,7 +64,6 @@ static void *audio_thread(void *arg)
 {
     (void) arg;
 
-    static uint8_t oldVolume = 0xFF;
     unsigned long long now = getTick();
 
     Cx000dac_init(&C6000);
@@ -73,6 +72,12 @@ static void *audio_thread(void *arg)
     {
         Cx000dac_task();
 
+        /*
+         * The MD-9600 volume knob is analog, after the HR_C6000 line out, so
+         * the DAC gain stays at its init value.
+         */
+        #ifndef PLATFORM_MD9600
+        static uint8_t oldVolume = 0xFF;
         if(state.volume != oldVolume)
         {
             // Apply new volume level, map 0 - 255 range into -31 to 31
@@ -81,6 +86,7 @@ static void *audio_thread(void *arg)
 
             oldVolume = state.volume;
         }
+        #endif
 
         now += 4;
         sleepUntil(now);
