@@ -77,3 +77,15 @@ void HR_C6000::sendTone(const uint32_t freq, const uint8_t deviation)
     writeCfgRegister(0x60, 0x00);         // Disable FM transmission
     writeCfgRegister(0x60, 0x80);         // Enable FM transmission, start sending the tone
 }
+
+void HR_C6000::setLineOut2(const bool enable)
+{
+    uint8_t reg = readCfgRegister(0xE0);
+
+    if(enable)
+        reg |= 0x08;
+    else
+        reg &= ~0x08;
+
+    writeCfgRegister(0xE0, reg);
+}

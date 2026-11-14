@@ -76,6 +76,14 @@ public:
      */
     void sendTone(const uint32_t freq, const uint8_t deviation);
 
+    /**
+     * Enable or disable the codec's LINEOUT2 output, leaving the other codec
+     * inputs and outputs as they are. Needs the codec under MCU control.
+     *
+     * @param enable: true to drive LINEOUT2.
+     */
+    void setLineOut2(const bool enable);
+
 private:
 
     /**
