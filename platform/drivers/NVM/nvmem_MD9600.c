@@ -160,8 +160,6 @@ void nvm_readCalibData(void *buf)
 
     readBandCalib(&cal->band[BND_VHF], &calLayout[BND_VHF]);
     readBandCalib(&cal->band[BND_UHF], &calLayout[BND_UHF]);
-    nvm_devRead(&secReg, 0x1004, &cal->rssiLow, 1);
-    nvm_devRead(&secReg, 0x1005, &cal->rssiHigh, 1);
 }
 
 void nvm_readHwInfo(hwInfo_t *info)

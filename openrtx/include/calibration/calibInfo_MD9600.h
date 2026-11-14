@@ -48,8 +48,6 @@ struct md9600BandCalib {
  */
 struct md9600Calib {
     struct md9600BandCalib band[2]; ///< Indexed by enum Band.
-    uint8_t rssiLow;                ///< RSSI reading at -120 dBm.
-    uint8_t rssiHigh;               ///< RSSI reading at -70 dBm.
 };
 
 #endif /* CALIBINFO_MD9600_H */
