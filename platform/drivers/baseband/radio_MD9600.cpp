@@ -40,6 +40,7 @@
 #include "drivers/baseband/LMX2571.h"
 #include "drivers/baseband/SKY72310.h"
 #include "drivers/baseband/radioUtils.h"
+#include "drivers/tones/toneGenerator_MDx.h"
 #include "hwconfig.h"
 
 static constexpr freq_t IF_FREQ = 49950000; // VHF LO above, UHF LO below
@@ -64,12 +65,23 @@ static constexpr uint8_t RAMP_DOWN[] = {
 };
 
 /*
- * HR_C6000 tone generator deviations for CTCSS and the 1750 Hz tone, the
- * CS7000's values: to be checked off air on the MD-9600.
+ * HR_C6000 tone generator deviation for the 1750 Hz tone, the CS7000's
+ * value: to be checked off air on the MD-9600.
  */
-static constexpr uint8_t CTCSS_DEVIATION = 0x20;
 static constexpr uint8_t TONE_DEVIATION = 0x1E;
 static constexpr uint32_t TONE_BURST_FREQ = 1750;
+
+/*
+ * Tones of the calibration's CTCSS level rows, in tenths of Hz, and the
+ * largest level the stock firmware doubles for 25 kHz channels: from a
+ * level of 0x80 it sends the full swing (S126.061 at 0x0805017c).
+ */
+static constexpr uint16_t CTCSS_ROW_TONE[MD9600_CTCSS_ROWS] = {
+    670,
+    1514,
+    2541,
+};
+static constexpr uint8_t CTCSS_FULL_SWING_LEVEL = 0x80;
 
 /*
  * Supply range for transmission, in mV: RadioFoundry's cutoff and maximum,
@@ -150,6 +162,7 @@ static uint8_t txDrive; // PA drive (APC DAC), 8 bit
 static uint8_t txModI;
 static uint8_t txModQ;
 static uint8_t txDeviation;
+static uint8_t txCtcssLevel;    // CTCSS PWM swing on PC7
 static enum opstatus radioStatus;
 static const struct rf_ops *rf; // RF section of the board, NULL if unknown
 
@@ -393,6 +406,66 @@ static uint8_t calPoints(const enum Band band)
         return MD9600_CAL_POINTS_VHF;
 
     return MD9600_CAL_POINTS_UHF;
+}
+
+/**
+ * Linear interpolation between two points, as the stock firmware's
+ * 0x08030d34: the end values outside them.
+ *
+ * @param x: where to interpolate.
+ * @param x0: first point.
+ * @param x1: second point, above the first.
+ * @param y0: value at the first point.
+ * @param y1: value at the second point.
+ * @return interpolated value.
+ */
+static uint8_t interpLinear(const int32_t x, const int32_t x0, const int32_t x1,
+                            const int32_t y0, const int32_t y1)
+{
+    if (x <= x0)
+        return y0;
+
+    if (x >= x1)
+        return y1;
+
+    return y0 + ((x - x0) * (y1 - y0)) / (x1 - x0);
+}
+
+/**
+ * CTCSS PWM swing for a tone, as the stock firmware sets it (S126.061 at
+ * 0x0805017c): each level row interpolated at the frequency, then the two
+ * rows around the tone interpolated at the tone, doubled for 25 kHz.
+ *
+ * @param cal: calibration of the band.
+ * @param freq: transmit frequency.
+ * @param points: calibration points of the band.
+ * @param tone: CTCSS tone, in tenths of Hz.
+ * @param wide: true for a 25 kHz channel.
+ * @return peak-to-peak swing, in PWM steps of 256.
+ */
+static uint8_t ctcssLevel(const struct md9600BandCalib *cal, const freq_t freq,
+                          const uint8_t points, const uint16_t tone,
+                          const bool wide)
+{
+    uint8_t row[MD9600_CTCSS_ROWS];
+
+    for (size_t i = 0; i < MD9600_CTCSS_ROWS; i++)
+        row[i] = interpCalParameter(freq, cal->rxFreq, cal->ctcssLevel[i],
+                                    points);
+
+    size_t lo = MD9600_CTCSS_67_0;
+    if (tone > CTCSS_ROW_TONE[MD9600_CTCSS_151_4])
+        lo = MD9600_CTCSS_151_4;
+
+    const uint8_t level = interpLinear(
+        tone, CTCSS_ROW_TONE[lo], CTCSS_ROW_TONE[lo + 1], row[lo], row[lo + 1]);
+    if (!wide)
+        return level;
+
+    if (level >= CTCSS_FULL_SWING_LEVEL)
+        return UINT8_MAX;
+
+    return 2 * level;
 }
 
 /**
@@ -644,10 +717,14 @@ void radio_enableTx()
         C6000.disableTones();
         C6000.startAnalogTx(TxAudioSource::LINE_IN, FmConfig::BW_25kHz);
     } else {
-        // Sub-audio and tone burst from the HR_C6000, as on the CS7000
-        if (config->txToneEn)
-            C6000.setTxCtcss(config->txTone, CTCSS_DEVIATION);
-        else if (config->toneEn)
+        // Sub-audio on PC7 at the calibrated level, as the stock firmware
+        if (config->txToneEn) {
+            toneGen_setToneFreq(config->txTone / 10.0f);
+            toneGen_setToneLevel(txCtcssLevel);
+        }
+
+        // Tone burst from the HR_C6000, as on the CS7000
+        if (config->toneEn)
             C6000.sendTone(TONE_BURST_FREQ, TONE_DEVIATION);
         else
             C6000.disableTones();
@@ -667,6 +744,7 @@ void radio_disableRtx()
     if (radioStatus == TX) {
         paOff();
         C6000.stopAnalogTx();
+        toneGen_setToneLevel(0);
         gpio_setPin(FM_SW);
     }
 
@@ -711,6 +789,7 @@ void radio_updateConfiguration()
         txModI = interpCalParameter(freq, cal->rxFreq, cal->fmModI, points);
         txModQ = interpCalParameter(freq, cal->rxFreq, cal->fmModQ, points);
         txDeviation = TX_DEVIATION[txBand][wide];
+        txCtcssLevel = ctcssLevel(cal, freq, points, config->txTone, wide);
         if (config->opMode == OPMODE_M17)
             txDeviation = M17_TX_DEVIATION[txBand];
     }
