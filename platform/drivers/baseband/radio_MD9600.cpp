@@ -45,8 +45,6 @@
 static constexpr freq_t IF_FREQ = 49950000; // VHF LO above, UHF LO below
 static constexpr unsigned int PLL_RESET_MS = 10;
 static constexpr unsigned int RX_SETTLE_MS = 4;
-static constexpr rssi_t RSSI_LOW_DBM = -120;
-static constexpr rssi_t RSSI_HIGH_DBM = -70;
 static constexpr rssi_t RSSI_NO_SIGNAL = -154;
 static constexpr uint32_t CTCSS_SAMPLE_RATE = 2000;
 
@@ -103,12 +101,14 @@ static constexpr uint8_t TX_DEVIATION[2][2] = {
 static constexpr uint8_t M17_TX_DEVIATION[2] = { 0x5A, 0x22 };
 
 /*
- * Provisional, until a bench measurement: the 8-bit RSSI reading taken as
- * -120 dBm, per band (VHF, UHF). The calibration's RSSI points are in the
- * stock firmware's units, which samples the line for 15 ADC cycles and reads
- * it lower than OpenRTX does. These are the dead-air readings of one V5 unit.
+ * V5 RSSI: dBm at a reading of 0, and counts per 100 dB, both bands.
+ * RadioFoundry's V4A/V5 fit, docs/spec/hardware-md9600.md section 5.7. On a
+ * V5 into a dummy load it puts the floor at -123 dBm (VHF) and -129 dBm (UHF),
+ * the receiver's noise floor. The calibration's RSSI points are in the stock
+ * firmware's units (15 ADC cycles a sample, reading lower) and don't apply.
  */
-static constexpr int32_t RSSI_FLOOR[] = { 121, 94 };
+static constexpr rssi_t V5_RSSI_FLOOR = -155;
+static constexpr int32_t V5_RSSI_COUNTS_PER_100_DB = 195;
 
 /*
  * V1-V3 boards, by band (VHF, UHF), from RadioFoundry (file header): the
@@ -260,8 +260,7 @@ static void v5RxOff()
 }
 
 /**
- * V5: the RSSI reading mapped linearly from the band's floor with the slope
- * of the two calibration points at -120 and -70 dBm.
+ * V5: the RSSI reading through RadioFoundry's fit, the same on both bands.
  *
  * @param band: receiving band.
  * @param raw: 8-bit RSSI reading.
@@ -269,10 +268,9 @@ static void v5RxOff()
  */
 static rssi_t v5Rssi(const enum Band band, const int32_t raw)
 {
-    const int32_t span = calData.rssiHigh - calData.rssiLow;
+    (void)band;
 
-    return RSSI_LOW_DBM
-         + ((raw - RSSI_FLOOR[band]) * (RSSI_HIGH_DBM - RSSI_LOW_DBM)) / span;
+    return V5_RSSI_FLOOR + (raw * 100) / V5_RSSI_COUNTS_PER_100_DB;
 }
 
 // C++14 has no designated initializers: fields in declaration order
