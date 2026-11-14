@@ -28,6 +28,13 @@
 static hwInfo_t hwInfo;
 static bool pwrBtnPressed = true;   // Power button status at the previous call
 
+/* PTT debouncing: a change counts once the line has held it this long */
+#define PTT_DEBOUNCE_MS 30
+
+static bool      pttPressed;   /* Debounced PTT state               */
+static bool      pttRaw;       /* Last level read, true = pressed   */
+static long long pttChange;    /* Tick of the last raw level change */
+
 /**
  * Drive a gpio as an output.
  */
@@ -96,7 +103,12 @@ void platform_init()
     gpio_setMode(PWR_SW, OUTPUT);
     gpio_setPin(PWR_SW);
 
-    gpio_setMode(PTT_SW, INPUT);
+    /*
+     * Hand mic PTT, active low, with the MCU's pull-up as RadioFoundry uses
+     * (docs/spec/hardware-md9600.md section 9.4): left floating, the line
+     * picked up glitches after transmissions.
+     */
+    gpio_setMode(PTT_SW, INPUT_PULL_UP);
 
     gpio_setMode(AIN_VBAT,      ANALOG);
     gpio_setMode(AIN_MIC,       ANALOG);
@@ -220,8 +232,24 @@ uint8_t platform_getVolumeLevel()
 
 bool platform_getPttStatus()
 {
-    /* PTT line has a pullup resistor with PTT switch closing to ground */
-    return (gpio_readPin(PTT_SW) == 0) ? true : false;
+    /*
+     * The PTT switch closes the line to ground. Without debouncing, glitches
+     * on the hand mic's line re-keyed the transmitter after a release.
+     */
+    bool raw = (gpio_readPin(PTT_SW) == 0);
+    long long now = getTick();
+
+    if(raw != pttRaw)
+    {
+        pttRaw    = raw;
+        pttChange = now;
+    }
+    else if((now - pttChange) >= PTT_DEBOUNCE_MS)
+    {
+        pttPressed = raw;
+    }
+
+    return pttPressed;
 }
 
 bool platform_pwrButtonStatus()
