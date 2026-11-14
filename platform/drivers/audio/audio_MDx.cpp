@@ -195,12 +195,21 @@ void audio_connect(const enum AudioSource source, const enum AudioSink sink)
 
         // MD-UV380 uses HR_C6000 for MCU->SPK audio output. Switching between
         // incoming FM audio and DAC output is done automatically inside the IC.
-        #if !defined(PLATFORM_MDUV3x0) && !defined(PLATFORM_DM1701)
+        #if !defined(PLATFORM_MDUV3x0) && !defined(PLATFORM_DM1701) \
+            && !defined(PLATFORM_MD9600)
         case PATH(SOURCE_MCU, SINK_SPK):
         #endif
         case PATH(SOURCE_MCU, SINK_RTX):
             gpio_setMode(BEEP_OUT, ALTERNATE | ALTERNATE_FUNC(2));
             break;
+
+        // MD-9600 plays MCU audio through the HR_C6000 line out, which is
+        // kept off otherwise: its idle tones whine in received FM audio.
+        #ifdef PLATFORM_MD9600
+        case PATH(SOURCE_MCU, SINK_SPK):
+            C6000.setLineOut2(true);
+            break;
+        #endif
 
         default:
             break;
@@ -243,12 +252,19 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
             radio_disableAfOutput();
             break;
 
-        #if !defined(PLATFORM_MDUV3x0) && !defined(PLATFORM_DM1701)
+        #if !defined(PLATFORM_MDUV3x0) && !defined(PLATFORM_DM1701) \
+            && !defined(PLATFORM_MD9600)
         case PATH(SOURCE_MCU, SINK_SPK):
         #endif
         case PATH(SOURCE_MCU, SINK_RTX):
             gpio_setMode(BEEP_OUT, INPUT);  // Set output to Hi-Z
             break;
+
+        #ifdef PLATFORM_MD9600
+        case PATH(SOURCE_MCU, SINK_SPK):
+            C6000.setLineOut2(false);
+            break;
+        #endif
 
         default:
             break;

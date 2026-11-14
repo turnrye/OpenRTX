@@ -90,12 +90,13 @@ void HR_Cx000< M >::init()
     writeReg(M::CONFIG, 0xE2, 0x06);
     // writeReg(M::CONFIG, 0xE2, 0x00);    // DAC off, mic preamp disabled
     /*
-     * Codec enabled, LineIn1, LineOut2, I2S slave mode: beeps reach the
-     * speaker through the line out. Value from RadioFoundry,
-     * boards/md9600/c6000_md9600.c codec_out(),
-     * https://github.com/radiofoundry/radiofoundry
+     * Codec enabled, LineIn1, I2S slave mode, LineOut2 off: the line out
+     * feeds the speaker chain and its idle tones whine in received FM, so the
+     * audio driver turns it on only while the MCU plays to the speaker. As the
+     * stock S126.061 firmware: 0xC1 in its FM set-up (0x0804f280), 0xC9 in
+     * its beep player (0x08045544).
      */
-    writeReg(M::CONFIG, 0xE0, 0xC9);
+    writeReg(M::CONFIG, 0xE0, 0xC1);
     writeReg(M::CONFIG, 0xE4, 0x27);    // Lineout gain, first and second stage mic gain
     writeReg(M::CONFIG, 0xE3, 0x52);    // Internal ADC and DAC passthrough enable
     writeReg(M::CONFIG, 0xE5, 0x1A);    // Undocumented register
@@ -177,7 +178,7 @@ void HR_Cx000< M >::fmMode()
     writeReg(M::CONFIG, 0x5F, 0xC0);    // Detect BS and MS frame sequences in 2 layer mode
     sendSequence(initSeq7, sizeof(initSeq7));
     writeReg(M::CONFIG, 0x11, 0x80);    // Local channel mode
-    writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
+    writeReg(M::CONFIG, 0xE0, 0xC1);    // Codec enabled, LineIn1, I2S slave mode
 }
 
 template< class M >
@@ -225,5 +226,5 @@ void HR_Cx000< M >::stopAnalogTx()
     // Stop sequence of the stock S126.061 firmware (0x0804bb98)
     writeReg(M::CONFIG, 0x60, 0x00);    // Stop analog transmission
     writeReg(M::CONFIG, 0x10, 0x4F);    // Back to the receive mode set
-    writeReg(M::CONFIG, 0xE0, 0xC9);    // Codec enabled, LineIn1, LineOut2, I2S slave mode
+    writeReg(M::CONFIG, 0xE0, 0xC1);    // Codec enabled, LineIn1, I2S slave mode
 }
