@@ -30,6 +30,16 @@ enum md9600PaLevel {
 };
 
 /**
+ * CTCSS level rows, by the tone each was set at.
+ */
+enum md9600CtcssRow {
+    MD9600_CTCSS_67_0 = 0,  ///< 67.0 Hz.
+    MD9600_CTCSS_151_4 = 1, ///< 151.4 Hz.
+    MD9600_CTCSS_254_1 = 2, ///< 254.1 Hz.
+    MD9600_CTCSS_ROWS = 3,  ///< Number of rows.
+};
+
+/**
  * Factory calibration of one band of the TYT MD-9600.
  */
 struct md9600BandCalib {
@@ -38,6 +48,8 @@ struct md9600BandCalib {
     uint8_t paDrive[MD9600_PA_LEVELS][MD9600_CAL_POINTS_UHF]; ///< APC DAC.
     uint8_t fmModI[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, I.
     uint8_t fmModQ[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, Q.
+    /// CTCSS peak-to-peak PWM swing at 12.5 kHz, by tone row.
+    uint8_t ctcssLevel[MD9600_CTCSS_ROWS][MD9600_CAL_POINTS_UHF];
     uint8_t refTune; ///< Reference oscillator offset, stored + 128.
 };
 

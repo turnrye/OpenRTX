@@ -20,16 +20,19 @@
 struct calLayout {
     uint16_t freqs;  ///< Frequency list: RX and TX pairs, BCD, 10 Hz units.
     uint16_t rxTune; ///< Front-end tuning row.
-    uint16_t paDrive[MD9600_PA_LEVELS]; ///< PA drive rows, by power level.
-    uint16_t fmModI;                    ///< FM two-point modulation row, I.
-    uint16_t fmModQ;                    ///< FM two-point modulation row, Q.
-    uint16_t refTune;                   ///< Reference oscillator offset.
-    uint8_t points;                     ///< Number of calibration points.
+    uint16_t paDrive[MD9600_PA_LEVELS];     ///< PA drive rows, by power level.
+    uint16_t fmModI;                        ///< FM two-point modulation row, I.
+    uint16_t fmModQ;                        ///< FM two-point modulation row, Q.
+    uint16_t ctcssLevel[MD9600_CTCSS_ROWS]; ///< CTCSS level rows, by tone.
+    uint16_t refTune;                       ///< Reference oscillator offset.
+    uint8_t points;                         ///< Number of calibration points.
 };
 
 /*
  * The power level to row mapping is the stock S126.061 firmware's
- * (0x0806eea4): rows 0x20, 0x1A0, 0x190, 0x10, plus 9 on VHF.
+ * (0x0806eea4): rows 0x20, 0x1A0, 0x190, 0x10, plus 9 on VHF. The CTCSS
+ * rows are the ones its tone level function reads (0x0805017c): 0x90,
+ * 0xA0, 0xB0 for 67.0, 151.4 and 254.1 Hz, plus 0xB on VHF.
  */
 static const struct calLayout calLayout[] = {
     [BND_VHF] = {
@@ -38,6 +41,7 @@ static const struct calLayout calLayout[] = {
         .paDrive = { 0x1029, 0x20A9, 0x2099, 0x1019 },
         .fmModI  = 0x2079,
         .fmModQ  = 0x2089,
+        .ctcssLevel = { 0x109B, 0x10AB, 0x10BB },
         .refTune = 0x100C,
         .points  = MD9600_CAL_POINTS_VHF,
     },
@@ -47,6 +51,7 @@ static const struct calLayout calLayout[] = {
         .paDrive = { 0x1020, 0x20A0, 0x2090, 0x1010 },
         .fmModI  = 0x2070,
         .fmModQ  = 0x2080,
+        .ctcssLevel = { 0x1090, 0x10A0, 0x10B0 },
         .refTune = 0x1009,
         .points  = MD9600_CAL_POINTS_UHF,
     },
@@ -138,6 +143,9 @@ static void readBandCalib(struct md9600BandCalib *cal,
 
     for (size_t i = 0; i < MD9600_PA_LEVELS; i++)
         readRow(cal->paDrive[i], layout->paDrive[i], layout->points);
+
+    for (size_t i = 0; i < MD9600_CTCSS_ROWS; i++)
+        readRow(cal->ctcssLevel[i], layout->ctcssLevel[i], layout->points);
 
     // Frequencies are stored in units of 10 Hz, RX first in each pair
     for (size_t i = 0; i < layout->points; i++)
