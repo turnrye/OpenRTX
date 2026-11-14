@@ -36,6 +36,7 @@ static const uint32_t baseSineFreq = 35;
 
 static uint32_t toneTableIndex = 0; // Current sine table index for CTCSS generator
 static uint32_t toneTableIncr  = 0; // CTCSS sine table index increment per tick
+static int32_t  toneLevel      = 256; // CTCSS peak-to-peak swing, of 256 steps
 
 static uint32_t beepTableIndex = 0; // Current sine table index for "beep" generator
 static uint32_t beepTableIncr  = 0; // "beep" sine table index increment per tick
@@ -53,7 +54,8 @@ void __attribute__((used)) TIM8_TRG_COM_TIM14_IRQHandler()
     toneTableIndex += toneTableIncr;
     beepTableIndex += beepTableIncr;
 
-    TIM3->CCR2 = sineTable[(toneTableIndex >> 16) & 0xFF];
+    int32_t sample = sineTable[(toneTableIndex >> 16) & 0xFF] - 128;
+    TIM3->CCR2 = 128 + (sample * toneLevel) / 256;
 
     if(beepLockCount == 0)
     {
@@ -146,6 +148,11 @@ void toneGen_setToneFreq(float toneFreq)
      */
     float dividend = toneFreq * 65536.0f;
     toneTableIncr = ((uint32_t) dividend)/baseSineFreq;
+}
+
+void toneGen_setToneLevel(const uint16_t level)
+{
+    toneLevel = (level > 256) ? 256 : level;
 }
 
 void toneGen_toneOn()

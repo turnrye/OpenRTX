@@ -48,6 +48,15 @@ void toneGen_terminate();
 void toneGen_setToneFreq(const float toneFreq);
 
 /**
+ * Set the level of the CTCSS tone: its peak-to-peak swing in PWM steps,
+ * centred on mid-scale. 256, the default, is the full swing; 0 holds the
+ * output at mid-scale.
+ *
+ * @param level: peak-to-peak swing, 0 - 256.
+ */
+void toneGen_setToneLevel(const uint16_t level);
+
+/**
  * Activate generation of CTCSS tone.
  */
 void toneGen_toneOn();
