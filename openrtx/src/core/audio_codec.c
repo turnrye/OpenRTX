@@ -201,6 +201,9 @@ static void *encodeFunc(void *arg)
     dsp_resetState(dcBlock);
     dsp_resetState(decimator);
     codec2 = codec2_create(CODEC2_MODE_3200);
+#ifdef MIC_EXP_PRIME_DC
+    bool primeDc = true;
+#endif
 
     while (reqStop == false) {
         // Invalid audio path, quit
@@ -220,12 +223,43 @@ static void *encodeFunc(void *arg)
             int16_t sample = audio.data[i];
 
 #if CONFIG_MIC_OVERSAMPLE > 1
+#ifdef MIC_EXP_KEEP_SUM
+            // EXPERIMENT: emit the sum of the oversampled block, keeping the
+            // resolution the averaging gains; the gain is divided by N below.
+            decimator.accumulator += sample;
+            decimator.count++;
+            if (decimator.count < CONFIG_MIC_OVERSAMPLE)
+                continue;
+            sample = (int16_t)decimator.accumulator;
+            decimator.accumulator = 0;
+            decimator.count = 0;
+#else
             if (!dsp_decimator(&decimator, &sample, CONFIG_MIC_OVERSAMPLE))
                 continue;
 #endif
+#endif
+
+#ifdef MIC_EXP_PRIME_DC
+            // EXPERIMENT: start the DC block settled on the first sample, so
+            // the ADC bias does not pass through as a key-up click.
+            if (primeDc) {
+                dcBlock.prevIn = (int32_t)sample * 32768;
+                primeDc = false;
+            }
+#endif
 
             sample = dsp_dcBlockFilter(&dcBlock, sample);
+#if defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
+            int32_t scaled = ((int32_t)sample * CONFIG_MIC_GAIN)
+                             / CONFIG_MIC_OVERSAMPLE;
+            if (scaled > INT16_MAX)
+                scaled = INT16_MAX;
+            if (scaled < INT16_MIN)
+                scaled = INT16_MIN;
+            audio.data[outIdx++] = (int16_t)scaled;
+#else
             audio.data[outIdx++] = s16_mulSat(sample, CONFIG_MIC_GAIN);
+#endif
         }
 
         // CODEC2 encodes 160 speech samples (20 ms), into 8 bytes: here we
