@@ -15,6 +15,7 @@
 #include <string>
 #include <array>
 #include "LinkSetupFrame.hpp"
+#include "Constants.hpp"
 #include "Viterbi.hpp"
 #include "StreamFrame.hpp"
 #include "PacketFrame.hpp"
@@ -113,7 +114,7 @@ private:
      * @param pos: position in the payload, after deinterleaving.
      * @return the soft bit, 0x0000 a confident 0 and 0xFFFF a confident 1.
      */
-    static uint16_t payloadBit(const softFrame_t &soft, const size_t pos);
+    uint16_t payloadBit(const softFrame_t &soft, const size_t pos);
 
     /**
      * Decode Link Setup Frame data and update the internal LSF field with
@@ -149,6 +150,22 @@ private:
      * @return true when the LICH block is successfully decoded.
      */
     bool decodeLich(std::array<uint8_t, 6> &segment, const softFrame_t &soft);
+
+    ///< Coded bits of the sync word.
+    static constexpr size_t SYNC_BITS = 2 * SYNCWORD_SYMBOLS;
+
+    ///< Coded bits of the frame payload, following the sync word.
+    static constexpr size_t PAYLOAD_BITS = 2
+                                         * (FRAME_SYMBOLS - SYNCWORD_SYMBOLS);
+
+    ///< Coded bits of the LICH, at the start of a stream frame payload.
+    static constexpr size_t LICH_BITS = 8 * sizeof(lich_t);
+
+    ///< Golay(24,12) blocks in the LICH.
+    static constexpr size_t LICH_BLOCKS = 4;
+
+    ///< Coded bits of the stream data, following the LICH.
+    static constexpr size_t STREAM_BITS = PAYLOAD_BITS - LICH_BITS;
 
     ///< Maximum allowed hamming distance when determining the frame type.
     static constexpr uint8_t MAX_SYNC_HAMM_DISTANCE = 4;

@@ -15,12 +15,6 @@
 
 using namespace M17;
 
-static constexpr size_t SYNC_BITS = 2 * SYNCWORD_SYMBOLS;
-static constexpr size_t PAYLOAD_BITS = 2 * (FRAME_SYMBOLS - SYNCWORD_SYMBOLS);
-static constexpr size_t LICH_BITS = 8 * sizeof(lich_t);
-static constexpr size_t LICH_BLOCKS = 4;
-static constexpr size_t STREAM_BITS = PAYLOAD_BITS - LICH_BITS;
-
 FrameDecoder::FrameDecoder()
 {
 }
@@ -135,7 +129,7 @@ uint16_t FrameDecoder::payloadBit(const softFrame_t &soft, const size_t pos)
 
 void FrameDecoder::decodeLSF(const softFrame_t &soft)
 {
-    auto payload = [&soft](size_t pos) { return payloadBit(soft, pos); };
+    auto payload = [this, &soft](size_t pos) { return payloadBit(soft, pos); };
 
     std::array<uint8_t, sizeof(LinkSetupFrame)> tmp;
     viterbi.decodePunctured<PAYLOAD_BITS>(payload, tmp, LSF_PUNCTURE);
@@ -144,7 +138,7 @@ void FrameDecoder::decodeLSF(const softFrame_t &soft)
 
 void FrameDecoder::decodePacket(const softFrame_t &soft)
 {
-    auto payload = [&soft](size_t pos) { return payloadBit(soft, pos); };
+    auto payload = [this, &soft](size_t pos) { return payloadBit(soft, pos); };
 
     // Extract and decode packet data
     std::array<uint8_t, PacketFrame::FRAME_SIZE> tmp;
@@ -194,7 +188,7 @@ void FrameDecoder::decodeStream(const softFrame_t &soft)
     }
 
     // Decode the stream data, which follows the LICH
-    auto stream = [&soft](size_t pos) {
+    auto stream = [this, &soft](size_t pos) {
         return payloadBit(soft, LICH_BITS + pos);
     };
 
@@ -208,8 +202,9 @@ void FrameDecoder::decodeStream(const softFrame_t &soft)
     // and count the coded bits that differ from the received hard decisions.
     // A decode from noise disagrees with many of them, a genuine frame only
     // where the channel flipped a bit.
+    FrameEncoder encoder;
     std::array<uint8_t, STREAM_BITS / 8> punctured;
-    FrameEncoder::encodeStreamPayload(decoded, punctured);
+    encoder.encodeStreamPayload(decoded, punctured);
 
     uint16_t errors = 0;
     for (size_t i = 0; i < STREAM_BITS; i++) {
