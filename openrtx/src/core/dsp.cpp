@@ -63,7 +63,7 @@ void dsp_highPassInit(struct biquad *bq, float cutoff, float sampleRate)
 void dsp_agcDefaults(struct agcParams *params)
 {
     params->targetDb          = -21.0f;
-    params->minGainDb         = -12.0f;
+    params->minGainDb         = -40.0f;  // the float chain keeps the base gain unclipped: a full-scale ADC sits up to ~40 dB hot
     params->maxGainDb         = 24.0f;
     params->attackDbPerBlk    = 1.5f;   // ~75 dB/s with 20 ms blocks
     params->releaseDbPerBlk   = 0.08f;  // ~4 dB/s

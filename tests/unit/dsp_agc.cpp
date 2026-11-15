@@ -61,7 +61,9 @@ TEST_CASE("High-pass passes 1 kHz and rejects 50 Hz", "[dsp][hpf]")
 TEST_CASE("AGC brings steady tones of different levels to the target",
           "[dsp][agc]")
 {
-    for(float level : {-45.0f, -33.0f, -21.0f, -12.0f}) {
+    // +10 dBFS: the float chain applies the base gain unclipped, so loud
+    // input reaches the AGC well above full scale
+    for(float level : {-45.0f, -33.0f, -21.0f, -12.0f, 10.0f}) {
         struct agcParams p;
         dsp_agcDefaults(&p);
         struct agcState agc;
