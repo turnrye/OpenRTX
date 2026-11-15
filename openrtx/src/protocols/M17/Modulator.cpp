@@ -13,6 +13,7 @@
 
 #if defined(PLATFORM_LINUX)
 #include <stdio.h>
+#include <stdlib.h>
 #endif
 
 using namespace M17;
@@ -169,7 +170,14 @@ void Modulator::sendBaseband()
 #else
 void Modulator::sendBaseband()
 {
-    FILE *outfile = fopen("/tmp/m17_output.raw", "ab");
+    // Raw signed 16 bit little endian samples at TX_SAMPLE_RATE, appended for
+    // every transmitted frame. OPENRTX_M17_TX_BASEBAND overrides the path.
+    const char *path = getenv("OPENRTX_M17_TX_BASEBAND");
+    if((path == NULL) || (path[0] == '\0'))
+        path = "/tmp/m17_output.raw";
+
+    FILE *outfile = fopen(path, "ab");
+    if(outfile == NULL) return;
 
     for(size_t i = 0; i < FRAME_SAMPLES; i++)
     {
