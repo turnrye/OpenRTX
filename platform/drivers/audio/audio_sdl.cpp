@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 #include "SDL2/SDL.h"
 #include "audio_sdl.h"
 
@@ -33,11 +34,11 @@ struct sdlPlayState {
 
 /**
  * \internal
- * Open the SDL playback device in the stream's format. allowed_changes is 0 so
+ * Open the SDL playback or capture device in the stream's format. allowed_changes is 0 so
  * SDL hands us exactly the requested format and performs any rate/format
  * conversion to the underlying hardware internally.
  */
-static SDL_AudioDeviceID openDevice(const struct streamCtx *ctx)
+static SDL_AudioDeviceID openDevice(const struct streamCtx *ctx, int capture)
 {
     SDL_AudioSpec want;
     SDL_AudioSpec have;
@@ -47,7 +48,7 @@ static SDL_AudioDeviceID openDevice(const struct streamCtx *ctx)
     want.channels = 1;
     want.samples = 256;
 
-    return SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    return SDL_OpenAudioDevice(NULL, capture, &want, &have, 0);
 }
 
 static int sdlPlay_start(const uint8_t instance, const void *config,
@@ -67,7 +68,7 @@ static int sdlPlay_start(const uint8_t instance, const void *config,
     if (state == NULL)
         return -ENOMEM;
 
-    state->dev = openDevice(ctx);
+    state->dev = openDevice(ctx, 0);
     if (state->dev == 0) {
         free(state);
         return -EIO;
@@ -170,6 +171,112 @@ static void sdlPlay_halt(struct streamCtx *ctx)
     ctx->running = 0;
 }
 
+/*
+ * Capture driver. Mirrors the playback driver: SDL_DequeueAudio pulls captured
+ * samples from SDL's internal queue, sync() blocks until a full block is
+ * available, data() hands it to the stream manager.
+ */
+
+struct sdlCaptureState {
+    SDL_AudioDeviceID dev;
+    int idleHalf;
+};
+
+static int sdlCapture_start(const uint8_t instance, const void *config,
+                            struct streamCtx *ctx)
+{
+    (void)instance;
+    (void)config;
+
+    if (ctx == NULL)
+        return -EINVAL;
+
+    if (ctx->running != 0)
+        return -EBUSY;
+
+    struct sdlCaptureState *state = static_cast<struct sdlCaptureState *>(
+        malloc(sizeof(struct sdlCaptureState)));
+    if (state == NULL)
+        return -ENOMEM;
+
+    state->dev = openDevice(ctx, 1);
+    if (state->dev == 0) {
+        free(state);
+        return -EIO;
+    }
+
+    state->idleHalf = 0;
+    ctx->priv = state;
+    ctx->running = 1;
+    SDL_PauseAudioDevice(state->dev, 0);
+
+    return 0;
+}
+
+static int sdlCapture_sync(struct streamCtx *ctx, uint8_t dirty)
+{
+    (void)dirty;
+
+    if (ctx->running == 0)
+        return -1;
+
+    struct sdlCaptureState *state = (struct sdlCaptureState *)ctx->priv;
+    size_t size = ctx->bufSize;
+    if (ctx->bufMode == BUF_CIRC_DOUBLE)
+        size /= 2;
+
+    Uint32 bytes = (Uint32)(size * sizeof(stream_sample_t));
+
+    // Block until a full block has been captured, mirroring how a hardware
+    // driver blocks on its DMA half-transfer. Bounded so a stalled device
+    // cannot wedge the consumer: on timeout data() pads with silence.
+    int guard = 0;
+    while ((SDL_GetQueuedAudioSize(state->dev) < bytes)
+           && (guard < PLAY_DRAIN_TIMEOUT_MS)) {
+        SDL_Delay(1);
+        guard += 1;
+    }
+
+    return 0;
+}
+
+static int sdlCapture_data(struct streamCtx *ctx, stream_sample_t **buf)
+{
+    if (ctx->running == 0)
+        return -1;
+
+    struct sdlCaptureState *state = (struct sdlCaptureState *)ctx->priv;
+    size_t size = ctx->bufSize;
+    if (ctx->bufMode == BUF_CIRC_DOUBLE)
+        size /= 2;
+
+    Uint32 bytes = (Uint32)(size * sizeof(stream_sample_t));
+    stream_sample_t *half = ctx->buffer + (state->idleHalf * size);
+
+    Uint32 got = SDL_DequeueAudio(state->dev, half, bytes);
+    if (got < bytes)
+        memset(reinterpret_cast<uint8_t *>(half) + got, 0, bytes - got);
+
+    if (ctx->bufMode == BUF_CIRC_DOUBLE)
+        state->idleHalf ^= 1;
+
+    *buf = half;
+    return (int)size;
+}
+
+static void sdlCapture_close(struct streamCtx *ctx)
+{
+    if (ctx->running == 0)
+        return;
+
+    struct sdlCaptureState *state = (struct sdlCaptureState *)ctx->priv;
+
+    SDL_CloseAudioDevice(state->dev);
+    free(state);
+    ctx->priv = NULL;
+    ctx->running = 0;
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 #pragma GCC diagnostic ignored "-Wc++20-extensions"
@@ -179,5 +286,13 @@ const struct audioDriver sdl_play_audio_driver __attribute__((aligned(8))) = {
     .sync = sdlPlay_sync,
     .stop = sdlPlay_stop,
     .terminate = sdlPlay_halt,
+};
+
+const struct audioDriver sdl_capture_audio_driver __attribute__((aligned(8))) = {
+    .start = sdlCapture_start,
+    .data = sdlCapture_data,
+    .sync = sdlCapture_sync,
+    .stop = sdlCapture_close,
+    .terminate = sdlCapture_close,
 };
 #pragma GCC diagnostic pop

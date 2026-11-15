@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 /**
- * SDL2-backed audio playback and beep for the host (Linux) and WebAssembly
+ * SDL2-backed audio playback, capture and beep for the host (Linux) and WebAssembly
  * emulator targets. On native builds SDL routes to ALSA/PulseAudio/PipeWire;
  * under Emscripten it routes to the Web Audio API.
  *
@@ -27,6 +27,11 @@ extern "C" {
  * Output driver: plays the audio stream on the default output device.
  */
 extern const struct audioDriver sdl_play_audio_driver;
+
+/**
+ * Input driver: captures the audio stream from the default input device.
+ */
+extern const struct audioDriver sdl_capture_audio_driver;
 
 #ifdef __cplusplus
 }
