@@ -114,9 +114,10 @@ openrtx_inc += ['lib/qdec/include']
 # files at subprojects/codec2/src/*.c regardless of which library is used
 # for linking. For native builds, prefer system libraries (pkg-config or
 # find_library) so homebrew, Nix, and distro packages work. For cross
-# builds (embedded), use the subproject build.
+# builds (embedded), use the subproject build. Set -Dsystem_codec2=false to
+# build native targets against the same codec2 the firmware ships.
 codec2_proj = subproject('codec2')
-if not meson.is_cross_build()
+if not meson.is_cross_build() and get_option('system_codec2')
   # Try pkg-config first (homebrew, Nix, and other pkg-config-based installs)
   codec2_dep = dependency('codec2', method: 'pkg-config', required: false)
   if not codec2_dep.found()

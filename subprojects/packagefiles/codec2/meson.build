@@ -29,6 +29,13 @@ add_project_arguments('-DCODEC2_MODE_1600_EN=1'   , language : 'c')
 add_project_arguments('-DFREEDV_MODE_EN_DEFAULT=0', language : 'c')
 add_project_arguments('-w'                        , language : 'c')
 
+# Only the enabled modes are compiled in through the defines above, but
+# codec2.c still references the functions of the disabled ones. Put each
+# function in its own section so the linker's garbage collection drops them on
+# native builds too (the embedded cross files already pass these flags).
+add_project_arguments('-ffunction-sections'       , language : 'c')
+add_project_arguments('-fdata-sections'           , language : 'c')
+
 codec2 = static_library('codec2',
                         codec2_src,
                         include_directories : codec2_inc,
