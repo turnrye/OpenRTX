@@ -80,8 +80,8 @@ public:
      * @param frame: stream data frame.
      * @param punctured: destination for the 272 punctured coded bits.
      */
-    static void encodeStreamPayload(const StreamFrame& frame,
-                                    std::array< uint8_t, 34 >& punctured);
+    void encodeStreamPayload(const StreamFrame& frame,
+                             std::array< uint8_t, 34 >& punctured);
 
     /**
      * Encode an End Of Transmission marker frame.

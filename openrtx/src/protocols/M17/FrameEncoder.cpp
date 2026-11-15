@@ -97,10 +97,10 @@ uint16_t FrameEncoder::encodeStreamFrame(const payload_t& payload,
 void FrameEncoder::encodeStreamPayload(const StreamFrame& frame,
                                        std::array<uint8_t, 34>& punctured)
 {
-    ConvolutionalEncoder conv;
     std::array<uint8_t, 37> encoded;
-    conv.encode(&frame.frameData, encoded.data(), sizeof(StreamFrame));
-    encoded[36] = conv.flush();
+    encoder.reset();
+    encoder.encode(&frame.frameData, encoded.data(), sizeof(StreamFrame));
+    encoded[36] = encoder.flush();
 
     puncture(encoded, punctured, DATA_PUNCTURE);
 }
