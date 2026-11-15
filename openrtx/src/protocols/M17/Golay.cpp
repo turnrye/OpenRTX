@@ -5,7 +5,6 @@
  */
 
 #include "protocols/M17/Golay.hpp"
-#include "core/utils.h"
 #include <cstdlib>
 
 using namespace M17;
@@ -119,12 +118,12 @@ static constexpr uint32_t MIN_MARGIN = 0x7FFF;
  * @param rel: reliability of each bit, by bit number.
  * @param weak: bit numbers of the least reliable bits, least reliable first.
  */
-static void leastReliable(const uint16_t (&rel)[CODE_BITS],
-                          uint8_t (&weak)[CHASE_BITS])
+static void leastReliable(const std::array< uint16_t, CODE_BITS >& rel,
+                          std::array< uint8_t, CHASE_BITS >& weak)
 {
     uint32_t taken = 0;
 
-    for(uint8_t k = 0; k < ARRAY_SIZE(weak); k++)
+    for(uint8_t k = 0; k < weak.size(); k++)
     {
         int8_t min = -1;
 
@@ -150,11 +149,12 @@ static void leastReliable(const uint16_t (&rel)[CODE_BITS],
  * @param rel: reliability of each bit, by bit number.
  * @return the distance.
  */
-static uint32_t distance(const uint32_t diff, const uint16_t (&rel)[CODE_BITS])
+static uint32_t distance(const uint32_t diff,
+                         const std::array< uint16_t, CODE_BITS >& rel)
 {
     uint32_t dist = 0;
 
-    for(uint8_t bit = 0; bit < ARRAY_SIZE(rel); bit++)
+    for(uint8_t bit = 0; bit < rel.size(); bit++)
     {
         if((diff & (1UL << bit)) != 0)
             dist += rel[bit];
@@ -168,9 +168,9 @@ uint16_t M17::golay24_softDecode(const std::array< uint16_t, 24 >& soft)
     // Hard decisions and their reliability, |2 * soft - 0xFFFF|, by bit
     // number, the first soft bit being the most significant
     uint32_t hard = 0;
-    uint16_t rel[CODE_BITS];
+    std::array< uint16_t, CODE_BITS > rel;
 
-    for(uint8_t i = 0; i < ARRAY_SIZE(rel); i++)
+    for(uint8_t i = 0; i < rel.size(); i++)
     {
         uint8_t bit     = CODE_BITS - 1 - i;
         int32_t centred = (2 * soft[i]) - UINT16_MAX;
@@ -181,7 +181,7 @@ uint16_t M17::golay24_softDecode(const std::array< uint16_t, 24 >& soft)
         rel[bit] = std::abs(centred);
     }
 
-    uint8_t weak[CHASE_BITS];
+    std::array< uint8_t, CHASE_BITS > weak;
     leastReliable(rel, weak);
 
     // Try every combination of flips of the weak bits, keeping the closest
@@ -222,11 +222,11 @@ uint16_t M17::golay24_softDecode(const std::array< uint16_t, 24 >& soft)
         }
     }
 
-    // Nothing decodable, or a runner-up too close to tell apart
-    if(bestDist == UINT32_MAX)
-        return 0xFFFF;
-
-    if((nextDist != UINT32_MAX) && ((nextDist - bestDist) <= MIN_MARGIN))
+    // Nothing decodable, or a runner-up too close to tell apart. Without a
+    // runner-up nextDist stays at UINT32_MAX and the margin is always large
+    // enough; with no candidate at all both distances are UINT32_MAX and the
+    // margin is zero.
+    if((nextDist - bestDist) <= MIN_MARGIN)
         return 0xFFFF;
 
     return (best >> 12) & 0x0FFF;
