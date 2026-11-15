@@ -127,6 +127,7 @@ struct agcParams {
     float maxGainDb;      ///< Highest gain the AGC applies
     float attackDbPerBlk; ///< Largest gain decrease per block
     float releaseDbPerBlk;///< Largest gain increase per block
+    float fastDownDb;     ///< Pull the gain down at once when a block is this far over target (0 = off)
     float gateAboveFloor; ///< Gate opens this many dB above the noise floor
     float gateMinDb;      ///< Gate never opens below this level
     float floorRiseDbPerBlk; ///< Noise floor tracker rise rate

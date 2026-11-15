@@ -240,6 +240,18 @@ static void *encodeFunc(void *arg)
     if (micAgcReady == false) {
         struct agcParams params;
         dsp_agcDefaults(&params);
+#ifdef MIC_EXP_AGC_KNEE
+        params.kneeDb = MIC_EXP_AGC_KNEE;
+#endif
+#ifdef MIC_EXP_AGC_ATTACK
+        params.attackDbPerBlk = MIC_EXP_AGC_ATTACK;
+#endif
+#ifdef MIC_EXP_AGC_FASTDOWN
+        params.fastDownDb = MIC_EXP_AGC_FASTDOWN;
+#endif
+#ifdef MIC_EXP_AGC_TARGET
+        params.targetDb = MIC_EXP_AGC_TARGET;
+#endif
         dsp_agcInit(&micAgc, &params);
         micAgcReady = true;
     }

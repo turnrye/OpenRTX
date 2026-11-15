@@ -67,6 +67,7 @@ void dsp_agcDefaults(struct agcParams *params)
     params->maxGainDb         = 24.0f;
     params->attackDbPerBlk    = 1.5f;   // ~75 dB/s with 20 ms blocks
     params->releaseDbPerBlk   = 0.08f;  // ~4 dB/s
+    params->fastDownDb        = 6.0f;
     params->gateAboveFloor    = 9.0f;
     params->gateMinDb         = -65.0f;
     params->floorRiseDbPerBlk = 0.02f;  // ~1 dB/s
@@ -140,7 +141,8 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
         // A block that would overshoot the target at the current gain is
         // pulled down at once, up to the attack rate
         const float over = (blkDb + agc->gainDb) - agc->p.targetDb;
-        if((over > 6.0f) && (want > agc->gainDb - over))
+        if((agc->p.fastDownDb > 0.0f) && (over > agc->p.fastDownDb)
+           && (want > agc->gainDb - over))
             want = agc->gainDb - over;
 
         if(want < agc->gainDb) {
