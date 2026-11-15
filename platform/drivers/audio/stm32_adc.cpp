@@ -258,6 +258,47 @@ static int stm32adc_start(const uint8_t instance, const void *config, struct str
 
     #ifdef STM32H743xx
     uint32_t channel = (uint32_t) config;
+
+    #ifdef MIC_EXP_H7_OVS
+    /*
+     * EXPERIMENT (private): the microphone channel converts at 16 bit with
+     * x16 hardware oversampling, right shift 5: a 15 bit result (0..32767,
+     * mid-scale 16384), eight times the 12 bit scale. Other channels (the RX
+     * baseband) keep 12 bit without oversampling. CFGR/CFGR2 can only change
+     * with no conversion running, so stop the ADC first.
+     *
+     * Timing: ADC kernel clock HCLK/4 = 50 MHz (25 MHz worst case with the
+     * rev V internal /2); per trigger 16 x (16.5 sampling + 8.5 conversion) =
+     * 400 cycles, 16 us of the 20.8 us period at 48 kHz.
+     */
+    if(adc->CR & ADC_CR_ADSTART)
+    {
+        adc->CR |= ADC_CR_ADSTP;
+        while(adc->CR & ADC_CR_ADSTART) ;
+    }
+
+    uint32_t cfgr = adc->CFGR & ~ADC_CFGR_RES;
+    if(channel == ADC_MIC_CH)
+    {
+        adc->CFGR  = cfgr;                              // RES = 000, 16 bit
+        adc->CFGR2 = ADC_CFGR2_ROVSE                    // Regular oversampling
+                   | (15u << ADC_CFGR2_OVSR_Pos)        // ratio 16
+                   | (5u  << ADC_CFGR2_OVSS_Pos);       // right shift 5
+
+        // Shorter sampling time (16.5 cycles) on this channel only
+        volatile uint32_t *smpr = (channel < 10) ? &adc->SMPR1 : &adc->SMPR2;
+        uint32_t pos = (channel % 10) * 3;
+        *smpr = (*smpr & ~(7u << pos)) | (3u << pos);
+    }
+    else
+    {
+        adc->CFGR  = cfgr | ADC_CFGR_RES_1;             // 12 bit, as before
+        adc->CFGR2 = 0;
+        adc->SMPR1 = 0x36DB6DB6;
+        adc->SMPR2 = 0x36DB6DB6;
+    }
+    #endif
+
     adc->SQR1  = channel << ADC_SQR1_SQ1_Pos;
     adc->PCSEL = 1 << channel;
     adc->CR   |= ADC_CR_ADSTART;

@@ -34,6 +34,24 @@
 #define CONFIG_MIC_OVERSAMPLE 1
 #endif
 
+#ifdef MIC_EXP_H7_OVS
+/*
+ * EXPERIMENT (private): with 16 bit x16 hardware oversampling the mic samples
+ * are 15 bit, eight times the 12 bit scale: divide the gain by eight so the
+ * overall gain is unchanged. Not combined with MIC_EXP_KEEP_SUM, whose sum of
+ * 15 bit samples would overflow int16.
+ */
+#if defined(MIC_EXP_KEEP_SUM)
+#error "MIC_EXP_H7_OVS and MIC_EXP_KEEP_SUM cannot be combined"
+#endif
+#if (CONFIG_MIC_GAIN % 8) != 0
+#error "MIC_EXP_H7_OVS needs CONFIG_MIC_GAIN divisible by 8"
+#endif
+#define MIC_GAIN (CONFIG_MIC_GAIN / 8)
+#else
+#define MIC_GAIN CONFIG_MIC_GAIN
+#endif
+
 /*
  * EXPERIMENT (private/mic-exp): the high-pass and the AGC run on a float copy
  * of the block, with the base gain applied without saturation.
@@ -42,10 +60,10 @@
 #define MIC_EXP_FLOAT_CHAIN
 #include <math.h>
 #if defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
-#define MIC_EXP_SCALE ((float)CONFIG_MIC_GAIN \
+#define MIC_EXP_SCALE ((float)MIC_GAIN \
                        / ((float)CONFIG_MIC_OVERSAMPLE * 32768.0f))
 #else
-#define MIC_EXP_SCALE ((float)CONFIG_MIC_GAIN / 32768.0f)
+#define MIC_EXP_SCALE ((float)MIC_GAIN / 32768.0f)
 #endif
 #endif
 
@@ -306,7 +324,7 @@ static void *encodeFunc(void *arg)
             // HPF/AGC see loud input unclipped.
             fbuf[outIdx++] = (float)sample * MIC_EXP_SCALE;
 #elif defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
-            int32_t scaled = ((int32_t)sample * CONFIG_MIC_GAIN)
+            int32_t scaled = ((int32_t)sample * MIC_GAIN)
                              / CONFIG_MIC_OVERSAMPLE;
             if (scaled > INT16_MAX)
                 scaled = INT16_MAX;
@@ -314,7 +332,7 @@ static void *encodeFunc(void *arg)
                 scaled = INT16_MIN;
             audio.data[outIdx++] = (int16_t)scaled;
 #else
-            audio.data[outIdx++] = s16_mulSat(sample, CONFIG_MIC_GAIN);
+            audio.data[outIdx++] = s16_mulSat(sample, MIC_GAIN);
 #endif
         }
 
