@@ -124,7 +124,7 @@ private:
      * @param outerDeviation: positive and negative outer symbol levels.
      * @return the symbol.
      */
-    static int8_t
+    int8_t
     hardSlice(const int16_t sample,
               const std::pair< int32_t, int32_t >& outerDeviation);
 
@@ -143,7 +143,7 @@ private:
      * @param outerDeviation: positive and negative outer symbol levels.
      * @return the soft bits, 0x0000 a confident 0 and 0xFFFF a confident 1.
      */
-    static std::array< uint16_t, 2 >
+    std::array< uint16_t, 2 >
     softSlice(const int16_t sample,
               const std::pair< int32_t, int32_t >& outerDeviation);
 
