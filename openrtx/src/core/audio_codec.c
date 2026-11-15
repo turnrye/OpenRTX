@@ -34,6 +34,31 @@
 #define CONFIG_MIC_OVERSAMPLE 1
 #endif
 
+/*
+ * EXPERIMENT (private/mic-exp): the high-pass and the AGC run on a float copy
+ * of the block, with the base gain applied without saturation.
+ */
+#if defined(MIC_EXP_HPF) || defined(MIC_EXP_AGC)
+#define MIC_EXP_FLOAT_CHAIN
+#include <math.h>
+#if defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
+#define MIC_EXP_SCALE ((float)CONFIG_MIC_GAIN \
+                       / ((float)CONFIG_MIC_OVERSAMPLE * 32768.0f))
+#else
+#define MIC_EXP_SCALE ((float)CONFIG_MIC_GAIN / 32768.0f)
+#endif
+#endif
+
+#ifndef MIC_EXP_HPF_HZ
+#define MIC_EXP_HPF_HZ 110.0f
+#endif
+
+#ifdef MIC_EXP_AGC
+// Kept across transmissions, so each over starts at the gain the last ended on
+static struct agcState micAgc;
+static bool micAgcReady = false;
+#endif
+
 static pathId audioPath;
 
 static uint8_t initCnt = 0;
@@ -204,6 +229,21 @@ static void *encodeFunc(void *arg)
 #ifdef MIC_EXP_PRIME_DC
     bool primeDc = true;
 #endif
+#ifdef MIC_EXP_FLOAT_CHAIN
+    float fbuf[CODEC2_FRAME_SAMPLES];
+#endif
+#ifdef MIC_EXP_HPF
+    struct biquad hpf;
+    dsp_highPassInit(&hpf, MIC_EXP_HPF_HZ, 8000.0f);
+#endif
+#ifdef MIC_EXP_AGC
+    if (micAgcReady == false) {
+        struct agcParams params;
+        dsp_agcDefaults(&params);
+        dsp_agcInit(&micAgc, &params);
+        micAgcReady = true;
+    }
+#endif
 
     while (reqStop == false) {
         // Invalid audio path, quit
@@ -249,7 +289,11 @@ static void *encodeFunc(void *arg)
 #endif
 
             sample = dsp_dcBlockFilter(&dcBlock, sample);
-#if defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
+#ifdef MIC_EXP_FLOAT_CHAIN
+            // EXPERIMENT: base gain in float, without saturation, so the
+            // HPF/AGC see loud input unclipped.
+            fbuf[outIdx++] = (float)sample * MIC_EXP_SCALE;
+#elif defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
             int32_t scaled = ((int32_t)sample * CONFIG_MIC_GAIN)
                              / CONFIG_MIC_OVERSAMPLE;
             if (scaled > INT16_MAX)
@@ -261,6 +305,24 @@ static void *encodeFunc(void *arg)
             audio.data[outIdx++] = s16_mulSat(sample, CONFIG_MIC_GAIN);
 #endif
         }
+
+#ifdef MIC_EXP_FLOAT_CHAIN
+#ifdef MIC_EXP_HPF
+        for (size_t i = 0; i < outIdx; i++)
+            fbuf[i] = dsp_biquad(&hpf, fbuf[i]);
+#endif
+#ifdef MIC_EXP_AGC
+        dsp_agcProcess(&micAgc, fbuf, outIdx);
+#endif
+        for (size_t i = 0; i < outIdx; i++) {
+            float v = fbuf[i] * 32767.0f;
+            if (v > 32767.0f)
+                v = 32767.0f;
+            if (v < -32768.0f)
+                v = -32768.0f;
+            audio.data[i] = (int16_t)lrintf(v);
+        }
+#endif
 
         // CODEC2 encodes 160 speech samples (20 ms), into 8 bytes: here we
         // write the new encoded data into a buffer of 16 bytes, writing the
