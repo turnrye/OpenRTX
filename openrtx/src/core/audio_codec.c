@@ -341,6 +341,21 @@ static void *encodeFunc(void *arg)
         // first half and then the second one, sequentially.
         // Data ready flag is rised once all the 16 bytes contain new data.
         uint64_t frame = 0;
+#if defined(PLATFORM_LINUX)
+        // EXPERIMENT (private): emulator tap of the exact samples codec2
+        // encodes, appended as raw s16le, when OPENRTX_MIC_PRECODEC_FILE is set
+        {
+            const char *tap = getenv("OPENRTX_MIC_PRECODEC_FILE");
+            if ((tap != NULL) && (tap[0] != '\0')) {
+                FILE *fp = fopen(tap, "ab");
+                if (fp != NULL) {
+                    fwrite(audio.data, sizeof(int16_t), CODEC2_FRAME_SAMPLES,
+                           fp);
+                    fclose(fp);
+                }
+            }
+        }
+#endif
         codec2_encode(codec2, ((uint8_t *)&frame), audio.data);
 
         pthread_mutex_lock(&data_mutex);
