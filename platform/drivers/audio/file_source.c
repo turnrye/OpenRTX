@@ -9,11 +9,13 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
 #include "file_source.h"
 
 struct fileSourceState {
     FILE *fp;
     bool loop;
+    struct timespec next; ///< When the next block is due
 };
 
 const char *fileSource_path(const struct fileSourceConfig *cfg)
@@ -57,6 +59,7 @@ static int fileSource_start(const uint8_t instance, const void *config,
     }
 
     state->loop = cfg->loop;
+    clock_gettime(CLOCK_MONOTONIC, &state->next);
     ctx->priv = state;
     ctx->running = 1;
 
@@ -112,9 +115,31 @@ static int fileSource_sync(struct streamCtx *ctx, uint8_t dirty)
         size /= 2;
 
     // Simulate the time needed to get a new chunck of data from an equivalent
-    // hardware peripheral.
-    uint32_t waitTime = (1000000 * size) / ctx->sampleRate;
-    usleep(waitTime);
+    // hardware peripheral. Sleep to a deadline, so that oversleeping and
+    // processing time do not add up to a slower than real time stream.
+    struct fileSourceState *state = (struct fileSourceState *)ctx->priv;
+    uint64_t ns = (1000000000ULL * size) / ctx->sampleRate;
+    if (state == NULL) {
+        usleep((useconds_t)(ns / 1000));
+        return 0;
+    }
+
+    state->next.tv_nsec += (long)(ns % 1000000000ULL);
+    state->next.tv_sec += (time_t)(ns / 1000000000ULL);
+    if (state->next.tv_nsec >= 1000000000L) {
+        state->next.tv_nsec -= 1000000000L;
+        state->next.tv_sec++;
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    int64_t wait = ((int64_t)(state->next.tv_sec - now.tv_sec) * 1000000000LL)
+                 + (state->next.tv_nsec - now.tv_nsec);
+    if (wait > 0) {
+        struct timespec ts = { (time_t)(wait / 1000000000LL),
+                               (long)(wait % 1000000000LL) };
+        nanosleep(&ts, NULL);
+    }
 
     return 0;
 }
