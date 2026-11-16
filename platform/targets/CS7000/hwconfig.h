@@ -66,6 +66,16 @@ extern const struct gpsDevice gps;
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
 
+/*
+ * POC (poc/m17-mic-agc, not for upstream as is): M17 microphone chain
+ * changes enabled by default for test builds. See OpenRTX/OpenRTX#309 and
+ * the emulator evidence in turnrye/OpenRTX-Acceptance-Testing#35.
+ */
+#define MIC_EXP_PRIME_DC    // no key-up click
+#define MIC_EXP_KEEP_SUM    // keep the oversampled resolution
+#define MIC_EXP_HPF         // 110 Hz high-pass
+#define MIC_EXP_AGC         // AGC with silence gate and limiter
+
 #ifdef __cplusplus
 }
 #endif
