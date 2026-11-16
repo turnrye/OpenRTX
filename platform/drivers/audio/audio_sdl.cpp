@@ -288,11 +288,12 @@ const struct audioDriver sdl_play_audio_driver __attribute__((aligned(8))) = {
     .terminate = sdlPlay_halt,
 };
 
-const struct audioDriver sdl_capture_audio_driver __attribute__((aligned(8))) = {
-    .start = sdlCapture_start,
-    .data = sdlCapture_data,
-    .sync = sdlCapture_sync,
-    .stop = sdlCapture_close,
-    .terminate = sdlCapture_close,
-};
+const struct audioDriver sdl_capture_audio_driver
+    __attribute__((aligned(8))) = {
+        .start = sdlCapture_start,
+        .data = sdlCapture_data,
+        .sync = sdlCapture_sync,
+        .stop = sdlCapture_close,
+        .terminate = sdlCapture_close,
+    };
 #pragma GCC diagnostic pop

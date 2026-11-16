@@ -122,17 +122,17 @@ static inline float dsp_biquad(struct biquad *bq, const float x)
  * normalised (+-1.0) signal.
  */
 struct agcParams {
-    float targetDb;       ///< Speech level the AGC aims at (block RMS)
-    float minGainDb;      ///< Lowest gain the AGC applies
-    float maxGainDb;      ///< Highest gain the AGC applies
-    float attackDbPerBlk; ///< Largest gain decrease per block
-    float releaseDbPerBlk;///< Largest gain increase per block
-    float fastDownDb;     ///< Pull the gain down at once when a block is this far over target (0 = off)
-    float gateAboveFloor; ///< Gate opens this many dB above the noise floor
-    float gateMinDb;      ///< Gate never opens below this level
+    float targetDb;        ///< Speech level the AGC aims at (block RMS)
+    float minGainDb;       ///< Lowest gain the AGC applies
+    float maxGainDb;       ///< Highest gain the AGC applies
+    float attackDbPerBlk;  ///< Largest gain decrease per block
+    float releaseDbPerBlk; ///< Largest gain increase per block
+    float fastDownDb; ///< Pull the gain down at once when a block is this far over target (0 = off)
+    float gateAboveFloor;    ///< Gate opens this many dB above the noise floor
+    float gateMinDb;         ///< Gate never opens below this level
     float floorRiseDbPerBlk; ///< Noise floor tracker rise rate
-    float kneeDb;         ///< Limiter knee
-    float ceilingDb;      ///< Limiter ceiling, never exceeded
+    float kneeDb;            ///< Limiter knee
+    float ceilingDb;         ///< Limiter ceiling, never exceeded
 };
 
 /**
@@ -140,11 +140,11 @@ struct agcParams {
  */
 struct agcState {
     struct agcParams p;
-    float gainDb;       ///< Gain applied at the end of the last block
-    float levelDb;      ///< Smoothed speech level estimate
-    float floorDb;      ///< Noise floor estimate
-    bool gateOpen;      ///< Gate state of the last block
-    uint16_t acquire;   ///< Speech blocks left in the fast acquisition phase
+    float gainDb;     ///< Gain applied at the end of the last block
+    float levelDb;    ///< Smoothed speech level estimate
+    float floorDb;    ///< Noise floor estimate
+    bool gateOpen;    ///< Gate state of the last block
+    uint16_t acquire; ///< Speech blocks left in the fast acquisition phase
 };
 
 /**

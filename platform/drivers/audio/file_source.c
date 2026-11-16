@@ -77,7 +77,8 @@ static int fileSource_data(struct streamCtx *ctx, stream_sample_t **buf)
         size /= 2;
 
     while (i < size) {
-        size_t n = fread(dest + i, sizeof(stream_sample_t), size - i, state->fp);
+        size_t n = fread(dest + i, sizeof(stream_sample_t), size - i,
+                         state->fp);
         i += n;
 
         if (i < size) {

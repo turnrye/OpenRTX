@@ -78,10 +78,10 @@ extern const struct gpsDevice gps;
  * changes enabled by default for test builds. See OpenRTX/OpenRTX#309 and
  * the emulator evidence in turnrye/OpenRTX-Acceptance-Testing#35.
  */
-#define MIC_EXP_PRIME_DC    // no key-up click
-#define MIC_EXP_H7_OVS      // 16 bit x16 hardware-oversampled mic ADC
-#define MIC_EXP_HPF         // 110 Hz high-pass
-#define MIC_EXP_AGC         // AGC with silence gate and limiter
+#define MIC_EXP_PRIME_DC // no key-up click
+#define MIC_EXP_H7_OVS   // 16 bit x16 hardware-oversampled mic ADC
+#define MIC_EXP_HPF      // 110 Hz high-pass
+#define MIC_EXP_AGC      // AGC with silence gate and limiter
 
 #ifdef __cplusplus
 }

@@ -60,8 +60,8 @@
 #define MIC_EXP_FLOAT_CHAIN
 #include <math.h>
 #if defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
-#define MIC_EXP_SCALE ((float)MIC_GAIN \
-                       / ((float)CONFIG_MIC_OVERSAMPLE * 32768.0f))
+#define MIC_EXP_SCALE \
+    ((float)MIC_GAIN / ((float)CONFIG_MIC_OVERSAMPLE * 32768.0f))
 #else
 #define MIC_EXP_SCALE ((float)MIC_GAIN / 32768.0f)
 #endif
@@ -325,7 +325,7 @@ static void *encodeFunc(void *arg)
             fbuf[outIdx++] = (float)sample * MIC_EXP_SCALE;
 #elif defined(MIC_EXP_KEEP_SUM) && (CONFIG_MIC_OVERSAMPLE > 1)
             int32_t scaled = ((int32_t)sample * MIC_GAIN)
-                             / CONFIG_MIC_OVERSAMPLE;
+                           / CONFIG_MIC_OVERSAMPLE;
             if (scaled > INT16_MAX)
                 scaled = INT16_MAX;
             if (scaled < INT16_MIN)
