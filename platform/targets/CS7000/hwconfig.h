@@ -75,6 +75,8 @@ extern const struct gpsDevice gps;
 #define MIC_EXP_KEEP_SUM // keep the oversampled resolution
 #define MIC_EXP_HPF      // 110 Hz high-pass
 #define MIC_EXP_AGC      // AGC with silence gate and limiter
+#define MIC_EXP_AGC2     // gain rises on confirmed speech, windowed floor
+#define MIC_EXP_AGC_TARGET -18.0f
 
 #ifdef __cplusplus
 }
