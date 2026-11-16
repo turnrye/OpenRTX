@@ -133,6 +133,10 @@ struct agcParams {
     float floorRiseDbPerBlk; ///< Noise floor tracker rise rate
     float kneeDb;            ///< Limiter knee
     float ceilingDb;         ///< Limiter ceiling, never exceeded
+    uint16_t
+        hangoverBlocks; ///< Gate-closed blocks before a pause counts as silence
+    float expanderDb;   ///< Extra attenuation in silence (0 = off)
+    float expanderDbPerBlk; ///< Rate the expander attenuation fades in
 };
 
 /**
@@ -145,7 +149,18 @@ struct agcState {
     float floorDb;    ///< Noise floor estimate
     bool gateOpen;    ///< Gate state of the last block
     uint16_t acquire; ///< Speech blocks left in the fast acquisition phase
+    uint16_t closed;  ///< Consecutive gate-closed blocks
+    float expDb;      ///< Expander attenuation at the end of the last block
 };
+
+/**
+ * Whether the AGC's gate has been closed for at least the hangover: the
+ * talker is pausing, not between syllables.
+ */
+static inline bool dsp_agcSilent(const struct agcState *agc)
+{
+    return agc->closed >= agc->p.hangoverBlocks;
+}
 
 /**
  * Default AGC parameters for microphone audio feeding codec2 at 8 kHz in

@@ -270,6 +270,9 @@ static void *encodeFunc(void *arg)
 #ifdef MIC_EXP_AGC_TARGET
         params.targetDb = MIC_EXP_AGC_TARGET;
 #endif
+#ifdef MIC_EXP_EXPANDER
+        params.expanderDb = MIC_EXP_EXPANDER;
+#endif
         dsp_agcInit(&micAgc, &params);
         micAgcReady = true;
     }
@@ -375,6 +378,16 @@ static void *encodeFunc(void *arg)
         }
 #endif
         codec2_encode(codec2, ((uint8_t *)&frame), audio.data);
+#if defined(MIC_EXP_SILENCE_FRAME) && defined(MIC_EXP_AGC)
+        // EXPERIMENT (private): in a pause (gate closed for the hangover),
+        // send codec2 3200's silence frame instead of the encoded noise. The
+        // encoder still runs, so its state stays continuous.
+        if (dsp_agcSilent(&micAgc)) {
+            static const uint8_t silence[8] = { 0x01, 0x00, 0x09, 0x43,
+                                                0x9C, 0xE4, 0x21, 0x08 };
+            memcpy(&frame, silence, sizeof(silence));
+        }
+#endif
 
         pthread_mutex_lock(&data_mutex);
 

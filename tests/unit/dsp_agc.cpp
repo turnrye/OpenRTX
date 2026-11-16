@@ -135,3 +135,45 @@ TEST_CASE("AGC on digital silence produces silence, not NaN", "[dsp][agc]")
         REQUIRE(buf[i] == 0.0f);
     REQUIRE(std::isfinite(agc.gainDb));
 }
+
+TEST_CASE("Expander attenuates a pause only after the hangover",
+          "[dsp][agc][expander]")
+{
+    struct agcParams p;
+    dsp_agcDefaults(&p);
+    p.expanderDb = 20.0f;
+    struct agcState agc;
+    dsp_agcInit(&agc, &p);
+
+    float out, peak;
+    size_t phase = 0;
+    runTone(&agc, -30.0f, 440.0f, 300, &out, &peak, &phase);
+    const float gain = agc.gainDb;
+
+    // Low noise: a short gap below the hangover is untouched...
+    float buf[BLK];
+    uint32_t seed = 7;
+    auto noise = [&](size_t blocks) {
+        for (size_t b = 0; b < blocks; b++) {
+            for (size_t i = 0; i < BLK; i++) {
+                seed = seed * 1664525u + 1013904223u;
+                buf[i] = 3e-4f * ((float)(seed >> 8) / 8388608.0f - 1.0f);
+            }
+            dsp_agcProcess(&agc, buf, BLK);
+        }
+    };
+    noise(p.hangoverBlocks - 1);
+    REQUIRE(dsp_agcSilent(&agc) == false);
+    REQUIRE(agc.expDb == 0.0f);
+
+    // ...a long pause fades to the full expander depth, gain still held
+    noise(40);
+    REQUIRE(dsp_agcSilent(&agc) == true);
+    REQUIRE_THAT(agc.expDb, WithinAbs(-p.expanderDb, 0.01));
+    REQUIRE_THAT(agc.gainDb, WithinAbs(gain, 0.01));
+
+    // Speech returns: attenuation is gone within one block
+    runTone(&agc, -30.0f, 440.0f, 1, &out, &peak, &phase);
+    REQUIRE(agc.expDb == 0.0f);
+    REQUIRE(dsp_agcSilent(&agc) == false);
+}

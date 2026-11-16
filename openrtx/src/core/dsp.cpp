@@ -74,6 +74,9 @@ void dsp_agcDefaults(struct agcParams *params)
     params->floorRiseDbPerBlk = 0.02f; // ~1 dB/s
     params->kneeDb = -6.0f;
     params->ceilingDb = -1.0f;
+    params->hangoverBlocks = 12; // 240 ms
+    params->expanderDb = 0.0f;   // off
+    params->expanderDbPerBlk = 2.0f;
 }
 
 void dsp_agcInit(struct agcState *agc, const struct agcParams *params)
@@ -84,6 +87,8 @@ void dsp_agcInit(struct agcState *agc, const struct agcParams *params)
     agc->floorDb = params->gateMinDb;
     agc->gateOpen = false;
     agc->acquire = 50; // 1 s of 20 ms blocks
+    agc->closed = 0;
+    agc->expDb = 0.0f;
 }
 
 float dsp_softLimit(float x, float knee, float ceiling)
@@ -126,7 +131,23 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
 
     agc->gateOpen = (blkDb > gate);
 
-    const float prevGainDb = agc->gainDb;
+    const float prevGainDb = agc->gainDb + agc->expDb;
+
+    // Expander: once the gate has stayed closed for the hangover, fade in
+    // extra attenuation; remove it at once when the gate opens again
+    if (agc->gateOpen) {
+        agc->closed = 0;
+        agc->expDb = 0.0f;
+    } else {
+        if (agc->closed < UINT16_MAX)
+            agc->closed++;
+        if ((agc->p.expanderDb > 0.0f) && dsp_agcSilent(agc)) {
+            agc->expDb -= agc->p.expanderDbPerBlk;
+            if (agc->expDb < -agc->p.expanderDb)
+                agc->expDb = -agc->p.expanderDb;
+        }
+    }
+
     if (agc->gateOpen) {
         // Speech level: rise fast, fall slowly, so the gain follows phrases
         // rather than individual syllables
@@ -169,7 +190,7 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
 
     // Ramp the gain across the block, then limit
     const float g0 = dbToLin(prevGainDb);
-    const float g1 = dbToLin(agc->gainDb);
+    const float g1 = dbToLin(agc->gainDb + agc->expDb);
     const float dg = (g1 - g0) / (float)len;
     const float knee = dbToLin(agc->p.kneeDb);
     const float ceil = dbToLin(agc->p.ceilingDb);
