@@ -177,3 +177,93 @@ TEST_CASE("Expander attenuates a pause only after the hangover",
     REQUIRE(agc.expDb == 0.0f);
     REQUIRE(dsp_agcSilent(&agc) == false);
 }
+
+/**
+ * Run uniform noise of the given RMS level through the AGC.
+ *
+ * @param agc: AGC state.
+ * @param levelDb: noise level, dBFS RMS.
+ * @param blocks: number of blocks.
+ * @param seed: generator state, updated.
+ */
+static void runNoise(struct agcState *agc, float levelDb, size_t blocks,
+                     uint32_t *seed)
+{
+    const float amp = std::sqrt(3.0f) * std::pow(10.0f, levelDb / 20.0f);
+    float buf[BLK];
+    for (size_t b = 0; b < blocks; b++) {
+        for (size_t i = 0; i < BLK; i++) {
+            *seed = *seed * 1664525u + 1013904223u;
+            buf[i] = amp * ((float)(*seed >> 8) / 8388608.0f - 1.0f);
+        }
+        dsp_agcProcess(agc, buf, BLK);
+    }
+}
+
+TEST_CASE("Windowed floor locks onto a loud noise bed", "[dsp][agc][agc2]")
+{
+    struct agcParams p;
+    dsp_agcDefaults(&p);
+    p.floorWindowBlocks = 20;
+    struct agcState agc;
+    dsp_agcInit(&agc, &p);
+
+    float out, peak;
+    size_t phase = 0;
+    uint32_t seed = 3;
+    runTone(&agc, -20.0f, 440.0f, 50, &out, &peak, &phase);
+    runNoise(&agc, -40.0f, 100, &seed);
+
+    REQUIRE(agc.floorDb > -45.0f);
+    REQUIRE(agc.floorDb < -39.0f);
+    REQUIRE(agc.gateOpen == false);
+}
+
+TEST_CASE("Short noise bursts do not raise the gain", "[dsp][agc][agc2]")
+{
+    // Settle on a talker, then 10 s of quiet noise with 80 ms bursts
+    auto drift = [](uint16_t confirm) {
+        struct agcParams p;
+        dsp_agcDefaults(&p);
+        p.floorWindowBlocks = 20;
+        p.confirmBlocks = confirm;
+        struct agcState agc;
+        dsp_agcInit(&agc, &p);
+
+        float out, peak;
+        size_t phase = 0;
+        uint32_t seed = 5;
+        runTone(&agc, -20.0f, 440.0f, 250, &out, &peak, &phase);
+        const float settled = agc.gainDb;
+        for (size_t i = 0; i < 20; i++) {
+            runNoise(&agc, -50.0f, 21, &seed);
+            runNoise(&agc, -32.0f, 4, &seed);
+        }
+        return agc.gainDb - settled;
+    };
+
+    REQUIRE(drift(0) > 2.0f); // without confirmation the bursts pump
+    REQUIRE(std::fabs(drift(6)) < 0.5f);
+}
+
+TEST_CASE("Noise ceiling caps the gain over the floor", "[dsp][agc][agc2]")
+{
+    struct agcParams p;
+    dsp_agcDefaults(&p);
+    p.floorWindowBlocks = 20;
+    p.noiseCeilingDb = -50.0f;
+    struct agcState agc;
+    dsp_agcInit(&agc, &p);
+
+    // A quiet talker over noise: words of 300 ms, gaps of 200 ms
+    float out, peak;
+    size_t phase = 0;
+    uint32_t seed = 9;
+    for (size_t i = 0; i < 30; i++) {
+        runTone(&agc, -40.0f, 440.0f, 15, &out, &peak, &phase);
+        runNoise(&agc, -55.0f, 10, &seed);
+    }
+
+    REQUIRE(agc.gainDb > 0.0f);
+    REQUIRE(agc.floorDb + agc.gainDb <= p.noiseCeilingDb + 0.1f);
+}

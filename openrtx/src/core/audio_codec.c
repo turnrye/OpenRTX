@@ -273,6 +273,24 @@ static void *encodeFunc(void *arg)
 #ifdef MIC_EXP_EXPANDER
         params.expanderDb = MIC_EXP_EXPANDER;
 #endif
+#ifdef MIC_EXP_AGC2
+        // EXPERIMENT: minimum-statistics floor, gain rises on confirmed speech
+        params.floorWindowBlocks = 20; // 4 x 400 ms
+        params.confirmBlocks = 6;      // 120 ms
+        params.gateAboveFloor = 5.0f; // the windowed floor sits under the noise
+#endif
+#ifdef MIC_EXP_AGC_FLOORWIN
+        params.floorWindowBlocks = MIC_EXP_AGC_FLOORWIN;
+#endif
+#ifdef MIC_EXP_AGC_CONFIRM
+        params.confirmBlocks = MIC_EXP_AGC_CONFIRM;
+#endif
+#ifdef MIC_EXP_AGC_NOISECEIL
+        params.noiseCeilingDb = MIC_EXP_AGC_NOISECEIL;
+#endif
+#ifdef MIC_EXP_AGC_GATE
+        params.gateAboveFloor = MIC_EXP_AGC_GATE;
+#endif
         dsp_agcInit(&micAgc, &params);
         micAgcReady = true;
     }

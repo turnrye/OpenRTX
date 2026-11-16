@@ -136,7 +136,10 @@ struct agcParams {
     uint16_t
         hangoverBlocks; ///< Gate-closed blocks before a pause counts as silence
     float expanderDb;   ///< Extra attenuation in silence (0 = off)
-    float expanderDbPerBlk; ///< Rate the expander attenuation fades in
+    float expanderDbPerBlk;     ///< Rate the expander attenuation fades in
+    uint16_t floorWindowBlocks; ///< Floor: min of 4 windows (0 = rise tracker)
+    uint16_t confirmBlocks;     ///< Open blocks before gain may rise (0 = off)
+    float noiseCeilingDb;       ///< Highest floor level after gain (0 = off)
 };
 
 /**
@@ -144,13 +147,16 @@ struct agcParams {
  */
 struct agcState {
     struct agcParams p;
-    float gainDb;     ///< Gain applied at the end of the last block
-    float levelDb;    ///< Smoothed speech level estimate
-    float floorDb;    ///< Noise floor estimate
-    bool gateOpen;    ///< Gate state of the last block
-    uint16_t acquire; ///< Speech blocks left in the fast acquisition phase
-    uint16_t closed;  ///< Consecutive gate-closed blocks
-    float expDb;      ///< Expander attenuation at the end of the last block
+    float gainDb;      ///< Gain applied at the end of the last block
+    float levelDb;     ///< Smoothed speech level estimate
+    float floorDb;     ///< Noise floor estimate
+    bool gateOpen;     ///< Gate state of the last block
+    uint16_t acquire;  ///< Speech blocks left in the fast acquisition phase
+    uint16_t closed;   ///< Consecutive gate-closed blocks
+    float expDb;       ///< Expander attenuation at the end of the last block
+    uint16_t run;      ///< Consecutive gate-open blocks
+    uint16_t winCount; ///< Blocks into the current floor window
+    float winMin[4];   ///< Minimum of the current and last three windows
 };
 
 /**
@@ -183,8 +189,10 @@ void dsp_agcInit(struct agcState *agc, const struct agcParams *params);
  * The gain for the block is decided from the block's own level, then ramped
  * linearly from the previous block's gain across the block. Blocks quieter
  * than the gate (an adaptive threshold above the tracked noise floor) hold the
- * gain, so pauses do not pump the background noise up. A soft limiter follows
- * the gain, keeping every sample below the ceiling.
+ * gain, so pauses do not pump the background noise up. Optionally the gain
+ * rises only on a run of open blocks (confirmed speech) and is capped so the
+ * noise floor stays below a ceiling. A soft limiter follows the gain, keeping
+ * every sample below the ceiling.
  *
  * @param agc: AGC state.
  * @param block: normalised samples, processed in place.
