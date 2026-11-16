@@ -246,24 +246,29 @@ TEST_CASE("Short noise bursts do not raise the gain", "[dsp][agc][agc2]")
     REQUIRE(std::fabs(drift(6)) < 0.5f);
 }
 
-TEST_CASE("Noise ceiling caps the gain over the floor", "[dsp][agc][agc2]")
+TEST_CASE("No silence while speech is close to the floor", "[dsp][agc][agc2]")
 {
-    struct agcParams p;
-    dsp_agcDefaults(&p);
-    p.floorWindowBlocks = 20;
-    p.noiseCeilingDb = -50.0f;
-    struct agcState agc;
-    dsp_agcInit(&agc, &p);
+    // A talker over noise: words of 300 ms, pauses of 400 ms
+    auto silent = [](float noiseDb) {
+        struct agcParams p;
+        dsp_agcDefaults(&p);
+        p.floorWindowBlocks = 20;
+        p.confirmBlocks = 6;
+        p.gateAboveFloor = 5.0f;
+        p.silenceSnrDb = 15.0f;
+        struct agcState agc;
+        dsp_agcInit(&agc, &p);
 
-    // A quiet talker over noise: words of 300 ms, gaps of 200 ms
-    float out, peak;
-    size_t phase = 0;
-    uint32_t seed = 9;
-    for (size_t i = 0; i < 30; i++) {
-        runTone(&agc, -40.0f, 440.0f, 15, &out, &peak, &phase);
-        runNoise(&agc, -55.0f, 10, &seed);
-    }
+        float out, peak;
+        size_t phase = 0;
+        uint32_t seed = 9;
+        for (size_t i = 0; i < 20; i++) {
+            runTone(&agc, -20.0f, 440.0f, 15, &out, &peak, &phase);
+            runNoise(&agc, noiseDb, 20, &seed);
+        }
+        return dsp_agcSilent(&agc);
+    };
 
-    REQUIRE(agc.gainDb > 0.0f);
-    REQUIRE(agc.floorDb + agc.gainDb <= p.noiseCeilingDb + 0.1f);
+    REQUIRE(silent(-50.0f) == true);
+    REQUIRE(silent(-28.0f) == false);
 }

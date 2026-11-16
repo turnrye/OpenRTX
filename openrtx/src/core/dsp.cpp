@@ -79,7 +79,7 @@ void dsp_agcDefaults(struct agcParams *params)
     params->expanderDbPerBlk = 2.0f;
     params->floorWindowBlocks = 0;
     params->confirmBlocks = 0;
-    params->noiseCeilingDb = 0.0f;
+    params->silenceSnrDb = 0.0f;
 }
 
 void dsp_agcInit(struct agcState *agc, const struct agcParams *params)
@@ -188,11 +188,6 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
         }
     }
 
-    // Highest gain that keeps the noise floor under the ceiling
-    float maxGain = agc->p.maxGainDb;
-    if (agc->p.noiseCeilingDb < 0.0f)
-        maxGain = fminf(maxGain, agc->p.noiseCeilingDb - agc->floorDb);
-
     // Short bursts of noise open the gate too: only a run of open blocks
     // counts as speech the gain may rise for
     const bool confirmed = (agc->run >= agc->p.confirmBlocks);
@@ -208,8 +203,8 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
         }
 
         float want = agc->p.targetDb - agc->levelDb;
-        if (want > maxGain)
-            want = maxGain;
+        if (want > agc->p.maxGainDb)
+            want = agc->p.maxGainDb;
         if (want < agc->p.minGainDb)
             want = agc->p.minGainDb;
         if ((confirmed == false) && (want > agc->gainDb))
@@ -239,9 +234,6 @@ void dsp_agcProcess(struct agcState *agc, float *block, size_t len)
 
         if (confirmed && (agc->acquire > 0))
             agc->acquire--;
-    } else if (agc->gainDb > maxGain) {
-        // The floor rose in a pause: bring the gain under the ceiling
-        agc->gainDb = fmaxf(maxGain, agc->gainDb - agc->p.attackDbPerBlk);
     }
 
     // Ramp the gain across the block, then limit

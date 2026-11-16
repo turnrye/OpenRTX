@@ -139,7 +139,7 @@ struct agcParams {
     float expanderDbPerBlk;     ///< Rate the expander attenuation fades in
     uint16_t floorWindowBlocks; ///< Floor: min of 4 windows (0 = rise tracker)
     uint16_t confirmBlocks;     ///< Open blocks before gain may rise (0 = off)
-    float noiseCeilingDb;       ///< Highest floor level after gain (0 = off)
+    float silenceSnrDb; ///< Lowest level over floor for silence (0 = off)
 };
 
 /**
@@ -161,10 +161,16 @@ struct agcState {
 
 /**
  * Whether the AGC's gate has been closed for at least the hangover: the
- * talker is pausing, not between syllables.
+ * talker is pausing, not between syllables. Never while the speech level is
+ * less than silenceSnrDb over the noise floor.
  */
 static inline bool dsp_agcSilent(const struct agcState *agc)
 {
+    // In loud noise speech hides under the gate: no pause is trusted then
+    if ((agc->p.silenceSnrDb > 0.0f)
+        && ((agc->levelDb - agc->floorDb) < agc->p.silenceSnrDb))
+        return false;
+
     return agc->closed >= agc->p.hangoverBlocks;
 }
 
@@ -190,8 +196,7 @@ void dsp_agcInit(struct agcState *agc, const struct agcParams *params);
  * linearly from the previous block's gain across the block. Blocks quieter
  * than the gate (an adaptive threshold above the tracked noise floor) hold the
  * gain, so pauses do not pump the background noise up. Optionally the gain
- * rises only on a run of open blocks (confirmed speech) and is capped so the
- * noise floor stays below a ceiling. A soft limiter follows the gain, keeping
+ * rises only on a run of open blocks (confirmed speech). A soft limiter follows the gain, keeping
  * every sample below the ceiling.
  *
  * @param agc: AGC state.

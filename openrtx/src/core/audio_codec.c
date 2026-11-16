@@ -278,6 +278,7 @@ static void *encodeFunc(void *arg)
         params.floorWindowBlocks = 20; // 4 x 400 ms
         params.confirmBlocks = 6;      // 120 ms
         params.gateAboveFloor = 5.0f; // the windowed floor sits under the noise
+        params.silenceSnrDb = 15.0f;
 #endif
 #ifdef MIC_EXP_AGC_FLOORWIN
         params.floorWindowBlocks = MIC_EXP_AGC_FLOORWIN;
@@ -285,8 +286,8 @@ static void *encodeFunc(void *arg)
 #ifdef MIC_EXP_AGC_CONFIRM
         params.confirmBlocks = MIC_EXP_AGC_CONFIRM;
 #endif
-#ifdef MIC_EXP_AGC_NOISECEIL
-        params.noiseCeilingDb = MIC_EXP_AGC_NOISECEIL;
+#ifdef MIC_EXP_AGC_SILSNR
+        params.silenceSnrDb = MIC_EXP_AGC_SILSNR;
 #endif
 #ifdef MIC_EXP_AGC_GATE
         params.gateAboveFloor = MIC_EXP_AGC_GATE;
