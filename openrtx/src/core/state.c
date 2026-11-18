@@ -45,6 +45,10 @@ void state_init()
         state.channel = cps_getDefaultChannel();
     }
 
+    // Seed the saved VFO channel so a memory-mode -> VFO switch restores a
+    // valid channel even before the user has tuned the VFO once.
+    state.vfo_channel = state.channel;
+
 /*
      * Initialise remaining fields
      */
@@ -58,6 +62,7 @@ void state_init()
 
     state.channel_index = 0; // Set default channel index (it is 0-based)
     state.bank_enabled = false;
+    state.keypad_locked = false;
     state.rtxStatus = RTX_OFF;
     state.emergency = false;
     state.pttDisable = false;
@@ -131,4 +136,5 @@ void state_resetSettingsAndVfo()
 {
     state.settings = default_settings;
     state.channel = cps_getDefaultChannel();
+    state.vfo_channel = state.channel;
 }
