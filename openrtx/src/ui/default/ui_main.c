@@ -382,8 +382,8 @@ static void _ui_drawParrot()
     uint32_t sdPct = (ps.diag.polls > 0) ? (100 * ps.diag.sdHigh) / ps.diag.polls : 0;
     point_t p = { layout.horizontal_pad, 18 };
 
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "%s t%lu e%d %c",
-              phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "V%u %s t%lu e%d %c",
+              ps.exp, phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
               ps.right ? 'R' : 'L');
     p.y += 8;
     gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "L%d/%u R%d/%u",

@@ -242,25 +242,50 @@ static int play(const size_t n)
         return -3;
     }
 
-    // The HR_C6000 DAC takes whole 32-sample blocks
-    const size_t len = n & ~((size_t) 31);
-    streamId id = audioStream_start(path, rec, len, SAMPLE_RATE,
-                                    STREAM_OUTPUT | BUF_LINEAR);
-    long long t1 = getTick();
+    // Circular double buffer, as the Codec2 decoder does: audio_stream never
+    // starts a linear output stream
+    memset(block, 0, sizeof(block));
+    streamId id = audioStream_start(path, block, 2 * BLOCK_SAMPLES, SAMPLE_RATE,
+                                    STREAM_OUTPUT | BUF_CIRC_DOUBLE);
     if(id < 0)
     {
-        serLog("PLAY stream start failed %d (path %ld, len %u)", id,
-               (long) path, (unsigned) len);
+        serLog("PLAY stream start failed %d (path %ld)", id, (long) path);
         audioPath_release(path);
         return -4;
+    }
+
+    long long t1 = getTick();
+    outputStream_sync(id, false);
+
+    size_t done = 0;
+    uint32_t syncFails = 0;
+    while(done < n)
+    {
+        stream_sample_t *buf = outputStream_getIdleBuffer(id);
+        if(buf == NULL)
+            break;
+
+        size_t len = n - done;
+        if(len > BLOCK_SAMPLES)
+            len = BLOCK_SAMPLES;
+
+        memcpy(buf, &rec[done], len * sizeof(stream_sample_t));
+        if(len < BLOCK_SAMPLES)
+            memset(&buf[len], 0, (BLOCK_SAMPLES - len) * sizeof(stream_sample_t));
+
+        done += len;
+        if(outputStream_sync(id, true) == false)
+            syncFails++;
     }
 
     audioStream_stop(id);
     long long t2 = getTick();
     audioPath_release(path);
 
-    serLog("PLAY path %ld stream %d len %u: start %ld ms, played %ld ms",
-           (long) path, id, (unsigned) len, (long) (t1 - t0), (long) (t2 - t1));
+    serLog("PLAY path %ld stream %d: %u of %u samples, %ld ms, %lu sync fails",
+           (long) path, id, (unsigned) done, (unsigned) n, (long) (t2 - t1),
+           (unsigned long) syncFails);
+    (void) t0;
 
     return 0;
 }
@@ -281,6 +306,28 @@ static bool pickChannel(const struct i2sStats *st, const bool right)
     return right;
 }
 
+void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
+
+#define NUM_VARIANTS 4
+
+/**
+ * HR_C6000 set-up before a take, one per take: 0 nothing, 1 and 2 vocoder
+ * encoder start (0x22 = 0x86), 3 register 0x06 back to its init value 0x21.
+ */
+static void variantBefore(const uint8_t v)
+{
+    if((v == 1) || (v == 2)) i2sParrot_writeC6000(0x22, 0x86);
+    if(v == 3)               i2sParrot_writeC6000(0x06, 0x21);
+}
+
+/**
+ * Undo after a take: 2 stops the encoder (0x22 = 0x46).
+ */
+static void variantAfter(const uint8_t v)
+{
+    if(v == 2) i2sParrot_writeC6000(0x22, 0x46);
+}
+
 static void *parrotThread(void *arg)
 {
     (void) arg;
@@ -298,7 +345,14 @@ static void *parrotThread(void *arg)
         take = status.takes;
         pthread_mutex_unlock(&mutex);
 
+        const uint8_t v = (uint8_t) (take % NUM_VARIANTS);
+        pthread_mutex_lock(&mutex);
+        status.exp = v;
+        pthread_mutex_unlock(&mutex);
+
         stm32i2s_setChannel(right);
+        variantBefore(v);
+        sleepFor(0, 50);
         stm32i2s_getStats(&st, true);
         setPhase(PARROT_REC, 0);
 
@@ -306,6 +360,7 @@ static void *parrotThread(void *arg)
         int n = record();
         long long t1 = getTick();
         stm32i2s_getStats(&st, true);
+        variantAfter(v);
 
         pthread_mutex_lock(&mutex);
         status.stats = st;
@@ -313,8 +368,8 @@ static void *parrotThread(void *arg)
         status.takes++;
         pthread_mutex_unlock(&mutex);
 
-        serLog("TAKE %lu n=%d %ld ms ch=%c frames=%lu L=%d/%u mean %d "
-               "R=%d/%u mean %d", (unsigned long) take, n, (long) (t1 - t0),
+        serLog("TAKE %lu V%u n=%d %ld ms ch=%c frames=%lu L=%d/%u mean %d "
+               "R=%d/%u mean %d", (unsigned long) take, v, n, (long) (t1 - t0),
                right ? 'R' : 'L', (unsigned long) st.frames, st.peak[0],
                st.rms[0], st.mean[0], st.peak[1], st.rms[1], st.mean[1]);
 
