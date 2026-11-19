@@ -48,6 +48,10 @@ struct md9600BandCalib {
     uint8_t paDrive[MD9600_PA_LEVELS][MD9600_CAL_POINTS_UHF]; ///< APC DAC.
     uint8_t fmModI[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, I.
     uint8_t fmModQ[MD9600_CAL_POINTS_UHF]; ///< FM two-point modulation, Q.
+    /// DMR two-point modulation, I (MOD2) and Q (MOD1), set for a 1944 Hz
+    /// outer deviation.
+    uint8_t dmrModI[MD9600_CAL_POINTS_UHF];
+    uint8_t dmrModQ[MD9600_CAL_POINTS_UHF];
     /// CTCSS peak-to-peak PWM swing at 12.5 kHz, by tone row.
     uint8_t ctcssLevel[MD9600_CTCSS_ROWS][MD9600_CAL_POINTS_UHF];
     uint8_t refTune; ///< Reference oscillator offset, stored + 128.

@@ -23,6 +23,8 @@ struct calLayout {
     uint16_t paDrive[MD9600_PA_LEVELS];     ///< PA drive rows, by power level.
     uint16_t fmModI;                        ///< FM two-point modulation row, I.
     uint16_t fmModQ;                        ///< FM two-point modulation row, Q.
+    uint16_t dmrModI;                       ///< DMR two-point modulation row, I.
+    uint16_t dmrModQ;                       ///< DMR two-point modulation row, Q.
     uint16_t ctcssLevel[MD9600_CTCSS_ROWS]; ///< CTCSS level rows, by tone.
     uint16_t refTune;                       ///< Reference oscillator offset.
     uint8_t points;                         ///< Number of calibration points.
@@ -41,6 +43,8 @@ static const struct calLayout calLayout[] = {
         .paDrive = { 0x1029, 0x20A9, 0x2099, 0x1019 },
         .fmModI  = 0x2079,
         .fmModQ  = 0x2089,
+        .dmrModI = 0x2039,
+        .dmrModQ = 0x2049,
         .ctcssLevel = { 0x109B, 0x10AB, 0x10BB },
         .refTune = 0x100C,
         .points  = MD9600_CAL_POINTS_VHF,
@@ -51,6 +55,8 @@ static const struct calLayout calLayout[] = {
         .paDrive = { 0x1020, 0x20A0, 0x2090, 0x1010 },
         .fmModI  = 0x2070,
         .fmModQ  = 0x2080,
+        .dmrModI = 0x2030,
+        .dmrModQ = 0x2040,
         .ctcssLevel = { 0x1090, 0x10A0, 0x10B0 },
         .refTune = 0x1009,
         .points  = MD9600_CAL_POINTS_UHF,
@@ -139,6 +145,8 @@ static void readBandCalib(struct md9600BandCalib *cal,
     readRow(cal->rxTune, layout->rxTune, layout->points);
     readRow(cal->fmModI, layout->fmModI, layout->points);
     readRow(cal->fmModQ, layout->fmModQ, layout->points);
+    readRow(cal->dmrModI, layout->dmrModI, layout->points);
+    readRow(cal->dmrModQ, layout->dmrModQ, layout->points);
     nvm_devRead(&secReg, layout->refTune, &cal->refTune, 1);
 
     for (size_t i = 0; i < MD9600_PA_LEVELS; i++)
