@@ -90,6 +90,12 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
     #elif defined(PLATFORM_DM1701)
     invertTxPhase = true;
     invertRxPhase = true;
+    #elif defined(PLATFORM_MD9600)
+    //
+    // The HR_C6000 FM copy is inverted on VHF, where the first LO is above
+    // the signal.
+    //
+    invertRxPhase = (status->rxFrequency < 300000000);
     #endif
 
     // Main FSM logic
