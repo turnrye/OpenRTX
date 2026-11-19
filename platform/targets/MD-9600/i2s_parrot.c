@@ -1,0 +1,235 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#include <pthread.h>
+#include <string.h>
+#include "core/audio_path.h"
+#include "core/audio_stream.h"
+#include "interfaces/delays.h"
+#include "i2s_parrot.h"
+
+#define SAMPLE_RATE   8000
+#define REC_SAMPLES   (3 * SAMPLE_RATE)
+#define BLOCK_SAMPLES 160           // 20 ms per stream half
+#define MAX_GAIN      16
+#define PLAY_PEAK     16000         // Playback peak after the gain
+#define SWITCH_RATIO  4             // Other channel this much louder: use it
+#define SWITCH_MIN    30            // ... and above this RMS
+
+static stream_sample_t rec[REC_SAMPLES];
+static stream_sample_t block[2 * BLOCK_SAMPLES];
+static struct parrotStatus status;
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Update the shared phase and error.
+ */
+static void setPhase(const uint8_t phase, const int16_t error)
+{
+    pthread_mutex_lock(&mutex);
+    status.phase = phase;
+    status.error = error;
+    pthread_mutex_unlock(&mutex);
+}
+
+/**
+ * Record up to REC_SAMPLES from the microphone.
+ *
+ * @return samples recorded, negative error code on failure.
+ */
+static int record()
+{
+    pathId path = audioPath_request(SOURCE_MIC, SINK_MCU, PRIO_TX);
+    if(path < 0)
+        return -1;
+
+    streamId id = audioStream_start(path, block, 2 * BLOCK_SAMPLES, SAMPLE_RATE,
+                                    STREAM_INPUT | BUF_CIRC_DOUBLE);
+    if(id < 0)
+    {
+        audioPath_release(path);
+        return -2;
+    }
+
+    size_t n = 0;
+    while(n < REC_SAMPLES)
+    {
+        dataBlock_t b = inputStream_getData(id);
+        if((b.data == NULL) || (b.len == 0))
+            break;
+
+        size_t len = b.len;
+        if(len > (REC_SAMPLES - n))
+            len = REC_SAMPLES - n;
+
+        memcpy(&rec[n], b.data, len * sizeof(stream_sample_t));
+        n += len;
+    }
+
+    audioStream_terminate(id);
+    audioPath_release(path);
+
+    return (int) n;
+}
+
+/**
+ * Remove the mean of the take and scale it up to PLAY_PEAK, at most MAX_GAIN.
+ *
+ * @param n: samples in the take.
+ * @return gain applied.
+ */
+static uint8_t normalise(const size_t n)
+{
+    if(n == 0)
+        return 1;
+
+    int32_t sum = 0;
+    for(size_t i = 0; i < n; i++)
+        sum += rec[i];
+
+    const int32_t mean = sum / (int32_t) n;
+    int32_t peak = 0;
+    for(size_t i = 0; i < n; i++)
+    {
+        int32_t a = rec[i] - mean;
+        if(a < 0)
+            a = -a;
+        if(a > peak)
+            peak = a;
+    }
+
+    int32_t gain = (peak > 0) ? (PLAY_PEAK / peak) : 1;
+    if(gain < 1)
+        gain = 1;
+    if(gain > MAX_GAIN)
+        gain = MAX_GAIN;
+
+    for(size_t i = 0; i < n; i++)
+    {
+        int32_t s = (rec[i] - mean) * gain;
+        if(s > INT16_MAX)
+            s = INT16_MAX;
+        if(s < INT16_MIN)
+            s = INT16_MIN;
+        rec[i] = (stream_sample_t) s;
+    }
+
+    return (uint8_t) gain;
+}
+
+/**
+ * Play the take on the speaker, blocking until done.
+ *
+ * @param n: samples in the take.
+ * @return 0 on success, negative error code on failure.
+ */
+static int play(const size_t n)
+{
+    pathId path = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_PROMPT);
+    if(path < 0)
+        return -3;
+
+    // The HR_C6000 DAC takes whole 32-sample blocks
+    streamId id = audioStream_start(path, rec, n & ~((size_t) 31), SAMPLE_RATE,
+                                    STREAM_OUTPUT | BUF_LINEAR);
+    if(id < 0)
+    {
+        audioPath_release(path);
+        return -4;
+    }
+
+    audioStream_stop(id);
+    audioPath_release(path);
+
+    return 0;
+}
+
+/**
+ * Pick the channel for the next take: switch when the other one is clearly
+ * louder.
+ */
+static bool pickChannel(const struct i2sStats *st, const bool right)
+{
+    const uint8_t cur   = right ? 1 : 0;
+    const uint8_t other = right ? 0 : 1;
+
+    if((st->rms[other] > SWITCH_MIN) &&
+       (st->rms[other] > (SWITCH_RATIO * (uint32_t) st->rms[cur])))
+        return !right;
+
+    return right;
+}
+
+static void *parrotThread(void *arg)
+{
+    (void) arg;
+    bool right = false;
+
+    sleepFor(3, 0);
+
+    while(1)
+    {
+        struct i2sStats st;
+
+        stm32i2s_setChannel(right);
+        stm32i2s_getStats(&st, true);
+        setPhase(PARROT_REC, 0);
+
+        int n = record();
+        stm32i2s_getStats(&st, true);
+
+        pthread_mutex_lock(&mutex);
+        status.stats = st;
+        status.right = right;
+        status.takes++;
+        pthread_mutex_unlock(&mutex);
+
+        if(n <= 0)
+        {
+            setPhase(PARROT_ERROR, (n < 0) ? n : -5);
+            sleepFor(1, 0);
+            continue;
+        }
+
+        const bool next = pickChannel(&st, right);
+        if(next != right)
+        {
+            // The take was on the quiet channel: record again on the other
+            right = next;
+            continue;
+        }
+
+        uint8_t gain = normalise((size_t) n);
+        pthread_mutex_lock(&mutex);
+        status.gain = gain;
+        pthread_mutex_unlock(&mutex);
+
+        setPhase(PARROT_PLAY, 0);
+        int ret = play((size_t) n);
+        setPhase((ret < 0) ? PARROT_ERROR : PARROT_IDLE, (int16_t) ret);
+
+        sleepFor(0, 500);
+    }
+
+    return NULL;
+}
+
+void i2sParrot_start()
+{
+    pthread_attr_t attr;
+    pthread_t thread;
+
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 2048);
+    pthread_create(&thread, &attr, parrotThread, NULL);
+}
+
+void i2sParrot_getStatus(struct parrotStatus *out)
+{
+    pthread_mutex_lock(&mutex);
+    *out = status;
+    pthread_mutex_unlock(&mutex);
+}

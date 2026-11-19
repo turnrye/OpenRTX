@@ -77,6 +77,11 @@ extern "C" {
 #define DMR_MISO  GPIOE,4
 #define DMR_SLEEP GPIOE,6
 
+/* HR_C6000 PCM: the chip drives CK and WS */
+#define I2S3_WS GPIOA,15
+#define I2S3_CK GPIOC,10
+#define I2S3_SD GPIOC,12   /* Microphone, chip -> MCU */
+
 /*
  * RF section of the V5 board (LMX2571 synthesizers, no IF chip). Pin roles
  * from RadioFoundry, boards/md9600/pins.h and docs/spec/hardware-md9600.md

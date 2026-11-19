@@ -14,6 +14,9 @@
 #include "ui/ui_strings.h"
 #include "core/utils.h"
 #include "ui/utils.h"
+#ifdef CONFIG_I2S_PARROT
+#include "i2s_parrot.h"
+#endif
 
 /*
  * A target whose volume knob acts on the audio only, out of the MCU's reach,
@@ -331,6 +334,26 @@ void _ui_drawMainBottom()
     switch(last_state.channel.mode)
     {
         case OPMODE_FM:
+            #ifdef CONFIG_I2S_PARROT
+            {
+                static const char *phase[] = { "WAIT", "REC", "PLAY", "ERR" };
+                struct parrotStatus ps;
+                i2sParrot_getStatus(&ps);
+                point_t l1 = { layout.horizontal_pad, (int16_t) (layout.bottom_pos.y - 8) };
+                point_t l2 = { layout.horizontal_pad, layout.bottom_pos.y };
+                if((ps.stats.frames == 0) && (ps.stats.noClock > 0))
+                    gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                              "NO I2S CLOCK %lu", (unsigned long) ps.stats.noClock);
+                else
+                    gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                              "%s %d L%d/%d", phase[ps.phase & 3], ps.error,
+                              ps.stats.peak[0], ps.stats.rms[0]);
+                gfx_print(l2, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                          "%c x%u R%d/%d", ps.right ? 'R' : 'L', ps.gain,
+                          ps.stats.peak[1], ps.stats.rms[1]);
+                break;
+            }
+            #endif
             gfx_drawSmeter(meter_pos,
                            meter_width,
                            meter_height,

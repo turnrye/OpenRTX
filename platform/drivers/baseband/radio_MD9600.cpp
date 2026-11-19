@@ -695,6 +695,9 @@ void radio_enableRx()
 
 void radio_enableTx()
 {
+#ifdef CONFIG_I2S_PARROT
+    return;     // Bench test image: never transmit
+#endif
     // FM and M17, on a board detected as V5, inside a band
     const bool m17 = (config->opMode == OPMODE_M17);
     if ((rf != &v5Ops) || (config->txDisable == 1) || (txBand == BND_NONE)
