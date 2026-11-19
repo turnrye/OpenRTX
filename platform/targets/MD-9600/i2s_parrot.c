@@ -307,8 +307,9 @@ static bool pickChannel(const struct i2sStats *st, const bool right)
 }
 
 void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
+void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
 
-#define NUM_VARIANTS 4
+#define NUM_VARIANTS 1
 
 /**
  * HR_C6000 set-up before a take, one per take: 0 nothing, 1 and 2 vocoder
@@ -361,6 +362,11 @@ static void *parrotThread(void *arg)
         long long t1 = getTick();
         stm32i2s_getStats(&st, true);
         variantAfter(v);
+
+        static const uint8_t rE0 = 0xE0;
+        uint8_t e0;
+        i2sParrot_readC6000(&rE0, &e0, 1);
+        serLog("E0 read %02x after take %lu", e0, (unsigned long) take);
 
         pthread_mutex_lock(&mutex);
         status.stats = st;

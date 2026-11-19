@@ -82,6 +82,12 @@ void HR_C6000::setLineOut2(const bool enable)
 {
     uint8_t reg = readCfgRegister(0xE0);
 
+    #ifdef CONFIG_I2S_PARROT
+    // Bench test: the read back has come back without bit 7 (0x41 for 0xC1);
+    // writing that back hands the codec to the chip and stops the mic PCM
+    reg |= 0x80;
+    #endif
+
     if(enable)
         reg |= 0x08;
     else
