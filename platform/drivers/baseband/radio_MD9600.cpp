@@ -12,7 +12,8 @@
  * docs/spec/hardware-md9600.md, https://github.com/radiofoundry/radiofoundry
  *
  * Transmission: FM, with CTCSS and the 1750 Hz tone from the HR_C6000, and
- * M17, at the stock firmware's PA drives.
+ * M17 through the HR_C6000 physical layer mode, at the stock firmware's PA
+ * drives.
  * There is no lock detect and no temperature, SWR or power sensing on this
  * board.
  *
@@ -33,6 +34,9 @@
 #include "calibration/calibInfo_MD9600.h"
 #include "core/ctcssDetector.hpp"
 #include "core/utils.h"
+#include "core/threads.h"
+#include <cstring>
+#include <pthread.h>
 #include "drivers/audio/stm32_adc.h"
 #include "drivers/SPI/spi_bitbang.h"
 #include "drivers/baseband/AK2365A.h"
@@ -106,11 +110,19 @@ static constexpr uint8_t TX_DEVIATION[2][2] = {
 };
 
 /*
- * Modulation factor for M17's baseband on PC8, by band (VHF, UHF): the stock
- * firmware's wide setting for audio it sends on PC8 (DTMF, 0x08046f44). To be
- * set by measuring the M17 deviation.
+ * M17 in the HR_C6000 physical layer mode (RadioFoundry,
+ * docs/spec/modem-hrc6000.md 10.3). The chip sends its TX RAM, two halves of
+ * 36 bytes (144 symbols, 30 ms), in alternate slots; M17 frame bytes are the
+ * dibits it takes. The calibration's DMR modulation pair is set for a 1944 Hz
+ * outer deviation and scales linearly: M17 wants 2400 Hz. Measured on a V5
+ * board, 2402/800 Hz at 446.0 MHz and 2374/801 Hz at 146.52 MHz.
  */
-static constexpr uint8_t M17_TX_DEVIATION[2] = { 0x5A, 0x22 };
+static constexpr uint32_t M17_DEV_HZ = 2400;
+static constexpr uint32_t DMR_CAL_DEV_HZ = 1944;
+static constexpr size_t M17_SLOT_BYTES = 36;
+static constexpr size_t M17_FIFO_SIZE = 2048;
+static constexpr uint8_t M17_IDLE = 0x77; // +3 -3, the preamble
+static constexpr uint32_t M17_TS_TIMEOUT_MS = 200;
 
 /*
  * V5 RSSI: dBm at a reading of 0, and counts per 100 dB, both bands.
@@ -162,6 +174,8 @@ static uint8_t txDrive; // PA drive (APC DAC), 8 bit
 static uint8_t txModI;
 static uint8_t txModQ;
 static uint8_t txDeviation;
+static uint8_t txM17Mod1;       // HR_C6000 MOD1 (0x46) for M17
+static uint8_t txM17Mod2;       // HR_C6000 MOD2 (0x45) for M17
 static uint8_t txCtcssLevel;    // CTCSS PWM swing on PC7
 static enum opstatus radioStatus;
 static const struct rf_ops *rf; // RF section of the board, NULL if unknown
@@ -625,6 +639,18 @@ void radio_init(const rtxStatus_t *rtxState)
 
     nvm_readCalibData(&calData);
     rf->init();
+
+    // HR_C6000 timeslot interrupt on PC0, falling edge, masked until an M17
+    // transmission
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    __DSB();
+    gpio_setMode(GPIOC, 0, INPUT);
+    SYSCFG->EXTICR[0] = (SYSCFG->EXTICR[0] & ~SYSCFG_EXTICR1_EXTI0)
+                      | SYSCFG_EXTICR1_EXTI0_PC;
+    EXTI->FTSR |= EXTI_FTSR_TR0;
+    EXTI->RTSR &= ~EXTI_RTSR_TR0;
+    EXTI->IMR &= ~EXTI_IMR_MR0;
+    NVIC_SetPriority(EXTI0_IRQn, 10);
 }
 
 void radio_terminate()
@@ -693,6 +719,233 @@ void radio_enableRx()
     radioStatus = RX;
 }
 
+/**
+ * Scale one value of the DMR modulation pair to the M17 deviation.
+ *
+ * @param dmr: calibration value, for DMR_CAL_DEV_HZ.
+ * @return the value for M17_DEV_HZ.
+ */
+static uint8_t m17Mod(const uint32_t dmr)
+{
+    const uint32_t v = (dmr * M17_DEV_HZ + DMR_CAL_DEV_HZ / 2) / DMR_CAL_DEV_HZ;
+    return (v > 255) ? 255 : v;
+}
+
+static uint8_t *m17Fifo;
+static volatile size_t m17Head;
+static volatile size_t m17Count;
+static volatile bool m17Active;
+static volatile bool m17Flush;
+static volatile bool m17Stop;
+static volatile bool m17Done;
+static volatile uint32_t tsCount;
+static pthread_t m17Thread;
+static pthread_mutex_t m17Mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static const uint8_t m17SaveRegs[] = { 0x10, 0x40, 0x41, 0x20,
+                                       0x21, 0x22, 0x45, 0x46 };
+static uint8_t m17Saved[sizeof(m17SaveRegs)];
+
+// HR_C6000 timeslot interrupt (PC0, falling edge), every 30 ms
+void __attribute__((used)) EXTI0_IRQHandler()
+{
+    EXTI->PR = EXTI_PR_PR0;
+    tsCount = tsCount + 1;
+}
+
+/**
+ * Enable or disable the timeslot interrupt.
+ *
+ * @param on: true to enable it.
+ */
+static void tsInterrupt(const bool on)
+{
+    if (on) {
+        EXTI->PR = EXTI_PR_PR0;
+        EXTI->IMR |= EXTI_IMR_MR0;
+        NVIC_ClearPendingIRQ(EXTI0_IRQn);
+        NVIC_EnableIRQ(EXTI0_IRQn);
+    } else {
+        EXTI->IMR &= ~EXTI_IMR_MR0;
+        NVIC_DisableIRQ(EXTI0_IRQn);
+    }
+}
+
+/**
+ * Wait for the next timeslot interrupt.
+ *
+ * @param last: interrupt count seen last, updated.
+ * @return interrupts since then, 0 if none came within M17_TS_TIMEOUT_MS.
+ */
+static uint32_t tsWait(uint32_t *last)
+{
+    for (uint32_t i = 0; i < M17_TS_TIMEOUT_MS; i++) {
+        const uint32_t now = tsCount;
+        if (now != *last) {
+            const uint32_t d = now - *last;
+            *last = now;
+            return d;
+        }
+
+        sleepFor(0, 1);
+    }
+
+    return 0;
+}
+
+/**
+ * Take up to n queued M17 bytes.
+ */
+static size_t m17Pop(uint8_t *buf, const size_t n)
+{
+    pthread_mutex_lock(&m17Mutex);
+    const size_t got = (m17Count < n) ? m17Count : n;
+    for (size_t i = 0; i < got; i++)
+        buf[i] = m17Fifo[(m17Head + i) % M17_FIFO_SIZE];
+
+    m17Head = (m17Head + got) % M17_FIFO_SIZE;
+    m17Count -= got;
+    pthread_mutex_unlock(&m17Mutex);
+
+    return got;
+}
+
+/**
+ * M17 transmission: set the HR_C6000 up in its physical layer mode, then give
+ * it one slot of queued bytes at each timeslot interrupt. Idle goes out in
+ * slot 2, when the PA comes up, data from slot 3, and one idle slot after the
+ * last byte before the PA goes down.
+ */
+static void *m17TxFunc(void *arg)
+{
+    (void)arg;
+    uint8_t chunk[M17_SLOT_BYTES];
+
+    for (size_t i = 0; i < sizeof(m17SaveRegs); i++)
+        m17Saved[i] = C6000.readCfgRegister(m17SaveRegs[i]);
+
+    C6000.writeCfgRegister(0x45, txM17Mod2);
+    C6000.writeCfgRegister(0x46, txM17Mod1);
+    C6000.writeCfgRegister(0x41, 0x00); // No slot activity during set-up
+    C6000.writeCfgRegister(0x10, 0x66); // Physical layer mode
+    C6000.writeCfgRegister(0x20, 0x00);
+    C6000.writeCfgRegister(0x21, 0x02); // Impolite access
+    C6000.writeCfgRegister(0x22, 0x86);
+
+    memset(chunk, M17_IDLE, sizeof(chunk));
+    C6000.writeRam(2, 0x00, chunk, M17_SLOT_BYTES);
+    C6000.writeRam(2, 0x24, chunk, M17_SLOT_BYTES);
+
+    tsInterrupt(true);
+    uint32_t last = tsCount;
+    C6000.writeCfgRegister(0x40, 0xE3); // Own timing: the slot clock starts
+
+    uint32_t n = 0;
+    uint32_t idleTail = 0;
+    bool pa = false;
+
+    while ((m17Stop == false) && (idleTail <= 1)) {
+        const uint32_t d = tsWait(&last);
+        if (d == 0)
+            break;
+
+        n += d;
+
+        // Slot n + 1 is set up at interrupt n and reads 0x00 when n is odd
+        const uint8_t half = (n & 1) ? 0x00 : 0x24;
+
+        if ((n >= 2) && (pa == false)) {
+            paOn();
+            pa = true;
+        }
+
+        memset(chunk, M17_IDLE, sizeof(chunk));
+        if ((n >= 2) && (m17Pop(chunk, M17_SLOT_BYTES) == 0) && m17Flush)
+            idleTail++;
+
+        C6000.writeRam(2, half, chunk, M17_SLOT_BYTES);
+        C6000.writeCfgRegister(0x41, 0x80); // Send in the next slot
+    }
+
+    if (pa)
+        paOff();
+
+    tsInterrupt(false);
+    C6000.writeCfgRegister(0x41, 0x00);
+    for (size_t i = 0; i < sizeof(m17SaveRegs); i++)
+        C6000.writeCfgRegister(m17SaveRegs[i], m17Saved[i]);
+
+    m17Done = true;
+    return NULL;
+}
+
+/**
+ * Start the M17 transmit thread.
+ */
+static void m17TxStart()
+{
+    if (m17Fifo == NULL)
+        m17Fifo = new (std::nothrow) uint8_t[M17_FIFO_SIZE];
+
+    if (m17Fifo == NULL)
+        return;
+
+    m17Head = 0;
+    m17Count = 0;
+    m17Flush = false;
+    m17Stop = false;
+    m17Done = false;
+
+    pthread_attr_t attr;
+    struct sched_param param;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 1024);
+    param.sched_priority = THREAD_PRIO_HIGH;
+    pthread_attr_setschedparam(&attr, &param);
+    m17Active = (pthread_create(&m17Thread, &attr, m17TxFunc, NULL) == 0);
+}
+
+/**
+ * Stop the M17 transmit thread: it drops the PA and restores the HR_C6000.
+ */
+static void m17TxStop()
+{
+    if (m17Active == false)
+        return;
+
+    m17Stop = true;
+    pthread_join(m17Thread, NULL);
+    m17Active = false;
+}
+
+void radio_sendM17Data(const uint8_t *data, const size_t len)
+{
+    size_t i = 0;
+
+    while ((i < len) && m17Active && (m17Done == false)) {
+        pthread_mutex_lock(&m17Mutex);
+        while ((i < len) && (m17Count < M17_FIFO_SIZE)) {
+            m17Fifo[(m17Head + m17Count) % M17_FIFO_SIZE] = data[i++];
+            m17Count++;
+        }
+        pthread_mutex_unlock(&m17Mutex);
+
+        if (i < len)
+            sleepFor(0, 5);
+    }
+}
+
+void radio_flushM17Data()
+{
+    if (m17Active == false)
+        return;
+
+    // A full queue drains in about one second
+    m17Flush = true;
+    for (int i = 0; (i < 400) && (m17Done == false); i++)
+        sleepFor(0, 5);
+}
+
 void radio_enableTx()
 {
     // FM and M17, on a board detected as V5, inside a band
@@ -713,9 +966,12 @@ void radio_enableTx()
     C6000.setModFactor(txDeviation);
 
     if (m17) {
-        // Baseband as PWM on PC8 into the HR_C6000, as stock sends DTMF
-        C6000.disableTones();
-        C6000.startAnalogTx(TxAudioSource::LINE_IN, FmConfig::BW_25kHz);
+        // The transmit thread keys the PA in step with the HR_C6000's slots
+        gpio_clearPin(FM_SW);
+        sleepFor(0, TX_SETTLE_MS);
+        m17TxStart();
+        radioStatus = TX;
+        return;
     } else {
         // Sub-audio on PC7 at the calibrated level, as the stock firmware
         if (config->txToneEn) {
@@ -741,6 +997,12 @@ void radio_enableTx()
 
 void radio_disableRtx()
 {
+    if (m17Active) {
+        m17TxStop();
+        gpio_setPin(FM_SW);
+        radioStatus = OFF;
+    }
+
     if (radioStatus == TX) {
         paOff();
         C6000.stopAnalogTx();
@@ -790,8 +1052,13 @@ void radio_updateConfiguration()
         txModQ = interpCalParameter(freq, cal->rxFreq, cal->fmModQ, points);
         txDeviation = TX_DEVIATION[txBand][wide];
         txCtcssLevel = ctcssLevel(cal, freq, points, config->txTone, wide);
-        if (config->opMode == OPMODE_M17)
-            txDeviation = M17_TX_DEVIATION[txBand];
+
+        const uint32_t mod2 = interpCalParameter(freq, cal->rxFreq,
+                                                 cal->dmrModI, points);
+        const uint32_t mod1 = interpCalParameter(freq, cal->rxFreq,
+                                                 cal->dmrModQ, points);
+        txM17Mod2 = m17Mod(mod2);
+        txM17Mod1 = m17Mod(mod1);
     }
 
     rxBand = bandOf(config->rxFrequency);

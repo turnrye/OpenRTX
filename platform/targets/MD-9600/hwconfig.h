@@ -94,6 +94,9 @@ enum md9600Flags {
 /* Transmit time-out, in seconds: a mobile PA with no thermal protection */
 #define CONFIG_TX_TIMEOUT_S 180
 
+/* M17 symbols go to the HR_C6000 physical layer mode, not as baseband */
+#define CONFIG_M17_SYMBOL_TX
+
 /* Microphone PCM from the HR_C6000 codec over I2S3: 16 bit, 8 kHz */
 #define CONFIG_MIC_GAIN 1
 #define CONFIG_MIC_OVERSAMPLE 1
