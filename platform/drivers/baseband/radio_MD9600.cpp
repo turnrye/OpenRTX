@@ -809,6 +809,102 @@ void radio_updateConfiguration()
         radio_enableRx();
 }
 
+#ifdef CONFIG_I2S_PARROT
+/*
+ * Bench test hooks for HR_C6000 physical layer transmission, driven from the
+ * USB console. Lowest PA row only, V5 only, inside a band, supply checked.
+ */
+static volatile uint32_t tsCount;
+
+// HR_C6000 timeslot interrupt on PC0, falling edge: count it
+void __attribute__((used)) EXTI0_IRQHandler()
+{
+    EXTI->PR = EXTI_PR_PR0;
+    tsCount = tsCount + 1;
+}
+
+extern "C" uint32_t radio_testTsCount()
+{
+    return tsCount;
+}
+
+extern "C" void radio_testTsIrq(const bool on)
+{
+    if (on) {
+        RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+        __DSB();
+        gpio_setMode(GPIOC, 0, INPUT);
+        SYSCFG->EXTICR[0] = (SYSCFG->EXTICR[0] & ~SYSCFG_EXTICR1_EXTI0)
+                          | SYSCFG_EXTICR1_EXTI0_PC;
+        EXTI->FTSR |= EXTI_FTSR_TR0;
+        EXTI->RTSR &= ~EXTI_RTSR_TR0;
+        EXTI->PR    = EXTI_PR_PR0;
+        EXTI->IMR  |= EXTI_IMR_MR0;
+        NVIC_ClearPendingIRQ(EXTI0_IRQn);
+        NVIC_SetPriority(EXTI0_IRQn, 10);
+        NVIC_EnableIRQ(EXTI0_IRQn);
+    } else {
+        EXTI->IMR &= ~EXTI_IMR_MR0;
+        NVIC_DisableIRQ(EXTI0_IRQn);
+    }
+}
+
+/**
+ * Retune for transmission at the lowest PA row, PA still off.
+ *
+ * @return 0, or -1 not a V5 / no band, -2 supply out of range.
+ */
+extern "C" int radio_testPhyPrep()
+{
+    if ((rf != &v5Ops) || (txBand == BND_NONE))
+        return -1;
+
+    const uint16_t supply = platform_getVbat();
+    if ((supply < TX_MIN_SUPPLY_MV) || (supply > TX_MAX_SUPPLY_MV))
+        return -2;
+
+    const struct md9600BandCalib *cal = &calData.band[txBand];
+    txDrive = interpCalParameter(config->txFrequency, cal->rxFreq,
+                                 cal->paDrive[paLevel(0)], calPoints(txBand));
+
+    txRetune();
+    C6000.setModOffset(calData.band[txBand].refTune);
+    gpio_clearPin(FM_SW);
+    sleepFor(0, TX_SETTLE_MS);
+    return 0;
+}
+
+extern "C" void radio_testPa(const bool on)
+{
+    if (on) {
+        paOn();
+        radioStatus = TX;
+    } else if (radioStatus == TX) {
+        paOff();
+    }
+}
+
+/**
+ * Back to receive after a test transmission. The HR_C6000 registers are the
+ * caller's to restore.
+ */
+extern "C" void radio_testPhyEnd()
+{
+    if (radioStatus == TX)
+        paOff();
+
+    radioStatus = OFF;
+    gpio_setPin(FM_SW);
+    radio_disableRtx();
+    radio_enableRx();
+}
+
+extern "C" uint32_t radio_testTxDrive()
+{
+    return txDrive;
+}
+#endif
+
 rssi_t radio_getRssi()
 {
     if (rf == NULL)

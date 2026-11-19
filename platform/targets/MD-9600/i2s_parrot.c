@@ -521,6 +521,180 @@ static void cmdFmCap(const uint32_t ms, const bool vhfInvert)
         serDump(takeNum++, rec, n);
 }
 
+uint32_t radio_testTsCount();
+void     radio_testTsIrq(const bool on);
+int      radio_testPhyPrep();
+void     radio_testPa(const bool on);
+void     radio_testPhyEnd();
+uint32_t radio_testTxDrive();
+
+#define SYM_MAX     4096    // bytes of dibits: 16384 symbols, 3.4 s
+#define SLOT_BYTES  36      // 144 symbols per 30 ms slot
+#define IDLE_BYTE   0x77    // +3 -3 +3 -3: the M17 preamble
+
+static uint8_t *sym;
+static size_t   symLen;
+static uint8_t  devMod1 = 0x65;     // RadioFoundry: 2400 Hz from the 0x52/0x2A pair
+static uint8_t  devMod2 = 0x34;
+
+/**
+ * Write HR_C6000 RAM with 8-bit addressing (page 2 TX RAM).
+ */
+static void ramWrite(const uint8_t page, const uint8_t addr, const uint8_t *buf,
+                     const size_t n)
+{
+    spi_acquire((const struct spiDevice *) &c6000_spi);
+    GPIOE->BSRR = 1u << (16 + 2);
+    delayUs(2);
+
+    slowXfer(page);
+    slowXfer(addr);
+    for(size_t i = 0; i < n; i++)
+        slowXfer(buf[i]);
+
+    delayUs(2);
+    GPIOE->BSRR = 1u << 2;
+    delayUs(2);
+    spi_release((const struct spiDevice *) &c6000_spi);
+}
+
+/**
+ * Wait for the next HR_C6000 timeslot interrupt.
+ *
+ * @param last: count seen last, updated.
+ * @return interrupts since last (0 = timed out after 200 ms).
+ */
+static uint32_t tsWait(uint32_t *last)
+{
+    for(int i = 0; i < 200; i++)
+    {
+        uint32_t now = radio_testTsCount();
+        if(now != *last)
+        {
+            uint32_t d = now - *last;
+            *last = now;
+            return d;
+        }
+        sleepFor(0, 1);
+    }
+    return 0;
+}
+
+/**
+ * Transmit the uploaded symbols in the HR_C6000 physical layer mode
+ * (RadioFoundry modem-hrc6000.md 10.3), lowest PA row.
+ */
+static void cmdPhyTx(uint32_t maxSlots)
+{
+    static const uint8_t saveRegs[] = { 0x10, 0x40, 0x41, 0x20, 0x21, 0x22, 0x45, 0x46 };
+    uint8_t saved[sizeof(saveRegs)];
+    uint8_t chunk[SLOT_BYTES];
+
+    if((sym == NULL) || (symLen == 0))
+    {
+        serLog("ERR no symbols, use sym");
+        return;
+    }
+
+    if(maxSlots > 200)
+        maxSlots = 200;
+
+    const uint32_t chunks = (uint32_t) ((symLen + SLOT_BYTES - 1) / SLOT_BYTES);
+
+    for(size_t i = 0; i < sizeof(saveRegs); i++)
+        saved[i] = slowRead(4, saveRegs[i], 0, 0);
+
+    int ret = radio_testPhyPrep();
+    if(ret < 0)
+    {
+        serLog("ERR prep %d (not V5/no band = -1, supply = -2)", ret);
+        radio_testPhyEnd();
+        return;
+    }
+
+    setPhase(PARROT_PLAY, 0);
+    i2sParrot_writeC6000(0x45, devMod2);
+    i2sParrot_writeC6000(0x46, devMod1);
+    i2sParrot_writeC6000(0x41, 0x00);
+    i2sParrot_writeC6000(0x10, 0x66);
+    i2sParrot_writeC6000(0x20, 0x00);
+    i2sParrot_writeC6000(0x21, 0x02);
+    i2sParrot_writeC6000(0x22, 0x86);
+
+    memset(chunk, IDLE_BYTE, sizeof(chunk));
+    ramWrite(2, 0x00, chunk, SLOT_BYTES);
+    ramWrite(2, 0x24, chunk, SLOT_BYTES);
+
+    radio_testTsIrq(true);
+    uint32_t last = radio_testTsCount();
+    long long t0 = getTick();
+    i2sParrot_writeC6000(0x40, 0xE3);
+
+    uint32_t n = 0, k = 0, jumps = 0, idleTail = 0;
+    bool paOn = false, stall = false;
+    long long tPa = 0, tEnd = 0;
+
+    while(n < maxSlots)
+    {
+        uint32_t d = tsWait(&last);
+        if(d == 0) { stall = true; break; }
+        if(d > 1)  jumps++;
+        n += d;
+
+        // Slot n+1 is set up at interrupt n and reads 0x00 when n is odd
+        const uint8_t half = (n & 1) ? 0x00 : 0x24;
+
+        if(n == 2)
+        {
+            radio_testPa(true);
+            paOn = true;
+            tPa = getTick();
+        }
+
+        if((n >= 2) && (k < chunks))
+        {
+            size_t off = (size_t) k * SLOT_BYTES;
+            size_t len = ((symLen - off) > SLOT_BYTES) ? SLOT_BYTES : (symLen - off);
+            memcpy(chunk, &sym[off], len);
+            if(len < SLOT_BYTES)
+                memset(&chunk[len], IDLE_BYTE, SLOT_BYTES - len);
+            k++;
+        }
+        else
+        {
+            memset(chunk, IDLE_BYTE, sizeof(chunk));
+            if(k >= chunks)
+                idleTail++;
+        }
+
+        ramWrite(2, half, chunk, SLOT_BYTES);
+        i2sParrot_writeC6000(0x41, 0x80);
+
+        // One idle slot after the last chunk, then drop at the next interrupt
+        if(idleTail > 1)
+            break;
+    }
+
+    if(paOn)
+        radio_testPa(false);
+    tEnd = getTick();
+
+    radio_testTsIrq(false);
+    i2sParrot_writeC6000(0x41, 0x00);
+    for(size_t i = 0; i < sizeof(saveRegs); i++)
+        i2sParrot_writeC6000(saveRegs[i], saved[i]);
+    radio_testPhyEnd();
+    setPhase(PARROT_IDLE, 0);
+
+    serLog("PHYTX %lu/%lu chunks, %lu interrupts, %lu jumps%s, PA %ld ms after start, "
+           "on %ld ms, drive %lu, dev %02x/%02x, saved 10=%02x 40=%02x 41=%02x 45=%02x 46=%02x",
+           (unsigned long) k, (unsigned long) chunks, (unsigned long) n,
+           (unsigned long) jumps, stall ? " STALLED" : "",
+           (long) (tPa - t0), (long) (tEnd - tPa),
+           (unsigned long) radio_testTxDrive(), devMod1, devMod2, saved[0],
+           saved[1], saved[2], saved[6], saved[7]);
+}
+
 /**
  * One diagnostics line.
  */
@@ -618,6 +792,7 @@ static void cmdHelp()
     serLog("      c6 init|fm|dmr|beepoff | c6 lo 0/1 | c6 beep <hz> | ch l/r |");
     serLog("      spk 1/0 (hold MCU->SPK path) | mic 1/0 (hold MIC->MCU path) | sleep <ms>");
     serLog("      rdly [n] (fast read settle NOPs) | rtest <reg> [n] | fmcap <ms> [i=invert]");
+    serLog("      sym clr | sym <hex dibits> | dev <mod1> <mod2> | phytx [max slots, 200 cap]");
     serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
 }
 
@@ -687,6 +862,36 @@ static void runLine(char *line)
                           slowRead(4, reg, mode, us));
         serLog("%s", out);
     }
+    else if(strcmp(c, "sym") == 0)
+    {
+        if(sym == NULL)
+            sym = (uint8_t *) malloc(SYM_MAX);
+
+        if((argc > 1) && (strcmp(argv[1], "clr") == 0))
+            symLen = 0;
+        else if((argc > 1) && (sym != NULL))
+        {
+            const char *h = argv[1];
+            while((h[0] != '\0') && (h[1] != '\0') && (symLen < SYM_MAX))
+            {
+                char b[3] = { h[0], h[1], 0 };
+                sym[symLen++] = (uint8_t) strtoul(b, NULL, 16);
+                h += 2;
+            }
+        }
+        serLog("OK sym %u bytes", (unsigned) symLen);
+    }
+    else if(strcmp(c, "dev") == 0)
+    {
+        if(argc > 2)
+        {
+            devMod1 = (uint8_t) HEX(1);
+            devMod2 = (uint8_t) HEX(2);
+        }
+        serLog("OK dev mod1 %02x mod2 %02x", devMod1, devMod2);
+    }
+    else if(strcmp(c, "phytx") == 0)
+        cmdPhyTx(DEC(1, 120));
     else if(strcmp(c, "rdly") == 0)
     {
         if(argc > 1)
@@ -764,7 +969,7 @@ static void runLine(char *line)
 static void *consoleThread(void *arg)
 {
     (void) arg;
-    char line[96];
+    char line[320];
     size_t len = 0;
 
     sleepFor(2, 0);
