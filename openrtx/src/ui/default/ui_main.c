@@ -335,23 +335,7 @@ void _ui_drawMainBottom()
     {
         case OPMODE_FM:
             #ifdef CONFIG_I2S_PARROT
-            {
-                static const char *phase[] = { "WAIT", "REC", "PLAY", "ERR" };
-                struct parrotStatus ps;
-                i2sParrot_getStatus(&ps);
-                point_t l1 = { layout.horizontal_pad, (int16_t) (layout.bottom_pos.y - 8) };
-                point_t l2 = { layout.horizontal_pad, layout.bottom_pos.y };
-                gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                          "%s i%lu n%lu s%lx", phase[ps.phase & 3],
-                          (unsigned long) ps.diag.irqs,
-                          (unsigned long) ps.diag.ndtr,
-                          (unsigned long) ps.diag.sr);
-                gfx_print(l2, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                          "w%lu c%lu L%d R%d", (unsigned long) ps.diag.wsEdges,
-                          (unsigned long) ps.diag.ckEdges, ps.live.peak[0],
-                          ps.live.peak[1]);
-                break;
-            }
+            break;
             #endif
             gfx_drawSmeter(meter_pos,
                            meter_width,
@@ -385,8 +369,50 @@ void _ui_drawMainBottom()
     }
 }
 
+#ifdef CONFIG_I2S_PARROT
+/**
+ * Bench test page: I2S microphone diagnostics in place of the main screen.
+ */
+static void _ui_drawParrot()
+{
+    static const char *phase[] = { "WAIT", "REC", "PLAY", "ERR" };
+    struct parrotStatus ps;
+    i2sParrot_getStatus(&ps);
+
+    uint32_t sdPct = (ps.diag.polls > 0) ? (100 * ps.diag.sdHigh) / ps.diag.polls : 0;
+    point_t p = { layout.horizontal_pad, 18 };
+
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "E%u %s t%lu e%d %c",
+              ps.exp, phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
+              ps.right ? 'R' : 'L');
+    p.y += 8;
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "L%d/%u R%d/%u",
+              ps.live.peak[0], ps.live.rms[0], ps.live.peak[1], ps.live.rms[1]);
+    p.y += 8;
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "i%lu to%lu p%lu r%lu",
+              (unsigned long) ps.diag.irqs, (unsigned long) ps.diag.timeouts,
+              (unsigned long) ps.diag.pos, (unsigned long) ps.diag.running);
+    p.y += 8;
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "w%lu c%lu sd%lu%%",
+              (unsigned long) ps.diag.wsEdges, (unsigned long) ps.diag.ckEdges,
+              (unsigned long) sdPct);
+    p.y += 8;
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "10:%02x 22:%02x E0:%02x",
+              ps.regs[0], ps.regs[1], ps.regs[2]);
+    p.y += 8;
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "36:%02x E2:%02x 06:%02x",
+              ps.regs[3], ps.regs[4], ps.regs[5]);
+}
+#endif
+
 void _ui_drawMainVFO(ui_state_t* ui_state)
 {
+#ifdef CONFIG_I2S_PARROT
+    (void) ui_state;
+    gfx_clearScreen();
+    _ui_drawParrot();
+    return;
+#endif
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
@@ -411,6 +437,12 @@ void _ui_drawMainVFOInput(ui_state_t* ui_state)
 
 void _ui_drawMainMEM(ui_state_t* ui_state)
 {
+#ifdef CONFIG_I2S_PARROT
+    (void) ui_state;
+    gfx_clearScreen();
+    _ui_drawParrot();
+    return;
+#endif
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);

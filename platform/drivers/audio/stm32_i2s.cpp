@@ -43,6 +43,7 @@ static volatile uint64_t statSumSq[2];
 static volatile uint32_t statNoClock;
 
 static volatile uint32_t dIrqs, dHt, dTc, dTe, dStarts, dStartFails;
+static volatile uint32_t dTimeouts;
 
 /**
  * Stop the DMA stream and the I2S peripheral.
@@ -358,6 +359,9 @@ void stm32i2s_getDiag(struct i2sDiag *d)
     d->te         = dTe;
     d->starts     = dStarts;
     d->startFails = dStartFails;
+    d->timeouts   = dTimeouts;
+    d->pos        = pos;
+    d->running    = (ctx != nullptr) ? ctx->running : 0xFF;
     d->sr         = SPI3->SR;
     d->i2scfgr    = SPI3->I2SCFGR;
     d->dmaCr      = DMA1_Stream0->CR;
@@ -450,27 +454,24 @@ static int stm32i2s_sync(struct streamCtx *c, uint8_t dirty)
 {
     (void) dirty;
 
-    miosix::FastInterruptDisableLock dLock;
-    miosix::Thread *cur = miosix::Thread::IRQgetCurrentThread();
-
-    if((waiting != nullptr) && (waiting != cur))
-        return -1;
-
-    while(event == false)
+    // Bench version: poll with a timeout, so that a stalled stream shows up
+    // in the diagnostics instead of blocking the caller for ever
+    for(uint32_t i = 0; i < 200; i++)
     {
+        if(event)
+        {
+            event = false;
+            return 0;
+        }
+
         if(c->running == 0)
             return -1;
 
-        waiting = cur;
-        miosix::Thread::IRQwait();
-        {
-            miosix::FastInterruptEnableLock eLock(dLock);
-            miosix::Thread::yield();
-        }
+        sleepFor(0, 1);
     }
 
-    event = false;
-    return 0;
+    dTimeouts = dTimeouts + 1;
+    return -1;
 }
 
 static void stm32i2s_stop(struct streamCtx *c)

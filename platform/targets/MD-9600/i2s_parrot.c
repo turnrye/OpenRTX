@@ -164,6 +164,32 @@ static bool pickChannel(const struct i2sStats *st, const bool right)
     return right;
 }
 
+void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
+void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
+
+#define NUM_EXP 4
+
+/**
+ * HR_C6000 set-up for a take, cycled one per take:
+ * 0 as left by the radio, 1 vocoder encoder start (0x22 = 0x86), 2 and 3 the
+ * same in DMR receive mode 0x10 = 0x4F (campaign) and 0x6E (RadioFoundry).
+ *
+ * @param exp: experiment number.
+ * @param old10: the 0x10 value to restore, read before.
+ */
+static void expApply(const uint8_t exp)
+{
+    if(exp == 2) i2sParrot_writeC6000(0x10, 0x4F);
+    if(exp == 3) i2sParrot_writeC6000(0x10, 0x6E);
+    if(exp >= 1) i2sParrot_writeC6000(0x22, 0x86);
+}
+
+static void expRestore(const uint8_t exp, const uint8_t old10)
+{
+    if(exp >= 1) i2sParrot_writeC6000(0x22, 0x46);    // Encoder stop, I2S bits kept
+    if(exp >= 2) i2sParrot_writeC6000(0x10, old10);
+}
+
 static void *parrotThread(void *arg)
 {
     (void) arg;
@@ -175,12 +201,24 @@ static void *parrotThread(void *arg)
     {
         struct i2sStats st;
 
+        static const uint8_t r10 = 0x10;
+        uint8_t old10;
+        const uint8_t exp = (uint8_t) (status.takes % NUM_EXP);
+
+        i2sParrot_readC6000(&r10, &old10, 1);
+        pthread_mutex_lock(&mutex);
+        status.exp = exp;
+        pthread_mutex_unlock(&mutex);
+
         stm32i2s_setChannel(right);
+        expApply(exp);
+        sleepFor(0, 50);
         stm32i2s_getStats(&st, true);
         setPhase(PARROT_REC, 0);
 
         int n = record();
         stm32i2s_getStats(&st, true);
+        expRestore(exp, old10);
 
         pthread_mutex_lock(&mutex);
         status.stats = st;
@@ -196,12 +234,7 @@ static void *parrotThread(void *arg)
         }
 
         const bool next = pickChannel(&st, right);
-        if(next != right)
-        {
-            // The take was on the quiet channel: record again on the other
-            right = next;
-            continue;
-        }
+        right = next;
 
         uint8_t gain = normalise((size_t) n);
         pthread_mutex_lock(&mutex);
@@ -263,9 +296,17 @@ static void *diagThread(void *arg)
                st.peak[0], st.rms[0], st.peak[1], st.rms[1],
                (unsigned long) st.noClock);
 
-        if((sec % 5) == 0)
+        if((sec % 2) == 0)
         {
             i2sParrot_readC6000(regs, vals, sizeof(regs));
+            pthread_mutex_lock(&mutex);
+            status.regs[0] = vals[1];   // 0x10
+            status.regs[1] = vals[2];   // 0x22
+            status.regs[2] = vals[7];   // 0xE0
+            status.regs[3] = vals[6];   // 0x36
+            status.regs[4] = vals[8];   // 0xE2
+            status.regs[5] = vals[0];   // 0x06
+            pthread_mutex_unlock(&mutex);
             printf("C6000");
             for(size_t i = 0; i < sizeof(regs); i++)
                 printf(" %02x=%02x", regs[i], vals[i]);

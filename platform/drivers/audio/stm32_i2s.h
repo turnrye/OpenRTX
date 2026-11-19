@@ -43,6 +43,9 @@ struct i2sDiag
 {
     uint32_t irqs, ht, tc, te;      ///< DMA interrupts
     uint32_t starts, startFails;    ///< Stream starts
+    uint32_t timeouts;              ///< sync() calls that timed out
+    uint32_t pos;                   ///< Write position in the stream buffer
+    uint32_t running;               ///< Stream running flag, 0xFF no stream
     uint32_t sr, i2scfgr, dmaCr, ndtr, lisr;
     uint32_t wsEdges, ckEdges;      ///< Edges in 1 ms
     uint32_t sdHigh, polls;         ///< SD high samples, of polls in 1 ms

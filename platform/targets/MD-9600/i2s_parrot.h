@@ -38,6 +38,8 @@ struct parrotStatus
     struct i2sStats stats;  ///< Levels of the last take
     struct i2sDiag  diag;   ///< Live diagnostics, once a second
     struct i2sStats live;   ///< Levels of the take in progress
+    uint8_t  exp;           ///< HR_C6000 set-up of the take, see i2s_parrot.c
+    uint8_t  regs[6];       ///< HR_C6000 0x10, 0x22, 0xE0, 0x36, 0xE2, 0x06
 };
 
 /**

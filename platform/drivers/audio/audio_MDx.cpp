@@ -132,6 +132,11 @@ extern "C" void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n
     for(size_t i = 0; i < n; i++)
         vals[i] = C6000.readCfgRegister(regs[i]);
 }
+
+extern "C" void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val)
+{
+    C6000.writeCfgRegister(reg, val);
+}
 #endif
 
 void audio_init()
