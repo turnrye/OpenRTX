@@ -14,9 +14,6 @@
 #include "ui/ui_strings.h"
 #include "core/utils.h"
 #include "ui/utils.h"
-#ifdef CONFIG_I2S_PARROT
-#include "i2s_parrot.h"
-#endif
 
 /*
  * A target whose volume knob acts on the audio only, out of the MCU's reach,
@@ -334,9 +331,6 @@ void _ui_drawMainBottom()
     switch(last_state.channel.mode)
     {
         case OPMODE_FM:
-            #ifdef CONFIG_I2S_PARROT
-            break;
-            #endif
             gfx_drawSmeter(meter_pos,
                            meter_width,
                            meter_height,
@@ -369,47 +363,8 @@ void _ui_drawMainBottom()
     }
 }
 
-#ifdef CONFIG_I2S_PARROT
-/**
- * Bench test page: I2S microphone diagnostics in place of the main screen.
- */
-static void _ui_drawParrot()
-{
-    static const char *phase[] = { "WAIT", "REC", "PLAY", "ERR" };
-    struct parrotStatus ps;
-    i2sParrot_getStatus(&ps);
-
-    uint32_t sdPct = (ps.diag.polls > 0) ? (100 * ps.diag.sdHigh) / ps.diag.polls : 0;
-    point_t p = { layout.horizontal_pad, 18 };
-
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "V%u %s t%lu e%d %c",
-              ps.exp, phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
-              ps.right ? 'R' : 'L');
-    p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "L%d/%u R%d/%u",
-              ps.live.peak[0], ps.live.rms[0], ps.live.peak[1], ps.live.rms[1]);
-    p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "i%lu to%lu p%lu r%lu",
-              (unsigned long) ps.diag.irqs, (unsigned long) ps.diag.timeouts,
-              (unsigned long) ps.diag.pos, (unsigned long) ps.diag.running);
-    p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "w%lu c%lu sd%lu%%",
-              (unsigned long) ps.diag.wsEdges, (unsigned long) ps.diag.ckEdges,
-              (unsigned long) sdPct);
-    p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "gain x%u last L%d R%d",
-              ps.gain, ps.stats.peak[0], ps.stats.peak[1]);
-}
-#endif
-
 void _ui_drawMainVFO(ui_state_t* ui_state)
 {
-#ifdef CONFIG_I2S_PARROT
-    (void) ui_state;
-    gfx_clearScreen();
-    _ui_drawParrot();
-    return;
-#endif
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
@@ -434,12 +389,6 @@ void _ui_drawMainVFOInput(ui_state_t* ui_state)
 
 void _ui_drawMainMEM(ui_state_t* ui_state)
 {
-#ifdef CONFIG_I2S_PARROT
-    (void) ui_state;
-    gfx_clearScreen();
-    _ui_drawParrot();
-    return;
-#endif
     gfx_clearScreen();
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);

@@ -60,7 +60,16 @@ bool     radio_testRxVhf();
 
 void m17bench_tx(const uint32_t seconds, const char *callsign);
 void m17bench_mem(const char *when);
-void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert);
+void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert,
+                 const bool decodeAudio);
+}
+
+static void stackLog(const char *when)
+{
+    bench_log("STACK %s: size %u, free now %u, lowest free %u", when,
+              miosix::MemoryProfiling::getStackSize(),
+              miosix::MemoryProfiling::getCurrentFreeStack(),
+              miosix::MemoryProfiling::getAbsoluteFreeStack());
 }
 
 void m17bench_mem(const char *when)
@@ -269,7 +278,8 @@ static int16_t copyLast(const int half)
     return (int16_t) ((b[0] << 8) | b[1]);
 }
 
-void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
+void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg,
+                 const bool decodeAudio)
 {
     static const uint8_t saveRegs[] = { 0x41, 0x36, 0x60, 0x34, 0x10, 0x81 };
     uint8_t saved[sizeof(saveRegs)];
@@ -333,6 +343,8 @@ void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
     bool locked = false;
     char src[12] = "", dst[12] = "";
 
+    stackLog("m17rx loop start");
+    bool sawLock = false, sawLsf = false, sawStream = false, sawDecode = false;
     bench_setPhase(PARROT_REC);
     long long t0 = getTick();
     const long long tEnd = t0 + (long long) seconds * 1000;
@@ -374,6 +386,7 @@ void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
                 {
                     decoder->reset();
                     locks++;
+                    if(!sawLock) { sawLock = true; stackLog("first lock"); }
                 }
                 locked = lock;
 
@@ -381,13 +394,21 @@ void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
                     continue;
 
                 newFrames++;
+                if(newFrames == 1) stackLog("before first decodeFrame");
                 auto type = decoder->decodeFrame(demod->getFrame());
+                if(newFrames == 1) stackLog("after first decodeFrame");
                 const LinkSetupFrame &lsf = decoder->getLsf();
                 if(lsf.valid() && (src[0] == '\0'))
                 {
                     LinkSetupFrame l = lsf;
                     strncpy(src, (const char *) l.getSource(), sizeof(src) - 1);
                     strncpy(dst, (const char *) l.getDestination(), sizeof(dst) - 1);
+                }
+
+                if(lsf.valid() && !sawLsf)
+                {
+                    sawLsf = true;
+                    bench_log("first LSF: src '%s' dst '%s'", src, dst);
                 }
 
                 if(type == FrameType::LINK_SETUP)
@@ -397,10 +418,13 @@ void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
                 else if(type == FrameType::STREAM)
                 {
                     streamFrames++;
+                    if(!sawStream) { sawStream = true; stackLog("first stream frame"); }
                     const StreamFrame &sf = decoder->getStreamFrame();
-                    for(size_t k = 0; (k < 2) && (recN + 160 <= cap); k++)
+                    for(size_t k = 0; decodeAudio && (k < 2) && (recN + 160 <= cap); k++)
                     {
+                        if(!sawDecode) stackLog("before first codec2_decode");
                         codec2_decode(c2, &rec[recN], sf.data() + 8 * k);
+                        if(!sawDecode) { sawDecode = true; stackLog("after first codec2_decode"); }
                         recN += 160;
                     }
                 }

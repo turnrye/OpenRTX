@@ -307,7 +307,8 @@ static bool     monitor;        // Diagnostics line every second
 static uint32_t takeNum;
 
 void m17bench_tx(const uint32_t seconds, const char *callsign);
-void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert);
+void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert,
+                 const bool decodeAudio);
 void m17bench_mem(const char *when);
 
 /**
@@ -913,7 +914,7 @@ static void cmdHelp()
     serLog("      rdly [n] (fast read settle NOPs) | rtest <reg> [n] | fmcap <ms> [i=invert]");
     serLog("      sym clr | sym <hex dibits> | dev <mod1> <mod2> | phytx [max slots, 400 cap]");
     serLog("      mem (free heap)");
-    serLog("      m17tx <s> [callsign] (live mic, Codec2, lowest row) | m17rx <s> [shift] [invert 0/1, default by band]");
+    serLog("      m17tx <s> [callsign] (live mic, Codec2, lowest row) | m17rx <s> [shift] [invert 0/1, default by band] [nodecode]");
     serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
 }
 
@@ -1016,7 +1017,14 @@ static void runLine(char *line)
     else if(strcmp(c, "m17tx") == 0)
         m17bench_tx(DEC(1, 3), (argc > 2) ? argv[2] : "N0CALL");
     else if(strcmp(c, "m17rx") == 0)
-        m17bench_rx(DEC(1, 5), DEC(2, 4), (argc > 3) ? (int) DEC(3, 2) : -1);
+    {
+        bool nodec = false;
+        for(int i = 1; i < argc; i++)
+            if(strcmp(argv[i], "nodecode") == 0) nodec = true;
+        int inv = ((argc > 3) && (strcmp(argv[3], "nodecode") != 0)) ? (int) DEC(3, 2) : -1;
+        m17bench_rx(DEC(1, 5), ((argc > 2) && (strcmp(argv[2], "nodecode") != 0)) ? DEC(2, 4) : 4,
+                    inv, !nodec);
+    }
     else if(strcmp(c, "phytx") == 0)
         cmdPhyTx(DEC(1, 120));
     else if(strcmp(c, "rdly") == 0)
@@ -1185,9 +1193,11 @@ void i2sParrot_start()
     pthread_attr_t attr;
     pthread_t thread;
 
-    // The console runs Codec2 decode (m17rx): the codec thread's stack size
+    // The console runs Codec2 decode (m17rx): codec2_decode_3200 ->
+    // synthesise_one_frame -> synthesise -> codec2_fft_inplace needs ~16.5 kB
+    // of locals alone, on top of the console's own frames
     pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 16384);
+    pthread_attr_setstacksize(&attr, 24576);
     pthread_create(&thread, &attr, consoleThread, NULL);
     pthread_attr_setstacksize(&attr, 4096);
     pthread_create(&thread, &attr, diagThread, NULL);
