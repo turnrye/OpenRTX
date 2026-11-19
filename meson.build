@@ -481,7 +481,8 @@ md9600_src = ['platform/targets/MD-9600/platform.c',
               'platform/drivers/baseband/AK2365A.c',
               'platform/drivers/CPS/cps_io_native_MD9600.c',
               'platform/drivers/baseband/HR_C6000_MD9600.cpp',
-              'platform/drivers/audio/stm32_i2s.cpp']
+              'platform/drivers/audio/stm32_i2s.cpp',
+              'platform/drivers/audio/C6000_fmcopy.cpp']
 
 md9600_inc = ['platform/targets/MD-9600']
 md9600_def = {'PLATFORM_MD9600': ''}

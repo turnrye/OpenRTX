@@ -17,6 +17,7 @@
 #include "stm32_adc.h"
 #ifdef PLATFORM_MD9600
 #include "stm32_i2s.h"
+#include "C6000_fmcopy.h"
 #endif
 
 #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
@@ -115,7 +116,12 @@ const struct audioDevice outputDevices[] =
 const struct audioDevice inputDevices[] =
 {
     {NULL,                    0,                 0,              SOURCE_MCU},
+    #ifdef PLATFORM_MD9600
+    // The HR_C6000 demodulates the IF: its FM copy is the receive baseband
+    {&C6000_fmcopy_audio_driver, NULL,           0,              SOURCE_RTX},
+    #else
     {&stm32_adc_audio_driver, (const void *) 13, STM32_ADC_ADC2, SOURCE_RTX},
+    #endif
     #ifdef PLATFORM_MD9600
     // The hand mic goes to the HR_C6000 codec, which streams it over I2S3
     {&stm32_i2s_audio_driver, NULL,              0,              SOURCE_MIC},
@@ -170,6 +176,7 @@ void audio_init()
 
     #ifdef PLATFORM_MD9600
     stm32i2s_init();
+    C6000fmcopy_init(&C6000);
     #endif
 }
 
