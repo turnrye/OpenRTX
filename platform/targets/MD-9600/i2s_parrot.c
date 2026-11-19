@@ -810,7 +810,8 @@ void bench_setPhase(const uint8_t phase)
 
 void bench_devFor(const bool vhf, uint8_t *mod1, uint8_t *mod2)
 {
-    // Measured on Ryan's V5 (2026-11-19): 2402/800 Hz at 446.0, 2374/801 Hz at 146.52
+    // Measured on one V5 board: 2402/800 Hz at 446.0 MHz, 2374/801 Hz at 146.52 MHz.
+    // Should come from the calibration's DMR modulation pair instead.
     *mod1 = vhf ? 0x84 : 0x78;
     *mod2 = vhf ? 0x44 : 0x3E;
 }
