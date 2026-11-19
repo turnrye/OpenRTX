@@ -8,6 +8,10 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include "peripherals/spi.h"
+#include "hwconfig.h"
 #include "core/audio_path.h"
 #include "core/audio_stream.h"
 #include "interfaces/delays.h"
@@ -141,7 +145,7 @@ static void setPhase(const uint8_t phase, const int16_t error)
  *
  * @return samples recorded, negative error code on failure.
  */
-static int record()
+static int record(size_t want)
 {
     pathId path = audioPath_request(SOURCE_MIC, SINK_MCU, PRIO_TX);
     if(path < 0)
@@ -157,7 +161,10 @@ static int record()
     }
 
     size_t n = 0;
-    while(n < REC_SAMPLES)
+    if(want > REC_SAMPLES)
+        want = REC_SAMPLES;
+
+    while(n < want)
     {
         dataBlock_t b = inputStream_getData(id);
         if((b.data == NULL) || (b.len == 0))
@@ -167,8 +174,8 @@ static int record()
         }
 
         size_t len = b.len;
-        if(len > (REC_SAMPLES - n))
-            len = REC_SAMPLES - n;
+        if(len > (want - n))
+            len = want - n;
 
         memcpy(&rec[n], b.data, len * sizeof(stream_sample_t));
         n += len;
@@ -290,125 +297,327 @@ static int play(const size_t n)
     return 0;
 }
 
-/**
- * Pick the channel for the next take: switch when the other one is clearly
- * louder.
- */
-static bool pickChannel(const struct i2sStats *st, const bool right)
-{
-    const uint8_t cur   = right ? 1 : 0;
-    const uint8_t other = right ? 0 : 1;
-
-    if((st->rms[other] > SWITCH_MIN) &&
-       (st->rms[other] > (SWITCH_RATIO * (uint32_t) st->rms[cur])))
-        return !right;
-
-    return right;
-}
-
 void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
 void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
+int  i2sParrot_c6000Op(const char *op, const int arg);
 
-#define NUM_VARIANTS 4
-
-/**
- * HR_C6000 set-up before a take, one per take: 0 nothing, 1 and 2 vocoder
- * encoder start (0x22 = 0x86), 3 register 0x06 back to its init value 0x21.
- */
-static void variantBefore(const uint8_t v)
-{
-    // 1: 0x06 back to its init value; 2: the I2S bits of 0x22 set again;
-    // 3: both
-    if((v == 1) || (v == 3)) i2sParrot_writeC6000(0x06, 0x21);
-    if((v == 2) || (v == 3)) i2sParrot_writeC6000(0x22, 0x06);
-}
-
-static void variantAfter(const uint8_t v)
-{
-    (void) v;
-}
+static size_t   recLen;         // Samples in rec
+static bool     monitor;        // Diagnostics line every second
+static uint32_t takeNum;
 
 /**
- * Log the HR_C6000 codec registers (the read back loses bit 7).
+ * Careful read of an HR_C6000 register over its bit-banged port, for
+ * comparison with the driver's fast read. MOSI changes while CLK is high and
+ * the chip latches it on the falling edge, as in spiC6000_func.
+ *
+ * @param page: register page (4 = configuration).
+ * @param reg: register.
+ * @param mode: 0 sample MISO after the falling edge, 1 just before it,
+ *              2 after the rising edge.
+ * @param us: half clock period in microseconds.
  */
-static void logRegs(const char *when, const uint32_t take)
+static uint8_t slowRead(const uint8_t page, const uint8_t reg, const int mode,
+                        const uint32_t us)
 {
-    static const uint8_t regs[] = { 0x06, 0x22, 0x36, 0xE0, 0xE2 };
-    uint8_t v[sizeof(regs)];
-    i2sParrot_readC6000(regs, v, sizeof(regs));
-    serLog("REGS %s %lu: 06=%02x 22=%02x 36=%02x E0=%02x E2=%02x", when,
-           (unsigned long) take, v[0], v[1], v[2], v[3], v[4]);
+    const uint8_t tx[3] = { (uint8_t) (0x80 | page), reg, 0x00 };
+    uint8_t rx[3] = { 0, 0, 0 };
+
+    spi_acquire((const struct spiDevice *) &c6000_spi);
+    GPIOE->BSRR = 1u << (16 + 2);           // CS low (PE2)
+    delayUs(2);
+
+    for(int byte = 0; byte < 3; byte++)
+    {
+        uint8_t in = 0;
+        for(int bit = 7; bit >= 0; bit--)
+        {
+            GPIOE->BSRR = 1u << 3;          // CLK high (PE3)
+            if(mode == 2)
+            {
+                delayUs(us);
+                in = (uint8_t) ((in << 1) | ((GPIOE->IDR >> 4) & 1u));
+            }
+
+            if(tx[byte] & (1u << bit))
+                GPIOE->BSRR = 1u << 5;      // MOSI high (PE5)
+            else
+                GPIOE->BSRR = 1u << (16 + 5);
+
+            delayUs(us);
+            if(mode == 1)
+                in = (uint8_t) ((in << 1) | ((GPIOE->IDR >> 4) & 1u));
+
+            GPIOE->BSRR = 1u << (16 + 3);   // CLK low
+            delayUs(us);
+            if(mode == 0)
+                in = (uint8_t) ((in << 1) | ((GPIOE->IDR >> 4) & 1u));
+        }
+        rx[byte] = in;
+    }
+
+    delayUs(2);
+    GPIOE->BSRR = 1u << 2;                  // CS high
+    delayUs(2);
+    spi_release((const struct spiDevice *) &c6000_spi);
+
+    return rx[2];
 }
 
-static void *parrotThread(void *arg)
+/**
+ * One diagnostics line.
+ */
+static void logStat()
+{
+    struct i2sDiag d;
+    struct i2sStats st;
+    stm32i2s_getDiag(&d);
+    stm32i2s_getStats(&st, false);
+
+    serLog("STAT irq=%lu to=%lu run=%lu sr=%04lx ws=%lu ck=%lu sd=%lu/%lu "
+           "frames=%lu L=%d/%u R=%d/%u raw=%d,%d,%d,%d,%d,%d,%d,%d",
+           (unsigned long) d.irqs, (unsigned long) d.timeouts,
+           (unsigned long) d.running, (unsigned long) d.sr,
+           (unsigned long) d.wsEdges, (unsigned long) d.ckEdges,
+           (unsigned long) d.sdHigh, (unsigned long) d.polls,
+           (unsigned long) st.frames, st.peak[0], st.rms[0], st.peak[1],
+           st.rms[1], d.raw[0], d.raw[1], d.raw[2], d.raw[3], d.raw[4],
+           d.raw[5], d.raw[6], d.raw[7]);
+}
+
+/**
+ * Record ms milliseconds and report.
+ */
+static void cmdRec(const uint32_t ms, const bool dump)
+{
+    struct i2sStats st;
+    size_t want = (size_t) ms * (SAMPLE_RATE / 1000);
+
+    stm32i2s_getStats(&st, true);
+    setPhase(PARROT_REC, 0);
+    long long t0 = getTick();
+    int n = record(want);
+    long long t1 = getTick();
+    stm32i2s_getStats(&st, true);
+    setPhase(PARROT_IDLE, (n < 0) ? n : 0);
+
+    recLen = (n > 0) ? (size_t) n : 0;
+    pthread_mutex_lock(&mutex);
+    status.stats = st;
+    status.takes++;
+    pthread_mutex_unlock(&mutex);
+
+    serLog("TAKE %lu n=%d %ld ms frames=%lu L=%d/%u mean %d R=%d/%u mean %d",
+           (unsigned long) takeNum, n, (long) (t1 - t0),
+           (unsigned long) st.frames, st.peak[0], st.rms[0], st.mean[0],
+           st.peak[1], st.rms[1], st.mean[1]);
+
+    if(dump && (recLen > 0))
+        serDump(takeNum, rec, recLen);
+
+    takeNum++;
+}
+
+/**
+ * Play the last take.
+ */
+static void cmdPlay()
+{
+    if(recLen == 0)
+    {
+        serLog("ERR nothing recorded");
+        return;
+    }
+
+    uint8_t gain = normalise(recLen);
+    serLog("PLAY gain x%u", gain);
+    setPhase(PARROT_PLAY, 0);
+    int ret = play(recLen);
+    setPhase(PARROT_IDLE, (int16_t) ret);
+}
+
+/**
+ * Play a generated tone through the same path.
+ */
+static void cmdTone(const uint32_t hz, const uint32_t ms)
+{
+    size_t n = (size_t) ms * (SAMPLE_RATE / 1000);
+    if(n > REC_SAMPLES)
+        n = REC_SAMPLES;
+
+    for(size_t i = 0; i < n; i++)
+        rec[i] = (stream_sample_t) (8000.0f * sinf(6.2831853f * (float) hz
+                                                   * (float) i / SAMPLE_RATE));
+    recLen = n;
+    setPhase(PARROT_PLAY, 0);
+    int ret = play(recLen);
+    setPhase(PARROT_IDLE, (int16_t) ret);
+}
+
+static void cmdHelp()
+{
+    serLog("cmds: help | stat | mon 0/1 | rec <ms> [q] | play | tone <hz> <ms> |");
+    serLog("      w <reg> <val> | r <reg> [n] | rs <reg> <mode0-2> <us> [n] | ra <page> <reg> [mode] [us] |");
+    serLog("      c6 init|fm|dmr|beepoff | c6 lo 0/1 | c6 beep <hz> | ch l/r |");
+    serLog("      spk 1/0 (hold MCU->SPK path) | mic 1/0 (hold MIC->MCU path) | sleep <ms>");
+    serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
+}
+
+/**
+ * Run one console line.
+ */
+static void runLine(char *line)
+{
+    static pathId spkPath = -1;
+    static pathId micPath = -1;
+    char *argv[6];
+    int argc = 0;
+
+    for(char *tok = strtok(line, " \t"); tok && (argc < 6); tok = strtok(NULL, " \t"))
+        argv[argc++] = tok;
+
+    if(argc == 0)
+        return;
+
+    const char *c = argv[0];
+    #define HEX(i) ((argc > (i)) ? (uint32_t) strtoul(argv[i], NULL, 16) : 0)
+    #define DEC(i, d) ((argc > (i)) ? (uint32_t) strtoul(argv[i], NULL, 10) : (d))
+
+    if(strcmp(c, "help") == 0)       cmdHelp();
+    else if(strcmp(c, "stat") == 0)  logStat();
+    else if(strcmp(c, "mon") == 0)   { monitor = (DEC(1, 1) != 0); serLog("OK mon %d", monitor); }
+    else if(strcmp(c, "rec") == 0)   cmdRec(DEC(1, 3000), !((argc > 2) && (argv[2][0] == 'q')));
+    else if(strcmp(c, "play") == 0)  cmdPlay();
+    else if(strcmp(c, "tone") == 0)  cmdTone(DEC(1, 1000), DEC(2, 1000));
+    else if(strcmp(c, "sleep") == 0) { sleepFor(0, DEC(1, 100)); serLog("OK"); }
+    else if(strcmp(c, "ch") == 0)
+    {
+        bool r = (argc > 1) && (argv[1][0] == 'r');
+        stm32i2s_setChannel(r);
+        serLog("OK ch %c", r ? 'R' : 'L');
+    }
+    else if(strcmp(c, "w") == 0)
+    {
+        i2sParrot_writeC6000((uint8_t) HEX(1), (uint8_t) HEX(2));
+        serLog("OK w %02lx %02lx", (unsigned long) HEX(1), (unsigned long) HEX(2));
+    }
+    else if(strcmp(c, "r") == 0)
+    {
+        uint8_t reg = (uint8_t) HEX(1);
+        char out[200];
+        int o = snprintf(out, sizeof(out), "R %02x:", reg);
+        uint32_t cnt = DEC(2, 8);
+        for(uint32_t i = 0; (i < cnt) && (o < 190); i++)
+        {
+            uint8_t v;
+            i2sParrot_readC6000(&reg, &v, 1);
+            o += snprintf(out + o, sizeof(out) - o, " %02x", v);
+        }
+        serLog("%s", out);
+    }
+    else if(strcmp(c, "rs") == 0)
+    {
+        uint8_t reg = (uint8_t) HEX(1);
+        int mode = (int) DEC(2, 0);
+        uint32_t us = DEC(3, 2);
+        uint32_t cnt = DEC(4, 8);
+        char out[200];
+        int o = snprintf(out, sizeof(out), "RS %02x m%d %luus:", reg, mode,
+                         (unsigned long) us);
+        for(uint32_t i = 0; (i < cnt) && (o < 190); i++)
+            o += snprintf(out + o, sizeof(out) - o, " %02x",
+                          slowRead(4, reg, mode, us));
+        serLog("%s", out);
+    }
+    else if(strcmp(c, "ra") == 0)
+    {
+        uint8_t v = slowRead((uint8_t) HEX(1), (uint8_t) HEX(2), (int) DEC(3, 1), DEC(4, 2));
+        serLog("RA %02lx:%02lx = %02x", (unsigned long) HEX(1), (unsigned long) HEX(2), v);
+    }
+    else if(strcmp(c, "c6") == 0)
+    {
+        int ret = (argc > 1) ? i2sParrot_c6000Op(argv[1], (int) DEC(2, 0)) : -1;
+        serLog("%s c6 %s -> %d", (ret < 0) ? "ERR" : "OK", (argc > 1) ? argv[1] : "", ret);
+    }
+    else if(strcmp(c, "spk") == 0)
+    {
+        if(DEC(1, 1) != 0)
+        {
+            if(spkPath < 0)
+                spkPath = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_PROMPT);
+            serLog("OK spk path %ld", (long) spkPath);
+        }
+        else
+        {
+            if(spkPath >= 0)
+                audioPath_release(spkPath);
+            spkPath = -1;
+            serLog("OK spk released");
+        }
+    }
+    else if(strcmp(c, "mic") == 0)
+    {
+        if(DEC(1, 1) != 0)
+        {
+            if(micPath < 0)
+                micPath = audioPath_request(SOURCE_MIC, SINK_MCU, PRIO_TX);
+            serLog("OK mic path %ld", (long) micPath);
+        }
+        else
+        {
+            if(micPath >= 0)
+                audioPath_release(micPath);
+            micPath = -1;
+            serLog("OK mic released");
+        }
+    }
+    else
+        serLog("ERR unknown '%s', try help", c);
+
+    #undef HEX
+    #undef DEC
+}
+
+/**
+ * Serial console: one command per line.
+ */
+static void *consoleThread(void *arg)
 {
     (void) arg;
-    bool right = false;
+    char line[96];
+    size_t len = 0;
 
-    sleepFor(3, 0);
-    serLog("PARROT start");
+    sleepFor(2, 0);
+    serLog("PARROT console ready, type help");
 
     while(1)
     {
-        struct i2sStats st;
-        uint32_t take;
-
-        pthread_mutex_lock(&mutex);
-        take = status.takes;
-        pthread_mutex_unlock(&mutex);
-
-        const uint8_t v = (uint8_t) (take % NUM_VARIANTS);
-        pthread_mutex_lock(&mutex);
-        status.exp = v;
-        pthread_mutex_unlock(&mutex);
-
-        stm32i2s_setChannel(right);
-        variantBefore(v);
-        logRegs("before-take", take);
-        sleepFor(0, 50);
-        stm32i2s_getStats(&st, true);
-        setPhase(PARROT_REC, 0);
-
-        long long t0 = getTick();
-        int n = record();
-        long long t1 = getTick();
-        stm32i2s_getStats(&st, true);
-        variantAfter(v);
-
-        logRegs("after-take", take);
-
-        pthread_mutex_lock(&mutex);
-        status.stats = st;
-        status.right = right;
-        status.takes++;
-        pthread_mutex_unlock(&mutex);
-
-        serLog("TAKE %lu V%u n=%d %ld ms ch=%c frames=%lu L=%d/%u mean %d "
-               "R=%d/%u mean %d", (unsigned long) take, v, n, (long) (t1 - t0),
-               right ? 'R' : 'L', (unsigned long) st.frames, st.peak[0],
-               st.rms[0], st.mean[0], st.peak[1], st.rms[1], st.mean[1]);
-
+        char buf[32];
+        ssize_t n = vcom_readBlock(buf, sizeof(buf));
         if(n <= 0)
         {
-            setPhase(PARROT_ERROR, (n < 0) ? n : -5);
-            sleepFor(1, 0);
+            sleepFor(0, 10);
             continue;
         }
 
-        serDump(take, rec, (size_t) n);
-        right = pickChannel(&st, right);
-
-        uint8_t gain = normalise((size_t) n);
-        pthread_mutex_lock(&mutex);
-        status.gain = gain;
-        pthread_mutex_unlock(&mutex);
-
-        setPhase(PARROT_PLAY, 0);
-        int ret = play((size_t) n);
-        logRegs("after-play", take);
-        setPhase((ret < 0) ? PARROT_ERROR : PARROT_IDLE, (int16_t) ret);
-
-        sleepFor(0, 500);
+        for(ssize_t i = 0; i < n; i++)
+        {
+            char ch = buf[i];
+            if((ch == '\r') || (ch == '\n'))
+            {
+                if(len > 0)
+                {
+                    line[len] = '\0';
+                    serLog("> %s", line);
+                    runLine(line);
+                    serLog("DONE");
+                }
+                len = 0;
+            }
+            else if(len < (sizeof(line) - 1))
+            {
+                line[len++] = ch;
+            }
+        }
     }
 
     return NULL;
@@ -438,6 +647,7 @@ static void *diagThread(void *arg)
         const uint32_t takes = status.takes;
         pthread_mutex_unlock(&mutex);
 
+        if(monitor)
         serLog("I2S t=%lu ph=%u takes=%lu irq=%lu to=%lu pos=%lu run=%lu "
                "sr=%04lx ndtr=%lu ws=%lu ck=%lu sd=%lu/%lu frames=%lu "
                "L=%d/%u R=%d/%u noclk=%lu",
@@ -464,7 +674,7 @@ void i2sParrot_start()
 
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 4096);
-    pthread_create(&thread, &attr, parrotThread, NULL);
+    pthread_create(&thread, &attr, consoleThread, NULL);
     pthread_create(&thread, &attr, diagThread, NULL);
 }
 

@@ -367,6 +367,8 @@ void stm32i2s_getDiag(struct i2sDiag *d)
     d->dmaCr      = DMA1_Stream0->CR;
     d->ndtr       = DMA1_Stream0->NDTR;
     d->lisr       = DMA1->LISR;
+    for(int i = 0; i < 8; i++)
+        d->raw[i] = (ring != nullptr) ? ring[i] : 0;
 
     // WS = PA15, CK = PC10, SD = PC12, read straight from the pins over 1 ms
     uint32_t ws = 0, ck = 0, sd = 0, n = 0;

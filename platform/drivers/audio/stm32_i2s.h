@@ -49,6 +49,7 @@ struct i2sDiag
     uint32_t sr, i2scfgr, dmaCr, ndtr, lisr;
     uint32_t wsEdges, ckEdges;      ///< Edges in 1 ms
     uint32_t sdHigh, polls;         ///< SD high samples, of polls in 1 ms
+    int16_t  raw[8];                ///< First halfwords of the DMA ring
 };
 
 /**

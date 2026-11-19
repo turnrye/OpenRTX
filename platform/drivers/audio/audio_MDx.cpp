@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <string.h>
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
 #include "interfaces/audio.h"
@@ -136,6 +137,21 @@ extern "C" void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n
 extern "C" void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val)
 {
     C6000.writeCfgRegister(reg, val);
+}
+
+/*
+ * Bench console: HR_C6000 operations by name. Returns 0, or -1 for an unknown
+ * one.
+ */
+extern "C" int i2sParrot_c6000Op(const char *op, const int arg)
+{
+    if(strcmp(op, "init") == 0)    { C6000.init();                 return 0; }
+    if(strcmp(op, "fm") == 0)      { C6000.fmMode();               return 0; }
+    if(strcmp(op, "dmr") == 0)     { C6000.dmrMode();              return 0; }
+    if(strcmp(op, "lo") == 0)      { C6000.setLineOut2(arg != 0);  return 0; }
+    if(strcmp(op, "beep") == 0)    { return Cx000dac_startBeep(arg); }
+    if(strcmp(op, "beepoff") == 0) { Cx000dac_stopBeep();          return 0; }
+    return -1;
 }
 #endif
 
