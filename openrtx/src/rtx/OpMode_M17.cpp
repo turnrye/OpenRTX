@@ -10,6 +10,7 @@
 #include "interfaces/radio.h"
 #include "protocols/M17/Datatypes.hpp"
 #include "rtx/OpMode_M17.hpp"
+#include "rtx/m17_trace.hpp"
 #include "core/audio_codec.h"
 #include <errno.h>
 #include "core/gps.h"
@@ -172,6 +173,8 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
     bool newData = demodulator.update(invertRxPhase);
     bool lock    = demodulator.isLocked();
+    m17trace_poll();
+    m17trace_lock(lock);
 
     // Reset frame decoder when transitioning from unlocked to locked state.
     if((lock == true) && (locked == false))
@@ -192,6 +195,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
             auto& frame   = demodulator.getFrame();
             auto  type    = decoder.decodeFrame(frame);
             auto  lsf     = decoder.getLsf();
+            m17trace_frame(static_cast<uint8_t>(type), decoder);
             status->lsfOk = lsf.valid();
 
             if(status->lsfOk)
@@ -272,6 +276,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                     StreamFrame sf = decoder.getStreamFrame();
                     codec_pushFrame(sf.data(),     false);
                     codec_pushFrame(sf.data() + 8, false);
+                    m17trace_played(sf);
                 }
             }
         }
