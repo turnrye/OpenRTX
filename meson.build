@@ -1279,6 +1279,10 @@ ui_strings_test = executable('ui_strings_test',
                              sources : unit_test_src + ['tests/unit/ui_strings.cpp'],
                              kwargs  : unit_test_opts)
 
+ui_view_slot_test = executable('ui_view_slot_test',
+                               sources : unit_test_src + ['tests/unit/ui_view_slot.cpp'],
+                               kwargs  : unit_test_opts)
+
 m17_packet_test = executable('m17_packet_test',
                               sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
                               kwargs  : unit_test_opts)
@@ -1376,6 +1380,7 @@ test('Codeplug Test',         cps_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
 test('UI Strings Test', ui_strings_test)
+test('UI View Slot Test', ui_view_slot_test)
 test('M17 Packet Frame Test', m17_packet_test)
 test('DSP Oversampling Test', dsp_oversampling_test)
 test('GFX Text Test',        gfx_text_test)
