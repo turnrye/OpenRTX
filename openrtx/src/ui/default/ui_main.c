@@ -341,16 +341,15 @@ void _ui_drawMainBottom()
                 i2sParrot_getStatus(&ps);
                 point_t l1 = { layout.horizontal_pad, (int16_t) (layout.bottom_pos.y - 8) };
                 point_t l2 = { layout.horizontal_pad, layout.bottom_pos.y };
-                if((ps.stats.frames == 0) && (ps.stats.noClock > 0))
-                    gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                              "NO I2S CLOCK %lu", (unsigned long) ps.stats.noClock);
-                else
-                    gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                              "%s %d L%d/%d", phase[ps.phase & 3], ps.error,
-                              ps.stats.peak[0], ps.stats.rms[0]);
+                gfx_print(l1, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
+                          "%s i%lu n%lu s%lx", phase[ps.phase & 3],
+                          (unsigned long) ps.diag.irqs,
+                          (unsigned long) ps.diag.ndtr,
+                          (unsigned long) ps.diag.sr);
                 gfx_print(l2, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white,
-                          "%c x%u R%d/%d", ps.right ? 'R' : 'L', ps.gain,
-                          ps.stats.peak[1], ps.stats.rms[1]);
+                          "w%lu c%lu L%d R%d", (unsigned long) ps.diag.wsEdges,
+                          (unsigned long) ps.diag.ckEdges, ps.live.peak[0],
+                          ps.live.peak[1]);
                 break;
             }
             #endif

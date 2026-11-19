@@ -6,6 +6,7 @@
 
 #include <kernel/scheduler/scheduler.h>
 #include "peripherals/gpio.h"
+#include "interfaces/delays.h"
 #include "hwconfig.h"
 #include <miosix.h>
 #include <errno.h>
@@ -40,6 +41,8 @@ static volatile int16_t  statPeak[2];
 static volatile int64_t  statSum[2];
 static volatile uint64_t statSumSq[2];
 static volatile uint32_t statNoClock;
+
+static volatile uint32_t dIrqs, dHt, dTc, dTe, dStarts, dStartFails;
 
 /**
  * Stop the DMA stream and the I2S peripheral.
@@ -233,6 +236,11 @@ void __attribute__((used)) I2S_DMA_Handler()
                                        | DMA_LISR_FEIF0);
     DMA1->LIFCR = flags;
 
+    dIrqs = dIrqs + 1;
+    if((flags & DMA_LISR_HTIF0) != 0) dHt = dHt + 1;
+    if((flags & DMA_LISR_TCIF0) != 0) dTc = dTc + 1;
+    if((flags & DMA_LISR_TEIF0) != 0) dTe = dTe + 1;
+
     if((flags & DMA_LISR_HTIF0) != 0)
         IRQprocess(0);
 
@@ -342,6 +350,46 @@ void stm32i2s_getStats(struct i2sStats *stats, const bool reset)
     }
 }
 
+void stm32i2s_getDiag(struct i2sDiag *d)
+{
+    d->irqs       = dIrqs;
+    d->ht         = dHt;
+    d->tc         = dTc;
+    d->te         = dTe;
+    d->starts     = dStarts;
+    d->startFails = dStartFails;
+    d->sr         = SPI3->SR;
+    d->i2scfgr    = SPI3->I2SCFGR;
+    d->dmaCr      = DMA1_Stream0->CR;
+    d->ndtr       = DMA1_Stream0->NDTR;
+    d->lisr       = DMA1->LISR;
+
+    // WS = PA15, CK = PC10, SD = PC12, read straight from the pins over 1 ms
+    uint32_t ws = 0, ck = 0, sd = 0, n = 0;
+    bool lw = (GPIOA->IDR & (1u << 15)) != 0;
+    bool lc = (GPIOC->IDR & (1u << 10)) != 0;
+
+    long long t = getTick();
+    while(getTick() == t) ;
+    t = getTick();
+    while(getTick() == t)
+    {
+        const uint32_t pa = GPIOA->IDR;
+        const uint32_t pc = GPIOC->IDR;
+        const bool w = (pa & (1u << 15)) != 0;
+        const bool c = (pc & (1u << 10)) != 0;
+        if(w != lw) { ws++; lw = w; }
+        if(c != lc) { ck++; lc = c; }
+        if((pc & (1u << 12)) != 0) sd++;
+        n++;
+    }
+
+    d->wsEdges = ws;
+    d->ckEdges = ck;
+    d->sdHigh  = sd;
+    d->polls   = n;
+}
+
 static int stm32i2s_start(const uint8_t instance, const void *config,
                           struct streamCtx *c)
 {
@@ -373,8 +421,10 @@ static int stm32i2s_start(const uint8_t instance, const void *config,
         c->running = 1;
     }
 
+    dStarts = dStarts + 1;
     if(hwStart() == false)
     {
+        dStartFails = dStartFails + 1;
         c->running  = 0;
         statNoClock = statNoClock + 1;
         return -EIO;

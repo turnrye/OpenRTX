@@ -6,6 +6,7 @@
 
 #include <pthread.h>
 #include <string.h>
+#include <stdio.h>
 #include "core/audio_path.h"
 #include "core/audio_stream.h"
 #include "interfaces/delays.h"
@@ -217,6 +218,67 @@ static void *parrotThread(void *arg)
     return NULL;
 }
 
+void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
+
+/**
+ * Once a second: driver diagnostics to the display and the USB serial port.
+ */
+static void *diagThread(void *arg)
+{
+    (void) arg;
+    static const uint8_t regs[] = { 0x06, 0x10, 0x22, 0x2F, 0x32, 0x33, 0x36,
+                                    0xE0, 0xE2 };
+    uint8_t vals[sizeof(regs)];
+    uint32_t sec = 0;
+
+    sleepFor(2, 0);
+
+    while(1)
+    {
+        struct i2sDiag d;
+        struct i2sStats st;
+        stm32i2s_getDiag(&d);
+        stm32i2s_getStats(&st, false);
+
+        pthread_mutex_lock(&mutex);
+        status.diag = d;
+        status.live = st;
+        const uint8_t phase = status.phase;
+        const uint32_t takes = status.takes;
+        pthread_mutex_unlock(&mutex);
+
+        printf("I2S t=%lu ph=%u takes=%lu irq=%lu ht=%lu tc=%lu te=%lu "
+               "starts=%lu fails=%lu sr=%04lx cfg=%04lx dcr=%08lx ndtr=%lu "
+               "lisr=%08lx ws=%lu ck=%lu sd=%lu/%lu frames=%lu "
+               "L=%d/%u R=%d/%u noclk=%lu\r\n",
+               (unsigned long) sec, phase, (unsigned long) takes,
+               (unsigned long) d.irqs, (unsigned long) d.ht,
+               (unsigned long) d.tc, (unsigned long) d.te,
+               (unsigned long) d.starts, (unsigned long) d.startFails,
+               (unsigned long) d.sr, (unsigned long) d.i2scfgr,
+               (unsigned long) d.dmaCr, (unsigned long) d.ndtr,
+               (unsigned long) d.lisr, (unsigned long) d.wsEdges,
+               (unsigned long) d.ckEdges, (unsigned long) d.sdHigh,
+               (unsigned long) d.polls, (unsigned long) st.frames,
+               st.peak[0], st.rms[0], st.peak[1], st.rms[1],
+               (unsigned long) st.noClock);
+
+        if((sec % 5) == 0)
+        {
+            i2sParrot_readC6000(regs, vals, sizeof(regs));
+            printf("C6000");
+            for(size_t i = 0; i < sizeof(regs); i++)
+                printf(" %02x=%02x", regs[i], vals[i]);
+            printf("\r\n");
+        }
+
+        sec++;
+        sleepFor(1, 0);
+    }
+
+    return NULL;
+}
+
 void i2sParrot_start()
 {
     pthread_attr_t attr;
@@ -225,6 +287,7 @@ void i2sParrot_start()
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 2048);
     pthread_create(&thread, &attr, parrotThread, NULL);
+    pthread_create(&thread, &attr, diagThread, NULL);
 }
 
 void i2sParrot_getStatus(struct parrotStatus *out)

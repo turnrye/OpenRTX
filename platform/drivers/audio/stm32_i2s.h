@@ -37,6 +37,25 @@ struct i2sStats
 };
 
 /**
+ * Bench diagnostics: driver counters, registers and pin activity.
+ */
+struct i2sDiag
+{
+    uint32_t irqs, ht, tc, te;      ///< DMA interrupts
+    uint32_t starts, startFails;    ///< Stream starts
+    uint32_t sr, i2scfgr, dmaCr, ndtr, lisr;
+    uint32_t wsEdges, ckEdges;      ///< Edges in 1 ms
+    uint32_t sdHigh, polls;         ///< SD high samples, of polls in 1 ms
+};
+
+/**
+ * Get the diagnostics; polls the pins for about 1 ms.
+ *
+ * @param diag: destination.
+ */
+void stm32i2s_getDiag(struct i2sDiag *diag);
+
+/**
  * Initialise the I2S3 peripheral, its pins and its DMA stream.
  */
 void stm32i2s_init();

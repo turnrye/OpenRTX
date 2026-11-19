@@ -36,6 +36,8 @@ struct parrotStatus
     int16_t  error;     ///< Last stream or path error, 0 if none
     uint32_t takes;     ///< Takes recorded
     struct i2sStats stats;  ///< Levels of the last take
+    struct i2sDiag  diag;   ///< Live diagnostics, once a second
+    struct i2sStats live;   ///< Levels of the take in progress
 };
 
 /**

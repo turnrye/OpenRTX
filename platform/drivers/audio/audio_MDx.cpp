@@ -126,6 +126,14 @@ const struct audioDevice inputDevices[] =
     #endif
 };
 
+#ifdef CONFIG_I2S_PARROT
+extern "C" void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n)
+{
+    for(size_t i = 0; i < n; i++)
+        vals[i] = C6000.readCfgRegister(regs[i]);
+}
+#endif
+
 void audio_init()
 {
     gpio_setMode(AIN_MIC,  ANALOG);
