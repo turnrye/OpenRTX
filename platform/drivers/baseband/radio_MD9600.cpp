@@ -33,6 +33,11 @@
 #include "calibration/calibInfo_MD9600.h"
 #include "core/ctcssDetector.hpp"
 #include "core/utils.h"
+#ifdef CONFIG_M17_RAW_TX
+#include <cstring>
+#include <pthread.h>
+#include "core/threads.h"
+#endif
 #include "drivers/audio/stm32_adc.h"
 #include "drivers/SPI/spi_bitbang.h"
 #include "drivers/baseband/AK2365A.h"
@@ -693,10 +698,207 @@ void radio_enableRx()
     radioStatus = RX;
 }
 
+#ifdef CONFIG_M17_RAW_TX
+/*
+ * M17 transmission in the HR_C6000 physical layer mode (RadioFoundry
+ * modem-hrc6000.md 10.3): the M17 modulator queues frame bytes, which are the
+ * chip's dibits as they are, and this thread hands them to the chip one 30 ms
+ * slot (36 bytes, 144 symbols) at a time.
+ */
+extern "C" uint32_t radio_testTsCount();
+extern "C" void     radio_testTsIrq(const bool on);
+extern "C" void     bench_devFor(const bool vhf, uint8_t *mod1, uint8_t *mod2);
+
+static constexpr size_t  RAW_SLOT  = 36;
+static constexpr size_t  RAW_FIFO  = 2048;
+static constexpr uint8_t RAW_IDLE  = 0x77;      // +3 -3: the M17 preamble
+
+static uint8_t          *rawFifo;
+static volatile size_t   rawHead, rawCount;
+static volatile bool     rawActive, rawDrain, rawStop, rawDone;
+static pthread_t         rawThread;
+static pthread_mutex_t   rawMtx = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t          rawSlots, rawChunks, rawUnderruns, rawJumps;
+
+static const uint8_t rawSaveRegs[] = { 0x10, 0x40, 0x41, 0x20, 0x21, 0x22, 0x45, 0x46 };
+static uint8_t       rawSaved[sizeof(rawSaveRegs)];
+
+static size_t rawPop(uint8_t *buf, const size_t n)
+{
+    pthread_mutex_lock(&rawMtx);
+    size_t got = (rawCount < n) ? rawCount : n;
+    for (size_t i = 0; i < got; i++)
+        buf[i] = rawFifo[(rawHead + i) % RAW_FIFO];
+    rawHead   = (rawHead + got) % RAW_FIFO;
+    rawCount -= got;
+    pthread_mutex_unlock(&rawMtx);
+    return got;
+}
+
+static void *rawTxFunc(void *arg)
+{
+    (void) arg;
+    uint8_t chunk[RAW_SLOT];
+    uint8_t mod1, mod2;
+
+    for (size_t i = 0; i < sizeof(rawSaveRegs); i++)
+        rawSaved[i] = C6000.readCfgRegister(rawSaveRegs[i]);
+
+    bench_devFor(txBand == BND_VHF, &mod1, &mod2);
+    C6000.writeCfgRegister(0x45, mod2);
+    C6000.writeCfgRegister(0x46, mod1);
+    C6000.writeCfgRegister(0x41, 0x00);
+    C6000.writeCfgRegister(0x10, 0x66);
+    C6000.writeCfgRegister(0x20, 0x00);
+    C6000.writeCfgRegister(0x21, 0x02);
+    C6000.writeCfgRegister(0x22, 0x86);
+
+    memset(chunk, RAW_IDLE, sizeof(chunk));
+    C6000.writeRam(2, 0x00, chunk, RAW_SLOT);
+    C6000.writeRam(2, 0x24, chunk, RAW_SLOT);
+
+    radio_testTsIrq(true);
+    uint32_t last = radio_testTsCount();
+    C6000.writeCfgRegister(0x40, 0xE3);
+
+    uint32_t n = 0, idleTail = 0;
+    bool pa = false;
+
+    while (rawStop == false) {
+        // Next timeslot interrupt, 200 ms at most
+        uint32_t d = 0;
+        for (int i = 0; (i < 200) && (d == 0); i++) {
+            uint32_t now = radio_testTsCount();
+            d = now - last;
+            last = now;
+            if (d == 0)
+                sleepFor(0, 1);
+        }
+        if (d == 0)
+            break;
+        if (d > 1)
+            rawJumps++;
+        n += d;
+
+        // Slot n+1 is set up at interrupt n and reads 0x00 when n is odd
+        const uint8_t half = (n & 1) ? 0x00 : 0x24;
+
+        // The PA comes up with slot 2 (idle), data from slot 3
+        if (n == 2) {
+            paOn();
+            pa = true;
+        }
+
+        memset(chunk, RAW_IDLE, sizeof(chunk));
+        if (n >= 2) {
+            size_t got = rawPop(chunk, RAW_SLOT);
+            if (got > 0)
+                rawChunks++;
+            else if (rawDrain)
+                idleTail++;
+            else
+                rawUnderruns++;
+        }
+
+        C6000.writeRam(2, half, chunk, RAW_SLOT);
+        C6000.writeCfgRegister(0x41, 0x80);
+
+        // One idle slot after the last bytes, then drop at the next interrupt
+        if (idleTail > 1)
+            break;
+    }
+
+    if (pa)
+        paOff();
+
+    radio_testTsIrq(false);
+    C6000.writeCfgRegister(0x41, 0x00);
+    for (size_t i = 0; i < sizeof(rawSaveRegs); i++)
+        C6000.writeCfgRegister(rawSaveRegs[i], rawSaved[i]);
+
+    rawSlots = n;
+    rawDone  = true;
+    return NULL;
+}
+
+/**
+ * Queue frame bytes for transmission, waiting while the queue is full.
+ */
+extern "C" void radio_rawTxPush(const uint8_t *data, const size_t len)
+{
+    for (size_t i = 0; i < len;) {
+        if (rawActive == false || rawDone)
+            return;
+
+        pthread_mutex_lock(&rawMtx);
+        while ((i < len) && (rawCount < RAW_FIFO)) {
+            rawFifo[(rawHead + rawCount) % RAW_FIFO] = data[i++];
+            rawCount++;
+        }
+        pthread_mutex_unlock(&rawMtx);
+
+        if (i < len)
+            sleepFor(0, 5);
+    }
+}
+
+/**
+ * Wait until every queued byte is on air and the PA is down.
+ */
+extern "C" void radio_rawTxDrain()
+{
+    if (rawActive == false)
+        return;
+
+    rawDrain = true;
+    for (int i = 0; (i < 400) && (rawDone == false); i++)
+        sleepFor(0, 5);
+}
+
+static void rawTxStart()
+{
+    if (rawFifo == NULL)
+        rawFifo = new uint8_t[RAW_FIFO];
+
+    rawHead = rawCount = 0;
+    rawDrain = rawStop = rawDone = false;
+    rawSlots = rawChunks = rawUnderruns = rawJumps = 0;
+
+    pthread_attr_t attr;
+    struct sched_param param;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 2048);
+    param.sched_priority = THREAD_PRIO_HIGH;
+    pthread_attr_setschedparam(&attr, &param);
+    rawActive = (pthread_create(&rawThread, &attr, rawTxFunc, NULL) == 0);
+}
+
+static void rawTxStop()
+{
+    if (rawActive == false)
+        return;
+
+    rawStop = true;
+    pthread_join(rawThread, NULL);
+    rawActive = false;
+}
+
+extern "C" void radio_rawTxStats(uint32_t *slots, uint32_t *chunks,
+                                 uint32_t *underruns, uint32_t *jumps)
+{
+    *slots     = rawSlots;
+    *chunks    = rawChunks;
+    *underruns = rawUnderruns;
+    *jumps     = rawJumps;
+}
+#endif
+
 void radio_enableTx()
 {
 #ifdef CONFIG_I2S_PARROT
-    return;     // Bench test image: never transmit
+    // Bench test image: M17 only, through the physical layer mode
+    if (config->opMode != OPMODE_M17)
+        return;
 #endif
     // FM and M17, on a board detected as V5, inside a band
     const bool m17 = (config->opMode == OPMODE_M17);
@@ -714,6 +916,23 @@ void radio_enableTx()
     C6000.setModOffset(calData.band[txBand].refTune);
     C6000.setModAmplitude(txModI, txModQ);
     C6000.setModFactor(txDeviation);
+
+#ifdef CONFIG_M17_RAW_TX
+    if (m17) {
+        // Bench test: lowest PA row only
+        const struct md9600BandCalib *cal = &calData.band[txBand];
+        txDrive = interpCalParameter(config->txFrequency, cal->rxFreq,
+                                     cal->paDrive[paLevel(0)], calPoints(txBand));
+
+        gpio_clearPin(FM_SW);
+        sleepFor(0, TX_SETTLE_MS);
+
+        // The engine keys the PA in step with the chip's slots
+        rawTxStart();
+        radioStatus = TX;
+        return;
+    }
+#endif
 
     if (m17) {
         // Baseband as PWM on PC8 into the HR_C6000, as stock sends DTMF
@@ -744,6 +963,15 @@ void radio_enableTx()
 
 void radio_disableRtx()
 {
+#ifdef CONFIG_M17_RAW_TX
+    if (rawActive) {
+        // The engine drops the PA and restores the HR_C6000 registers
+        rawTxStop();
+        gpio_setPin(FM_SW);
+        radioStatus = OFF;
+    }
+#endif
+
     if (radioStatus == TX) {
         paOff();
         C6000.stopAnalogTx();

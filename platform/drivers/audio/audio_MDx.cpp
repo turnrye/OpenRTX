@@ -18,6 +18,7 @@
 #include "stm32_adc.h"
 #ifdef PLATFORM_MD9600
 #include "stm32_i2s.h"
+#include "c6000_copy.h"
 #endif
 #ifdef CONFIG_I2S_PARROT
 #include "i2s_parrot.h"
@@ -119,7 +120,11 @@ const struct audioDevice outputDevices[] =
 const struct audioDevice inputDevices[] =
 {
     {NULL,                    0,                 0,              SOURCE_MCU},
+    #ifdef PLATFORM_MD9600
+    {&c6000_copy_audio_driver, NULL,             0,              SOURCE_RTX},
+    #else
     {&stm32_adc_audio_driver, (const void *) 13, STM32_ADC_ADC2, SOURCE_RTX},
+    #endif
     #ifdef PLATFORM_MD9600
     {&stm32_i2s_audio_driver, NULL,              0,              SOURCE_MIC},
     #else

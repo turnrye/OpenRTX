@@ -15,6 +15,17 @@
 #include <stdio.h>
 #endif
 
+#include "hwconfig.h"
+
+#ifdef CONFIG_M17_RAW_TX
+/*
+ * The radio takes M17 frame bytes, as dibits, instead of baseband: its
+ * modulator shapes and sends them itself.
+ */
+extern "C" void radio_rawTxPush(const uint8_t *data, const size_t len);
+extern "C" void radio_rawTxDrain();
+#endif
+
 using namespace M17;
 
 
@@ -64,6 +75,11 @@ bool Modulator::start()
     if(txRunning)
         return true;
 
+    #ifdef CONFIG_M17_RAW_TX
+    txRunning = true;
+    return true;
+    #endif
+
     #ifndef PLATFORM_LINUX
     outPath = audioPath_request(SOURCE_MCU, SINK_RTX, PRIO_TX);
     if(outPath < 0)
@@ -86,6 +102,15 @@ bool Modulator::start()
 
 void Modulator::sendPreamble()
 {
+    #ifdef CONFIG_M17_RAW_TX
+    // 160 ms of +3 -3 (four frames): dibits 01 11 01 11
+    uint8_t pre[48];
+    memset(pre, 0x77, sizeof(pre));
+    for(size_t frame = 0; frame < 4; frame++)
+        radio_rawTxPush(pre, sizeof(pre));
+    return;
+    #endif
+
     // Fill symbol buffer with preamble, made of alternated +3 and -3 symbols
     for(size_t i = 0; i < symbols.size(); i += 2)
     {
@@ -103,6 +128,18 @@ void Modulator::sendPreamble()
 
 void Modulator::sendFrame(const frame_t& frame)
 {
+    #ifdef CONFIG_M17_RAW_TX
+    // Inverted phase: each dibit's sign (high) bit flipped
+    frame_t out = frame;
+    if(invPhase)
+    {
+        for(auto& b : out)
+            b ^= 0xAA;
+    }
+    radio_rawTxPush(out.data(), out.size());
+    return;
+    #endif
+
     auto it = symbols.begin();
     for(size_t i = 0; i < frame.size(); i++)
     {
@@ -118,6 +155,12 @@ void Modulator::stop()
 {
     if(txRunning == false)
         return;
+
+    #ifdef CONFIG_M17_RAW_TX
+    radio_rawTxDrain();
+    txRunning = false;
+    return;
+    #endif
 
     audioStream_stop(outStream);
     txRunning  = false;
