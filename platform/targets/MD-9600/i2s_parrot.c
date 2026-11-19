@@ -363,6 +363,164 @@ static uint8_t slowRead(const uint8_t page, const uint8_t reg, const int mode,
     return rx[2];
 }
 
+extern volatile uint32_t c6000ReadDelay;
+
+/**
+ * Careful byte transfer on the HR_C6000 port: MOSI set while CLK is high,
+ * MISO sampled after the falling edge.
+ */
+static uint8_t slowXfer(const uint8_t out)
+{
+    uint8_t in = 0;
+    for(int bit = 7; bit >= 0; bit--)
+    {
+        GPIOE->BSRR = 1u << 3;
+        if(out & (1u << bit))
+            GPIOE->BSRR = 1u << 5;
+        else
+            GPIOE->BSRR = 1u << (16 + 5);
+        delayUs(0);
+        GPIOE->BSRR = 1u << (16 + 3);
+        delayUs(0);
+        in = (uint8_t) ((in << 1) | ((GPIOE->IDR >> 4) & 1u));
+    }
+
+    return in;
+}
+
+/**
+ * Read HR_C6000 RAM: page with 16-bit address, low byte first.
+ */
+static void ramRead(const uint8_t page, const uint16_t addr, uint8_t *buf,
+                    const size_t n)
+{
+    spi_acquire((const struct spiDevice *) &c6000_spi);
+    GPIOE->BSRR = 1u << (16 + 2);
+    delayUs(2);
+
+    slowXfer((uint8_t) (0x80 | 0x40 | page));
+    slowXfer((uint8_t) (addr & 0xFF));
+    slowXfer((uint8_t) ((addr >> 8) & 0x07));
+    for(size_t i = 0; i < n; i++)
+        buf[i] = slowXfer(0x00);
+
+    delayUs(2);
+    GPIOE->BSRR = 1u << 2;
+    delayUs(2);
+    spi_release((const struct spiDevice *) &c6000_spi);
+}
+
+#define COPY_RAM    0x030
+#define COPY_HALF   512     // bytes: 256 big endian samples
+
+/**
+ * Last sample of a copy half.
+ */
+static int16_t copyLast(const int half)
+{
+    uint8_t b[2];
+    ramRead(2, (uint16_t) (COPY_RAM + half * COPY_HALF + COPY_HALF - 2), b, 2);
+    return (int16_t) ((b[0] << 8) | b[1]);
+}
+
+/**
+ * Capture the HR_C6000 FM receive copy (its FM demodulator, 8 kHz) into rec,
+ * with RadioFoundry's copy set-up (modem-hrc6000.md 10.6), then restore.
+ */
+static void cmdFmCap(const uint32_t ms, const bool vhfInvert)
+{
+    static const uint8_t saveRegs[] = { 0x41, 0x36, 0x60, 0x34, 0x10, 0x81 };
+    uint8_t saved[sizeof(saveRegs)];
+    uint8_t half[COPY_HALF];
+
+    for(size_t i = 0; i < sizeof(saveRegs); i++)
+        saved[i] = slowRead(4, saveRegs[i], 0, 0);
+
+    i2sParrot_writeC6000(0x41, 0x00);
+    i2sParrot_writeC6000(0x36, 0x00);
+    i2sParrot_writeC6000(0x60, 0x00);
+    i2sParrot_writeC6000(0x34, 0x00);
+    i2sParrot_writeC6000(0x10, 0x80);
+    i2sParrot_writeC6000(0x81, (uint8_t) (saved[5] | 0x02));
+    i2sParrot_writeC6000(0x83, 0xFF);
+
+    size_t want = (size_t) ms * (SAMPLE_RATE / 1000);
+    if(want > REC_SAMPLES)
+        want = REC_SAMPLES;
+
+    int16_t last[2] = { copyLast(0), copyLast(1) };
+    int lastHalf = 1;
+    uint32_t halves = 0, fixes = 0, polls = 0;
+    size_t n = 0;
+    setPhase(PARROT_REC, 0);
+    long long t0 = getTick();
+    long long deadline = t0 + ms + 1000;
+
+    while((n < want) && (getTick() < deadline))
+    {
+        polls++;
+        uint8_t flags = slowRead(4, 0x82, 0, 0);
+        if((flags & 0x02) == 0)
+        {
+            sleepFor(0, 2);
+            continue;
+        }
+
+        i2sParrot_writeC6000(0x83, 0x02);
+
+        const int16_t now[2] = { copyLast(0), copyLast(1) };
+        const bool ch0 = (now[0] != last[0]);
+        const bool ch1 = (now[1] != last[1]);
+        int h;
+        if(ch0 && !ch1)       h = 0;
+        else if(ch1 && !ch0)  h = 1;
+        else                  { h = lastHalf ^ 1; fixes++; }
+
+        ramRead(2, (uint16_t) (COPY_RAM + h * COPY_HALF), half, COPY_HALF);
+        for(size_t i = 0; (i < COPY_HALF / 2) && (n < want); i++)
+        {
+            int16_t v = (int16_t) ((half[2 * i] << 8) | half[2 * i + 1]);
+            rec[n++] = vhfInvert ? (int16_t) -v : v;
+        }
+
+        last[0] = now[0];
+        last[1] = now[1];
+        lastHalf = h;
+        halves++;
+    }
+
+    long long t1 = getTick();
+
+    i2sParrot_writeC6000(0x10, saved[4]);
+    i2sParrot_writeC6000(0x34, saved[3]);
+    i2sParrot_writeC6000(0x60, saved[2]);
+    i2sParrot_writeC6000(0x36, saved[1]);
+    i2sParrot_writeC6000(0x81, saved[5]);
+    i2sParrot_writeC6000(0x41, saved[0]);
+    i2sParrot_writeC6000(0x83, 0xFF);
+    setPhase(PARROT_IDLE, 0);
+
+    int16_t pk = 0;
+    int64_t sum = 0;
+    for(size_t i = 0; i < n; i++)
+    {
+        int16_t a = (rec[i] < 0) ? (int16_t) -rec[i] : rec[i];
+        if(a > pk) pk = a;
+        sum += rec[i];
+    }
+
+    recLen = n;
+    serLog("FMCAP n=%u %ld ms halves=%lu fixes=%lu polls=%lu peak=%d mean=%ld "
+           "saved 41=%02x 36=%02x 60=%02x 34=%02x 10=%02x 81=%02x",
+           (unsigned) n, (long) (t1 - t0), (unsigned long) halves,
+           (unsigned long) fixes, (unsigned long) polls, pk,
+           (long) ((n > 0) ? (sum / (int64_t) n) : 0), saved[0], saved[1],
+           saved[2], saved[3], saved[4], saved[5]);
+
+    if(n > 0)
+        serDump(takeNum++, rec, n);
+}
+
 /**
  * One diagnostics line.
  */
@@ -459,6 +617,7 @@ static void cmdHelp()
     serLog("      w <reg> <val> | r <reg> [n] | rs <reg> <mode0-2> <us> [n] | ra <page> <reg> [mode] [us] |");
     serLog("      c6 init|fm|dmr|beepoff | c6 lo 0/1 | c6 beep <hz> | ch l/r |");
     serLog("      spk 1/0 (hold MCU->SPK path) | mic 1/0 (hold MIC->MCU path) | sleep <ms>");
+    serLog("      rdly [n] (fast read settle NOPs) | rtest <reg> [n] | fmcap <ms> [i=invert]");
     serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
 }
 
@@ -528,6 +687,28 @@ static void runLine(char *line)
                           slowRead(4, reg, mode, us));
         serLog("%s", out);
     }
+    else if(strcmp(c, "rdly") == 0)
+    {
+        if(argc > 1)
+            c6000ReadDelay = DEC(1, 16);
+        serLog("OK rdly %lu", (unsigned long) c6000ReadDelay);
+    }
+    else if(strcmp(c, "rtest") == 0)
+    {
+        uint8_t reg = (uint8_t) HEX(1);
+        uint32_t cnt = DEC(2, 100), bad = 0;
+        uint8_t ref = slowRead(4, reg, 0, 1), got = ref, fast = 0;
+        for(uint32_t i = 0; i < cnt; i++)
+        {
+            i2sParrot_readC6000(&reg, &fast, 1);
+            if(fast != ref) { bad++; got = fast; }
+        }
+        serLog("RTEST %02x rdly %lu: slow %02x, %lu/%lu fast reads differ (e.g. %02x)",
+               reg, (unsigned long) c6000ReadDelay, ref, (unsigned long) bad,
+               (unsigned long) cnt, got);
+    }
+    else if(strcmp(c, "fmcap") == 0)
+        cmdFmCap(DEC(1, 3000), (argc > 2) && (argv[2][0] == 'i'));
     else if(strcmp(c, "ra") == 0)
     {
         uint8_t v = slowRead((uint8_t) HEX(1), (uint8_t) HEX(2), (int) DEC(3, 1), DEC(4, 2));

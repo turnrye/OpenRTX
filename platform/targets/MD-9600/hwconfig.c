@@ -19,6 +19,9 @@
 
 static pthread_mutex_t c6000_mutex;
 
+/* Bench test: NOPs between the CLK falling edge and the MISO sample */
+volatile uint32_t c6000ReadDelay = 16;
+
 /**
  * SPI bitbang function for HR_C6000 command interface (U_SPI).
  *
@@ -54,6 +57,12 @@ static uint8_t spiC6000_func(const void *priv, uint8_t value)
 
         incoming <<= 1;
         GPIOE->BSRR = (1 << 19);                // Clear PE3 (CLK)
+
+        // Bench test: MISO needs time to settle after the falling edge, at
+        // full speed reads come back wrong (0xE0 = 0xC1 reads 0x41)
+        for(uint32_t d = c6000ReadDelay; d > 0; d--)
+            asm volatile("nop");
+
         incoming |= (GPIOE->IDR >> 4) & 0x01;   // Read PE4 (MISO)
     }
 
