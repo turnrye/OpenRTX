@@ -193,6 +193,46 @@ public:
         spi_send(uSpi, audio, 64);
     }
 
+    /**
+     * Write a block of RAM with 8-bit addressing, for instance the physical
+     * layer TX RAM (data page, 0x00 and 0x24).
+     *
+     * @param page: register page.
+     * @param addr: start address.
+     * @param data: bytes to write.
+     * @param len: number of bytes.
+     */
+    inline void writeRam(const uint8_t page, const uint8_t addr,
+                         const uint8_t *data, const size_t len)
+    {
+        const uint8_t cmd[2] = { page, addr };
+
+        ScopedChipSelect cs(uSpi, uCs);
+        spi_send(uSpi, cmd, 2);
+        spi_send(uSpi, data, len);
+    }
+
+    /**
+     * Read a block of RAM with 16-bit addressing (HR_C6000 only), for
+     * instance the FM receive copy (data page, 0x030).
+     *
+     * @param page: register page.
+     * @param addr: start address.
+     * @param data: destination.
+     * @param len: number of bytes.
+     */
+    inline void readRamExt(const uint8_t page, const uint16_t addr,
+                           uint8_t *data, const size_t len)
+    {
+        const uint8_t cmd[3] = { (uint8_t) (SPI_FLAGS_READ | SPI_FLAGS_EXTD | page),
+                                 (uint8_t) (addr & 0xFF),
+                                 (uint8_t) ((addr >> 8) & 0x07) };
+
+        ScopedChipSelect cs(uSpi, uCs);
+        spi_send(uSpi, cmd, 3);
+        spi_receive(uSpi, data, len);
+    }
+
 private:
 
     /**
