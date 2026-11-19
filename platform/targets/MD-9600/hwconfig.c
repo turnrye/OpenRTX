@@ -22,8 +22,9 @@ static pthread_mutex_t c6000_mutex;
 /**
  * SPI bitbang function for HR_C6000 command interface (U_SPI).
  *
- * Hand-tuned to be as fast as possible, gives the following clock performance
- * when compiled with -Os and run on STM32F405 at 168MHz:
+ * Hand-tuned to be as fast as possible. Without the read wait it gave the
+ * following clock performance when compiled with -Os and run on STM32F405 at
+ * 168MHz; the wait lengthens the negative width by about 70ns:
  *
  * - Freq 6.46MHz
  * - Pos. width 71ns
@@ -54,6 +55,15 @@ static uint8_t spiC6000_func(const void *priv, uint8_t value)
 
         incoming <<= 1;
         GPIOE->BSRR = (1 << 19);                // Clear PE3 (CLK)
+
+        // ~70ns delay: MISO settles after the falling edge, read at once it
+        // comes back wrong (0xC1 in 0xE0 reads 0x41 in 71 of 200 reads)
+        asm volatile("           mov   r1, #1     \n"
+                     "1:         cmp   r1, #0     \n"
+                     "           itt   ne         \n"
+                     "           subne r1, r1, #1 \n"
+                     "           bne   1b         \n":::"r1");
+
         incoming |= (GPIOE->IDR >> 4) & 0x01;   // Read PE4 (MISO)
     }
 
