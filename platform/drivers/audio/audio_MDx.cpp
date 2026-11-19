@@ -15,6 +15,9 @@
 #include "drivers/tones/toneGenerator_MDx.h"
 #include "stm32_pwm.h"
 #include "stm32_adc.h"
+#ifdef PLATFORM_MD9600
+#include "stm32_i2s.h"
+#endif
 
 #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701) || defined (PLATFORM_MD9600)
 #include "drivers/baseband/HR_C6000.h"
@@ -113,7 +116,12 @@ const struct audioDevice inputDevices[] =
 {
     {NULL,                    0,                 0,              SOURCE_MCU},
     {&stm32_adc_audio_driver, (const void *) 13, STM32_ADC_ADC2, SOURCE_RTX},
+    #ifdef PLATFORM_MD9600
+    // The hand mic goes to the HR_C6000 codec, which streams it over I2S3
+    {&stm32_i2s_audio_driver, NULL,              0,              SOURCE_MIC},
+    #else
     {&stm32_adc_audio_driver, (const void *) 3,  STM32_ADC_ADC2, SOURCE_MIC},
+    #endif
 };
 
 void audio_init()
@@ -159,6 +167,10 @@ void audio_init()
     pthread_attr_setschedparam(&attr, &param);
     pthread_create(&thread, &attr, audio_thread, NULL);
     #endif
+
+    #ifdef PLATFORM_MD9600
+    stm32i2s_init();
+    #endif
 }
 
 void audio_terminate()
@@ -173,6 +185,9 @@ void audio_terminate()
 
     stm32pwm_terminate();
     stm32adc_terminate();
+    #ifdef PLATFORM_MD9600
+    stm32i2s_terminate();
+    #endif
 }
 
 void audio_connect(const enum AudioSource source, const enum AudioSink sink)

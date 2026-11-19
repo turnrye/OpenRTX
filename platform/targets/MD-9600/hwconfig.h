@@ -94,9 +94,9 @@ enum md9600Flags {
 /* Transmit time-out, in seconds: a mobile PA with no thermal protection */
 #define CONFIG_TX_TIMEOUT_S 180
 
-/* Microphone audio input */
-#define CONFIG_MIC_GAIN 32
-#define CONFIG_MIC_OVERSAMPLE 8
+/* Microphone PCM from the HR_C6000 codec over I2S3: 16 bit, 8 kHz */
+#define CONFIG_MIC_GAIN 1
+#define CONFIG_MIC_OVERSAMPLE 1
 
 /*
  * The speaker amplifier takes about 60 ms from unmute to sound. Value from
