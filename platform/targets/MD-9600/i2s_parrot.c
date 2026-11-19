@@ -308,6 +308,7 @@ static uint32_t takeNum;
 
 void m17bench_tx(const uint32_t seconds, const char *callsign);
 void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert);
+void m17bench_mem(const char *when);
 
 /**
  * Careful read of an HR_C6000 register over its bit-banged port, for
@@ -911,6 +912,7 @@ static void cmdHelp()
     serLog("      spk 1/0 (hold MCU->SPK path) | mic 1/0 (hold MIC->MCU path) | sleep <ms>");
     serLog("      rdly [n] (fast read settle NOPs) | rtest <reg> [n] | fmcap <ms> [i=invert]");
     serLog("      sym clr | sym <hex dibits> | dev <mod1> <mod2> | phytx [max slots, 400 cap]");
+    serLog("      mem (free heap)");
     serLog("      m17tx <s> [callsign] (live mic, Codec2, lowest row) | m17rx <s> [shift] [invert 0/1, default by band]");
     serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
 }
@@ -1009,6 +1011,8 @@ static void runLine(char *line)
         }
         serLog("OK dev mod1 %02x mod2 %02x", devMod1, devMod2);
     }
+    else if(strcmp(c, "mem") == 0)
+        m17bench_mem("now");
     else if(strcmp(c, "m17tx") == 0)
         m17bench_tx(DEC(1, 3), (argc > 2) ? argv[2] : "N0CALL");
     else if(strcmp(c, "m17rx") == 0)

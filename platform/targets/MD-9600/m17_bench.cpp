@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstring>
 #include <errno.h>
+#include <new>
+#include <miosix.h>
 #include "core/audio_codec.h"
 #include "core/audio_path.h"
 #include "interfaces/delays.h"
@@ -57,7 +59,16 @@ bool     radio_testTxVhf();
 bool     radio_testRxVhf();
 
 void m17bench_tx(const uint32_t seconds, const char *callsign);
+void m17bench_mem(const char *when);
 void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert);
+}
+
+void m17bench_mem(const char *when)
+{
+    bench_log("MEM %s: free heap %u of %u, lowest %u", when,
+              miosix::MemoryProfiling::getCurrentFreeHeap(),
+              miosix::MemoryProfiling::getHeapSize(),
+              miosix::MemoryProfiling::getAbsoluteFreeHeap());
 }
 
 // --- m17tx -----------------------------------------------------------------
@@ -270,11 +281,34 @@ void m17bench_rx(uint32_t seconds, const uint32_t shift, const int invertArg)
     // The VHF receive I/Q order inverts the copy (RadioFoundry 10.6)
     const bool invert = (invertArg < 0) ? radio_testRxVhf() : (invertArg != 0);
 
-    Demodulator  *demod   = new Demodulator();
-    FrameDecoder *decoder = new FrameDecoder();
-    Interp       *interp  = new Interp();
-    struct CODEC2 *c2     = codec2_create(CODEC2_MODE_3200);
+    m17bench_mem("m17rx start");
+    bench_log("sizes: Demodulator %u, FrameDecoder %u, Interp %u",
+              (unsigned) sizeof(Demodulator), (unsigned) sizeof(FrameDecoder),
+              (unsigned) sizeof(Interp));
+
+    Demodulator  *demod   = new (std::nothrow) Demodulator();
+    m17bench_mem("after Demodulator");
+    FrameDecoder *decoder = new (std::nothrow) FrameDecoder();
+    m17bench_mem("after FrameDecoder");
+    Interp       *interp  = new (std::nothrow) Interp();
+    m17bench_mem("after Interp");
+    struct CODEC2 *c2     = ((demod != nullptr) && (decoder != nullptr) && (interp != nullptr))
+                          ? codec2_create(CODEC2_MODE_3200) : nullptr;
+    m17bench_mem("after codec2_create");
+
+    if((demod == nullptr) || (decoder == nullptr) || (interp == nullptr) || (c2 == nullptr))
+    {
+        bench_log("ERR m17rx: out of memory (demod %p decoder %p interp %p codec2 %p)",
+                  demod, decoder, interp, c2);
+        if(c2 != nullptr) codec2_destroy(c2);
+        delete interp;
+        delete decoder;
+        delete demod;
+        return;
+    }
+
     demod->init();
+    m17bench_mem("after Demodulator::init");
     decoder->reset();
 
     size_t cap;
