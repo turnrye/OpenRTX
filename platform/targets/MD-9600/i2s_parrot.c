@@ -5,11 +5,13 @@
  */
 
 #include <pthread.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
 #include "core/audio_path.h"
 #include "core/audio_stream.h"
 #include "interfaces/delays.h"
+#include "usb_vcom.h"
 #include "i2s_parrot.h"
 
 #define SAMPLE_RATE   8000
@@ -24,6 +26,104 @@ static stream_sample_t rec[REC_SAMPLES];
 static stream_sample_t block[2 * BLOCK_SAMPLES];
 static struct parrotStatus status;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t serMutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Write to the USB serial port, in pieces the CDC endpoint takes.
+ * Caller holds serMutex.
+ *
+ * @return false if the host did not take the data (port not open).
+ */
+static bool serWrite(const void *buf, size_t len)
+{
+    const uint8_t *p = (const uint8_t *) buf;
+    while(len > 0)
+    {
+        size_t n = (len > 512) ? 512 : len;
+        if(vcom_writeBlock(p, n) != (ssize_t) n)
+            return false;
+
+        p   += n;
+        len -= n;
+    }
+
+    return true;
+}
+
+/**
+ * printf-style line to the USB serial port.
+ */
+static void serLog(const char *fmt, ...)
+{
+    char line[320];
+    va_list ap;
+
+    va_start(ap, fmt);
+    int n = vsnprintf(line, sizeof(line) - 2, fmt, ap);
+    va_end(ap);
+
+    if(n < 0)
+        return;
+    if((size_t) n > sizeof(line) - 3)
+        n = sizeof(line) - 3;
+
+    line[n]     = '\r';
+    line[n + 1] = '\n';
+
+    pthread_mutex_lock(&serMutex);
+    serWrite(line, n + 2);
+    pthread_mutex_unlock(&serMutex);
+}
+
+/**
+ * Dump a take as base64 between "PCM" and "END" lines, 48 bytes a line.
+ * Stops at the first write the host does not take.
+ */
+static void serDump(const uint32_t take, const stream_sample_t *pcm, const size_t n)
+{
+    static const char b64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char hdr[48];
+    char line[66];
+    const uint8_t *src = (const uint8_t *) pcm;    // Little endian s16
+    const size_t bytes = n * sizeof(stream_sample_t);
+
+    int h = snprintf(hdr, sizeof(hdr), "PCM %lu %u 8000 s16le\r\n",
+                     (unsigned long) take, (unsigned) n);
+
+    pthread_mutex_lock(&serMutex);
+    bool ok = serWrite(hdr, h);
+
+    for(size_t off = 0; ok && (off < bytes); off += 48)
+    {
+        size_t chunk = ((bytes - off) > 48) ? 48 : (bytes - off);
+        size_t o = 0;
+
+        for(size_t i = 0; i < chunk; i += 3)
+        {
+            uint32_t v = (uint32_t) src[off + i] << 16;
+            if((i + 1) < chunk) v |= (uint32_t) src[off + i + 1] << 8;
+            if((i + 2) < chunk) v |= (uint32_t) src[off + i + 2];
+
+            line[o++] = b64[(v >> 18) & 0x3F];
+            line[o++] = b64[(v >> 12) & 0x3F];
+            line[o++] = ((i + 1) < chunk) ? b64[(v >> 6) & 0x3F] : '=';
+            line[o++] = ((i + 2) < chunk) ? b64[v & 0x3F] : '=';
+        }
+
+        line[o++] = '\r';
+        line[o++] = '\n';
+        ok = serWrite(line, o);
+    }
+
+    if(ok)
+    {
+        h = snprintf(hdr, sizeof(hdr), "END %lu\r\n", (unsigned long) take);
+        serWrite(hdr, h);
+    }
+
+    pthread_mutex_unlock(&serMutex);
+}
 
 /**
  * Update the shared phase and error.
@@ -51,6 +151,7 @@ static int record()
                                     STREAM_INPUT | BUF_CIRC_DOUBLE);
     if(id < 0)
     {
+        serLog("REC start failed %d", id);
         audioPath_release(path);
         return -2;
     }
@@ -60,7 +161,10 @@ static int record()
     {
         dataBlock_t b = inputStream_getData(id);
         if((b.data == NULL) || (b.len == 0))
+        {
+            serLog("REC getData empty at %u", (unsigned) n);
             break;
+        }
 
         size_t len = b.len;
         if(len > (REC_SAMPLES - n))
@@ -129,21 +233,34 @@ static uint8_t normalise(const size_t n)
  */
 static int play(const size_t n)
 {
+    long long t0 = getTick();
+
     pathId path = audioPath_request(SOURCE_MCU, SINK_SPK, PRIO_PROMPT);
     if(path < 0)
+    {
+        serLog("PLAY path request failed %ld", (long) path);
         return -3;
+    }
 
     // The HR_C6000 DAC takes whole 32-sample blocks
-    streamId id = audioStream_start(path, rec, n & ~((size_t) 31), SAMPLE_RATE,
+    const size_t len = n & ~((size_t) 31);
+    streamId id = audioStream_start(path, rec, len, SAMPLE_RATE,
                                     STREAM_OUTPUT | BUF_LINEAR);
+    long long t1 = getTick();
     if(id < 0)
     {
+        serLog("PLAY stream start failed %d (path %ld, len %u)", id,
+               (long) path, (unsigned) len);
         audioPath_release(path);
         return -4;
     }
 
     audioStream_stop(id);
+    long long t2 = getTick();
     audioPath_release(path);
+
+    serLog("PLAY path %ld stream %d len %u: start %ld ms, played %ld ms",
+           (long) path, id, (unsigned) len, (long) (t1 - t0), (long) (t2 - t1));
 
     return 0;
 }
@@ -164,67 +281,42 @@ static bool pickChannel(const struct i2sStats *st, const bool right)
     return right;
 }
 
-void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
-void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
-
-#define NUM_EXP 4
-
-/**
- * HR_C6000 set-up for a take, cycled one per take:
- * 0 as left by the radio, 1 vocoder encoder start (0x22 = 0x86), 2 and 3 the
- * same in DMR receive mode 0x10 = 0x4F (campaign) and 0x6E (RadioFoundry).
- *
- * @param exp: experiment number.
- * @param old10: the 0x10 value to restore, read before.
- */
-static void expApply(const uint8_t exp)
-{
-    if(exp == 2) i2sParrot_writeC6000(0x10, 0x4F);
-    if(exp == 3) i2sParrot_writeC6000(0x10, 0x6E);
-    if(exp >= 1) i2sParrot_writeC6000(0x22, 0x86);
-}
-
-static void expRestore(const uint8_t exp, const uint8_t old10)
-{
-    if(exp >= 1) i2sParrot_writeC6000(0x22, 0x46);    // Encoder stop, I2S bits kept
-    if(exp >= 2) i2sParrot_writeC6000(0x10, old10);
-}
-
 static void *parrotThread(void *arg)
 {
     (void) arg;
     bool right = false;
 
     sleepFor(3, 0);
+    serLog("PARROT start");
 
     while(1)
     {
         struct i2sStats st;
+        uint32_t take;
 
-        static const uint8_t r10 = 0x10;
-        uint8_t old10;
-        const uint8_t exp = (uint8_t) (status.takes % NUM_EXP);
-
-        i2sParrot_readC6000(&r10, &old10, 1);
         pthread_mutex_lock(&mutex);
-        status.exp = exp;
+        take = status.takes;
         pthread_mutex_unlock(&mutex);
 
         stm32i2s_setChannel(right);
-        expApply(exp);
-        sleepFor(0, 50);
         stm32i2s_getStats(&st, true);
         setPhase(PARROT_REC, 0);
 
+        long long t0 = getTick();
         int n = record();
+        long long t1 = getTick();
         stm32i2s_getStats(&st, true);
-        expRestore(exp, old10);
 
         pthread_mutex_lock(&mutex);
         status.stats = st;
         status.right = right;
         status.takes++;
         pthread_mutex_unlock(&mutex);
+
+        serLog("TAKE %lu n=%d %ld ms ch=%c frames=%lu L=%d/%u mean %d "
+               "R=%d/%u mean %d", (unsigned long) take, n, (long) (t1 - t0),
+               right ? 'R' : 'L', (unsigned long) st.frames, st.peak[0],
+               st.rms[0], st.mean[0], st.peak[1], st.rms[1], st.mean[1]);
 
         if(n <= 0)
         {
@@ -233,8 +325,8 @@ static void *parrotThread(void *arg)
             continue;
         }
 
-        const bool next = pickChannel(&st, right);
-        right = next;
+        serDump(take, rec, (size_t) n);
+        right = pickChannel(&st, right);
 
         uint8_t gain = normalise((size_t) n);
         pthread_mutex_lock(&mutex);
@@ -251,17 +343,12 @@ static void *parrotThread(void *arg)
     return NULL;
 }
 
-void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
-
 /**
  * Once a second: driver diagnostics to the display and the USB serial port.
  */
 static void *diagThread(void *arg)
 {
     (void) arg;
-    static const uint8_t regs[] = { 0x06, 0x10, 0x22, 0x2F, 0x32, 0x33, 0x36,
-                                    0xE0, 0xE2 };
-    uint8_t vals[sizeof(regs)];
     uint32_t sec = 0;
 
     sleepFor(2, 0);
@@ -280,38 +367,17 @@ static void *diagThread(void *arg)
         const uint32_t takes = status.takes;
         pthread_mutex_unlock(&mutex);
 
-        printf("I2S t=%lu ph=%u takes=%lu irq=%lu ht=%lu tc=%lu te=%lu "
-               "starts=%lu fails=%lu sr=%04lx cfg=%04lx dcr=%08lx ndtr=%lu "
-               "lisr=%08lx ws=%lu ck=%lu sd=%lu/%lu frames=%lu "
-               "L=%d/%u R=%d/%u noclk=%lu\r\n",
+        serLog("I2S t=%lu ph=%u takes=%lu irq=%lu to=%lu pos=%lu run=%lu "
+               "sr=%04lx ndtr=%lu ws=%lu ck=%lu sd=%lu/%lu frames=%lu "
+               "L=%d/%u R=%d/%u noclk=%lu",
                (unsigned long) sec, phase, (unsigned long) takes,
-               (unsigned long) d.irqs, (unsigned long) d.ht,
-               (unsigned long) d.tc, (unsigned long) d.te,
-               (unsigned long) d.starts, (unsigned long) d.startFails,
-               (unsigned long) d.sr, (unsigned long) d.i2scfgr,
-               (unsigned long) d.dmaCr, (unsigned long) d.ndtr,
-               (unsigned long) d.lisr, (unsigned long) d.wsEdges,
-               (unsigned long) d.ckEdges, (unsigned long) d.sdHigh,
-               (unsigned long) d.polls, (unsigned long) st.frames,
-               st.peak[0], st.rms[0], st.peak[1], st.rms[1],
-               (unsigned long) st.noClock);
-
-        if((sec % 2) == 0)
-        {
-            i2sParrot_readC6000(regs, vals, sizeof(regs));
-            pthread_mutex_lock(&mutex);
-            status.regs[0] = vals[1];   // 0x10
-            status.regs[1] = vals[2];   // 0x22
-            status.regs[2] = vals[7];   // 0xE0
-            status.regs[3] = vals[6];   // 0x36
-            status.regs[4] = vals[8];   // 0xE2
-            status.regs[5] = vals[0];   // 0x06
-            pthread_mutex_unlock(&mutex);
-            printf("C6000");
-            for(size_t i = 0; i < sizeof(regs); i++)
-                printf(" %02x=%02x", regs[i], vals[i]);
-            printf("\r\n");
-        }
+               (unsigned long) d.irqs, (unsigned long) d.timeouts,
+               (unsigned long) d.pos, (unsigned long) d.running,
+               (unsigned long) d.sr, (unsigned long) d.ndtr,
+               (unsigned long) d.wsEdges, (unsigned long) d.ckEdges,
+               (unsigned long) d.sdHigh, (unsigned long) d.polls,
+               (unsigned long) st.frames, st.peak[0], st.rms[0], st.peak[1],
+               st.rms[1], (unsigned long) st.noClock);
 
         sec++;
         sleepFor(1, 0);
@@ -326,7 +392,7 @@ void i2sParrot_start()
     pthread_t thread;
 
     pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 2048);
+    pthread_attr_setstacksize(&attr, 4096);
     pthread_create(&thread, &attr, parrotThread, NULL);
     pthread_create(&thread, &attr, diagThread, NULL);
 }

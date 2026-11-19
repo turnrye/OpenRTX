@@ -382,8 +382,8 @@ static void _ui_drawParrot()
     uint32_t sdPct = (ps.diag.polls > 0) ? (100 * ps.diag.sdHigh) / ps.diag.polls : 0;
     point_t p = { layout.horizontal_pad, 18 };
 
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "E%u %s t%lu e%d %c",
-              ps.exp, phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "%s t%lu e%d %c",
+              phase[ps.phase & 3], (unsigned long) ps.takes, ps.error,
               ps.right ? 'R' : 'L');
     p.y += 8;
     gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "L%d/%u R%d/%u",
@@ -397,11 +397,8 @@ static void _ui_drawParrot()
               (unsigned long) ps.diag.wsEdges, (unsigned long) ps.diag.ckEdges,
               (unsigned long) sdPct);
     p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "10:%02x 22:%02x E0:%02x",
-              ps.regs[0], ps.regs[1], ps.regs[2]);
-    p.y += 8;
-    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "36:%02x E2:%02x 06:%02x",
-              ps.regs[3], ps.regs[4], ps.regs[5]);
+    gfx_print(p, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, color_white, "gain x%u last L%d R%d",
+              ps.gain, ps.stats.peak[0], ps.stats.peak[1]);
 }
 #endif
 
