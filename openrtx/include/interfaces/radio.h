@@ -8,6 +8,7 @@
 #define RADIO_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "rtx/rtx.h"
 
@@ -105,6 +106,24 @@ rssi_t radio_getRssi();
  * @return current operating status.
  */
 enum opstatus radio_getStatus();
+
+/**
+ * Radios that modulate M17 symbols themselves (CONFIG_M17_SYMBOL_TX) take the
+ * frame bytes instead of baseband audio. Each byte holds four symbols, the
+ * first in bits 7-6: 00 = +1, 01 = +3, 10 = -1, 11 = -3.
+ *
+ * Queue M17 frame bytes for transmission, waiting while the queue is full.
+ * Meaningful only between radio_enableTx() and radio_disableRtx().
+ *
+ * @param data: frame bytes.
+ * @param len: number of bytes.
+ */
+void radio_sendM17Data(const uint8_t *data, const size_t len);
+
+/**
+ * Wait until every queued M17 frame byte is on air.
+ */
+void radio_flushM17Data();
 
 #ifdef __cplusplus
 }

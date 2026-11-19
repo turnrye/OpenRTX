@@ -10,6 +10,8 @@
 #include "protocols/M17/Modulator.hpp"
 #include "protocols/M17/Utils.hpp"
 #include "protocols/M17/DSP.hpp"
+#include "interfaces/radio.h"
+#include "hwconfig.h"
 
 #if defined(PLATFORM_LINUX)
 #include <stdio.h>
@@ -64,6 +66,12 @@ bool Modulator::start()
     if(txRunning)
         return true;
 
+    #ifdef CONFIG_M17_SYMBOL_TX
+    // The radio takes the frame bytes: no baseband stream
+    txRunning = true;
+    return true;
+    #endif
+
     #ifndef PLATFORM_LINUX
     outPath = audioPath_request(SOURCE_MCU, SINK_RTX, PRIO_TX);
     if(outPath < 0)
@@ -86,6 +94,15 @@ bool Modulator::start()
 
 void Modulator::sendPreamble()
 {
+    #ifdef CONFIG_M17_SYMBOL_TX
+    // 160 ms (four frames) of +3 -3: bytes of 01 11 01 11
+    uint8_t preamble[48];
+    memset(preamble, 0x77, sizeof(preamble));
+    for(size_t frame = 0; frame < 4; frame++)
+        radio_sendM17Data(preamble, sizeof(preamble));
+    return;
+    #endif
+
     // Fill symbol buffer with preamble, made of alternated +3 and -3 symbols
     for(size_t i = 0; i < symbols.size(); i += 2)
     {
@@ -103,6 +120,19 @@ void Modulator::sendPreamble()
 
 void Modulator::sendFrame(const frame_t& frame)
 {
+    #ifdef CONFIG_M17_SYMBOL_TX
+    // An inverted phase flips each symbol's sign: the high bit of its dibit
+    frame_t out = frame;
+    if(invPhase)
+    {
+        for(auto& b : out)
+            b ^= 0xAA;
+    }
+
+    radio_sendM17Data(out.data(), out.size());
+    return;
+    #endif
+
     auto it = symbols.begin();
     for(size_t i = 0; i < frame.size(); i++)
     {
@@ -118,6 +148,12 @@ void Modulator::stop()
 {
     if(txRunning == false)
         return;
+
+    #ifdef CONFIG_M17_SYMBOL_TX
+    radio_flushM17Data();
+    txRunning = false;
+    return;
+    #endif
 
     audioStream_stop(outStream);
     txRunning  = false;
