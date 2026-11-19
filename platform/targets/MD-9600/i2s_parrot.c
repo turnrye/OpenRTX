@@ -309,7 +309,7 @@ static bool pickChannel(const struct i2sStats *st, const bool right)
 void i2sParrot_writeC6000(const uint8_t reg, const uint8_t val);
 void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
 
-#define NUM_VARIANTS 1
+#define NUM_VARIANTS 4
 
 /**
  * HR_C6000 set-up before a take, one per take: 0 nothing, 1 and 2 vocoder
@@ -317,16 +317,27 @@ void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
  */
 static void variantBefore(const uint8_t v)
 {
-    if((v == 1) || (v == 2)) i2sParrot_writeC6000(0x22, 0x86);
-    if(v == 3)               i2sParrot_writeC6000(0x06, 0x21);
+    // 1: 0x06 back to its init value; 2: the I2S bits of 0x22 set again;
+    // 3: both
+    if((v == 1) || (v == 3)) i2sParrot_writeC6000(0x06, 0x21);
+    if((v == 2) || (v == 3)) i2sParrot_writeC6000(0x22, 0x06);
+}
+
+static void variantAfter(const uint8_t v)
+{
+    (void) v;
 }
 
 /**
- * Undo after a take: 2 stops the encoder (0x22 = 0x46).
+ * Log the HR_C6000 codec registers (the read back loses bit 7).
  */
-static void variantAfter(const uint8_t v)
+static void logRegs(const char *when, const uint32_t take)
 {
-    if(v == 2) i2sParrot_writeC6000(0x22, 0x46);
+    static const uint8_t regs[] = { 0x06, 0x22, 0x36, 0xE0, 0xE2 };
+    uint8_t v[sizeof(regs)];
+    i2sParrot_readC6000(regs, v, sizeof(regs));
+    serLog("REGS %s %lu: 06=%02x 22=%02x 36=%02x E0=%02x E2=%02x", when,
+           (unsigned long) take, v[0], v[1], v[2], v[3], v[4]);
 }
 
 static void *parrotThread(void *arg)
@@ -353,6 +364,7 @@ static void *parrotThread(void *arg)
 
         stm32i2s_setChannel(right);
         variantBefore(v);
+        logRegs("before-take", take);
         sleepFor(0, 50);
         stm32i2s_getStats(&st, true);
         setPhase(PARROT_REC, 0);
@@ -363,10 +375,7 @@ static void *parrotThread(void *arg)
         stm32i2s_getStats(&st, true);
         variantAfter(v);
 
-        static const uint8_t rE0 = 0xE0;
-        uint8_t e0;
-        i2sParrot_readC6000(&rE0, &e0, 1);
-        serLog("E0 read %02x after take %lu", e0, (unsigned long) take);
+        logRegs("after-take", take);
 
         pthread_mutex_lock(&mutex);
         status.stats = st;
@@ -396,6 +405,7 @@ static void *parrotThread(void *arg)
 
         setPhase(PARROT_PLAY, 0);
         int ret = play((size_t) n);
+        logRegs("after-play", take);
         setPhase((ret < 0) ? PARROT_ERROR : PARROT_IDLE, (int16_t) ret);
 
         sleepFor(0, 500);
