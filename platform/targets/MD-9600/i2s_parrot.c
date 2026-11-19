@@ -302,8 +302,12 @@ void i2sParrot_readC6000(const uint8_t *regs, uint8_t *vals, size_t n);
 int  i2sParrot_c6000Op(const char *op, const int arg);
 
 static size_t   recLen;         // Samples in rec
+static void cmdPlay();
 static bool     monitor;        // Diagnostics line every second
 static uint32_t takeNum;
+
+void m17bench_tx(const uint32_t seconds, const char *callsign);
+void m17bench_rx(const uint32_t seconds, const uint32_t shift, const int invert);
 
 /**
  * Careful read of an HR_C6000 register over its bit-banged port, for
@@ -581,25 +585,39 @@ static uint32_t tsWait(uint32_t *last)
 }
 
 /**
- * Transmit the uploaded symbols in the HR_C6000 physical layer mode
- * (RadioFoundry modem-hrc6000.md 10.3), lowest PA row.
+ * Source of 36-byte TX RAM chunks for the physical layer engine.
+ *
+ * @return bytes written to chunk (1-36, the rest is padded with idle), 0 at
+ *         the end of the transmission, negative if no data is ready yet (an
+ *         idle slot goes out and counts as an underrun).
  */
-static void cmdPhyTx(uint32_t maxSlots)
+typedef int (*bench_chunk_fn)(uint8_t *chunk, void *ctx);
+
+struct benchTxStats
+{
+    uint32_t chunks, slots, jumps, underruns;
+    bool     stall;
+    long     paAfterMs, onMs;
+};
+
+/**
+ * Transmit in the HR_C6000 physical layer mode (RadioFoundry
+ * modem-hrc6000.md 10.3), lowest PA row: idle in slot 2 with the PA keyed as
+ * it starts, data from slot 3, one idle slot after the end.
+ *
+ * @return 0, or the radio_testPhyPrep() error.
+ */
+int bench_phyRun(bench_chunk_fn source, void *ctx, uint32_t maxSlots,
+                 const uint8_t mod1, const uint8_t mod2,
+                 struct benchTxStats *st)
 {
     static const uint8_t saveRegs[] = { 0x10, 0x40, 0x41, 0x20, 0x21, 0x22, 0x45, 0x46 };
     uint8_t saved[sizeof(saveRegs)];
     uint8_t chunk[SLOT_BYTES];
 
-    if((sym == NULL) || (symLen == 0))
-    {
-        serLog("ERR no symbols, use sym");
-        return;
-    }
-
-    if(maxSlots > 200)
-        maxSlots = 200;
-
-    const uint32_t chunks = (uint32_t) ((symLen + SLOT_BYTES - 1) / SLOT_BYTES);
+    memset(st, 0, sizeof(*st));
+    if(maxSlots > 400)
+        maxSlots = 400;
 
     for(size_t i = 0; i < sizeof(saveRegs); i++)
         saved[i] = slowRead(4, saveRegs[i], 0, 0);
@@ -607,14 +625,13 @@ static void cmdPhyTx(uint32_t maxSlots)
     int ret = radio_testPhyPrep();
     if(ret < 0)
     {
-        serLog("ERR prep %d (not V5/no band = -1, supply = -2)", ret);
         radio_testPhyEnd();
-        return;
+        return ret;
     }
 
     setPhase(PARROT_PLAY, 0);
-    i2sParrot_writeC6000(0x45, devMod2);
-    i2sParrot_writeC6000(0x46, devMod1);
+    i2sParrot_writeC6000(0x45, mod2);
+    i2sParrot_writeC6000(0x46, mod1);
     i2sParrot_writeC6000(0x41, 0x00);
     i2sParrot_writeC6000(0x10, 0x66);
     i2sParrot_writeC6000(0x20, 0x00);
@@ -630,15 +647,15 @@ static void cmdPhyTx(uint32_t maxSlots)
     long long t0 = getTick();
     i2sParrot_writeC6000(0x40, 0xE3);
 
-    uint32_t n = 0, k = 0, jumps = 0, idleTail = 0;
-    bool paOn = false, stall = false;
-    long long tPa = 0, tEnd = 0;
+    uint32_t n = 0, idleTail = 0;
+    bool paOn = false, ended = false;
+    long long tPa = t0;
 
     while(n < maxSlots)
     {
         uint32_t d = tsWait(&last);
-        if(d == 0) { stall = true; break; }
-        if(d > 1)  jumps++;
+        if(d == 0) { st->stall = true; break; }
+        if(d > 1)  st->jumps++;
         n += d;
 
         // Slot n+1 is set up at interrupt n and reads 0x00 when n is odd
@@ -651,21 +668,25 @@ static void cmdPhyTx(uint32_t maxSlots)
             tPa = getTick();
         }
 
-        if((n >= 2) && (k < chunks))
+        memset(chunk, IDLE_BYTE, sizeof(chunk));
+        if((n >= 2) && (ended == false))
         {
-            size_t off = (size_t) k * SLOT_BYTES;
-            size_t len = ((symLen - off) > SLOT_BYTES) ? SLOT_BYTES : (symLen - off);
-            memcpy(chunk, &sym[off], len);
-            if(len < SLOT_BYTES)
-                memset(&chunk[len], IDLE_BYTE, SLOT_BYTES - len);
-            k++;
+            int got = source(chunk, ctx);
+            if(got > 0)
+                st->chunks++;
+            else if(got == 0)
+                ended = true;
+            else
+                st->underruns++;
+
+            if(got <= 0)
+                memset(chunk, IDLE_BYTE, sizeof(chunk));
+            else if(got < SLOT_BYTES)
+                memset(&chunk[got], IDLE_BYTE, SLOT_BYTES - got);
         }
-        else
-        {
-            memset(chunk, IDLE_BYTE, sizeof(chunk));
-            if(k >= chunks)
-                idleTail++;
-        }
+
+        if(ended)
+            idleTail++;
 
         ramWrite(2, half, chunk, SLOT_BYTES);
         i2sParrot_writeC6000(0x41, 0x80);
@@ -677,7 +698,7 @@ static void cmdPhyTx(uint32_t maxSlots)
 
     if(paOn)
         radio_testPa(false);
-    tEnd = getTick();
+    long long tEnd = getTick();
 
     radio_testTsIrq(false);
     i2sParrot_writeC6000(0x41, 0x00);
@@ -686,13 +707,110 @@ static void cmdPhyTx(uint32_t maxSlots)
     radio_testPhyEnd();
     setPhase(PARROT_IDLE, 0);
 
-    serLog("PHYTX %lu/%lu chunks, %lu interrupts, %lu jumps%s, PA %ld ms after start, "
-           "on %ld ms, drive %lu, dev %02x/%02x, saved 10=%02x 40=%02x 41=%02x 45=%02x 46=%02x",
-           (unsigned long) k, (unsigned long) chunks, (unsigned long) n,
-           (unsigned long) jumps, stall ? " STALLED" : "",
-           (long) (tPa - t0), (long) (tEnd - tPa),
-           (unsigned long) radio_testTxDrive(), devMod1, devMod2, saved[0],
-           saved[1], saved[2], saved[6], saved[7]);
+    st->slots     = n;
+    st->paAfterMs = (long) (tPa - t0);
+    st->onMs      = (long) (tEnd - tPa);
+    return 0;
+}
+
+struct symSource
+{
+    size_t off;
+};
+
+static int symChunk(uint8_t *chunk, void *ctx)
+{
+    struct symSource *s = (struct symSource *) ctx;
+    if(s->off >= symLen)
+        return 0;
+
+    size_t len = ((symLen - s->off) > SLOT_BYTES) ? SLOT_BYTES : (symLen - s->off);
+    memcpy(chunk, &sym[s->off], len);
+    s->off += len;
+    return (int) len;
+}
+
+/**
+ * Transmit the uploaded symbols.
+ */
+static void cmdPhyTx(uint32_t maxSlots)
+{
+    struct benchTxStats st;
+    struct symSource src = { 0 };
+
+    if((sym == NULL) || (symLen == 0))
+    {
+        serLog("ERR no symbols, use sym");
+        return;
+    }
+
+    int ret = bench_phyRun(symChunk, &src, maxSlots, devMod1, devMod2, &st);
+    if(ret < 0)
+    {
+        serLog("ERR prep %d (not V5/no band = -1, supply = -2)", ret);
+        return;
+    }
+
+    serLog("PHYTX %lu chunks of %u bytes, %lu interrupts, %lu jumps%s, PA %ld ms "
+           "after start, on %ld ms, drive %lu, dev %02x/%02x",
+           (unsigned long) st.chunks, (unsigned) symLen, (unsigned long) st.slots,
+           (unsigned long) st.jumps, st.stall ? " STALLED" : "", st.paAfterMs,
+           st.onMs, (unsigned long) radio_testTxDrive(), devMod1, devMod2);
+}
+
+/*
+ * Helpers for the C++ bench (m17_bench.cpp).
+ */
+void bench_log(const char *fmt, ...)
+{
+    char line[300];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    serLog("%s", line);
+}
+
+uint8_t bench_readReg(const uint8_t reg)
+{
+    return slowRead(4, reg, 0, 0);
+}
+
+void bench_writeReg(const uint8_t reg, const uint8_t val)
+{
+    i2sParrot_writeC6000(reg, val);
+}
+
+void bench_ramRead(const uint8_t page, const uint16_t addr, uint8_t *buf, const size_t n)
+{
+    ramRead(page, addr, buf, n);
+}
+
+int16_t *bench_rec(size_t *cap)
+{
+    *cap = REC_SAMPLES;
+    return rec;
+}
+
+void bench_recDone(const size_t n, const bool dump, const bool playIt)
+{
+    recLen = n;
+    if(dump && (n > 0))
+        serDump(takeNum++, rec, n);
+    if(playIt && (n > 0))
+        cmdPlay();
+}
+
+void bench_setPhase(const uint8_t phase)
+{
+    setPhase(phase, 0);
+}
+
+void bench_devFor(const bool vhf, uint8_t *mod1, uint8_t *mod2)
+{
+    // Measured on Ryan's V5 (2026-11-19): 2402/800 Hz at 446.0, 2374/801 Hz at 146.52
+    *mod1 = vhf ? 0x84 : 0x78;
+    *mod2 = vhf ? 0x44 : 0x3E;
 }
 
 /**
@@ -792,7 +910,8 @@ static void cmdHelp()
     serLog("      c6 init|fm|dmr|beepoff | c6 lo 0/1 | c6 beep <hz> | ch l/r |");
     serLog("      spk 1/0 (hold MCU->SPK path) | mic 1/0 (hold MIC->MCU path) | sleep <ms>");
     serLog("      rdly [n] (fast read settle NOPs) | rtest <reg> [n] | fmcap <ms> [i=invert]");
-    serLog("      sym clr | sym <hex dibits> | dev <mod1> <mod2> | phytx [max slots, 200 cap]");
+    serLog("      sym clr | sym <hex dibits> | dev <mod1> <mod2> | phytx [max slots, 400 cap]");
+    serLog("      m17tx <s> [callsign] (live mic, Codec2, lowest row) | m17rx <s> [shift] [invert 0/1, default by band]");
     serLog("numbers: hex for reg/val/page (no 0x), decimal otherwise");
 }
 
@@ -890,6 +1009,10 @@ static void runLine(char *line)
         }
         serLog("OK dev mod1 %02x mod2 %02x", devMod1, devMod2);
     }
+    else if(strcmp(c, "m17tx") == 0)
+        m17bench_tx(DEC(1, 3), (argc > 2) ? argv[2] : "N0CALL");
+    else if(strcmp(c, "m17rx") == 0)
+        m17bench_rx(DEC(1, 5), DEC(2, 4), (argc > 3) ? (int) DEC(3, 2) : -1);
     else if(strcmp(c, "phytx") == 0)
         cmdPhyTx(DEC(1, 120));
     else if(strcmp(c, "rdly") == 0)
@@ -1058,9 +1181,11 @@ void i2sParrot_start()
     pthread_attr_t attr;
     pthread_t thread;
 
+    // The console runs Codec2 decode (m17rx): the codec thread's stack size
     pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 4096);
+    pthread_attr_setstacksize(&attr, 16384);
     pthread_create(&thread, &attr, consoleThread, NULL);
+    pthread_attr_setstacksize(&attr, 4096);
     pthread_create(&thread, &attr, diagThread, NULL);
 }
 

@@ -903,6 +903,16 @@ extern "C" uint32_t radio_testTxDrive()
 {
     return txDrive;
 }
+
+extern "C" bool radio_testTxVhf()
+{
+    return txBand == BND_VHF;
+}
+
+extern "C" bool radio_testRxVhf()
+{
+    return rxBand == BND_VHF;
+}
 #endif
 
 rssi_t radio_getRssi()

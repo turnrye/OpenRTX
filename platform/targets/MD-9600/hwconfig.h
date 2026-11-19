@@ -95,7 +95,7 @@ enum md9600Flags {
 #define CONFIG_TX_TIMEOUT_S 180
 
 /* Microphone audio input */
-#define CONFIG_MIC_GAIN 32
+#define CONFIG_MIC_GAIN 1           /* I2S PCM already peaks at 7k-14k in speech */
 #define CONFIG_MIC_OVERSAMPLE 1     /* HR_C6000 PCM over I2S3, 8 kHz */
 
 /* Bench test: record the mic over I2S3 and play it back, no transmit */
