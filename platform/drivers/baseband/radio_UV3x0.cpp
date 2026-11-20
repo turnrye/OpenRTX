@@ -16,6 +16,7 @@
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/AT1846S.h"
 #include "rtx/m17_bench.h"
+#include <atomic>
 #ifdef CONFIG_M17_CHIP_MODEM
 #include "drivers/audio/C6000_modem.h"
 #endif
@@ -45,10 +46,20 @@ static enum opstatus radioStatus;                // Current operating status
 HR_C6000 C6000((const struct spiDevice *) &c6000_spi, { DMR_CS }); // HR_C6000 driver
 static AT1846S& at1846s = AT1846S::instance();   // AT1846S driver
 
-// TEST ONLY: the AT1846S's bandwidth from the bench console
+// TEST ONLY: bench console requests, applied on the rtx thread (in
+// radio_getRssi()) so that the AT1846S is never driven from two threads
+static std::atomic< int >  benchBwReq{0};
+static std::atomic< bool > benchRinitReq{false};
+
 extern "C" int m17bench_bw(int khz)
 {
-    at1846s.setBandwidth((khz == 12) ? AT1846S_BW::_12P5 : AT1846S_BW::_25);
+    benchBwReq.store(khz);
+    return 0;
+}
+
+extern "C" int m17bench_rinit()
+{
+    benchRinitReq.store(true);
     return 0;
 }
 
@@ -101,9 +112,8 @@ void radio_init(const rtxStatus_t *rtxState)
 }
 
 // TEST ONLY: both RF chips initialised again, as at power on, and the radio
-// put back in its mode, for the bench console (some HR_C6000 writes leave the
-// receiver deaf until then)
-extern "C" int m17bench_rinit()
+// put back in its mode, for the bench console
+static void benchRinit()
 {
     radio_disableRtx();
     C6000.terminate();
@@ -115,7 +125,6 @@ extern "C" int m17bench_rinit()
     radio_setOpmode(static_cast< enum opmode >(config->opMode));
     radio_updateConfiguration();
     radio_enableRx();
-    return 0;
 }
 
 void radio_terminate()
@@ -399,6 +408,13 @@ void radio_updateConfiguration()
 
 rssi_t radio_getRssi()
 {
+    // TEST ONLY: bench console requests, on this (the rtx) thread
+    const int bw = benchBwReq.exchange(0);
+    if(bw != 0)
+        at1846s.setBandwidth((bw == 12) ? AT1846S_BW::_12P5 : AT1846S_BW::_25);
+    if(benchRinitReq.exchange(false))
+        benchRinit();
+
     return static_cast< rssi_t >(at1846s.readRSSI());
 }
 
