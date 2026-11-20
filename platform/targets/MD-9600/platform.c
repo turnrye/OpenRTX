@@ -20,6 +20,7 @@
 #include "drivers/GPS/gps_stm32.h"
 #include "drivers/chSelector/chSelector.h"
 #include "core/gps.h"
+#include "flash.h"
 
 static hwInfo_t hwInfo;
 static bool pwrBtnPressed = true;   // Power button status at the previous call
@@ -94,24 +95,13 @@ void platform_enterBootloader()
      *
      * Approach from RadioFoundry, docs/spec/hardware-dm1701.md section 15.4.
      */
-    volatile uint8_t *spTop = (volatile uint8_t *) 0x0800C003;
+    static const uint32_t SP_TOP_ADDR = 0x0800C003;
+    static const uint8_t  spTop       = 0x00;
 
     gpio_clearPin(PWR_SW);
     __disable_irq();
 
-    if(FLASH->CR & FLASH_CR_LOCK)
-    {
-        FLASH->KEYR = 0x45670123;
-        FLASH->KEYR = 0xCDEF89AB;
-    }
-
-    while(FLASH->SR & FLASH_SR_BSY) ;
-    FLASH->SR = FLASH_SR_PGSERR | FLASH_SR_PGPERR | FLASH_SR_PGAERR
-              | FLASH_SR_WRPERR;
-    FLASH->CR = FLASH_CR_PG;            /* Byte-wide programming */
-    *spTop = 0x00;
-    while(FLASH->SR & FLASH_SR_BSY) ;
-    FLASH->CR = FLASH_CR_LOCK;
+    flash_write(SP_TOP_ADDR, &spTop, 1);
 
     NVIC_SystemReset();
     while(1) ;
