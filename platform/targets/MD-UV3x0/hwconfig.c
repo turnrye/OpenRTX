@@ -13,6 +13,8 @@
 #include "drivers/ADC/adc_stm32.h"
 #include "drivers/GPS/gps_stm32.h"
 #include "core/gps.h"
+#include "drivers/usb_vcom.h"
+#include "interfaces/chardev.h"
 
 static pthread_mutex_t c6000_mutex;
 static pthread_mutex_t adcMutex;
@@ -82,4 +84,11 @@ const struct gpsDevice gps =
     .enable = gpsEnable,
     .disable = gpsDisable,
     .getSentence = gpsStm32_getNmeaSentence
+};
+
+/* CAT runs on the USB virtual COM port, which the platform starts at boot */
+const struct chardev_ops cat_chardev = {
+    .init  = NULL,
+    .read  = vcom_readBlock,
+    .write = vcom_writeBlock,
 };
