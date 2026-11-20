@@ -442,7 +442,7 @@ static void handleCommand()
         if (hasArg)
             rxFlip.store(strcmp(arg, "1") == 0);
         reply("RXFLIP", "%d %d", rxFlip.load() ? 1 : 0,
-              rxInverted.load() ? 1 : 0);
+              (rxInverted.load() != rxFlip.load()) ? 1 : 0);
     } else if (strcmp(command, "WREG") == 0) {
         // WREG <reg hex> <value hex>: write an HR_C6000 config register
         char *end = nullptr;

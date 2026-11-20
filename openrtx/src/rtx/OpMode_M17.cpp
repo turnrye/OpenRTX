@@ -96,7 +96,6 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
     #endif
 
     // TEST ONLY: the bench console can invert the receive phase once more
-    invertRxPhase = (invertRxPhase != m17bench_rxFlip());
     m17bench_noteRxPhase(invertRxPhase);
 
     // A modem change takes effect at once: receive again from the new source
@@ -191,7 +190,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
         startRx = false;
     }
 
-    bool newData = demodulator.update(invertRxPhase);
+    bool newData = demodulator.update(invertRxPhase != m17bench_rxFlip());
     bool lock    = demodulator.isLocked();
     m17trace_poll();
     m17trace_lock(lock);
