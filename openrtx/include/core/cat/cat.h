@@ -52,6 +52,7 @@ extern "C" {
  *   ZN    M17 channel access number, 00-15
  *   ZR    battery charge, percent
  *   ZV    firmware version
+ *   ZB1   restart into the bootloader, on radios with CONFIG_BOOTLOADER_ENTRY
  */
 
 /*
