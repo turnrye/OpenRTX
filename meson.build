@@ -371,7 +371,7 @@ linux_src = ['platform/targets/linux/emulator/emulator.c',
              'platform/drivers/CPS/cps_io_libc.c',
              'platform/drivers/NVM/posix_file.c']
 
-linux_src += cat_src
+linux_src += cat_src + ['platform/mcu/x86_64/drivers/cat_pty.c']
 
 linux_inc = ['platform/targets/linux',
              'platform/targets/linux/emulator',
