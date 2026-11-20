@@ -52,6 +52,9 @@ RegWrite tick;
 bool tickOn = false;
 bool baseOn = true;
 bool full = false;
+uint32_t everyMs = 0;          ///< Read every slot, this long after its tick.
+uint32_t tsEvery = 0;
+long long everyAt = -1;
 uint8_t pattern[6] = {0xD5, 0xD7, 0xF7, 0x7F, 0xD7, 0x57};
 
 uint32_t rearmK = 0;           ///< Records without a sync before a re-arm.
@@ -146,12 +149,13 @@ int stat(char *reply, size_t len)
 {
     return snprintf(reply, len,
         "%s seq %lu polls %lu other %lu last %02x rearms %lu sets %u watch %u "
-        "tick %u base %u full %u",
+        "tick %u base %u full %u every %lu",
         active.load() ? "ON" : "OFF", static_cast<unsigned long>(seq),
         static_cast<unsigned long>(polls), static_cast<unsigned long>(otherFlags),
         lastFlags, static_cast<unsigned long>(rearms),
         static_cast<unsigned>(nSets), static_cast<unsigned>(nWatch),
-        tickOn ? 1u : 0u, baseOn ? 1u : 0u, full ? 1u : 0u);
+        tickOn ? 1u : 0u, baseOn ? 1u : 0u, full ? 1u : 0u,
+        static_cast<unsigned long>(everyMs));
 }
 
 void turnOn()
@@ -255,6 +259,32 @@ void C6000phy_task()
             rearmAt = -1;
         }
 
+        if(everyMs != 0)
+        {
+            // Every slot: read the record a fixed time after each timeslot
+            // interrupt, flagged or not; the flags go out with it
+            if(ts != tsEvery)
+            {
+                tsEvery = ts;
+                everyAt = getTick() + everyMs;
+            }
+            if((everyAt >= 0) && (getTick() >= everyAt))
+            {
+                everyAt = -1;
+                const uint8_t flags = c6000->benchRead(PAGE_CONFIG, 0x82);
+                const uint8_t r51 = c6000->benchRead(PAGE_CONFIG, 0x51);
+                const uint8_t r5f = c6000->benchRead(PAGE_CONFIG, 0x5F);
+                polls++;
+                lastFlags = flags;
+                sendRecord(r51, r5f, flags);
+                if((flags & 0x01) != 0)
+                    c6000->benchWrite(PAGE_CONFIG, 0x83, 0x01);
+                seq++;
+            }
+            pthread_mutex_unlock(&mutex);
+            return;
+        }
+
         const uint8_t flags = c6000->benchRead(PAGE_CONFIG, 0x82);
         polls++;
         lastFlags = flags;
@@ -310,6 +340,7 @@ int C6000phy_command(char *args, char *reply, size_t len)
         nSets = 0;
         nWatch = 0;
         tickOn = false;
+        everyMs = 0;
         rearmK = 0;
         baseOn = true;
         full = false;
@@ -366,6 +397,12 @@ int C6000phy_command(char *args, char *reply, size_t len)
     else if((strcmp(args, "BASE") == 0) && (arg != nullptr))
     {
         baseOn = (arg[0] == '1');
+    }
+    else if((strcmp(args, "EVERY") == 0) && (arg != nullptr))
+    {
+        everyMs = static_cast<uint32_t>(strtoul(arg, nullptr, 10));
+        everyAt = -1;
+        tsEvery = tsCount.load();
     }
     else if((strcmp(args, "FULL") == 0) && (arg != nullptr))
     {
