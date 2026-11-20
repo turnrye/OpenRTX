@@ -133,6 +133,29 @@ rssi_t rtx_getRssi();
  */
 bool rtx_rxSquelchOpen();
 
+/**
+ * Get the PTT: the radio's own, or one a remote controller holds. This
+ * function can be called from any thread.
+ * @return true if the radio is asked to transmit.
+ */
+bool rtx_pttActive();
+
+/**
+ * Hold the PTT on behalf of a remote controller, such as CAT, until a time
+ * limit. Holding again while a hold is running does not extend it. This
+ * function can be called from any thread.
+ * @param until: time in milliseconds, from getTick(), when the hold ends.
+ * @return 0 on success, -EPERM where the radio's own PTT may not transmit
+ * either (TX disabled, RX-only channel).
+ */
+int rtx_holdPtt(const long long until);
+
+/**
+ * Release the PTT held by a remote controller. This function can be called
+ * from any thread.
+ */
+void rtx_releasePtt();
+
 #ifdef __cplusplus
 }
 #endif

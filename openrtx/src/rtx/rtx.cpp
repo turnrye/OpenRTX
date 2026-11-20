@@ -10,6 +10,10 @@
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
+#include "interfaces/delays.h"
+#include "interfaces/platform.h"
+#include <atomic>
+#include <errno.h>
 
 static pthread_mutex_t   *cfgMutex;     // Mutex for incoming config messages
 static const rtxStatus_t *newCnf;       // Pointer for incoming config messages
@@ -23,6 +27,9 @@ static OpMode_FM  fmMode;               // FM mode handler
 #ifdef CONFIG_M17
 static OpMode_M17 m17Mode;              // M17 mode handler
 #endif
+
+static std::atomic<bool>     pttHeld(false);  // PTT held by a remote controller
+static std::atomic<uint32_t> pttHeldUntil(0); // End of the hold, from getTick()
 
 
 void rtx_init(pthread_mutex_t *m)
@@ -214,4 +221,53 @@ rssi_t rtx_getRssi()
 bool rtx_rxSquelchOpen()
 {
     return currMode->rxSquelchOpen();
+}
+
+/**
+ * Check whether a remote controller holds the PTT, ending a hold whose time
+ * limit has passed.
+ *
+ * @return true while the hold runs.
+ */
+static bool pttHoldRunning()
+{
+    if(pttHeld == false)
+        return false;
+
+    // Wrap-safe: the end of the hold is close ahead of now
+    uint32_t now  = static_cast< uint32_t >(getTick());
+    int32_t  left = static_cast< int32_t >(pttHeldUntil - now);
+    if(left > 0)
+        return true;
+
+    pttHeld = false;
+    return false;
+}
+
+bool rtx_pttActive()
+{
+    if(pttHoldRunning())
+        return true;
+
+    return platform_getPttStatus();
+}
+
+int rtx_holdPtt(const long long until)
+{
+    if(rtxStatus.txDisable != 0)
+        return -EPERM;
+
+    // The time limit counts from the first hold
+    if(pttHoldRunning() == false)
+    {
+        pttHeldUntil = static_cast< uint32_t >(until);
+        pttHeld      = true;
+    }
+
+    return 0;
+}
+
+void rtx_releasePtt()
+{
+    pttHeld = false;
 }
