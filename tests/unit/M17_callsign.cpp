@@ -43,3 +43,14 @@ TEST_CASE("Decode callsign AB1CD", "[m17][callsign]")
     const char *actual = test;
     REQUIRE(strcmp(expected, actual) == 0);
 }
+
+TEST_CASE("Check callsign text", "[m17][callsign]")
+{
+    REQUIRE(M17::Callsign::isValid("AB1CD/P", 7));
+    REQUIRE(M17::Callsign::isValid("M17-M17 C", 9));
+    REQUIRE(M17::Callsign::isValid("", 0));
+    REQUIRE_FALSE(M17::Callsign::isValid("ab1cd", 5));
+    REQUIRE_FALSE(M17::Callsign::isValid("A*B", 3));
+    REQUIRE_FALSE(M17::Callsign::isValid("AB1CD", 6));
+    REQUIRE_FALSE(M17::Callsign::isValid("0123456789", 10));
+}

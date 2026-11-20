@@ -100,8 +100,20 @@ public:
      */
     bool operator==(const Callsign &other) const;
 
+    /**
+     * Check whether a text can be a callsign: at most MAX_CALLSIGN_CHARS
+     * characters of the M17 character set, upper case.
+     *
+     * @param text: callsign text.
+     * @param len: text length.
+     * @return true if the text is a valid callsign.
+     */
+    static bool isValid(const char *text, const size_t len);
+
+    static constexpr size_t MAX_CALLSIGN_CHARS = 9; ///< Longest callsign.
+    static constexpr char BROADCAST_CALL[] = "ALL"; ///< Broadcast callsign.
+
 private:
-    static constexpr size_t MAX_CALLSIGN_CHARS = 9;
     static constexpr size_t MAX_CALLSIGN_LEN = MAX_CALLSIGN_CHARS + 1;
     char call[MAX_CALLSIGN_LEN];
 };
