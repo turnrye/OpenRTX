@@ -495,6 +495,7 @@ md9600_def = {'PLATFORM_MD9600': ''}
 md9600_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
 md9600_inc += openrtx_inc + stm32f405_inc
 md9600_def += openrtx_def + stm32f405_def
+md9600_src += cat_src
 
 ##
 ## Radioddity GD-77

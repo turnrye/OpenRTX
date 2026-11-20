@@ -61,6 +61,10 @@ extern const struct Adc adc1;
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
 
+/* CAT control over the USB virtual COM port */
+#define CONFIG_CAT
+extern const struct chardev_ops cat_chardev;
+
 #ifdef __cplusplus
 }
 #endif
