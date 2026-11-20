@@ -167,6 +167,17 @@ public:
     }
 
     /**
+     * TEST ONLY: set the value of an auxiliary (page 1) register.
+     *
+     * @param reg: register number.
+     * @param value: new register value.
+     */
+    inline void writeAuxRegister(const uint8_t reg, const uint8_t value)
+    {
+        writeReg(M::AUX, reg, value);
+    }
+
+    /**
      * Get the current value of a configuration register.
      *
      * @param reg: register number.

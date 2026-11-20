@@ -61,7 +61,7 @@ extern "C" ssize_t vcom_writeBlock(const void *buf, size_t len);
 extern "C" int m17bench_diag(char *buf, size_t len);
 extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
                              size_t len);
-extern "C" void m17bench_wreg(uint8_t reg, uint8_t value);
+extern "C" void m17bench_wreg(uint16_t reg, uint8_t value);
 extern "C" int m17bench_copy(int16_t *out, int max);
 
 // Builds without a USB serial port read and write nothing
@@ -444,12 +444,13 @@ static void handleCommand()
         reply("RXFLIP", "%d %d", rxFlip.load() ? 1 : 0,
               (rxInverted.load() != rxFlip.load()) ? 1 : 0);
     } else if (strcmp(command, "WREG") == 0) {
-        // WREG <reg hex> <value hex>: write an HR_C6000 config register
+        // WREG <reg hex> <value hex>: write an HR_C6000 config register, or
+        // with 0x100-0x1FF an auxiliary (page 1) one
         char *end = nullptr;
         unsigned long reg = hasArg ? strtoul(arg, &end, 16) : 0;
         unsigned long value = (end != nullptr) && (*end == ' ')
                             ? strtoul(end + 1, nullptr, 16) : 0;
-        m17bench_wreg(static_cast<uint8_t>(reg), static_cast<uint8_t>(value));
+        m17bench_wreg(static_cast<uint16_t>(reg), static_cast<uint8_t>(value));
         reply("WREG", "%02lx %02lx", reg, value);
     } else if (strcmp(command, "REGS") == 0) {
         // REGS <start hex> [<count, at most 32>]: HR_C6000 config registers
@@ -514,7 +515,7 @@ extern "C" __attribute__((weak)) int m17bench_copy(int16_t *out, int max)
 }
 
 // The platform's register write, if it has one
-extern "C" __attribute__((weak)) void m17bench_wreg(uint8_t reg, uint8_t value)
+extern "C" __attribute__((weak)) void m17bench_wreg(uint16_t reg, uint8_t value)
 {
     (void) reg;
     (void) value;

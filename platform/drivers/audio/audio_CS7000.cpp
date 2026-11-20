@@ -102,9 +102,12 @@ extern "C" void C6000symbols_bench(uint32_t *v);
 extern "C" void C6000fmcopy_bench(uint32_t *v);
 extern "C" void C6000modem_bench(uint32_t *v);
 
-extern "C" void m17bench_wreg(uint8_t reg, uint8_t value)
+extern "C" void m17bench_wreg(uint16_t reg, uint8_t value)
 {
-    C6000.writeCfgRegister(reg, value);
+    if(reg > 0xFF)
+        C6000.writeAuxRegister(reg & 0xFF, value);
+    else
+        C6000.writeCfgRegister(reg, value);
 }
 
 extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
