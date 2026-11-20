@@ -19,6 +19,7 @@
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/SKY72310.h"
 #include "drivers/baseband/AK2365A.h"
+#include "rtx/m17_bench.h"
 #include "drivers/audio/C6000_modem.h"
 
 #ifdef PLATFORM_CS7000P
@@ -313,6 +314,11 @@ void radio_enableTx()
     if(config->txDisable == 1)
         return;
 
+    // TEST ONLY: modulation pair from the bench console
+    uint8_t benchMod1, benchMod2;
+    if(m17bench_mod(&benchMod1, &benchMod2))
+        C6000.setModAmplitude(benchMod2, benchMod1);
+
     gpioDev_clear(RX_PWR_EN);   // Disable RX LNA
     gpioDev_set(RF_APC_SW);     // APC/TV in power control mode
     gpioDev_clear(VCOVCC_SW);   // Enable TX VCO
@@ -424,6 +430,7 @@ void radio_updateConfiguration()
 
     C6000.writeCfgRegister(0x45, qAmp);   // Adjustment of Mod2 amplitude
     C6000.writeCfgRegister(0x46, iAmp);   // Adjustment of Mod1 amplitude
+    m17bench_setCal(iAmp, qAmp);          // TEST ONLY: for the bench console
     C6000modem_useChip(m17Chip);
 
     // RSSI interpolation curve

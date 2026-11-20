@@ -15,6 +15,7 @@
 #include "radioUtils.h"
 #include "drivers/baseband/HR_C6000.h"
 #include "drivers/baseband/AT1846S.h"
+#include "rtx/m17_bench.h"
 #ifdef CONFIG_M17_CHIP_MODEM
 #include "drivers/audio/C6000_modem.h"
 #endif
@@ -189,6 +190,11 @@ void radio_enableTx()
 {
     if(config->txDisable == 1) return;
 
+    // TEST ONLY: modulation pair from the bench console
+    uint8_t benchMod1, benchMod2;
+    if(m17bench_mod(&benchMod1, &benchMod2))
+        C6000.setModAmplitude(benchMod2, benchMod1);
+
     gpio_clearPin(VHF_LNA_EN);
     gpio_clearPin(UHF_LNA_EN);
     gpio_clearPin(TX_PA_EN);
@@ -333,6 +339,7 @@ void radio_updateConfiguration()
                                  UINT8_MAX);
 
     C6000.setModAmplitude(0, Q);
+    m17bench_setCal(Q, 0);      // TEST ONLY: for the bench console
     #ifdef CONFIG_M17_CHIP_MODEM
     C6000modem_useChip((config->opMode == OPMODE_M17) && (config->m17Chip != 0));
     #endif

@@ -23,18 +23,55 @@
  *   EOT <ms>                         end of transmission frame
  *   FRM <ms> <type>                  any other frame type
  *   PLAY <ms> <fn>                   a stream frame went to the speaker
+ *
+ * TEST ONLY bench console, read by the UI thread in every mode, named after
+ * the rtxlink CAT fields. Each command answers one line, or ERR <ms> <cmd>:
+ *
+ *   MODE [M17|FM]                    MODE <ms> <M17|FM|..>
+ *   FREQ [<rx Hz> [<tx Hz>]]         FREQ <ms> <rx> <tx>
+ *   POWER [<mW>]                     POWER <ms> <mW>
+ *   MODEM [CHIP|ANALOG]              MODEM <ms> <CHIP|ANALOG>
+ *   MOD [<mod1> <mod2>|CAL]          MOD <ms> <SET|CAL> <mod1> <mod2>:
+ *                                    HR_C6000 Mod1 (0x46), Mod2 (0x45) at
+ *                                    the next key-up, set or the pair the
+ *                                    radio takes from its calibration
+ *   CALL [<callsign>]                CALL <ms> <callsign>
+ *   PTT [ON|OFF]                     PTT <ms> <0|1>
+ *   TX <ms>                          TX <ms> <duration>: key for that long
+ *   STAT                             STAT <ms> <mode> <rx> <tx> <mW> <modem>
+ *                                    <SET|CAL> <mod1> <mod2> <ptt>
  */
 
 #include "rtx/m17_trace.hpp"
+#include "rtx/m17_bench.h"
+#include "core/state.h"
 #include "interfaces/delays.h"
 #include "core/memory_profiling.h"
 #include "core/threads.h"
 #include <pthread.h>
 #include <atomic>
 #include <cstring>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 
 extern "C" ssize_t vcom_readBlock(void *buf, size_t len);
 extern "C" ssize_t vcom_writeBlock(const void *buf, size_t len);
+
+// Builds without a USB serial port read and write nothing
+extern "C" __attribute__((weak)) ssize_t vcom_readBlock(void *buf, size_t len)
+{
+    (void) buf;
+    (void) len;
+    return 0;
+}
+
+extern "C" __attribute__((weak)) ssize_t vcom_writeBlock(const void *buf,
+                                                         size_t len)
+{
+    (void) buf;
+    return len;
+}
 
 using namespace M17;
 
@@ -45,7 +82,7 @@ static constexpr size_t WRITE_CHUNK = 64;
 /// Longest line, LSF with its 60 hex digits.
 static constexpr size_t LINE_SIZE = 112;
 /// Longest command from the host.
-static constexpr size_t COMMAND_SIZE = 16;
+static constexpr size_t COMMAND_SIZE = 40;
 /// Period of the stack report.
 static constexpr long long HEARTBEAT_MS = 1000;
 /// Pause of the writer thread when the ring is empty.
@@ -66,6 +103,14 @@ static char line[LINE_SIZE];               ///< Line being formatted.
 static size_t lineLen = 0;                 ///< Characters in line.
 static char command[COMMAND_SIZE];         ///< Command being received.
 static size_t commandLen = 0;              ///< Characters in command.
+
+static pthread_mutex_t ringMutex = PTHREAD_MUTEX_INITIALIZER; ///< Producers.
+static std::atomic<bool> resetReq{false};  ///< TRACE ON: reset the trace state.
+static std::atomic<long long> pttUntil{0}; ///< Host keying ends at this tick.
+static std::atomic<bool> modSet{false};    ///< Modulation pair overridden.
+static std::atomic<uint16_t> modPair{0};   ///< Mod1 << 8 | Mod2.
+static std::atomic<uint16_t> calPair{0};   ///< The calibration's pair.
+static std::atomic<bool> syncReq{false};   ///< Settings changed: sync rtx.
 
 static LinkSetupFrame lastLsf;             ///< Link setup data last reported.
 static LinkSetupFrame lsfCopy;             ///< Scratch copy of the decoder's.
@@ -193,21 +238,55 @@ static void chr(char c)
  * End the line and queue it for the writer, or count it as dropped when
  * the ring is full. The receive thread is the only producer.
  */
+static void push(const char *data, size_t len)
+{
+    pthread_mutex_lock(&ringMutex);
+    uint32_t h = head.load(std::memory_order_relaxed);
+    uint32_t t = tail.load(std::memory_order_acquire);
+    if ((RING_SIZE - (h - t)) < len) {
+        dropped++;
+    } else {
+        for (size_t i = 0; i < len; i++)
+            ring[(h + i) % RING_SIZE] = data[i];
+        head.store(h + static_cast<uint32_t>(len), std::memory_order_release);
+    }
+    pthread_mutex_unlock(&ringMutex);
+}
+
 static void send()
 {
     if (lineLen < LINE_SIZE)
         line[lineLen++] = '\n';
 
-    uint32_t h = head.load(std::memory_order_relaxed);
-    uint32_t t = tail.load(std::memory_order_acquire);
-    if ((RING_SIZE - (h - t)) < lineLen) {
-        dropped++;
-        return;
+    push(line, lineLen);
+}
+
+/**
+ * Queue one console reply line, keyword and time first.
+ *
+ * @param keyword: the reply's keyword.
+ * @param fmt: printf format of the rest, may be empty.
+ */
+static void reply(const char *keyword, const char *fmt, ...)
+{
+    char buf[LINE_SIZE];
+    int n = snprintf(buf, sizeof(buf), "%s %lld", keyword,
+                     static_cast<long long>(getTick()));
+
+    if ((n > 0) && (fmt[0] != '\0') && (static_cast<size_t>(n) < sizeof(buf) - 2)) {
+        buf[n++] = ' ';
+        va_list ap;
+        va_start(ap, fmt);
+        int m = vsnprintf(&buf[n], sizeof(buf) - n - 1, fmt, ap);
+        va_end(ap);
+        if (m > 0)
+            n += m;
     }
 
-    for (size_t i = 0; i < lineLen; i++)
-        ring[(h + i) % RING_SIZE] = line[i];
-    head.store(h + static_cast<uint32_t>(lineLen), std::memory_order_release);
+    if (n > static_cast<int>(sizeof(buf)) - 2)
+        n = sizeof(buf) - 2;
+    buf[n++] = '\n';
+    push(buf, n);
 }
 
 /**
@@ -222,34 +301,138 @@ static void event(const char *keyword)
 }
 
 /**
- * Act on a complete command from the host.
+ * Name of an operating mode.
+ *
+ * @param mode: the mode.
+ * @return its name.
+ */
+static const char *modeName(uint8_t mode)
+{
+    switch (mode) {
+        case OPMODE_FM:
+            return "FM";
+        case OPMODE_M17:
+            return "M17";
+        case OPMODE_DMR:
+            return "DMR";
+        default:
+            return "NONE";
+    }
+}
+
+/**
+ * Act on a complete command from the host. Runs on the UI thread.
  */
 static void handleCommand()
 {
     startWriter();
 
+    char *arg = strchr(command, ' ');
+    if (arg != nullptr)
+        *arg++ = '\0';
+    const bool hasArg = (arg != nullptr) && (*arg != '\0');
+
     if (strcmp(command, "ID") == 0) {
-        begin("ID");
-        if (lineLen < LINE_SIZE)
-            line[lineLen++] = ' ';
-        for (const char *l = M17_TRACE_LABEL;
-             (*l != '\0') && (lineLen < LINE_SIZE); l++)
-            line[lineLen++] = *l;
-        send();
-    } else if (strcmp(command, "TRACE ON") == 0) {
-        tracing.store(true);
-        lastLsf.clear();
-        lastHeartbeat = 0;
-        event("ON");
-        send();
-    } else if (strcmp(command, "TRACE OFF") == 0) {
-        event("OFF");
-        send();
-        tracing.store(false);
+        reply("ID", "%s", M17_TRACE_LABEL);
+    } else if (strcmp(command, "TRACE") == 0) {
+        if (hasArg && (strcmp(arg, "ON") == 0)) {
+            resetReq.store(true);
+            tracing.store(true);
+            reply("ON", "");
+        } else {
+            reply("OFF", "");
+            tracing.store(false);
+        }
+    } else if (strcmp(command, "MODE") == 0) {
+        if (hasArg) {
+            pthread_mutex_lock(&state_mutex);
+            if (strcmp(arg, "M17") == 0)
+                state.channel.mode = OPMODE_M17;
+            else if (strcmp(arg, "FM") == 0)
+                state.channel.mode = OPMODE_FM;
+            pthread_mutex_unlock(&state_mutex);
+            syncReq.store(true);
+        }
+        reply("MODE", "%s", modeName(state.channel.mode));
+    } else if (strcmp(command, "FREQ") == 0) {
+        if (hasArg) {
+            char *end;
+            uint32_t rx = strtoul(arg, &end, 10);
+            uint32_t tx = (*end == ' ') ? strtoul(end + 1, nullptr, 10) : rx;
+            pthread_mutex_lock(&state_mutex);
+            state.channel.rx_frequency = rx;
+            state.channel.tx_frequency = tx;
+            pthread_mutex_unlock(&state_mutex);
+            syncReq.store(true);
+        }
+        reply("FREQ", "%lu %lu",
+              static_cast<unsigned long>(state.channel.rx_frequency),
+              static_cast<unsigned long>(state.channel.tx_frequency));
+    } else if (strcmp(command, "POWER") == 0) {
+        if (hasArg) {
+            pthread_mutex_lock(&state_mutex);
+            state.channel.power = strtoul(arg, nullptr, 10);
+            pthread_mutex_unlock(&state_mutex);
+            syncReq.store(true);
+        }
+        reply("POWER", "%lu", static_cast<unsigned long>(state.channel.power));
+    } else if (strcmp(command, "MODEM") == 0) {
+        if (hasArg) {
+            pthread_mutex_lock(&state_mutex);
+            state.settings.m17_chip_modem = (strcmp(arg, "CHIP") == 0) ? 1 : 0;
+            pthread_mutex_unlock(&state_mutex);
+            syncReq.store(true);
+        }
+        reply("MODEM", "%s", state.settings.m17_chip_modem ? "CHIP" : "ANALOG");
+    } else if (strcmp(command, "MOD") == 0) {
+        if (hasArg && (strcmp(arg, "CAL") == 0)) {
+            modSet.store(false);
+        } else if (hasArg) {
+            char *end;
+            uint32_t m1 = strtoul(arg, &end, 10);
+            uint32_t m2 = strtoul(end, nullptr, 10);
+            modPair.store(static_cast<uint16_t>(((m1 & 0xFF) << 8) | (m2 & 0xFF)));
+            modSet.store(true);
+        }
+        const bool set = modSet.load();
+        const uint16_t pair = set ? modPair.load() : calPair.load();
+        reply("MOD", "%s %u %u", set ? "SET" : "CAL", pair >> 8, pair & 0xFF);
+    } else if (strcmp(command, "CALL") == 0) {
+        if (hasArg) {
+            pthread_mutex_lock(&state_mutex);
+            strncpy(state.settings.callsign, arg,
+                    sizeof(state.settings.callsign) - 1);
+            state.settings.callsign[sizeof(state.settings.callsign) - 1] = '\0';
+            pthread_mutex_unlock(&state_mutex);
+            syncReq.store(true);
+        }
+        reply("CALL", "%s", state.settings.callsign);
+    } else if (strcmp(command, "PTT") == 0) {
+        if (hasArg)
+            pttUntil.store((strcmp(arg, "ON") == 0) ? (getTick() + 600000) : 0);
+        reply("PTT", "%d", m17bench_ptt() ? 1 : 0);
+    } else if (strcmp(command, "TX") == 0) {
+        long ms = hasArg ? strtol(arg, nullptr, 10) : 0;
+        pttUntil.store(getTick() + ms);
+        reply("TX", "%ld", ms);
+    } else if (strcmp(command, "STAT") == 0) {
+        char mod[16];
+        const bool set = modSet.load();
+        const uint16_t pair = set ? modPair.load() : calPair.load();
+        snprintf(mod, sizeof(mod), "%s %u %u", set ? "SET" : "CAL", pair >> 8,
+                 pair & 0xFF);
+        reply("STAT", "%s %lu %lu %lu %s %s %d", modeName(state.channel.mode),
+              static_cast<unsigned long>(state.channel.rx_frequency),
+              static_cast<unsigned long>(state.channel.tx_frequency),
+              static_cast<unsigned long>(state.channel.power),
+              state.settings.m17_chip_modem ? "CHIP" : "ANALOG", mod,
+              m17bench_ptt() ? 1 : 0);
+    } else {
+        reply("ERR", "%s", command);
     }
 }
 
-void m17trace_poll()
+void m17bench_poll()
 {
     char c;
     while (vcom_readBlock(&c, 1) == 1) {
@@ -261,6 +444,40 @@ void m17trace_poll()
         } else if (commandLen < (COMMAND_SIZE - 1)) {
             command[commandLen++] = c;
         }
+    }
+}
+
+bool m17bench_ptt()
+{
+    return getTick() < pttUntil.load();
+}
+
+bool m17bench_mod(uint8_t *mod1, uint8_t *mod2)
+{
+    if (!modSet.load())
+        return false;
+
+    uint16_t pair = modPair.load();
+    *mod1 = pair >> 8;
+    *mod2 = pair & 0xFF;
+    return true;
+}
+
+void m17bench_setCal(uint8_t mod1, uint8_t mod2)
+{
+    calPair.store(static_cast<uint16_t>((mod1 << 8) | mod2));
+}
+
+bool m17bench_takeSync()
+{
+    return syncReq.exchange(false);
+}
+
+void m17trace_poll()
+{
+    if (resetReq.exchange(false)) {
+        lastLsf.clear();
+        lastHeartbeat = 0;
     }
 
     if (!tracing.load())

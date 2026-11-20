@@ -9,6 +9,7 @@
 #include "core/ui.h"
 #include "core/state.h"
 #include "core/threads.h"
+#include "rtx/m17_bench.h"
 #include "core/graphics.h"
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
@@ -64,6 +65,11 @@ void *ui_threadFunc(void *arg)
         pthread_mutex_unlock(&state_mutex); // Unlock r/w access to radio state
 
         vp_tick();                           // continue playing voice prompts in progress if any.
+
+        // TEST ONLY: bench console
+        m17bench_poll();
+        if(m17bench_takeSync())
+            sync_rtx = true;
 
         // If synchronization needed take mutex and update RTX configuration
         if(sync_rtx)

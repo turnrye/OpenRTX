@@ -5,6 +5,7 @@
  */
 
 #include "interfaces/platform.h"
+#include "rtx/m17_bench.h"
 #include "peripherals/gpio.h"
 #include "interfaces/nvmem.h"
 #include "interfaces/audio.h"
@@ -145,6 +146,10 @@ bool platform_getPttStatus()
     /* PTT line has a pullup resistor with PTT switch closing to ground */
     uint8_t intPttStatus = gpio_readPin(PTT_SW);
     uint8_t extPttStatus = gpio_readPin(PTT_EXT);
+    // TEST ONLY: keyed from the bench console too
+    if(m17bench_ptt())
+        return true;
+
     return ((intPttStatus == 0) || (extPttStatus == 0)) ? true : false;
 }
 
