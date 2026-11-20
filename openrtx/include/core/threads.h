@@ -29,9 +29,24 @@
 #define THREAD_PRIO_LOW     3
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Spawn all the threads for the various functionalities.
  */
 void create_threads();
+
+/**
+ * Have the UI thread apply the radio state to the rtx module, as after a
+ * keypress, for a change made outside the UI such as over CAT. Call with
+ * state_mutex held.
+ */
+void threads_requestRtxSync();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* THREADS_H */

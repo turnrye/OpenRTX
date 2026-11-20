@@ -30,6 +30,14 @@
 /* Mutex for concurrent access to RTX state variable */
 pthread_mutex_t rtx_mutex;
 
+/* RTX sync asked from outside the UI, guarded by state_mutex */
+static bool rtxSyncRequested = false;
+
+void threads_requestRtxSync()
+{
+    rtxSyncRequested = true;
+}
+
 /**
  * \internal Thread managing user input and UI
  */
@@ -62,6 +70,13 @@ void *ui_threadFunc(void *arg)
         pthread_mutex_lock(&state_mutex);   // Lock r/w access to radio state
         ui_updateFSM(&sync_rtx);            // Update UI FSM
         ui_saveState();                     // Save local state copy
+
+        if(rtxSyncRequested)                // Sync asked from outside the UI
+        {
+            sync_rtx         = true;
+            rtxSyncRequested = false;
+        }
+
         pthread_mutex_unlock(&state_mutex); // Unlock r/w access to radio state
 
         vp_tick();                           // continue playing voice prompts in progress if any.
