@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "core/cps.h"
+#include "interfaces/platform.h"
 
 uint8_t interpCalParameter(const freq_t freq, const freq_t *calPoints,
                            const uint8_t *param, const uint8_t elems)
@@ -92,4 +93,20 @@ uint8_t ctcssFreqToIndex(const uint16_t freq)
     }
 
     return 255;
+}
+
+bool freqInBand(const freq_t freq)
+{
+    // hwInfo_t band limits are in MHz
+    const hwInfo_t *hw = platform_getHwInfo();
+
+    if(hw->vhf_band && (freq >= (freq_t) hw->vhf_minFreq * 1000000u)
+                    && (freq <= (freq_t) hw->vhf_maxFreq * 1000000u))
+        return true;
+
+    if(hw->uhf_band && (freq >= (freq_t) hw->uhf_minFreq * 1000000u)
+                    && (freq <= (freq_t) hw->uhf_maxFreq * 1000000u))
+        return true;
+
+    return false;
 }
