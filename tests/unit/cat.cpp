@@ -434,3 +434,11 @@ TEST_CASE("CAT holds the PTT for at most two minutes", "[cat][commands]")
     rtx_task();
     rtx_terminate();
 }
+
+TEST_CASE("CAT refuses the bootloader without CONFIG_BOOTLOADER_ENTRY",
+          "[cat][commands]")
+{
+    setUp();
+
+    REQUIRE(answers("ZB;ZB0;ZB1;", "?;?;?;"));
+}

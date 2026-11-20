@@ -9,6 +9,7 @@
  */
 
 #include "core/cat/commands.hpp"
+#include "hwconfig.h"
 #include "interfaces/platform.h"
 #include "rtx/rtx.h"
 #include <cerrno>
@@ -110,4 +111,18 @@ int cat_cmdZV(const CatRequest &req, CatAnswer &answer)
     (void)answer;
     return -ENOTSUP;
 #endif
+}
+
+int cat_cmdZB(const CatRequest &req, CatAnswer &answer)
+{
+    (void)answer;
+
+    if ((req.len != 1) || (req.args[0] != '1'))
+        return -EINVAL;
+
+#ifdef CONFIG_BOOTLOADER_ENTRY
+    platform_enterBootloader();
+#endif
+
+    return -ENOTSUP;
 }

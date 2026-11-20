@@ -259,4 +259,10 @@ int cat_cmdZR(const CatRequest &req, CatAnswer &answer);
  */
 int cat_cmdZV(const CatRequest &req, CatAnswer &answer);
 
+/**
+ * ZB1: restart into the bootloader, ready for a firmware update, on radios
+ * with CONFIG_BOOTLOADER_ENTRY. Does not return on those.
+ */
+int cat_cmdZB(const CatRequest &req, CatAnswer &answer);
+
 #endif // CAT_COMMANDS_H
