@@ -126,6 +126,18 @@ extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
     return n;
 }
 
+#ifdef CONFIG_M17_CHIP_MIC
+extern "C" int m17bench_mic(char *buf, size_t len) // TEST ONLY
+{
+    struct i2sStats st;
+    stm32i2s_getStats(&st, true);
+    return snprintf(buf, len,
+        "frames %lu noclock %lu peak %d %d rms %u %u mean %d %d",
+        (unsigned long) st.frames, (unsigned long) st.noClock,
+        st.peak[0], st.peak[1], st.rms[0], st.rms[1], st.mean[0], st.mean[1]);
+}
+#endif
+
 extern "C" int m17bench_diag(char *buf, size_t len)
 {
     uint32_t s[6], f[6], m[2];

@@ -64,6 +64,7 @@ extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
                              size_t len);
 extern "C" void m17bench_wreg(uint16_t reg, uint8_t value);
 extern "C" int m17bench_copy(int16_t *out, int max);
+extern "C" int m17bench_mic(char *buf, size_t len);
 
 // Builds without a USB serial port read and write nothing
 extern "C" __attribute__((weak)) ssize_t vcom_readBlock(void *buf, size_t len)
@@ -426,6 +427,11 @@ static void handleCommand()
         long ms = hasArg ? strtol(arg, nullptr, 10) : 0;
         pttUntil.store(getTick() + ms);
         reply("TX", "%ld", ms);
+    } else if (strcmp(command, "MIC") == 0) {
+        // MIC: the HR_C6000 codec microphone's I2S levels since the last MIC
+        char text[160];
+        m17bench_mic(text, sizeof(text));
+        reply("MIC", "%s", text);
     } else if (strcmp(command, "SYMREG") == 0) {
         // SYMREG <reg hex> <value hex> | CLEAR: config writes applied right
         // after the symbol transmission set-up, at most eight
@@ -538,6 +544,12 @@ void m17bench_poll()
 
 // The platform's diagnostics line, if it has one
 extern "C" __attribute__((weak)) int m17bench_diag(char *buf, size_t len)
+{
+    return snprintf(buf, len, "none");
+}
+
+// The codec microphone's I2S levels, if the build has them
+extern "C" __attribute__((weak)) int m17bench_mic(char *buf, size_t len)
 {
     return snprintf(buf, len, "none");
 }
