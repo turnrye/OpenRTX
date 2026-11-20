@@ -97,8 +97,13 @@ endif
 ##
 ## CAT control, for targets with a CAT transport
 ##
-cat_src = ['openrtx/src/core/cat/CatAnswer.cpp',
-           'openrtx/src/core/cat/CatParser.cpp']
+cat_src = ['openrtx/src/core/cat/cat.cpp',
+           'openrtx/src/core/cat/CatAnswer.cpp',
+           'openrtx/src/core/cat/CatParser.cpp',
+           'openrtx/src/core/cat/levels.cpp',
+           'openrtx/src/core/cat/m17.cpp',
+           'openrtx/src/core/cat/system.cpp',
+           'openrtx/src/core/cat/vfo.cpp']
 
 ##
 ## External libraries
