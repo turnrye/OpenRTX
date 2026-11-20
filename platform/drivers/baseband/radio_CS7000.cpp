@@ -21,6 +21,13 @@
 #include "drivers/baseband/AK2365A.h"
 #include "rtx/m17_bench.h"
 #include "drivers/audio/C6000_modem.h"
+#include "core/nvmem_access.h"
+
+// TEST ONLY: the bench console reads the calibration memory
+extern "C" int m17bench_nvm(uint32_t addr, uint8_t *buf, uint32_t len)
+{
+    return nvm_read(0, 1, addr, buf, len);
+}
 
 #ifdef PLATFORM_CS7000P
 #define DAC     DAC1

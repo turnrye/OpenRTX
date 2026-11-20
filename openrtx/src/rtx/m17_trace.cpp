@@ -49,6 +49,7 @@
 #include "core/memory_profiling.h"
 #include "core/threads.h"
 #include <pthread.h>
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <cstdarg>
@@ -117,6 +118,8 @@ static std::atomic<bool> modSet{false};    ///< Modulation pair overridden.
 static std::atomic<uint16_t> modPair{0};   ///< Mod1 << 8 | Mod2.
 static std::atomic<uint16_t> calPair{0};   ///< The calibration's pair.
 static std::atomic<bool> syncReq{false};   ///< Settings changed: sync rtx.
+static std::atomic<int> symRegCount{0};   ///< Symbol TX register overrides.
+static uint16_t symRegs[8];                 ///< reg << 8 | value.
 static std::atomic<bool> rxFlip{false};    ///< Extra RX phase inversion.
 static std::atomic<bool> rxInverted{false};///< RX inversion last applied.
 
@@ -423,6 +426,39 @@ static void handleCommand()
         long ms = hasArg ? strtol(arg, nullptr, 10) : 0;
         pttUntil.store(getTick() + ms);
         reply("TX", "%ld", ms);
+    } else if (strcmp(command, "SYMREG") == 0) {
+        // SYMREG <reg hex> <value hex> | CLEAR: config writes applied right
+        // after the symbol transmission set-up, at most eight
+        if (hasArg && (strcmp(arg, "CLEAR") == 0)) {
+            symRegCount.store(0);
+        } else if (hasArg && (symRegCount.load() < 8)) {
+            char *end = nullptr;
+            unsigned long reg = strtoul(arg, &end, 16);
+            unsigned long value = (end != nullptr) && (*end == ' ')
+                                ? strtoul(end + 1, nullptr, 16) : 0;
+            const int i = symRegCount.load();
+            symRegs[i] = static_cast<uint16_t>(((reg & 0xFF) << 8) | (value & 0xFF));
+            symRegCount.store(i + 1);
+        }
+        char list[8 * 6 + 1] = "";
+        int k = 0;
+        for (int i = 0; i < symRegCount.load(); i++)
+            k += snprintf(&list[k], sizeof(list) - k, " %02x=%02x",
+                          symRegs[i] >> 8, symRegs[i] & 0xFF);
+        reply("SYMREG", "%d%s", symRegCount.load(), list);
+    } else if (strcmp(command, "NVM") == 0) {
+        // NVM <addr hex> [<len, at most 32>]: calibration memory, in hex
+        char *end = nullptr;
+        unsigned long addr = hasArg ? strtoul(arg, &end, 16) : 0;
+        unsigned long len = (end != nullptr) && (*end == ' ')
+                          ? strtoul(end + 1, nullptr, 10) : 16;
+        uint8_t data[32];
+        len = std::min<unsigned long>(len, sizeof(data));
+        const int ret = m17bench_nvm(addr, data, len);
+        char hexs[2 * sizeof(data) + 1] = "";
+        for (unsigned long i = 0; (ret == 0) && (i < len); i++)
+            snprintf(&hexs[2 * i], 3, "%02x", data[i]);
+        reply("NVM", "%05lx %d %s", addr, ret, hexs);
     } else if (strcmp(command, "COPY") == 0) {
         // COPY: the FM copy's last block of raw samples, 16 per line in hex,
         // COPY <ms> <index> <hex>..., then COPY <ms> END <count>
@@ -550,6 +586,25 @@ bool m17bench_mod(uint8_t *mod1, uint8_t *mod2)
 void m17bench_setCal(uint8_t mod1, uint8_t mod2)
 {
     calPair.store(static_cast<uint16_t>((mod1 << 8) | mod2));
+}
+
+bool m17bench_symReg(int idx, uint8_t *reg, uint8_t *value)
+{
+    if ((idx < 0) || (idx >= symRegCount.load()))
+        return false;
+    *reg   = static_cast<uint8_t>(symRegs[idx] >> 8);
+    *value = static_cast<uint8_t>(symRegs[idx] & 0xFF);
+    return true;
+}
+
+// The platform's calibration memory, if it has one
+extern "C" __attribute__((weak)) int m17bench_nvm(uint32_t addr, uint8_t *buf,
+                                                  uint32_t len)
+{
+    (void) addr;
+    (void) buf;
+    (void) len;
+    return -1;
 }
 
 bool m17bench_rxFlip()

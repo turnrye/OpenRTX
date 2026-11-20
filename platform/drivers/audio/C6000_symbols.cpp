@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include "interfaces/delays.h"
 #include "C6000_symbols.h"
+#include "rtx/m17_bench.h"
 
 /*
  * Each timeslot interrupt starts a slot, during which the chip sends what the
@@ -182,6 +183,12 @@ static int symbols_start(const uint8_t instance, const void *config,
     slotTime = getTick();
     benchStarts++;
     c6000->startSymbolTx();
+
+    // TEST ONLY: register overrides from the bench console
+    uint8_t benchReg, benchVal;
+    for(int i = 0; m17bench_symReg(i, &benchReg, &benchVal); i++)
+        c6000->writeCfgRegister(benchReg, benchVal);
+
     ctx->running = 1;
     stream = ctx;
 

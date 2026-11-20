@@ -62,6 +62,26 @@ void m17bench_noteRxPhase(bool inverted);
  */
 bool m17bench_takeSync();
 
+/**
+ * Config register writes to apply right after the symbol transmission set-up.
+ *
+ * @param idx: index of the write.
+ * @param reg: register, filled in.
+ * @param value: value, filled in.
+ * @return true if there is a write at that index.
+ */
+bool m17bench_symReg(int idx, uint8_t *reg, uint8_t *value);
+
+/**
+ * Read the platform's calibration memory, if it has one.
+ *
+ * @param addr: start address.
+ * @param buf: destination.
+ * @param len: number of bytes.
+ * @return zero on success, a negative error code otherwise.
+ */
+int m17bench_nvm(uint32_t addr, uint8_t *buf, uint32_t len);
+
 #ifdef __cplusplus
 }
 #endif
