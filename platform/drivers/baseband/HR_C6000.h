@@ -148,7 +148,8 @@ private:
     }
 
     /**
-     * Read a block of RAM with 16-bit addressing.
+     * Read a block of RAM with 16-bit addressing. The first byte of a read
+     * comes back corrupt, so the read starts one word early and drops it.
      *
      * @param opMode: register page.
      * @param addr: start address.
@@ -158,15 +159,18 @@ private:
     void readRam16(const C6000_SpiOpModes opMode, const uint16_t addr,
                    uint8_t *data, const size_t len)
     {
+        const uint16_t start  = addr - 2;
         const uint8_t cmd[3] = {
             static_cast< uint8_t >(SPI_FLAGS_READ | SPI_FLAGS_EXTD
                                    | static_cast< uint8_t >(opMode)),
-            static_cast< uint8_t >(addr & 0xFF),
-            static_cast< uint8_t >((addr >> 8) & 0x07)
+            static_cast< uint8_t >(start & 0xFF),
+            static_cast< uint8_t >((start >> 8) & 0x07)
         };
+        uint8_t lead[2];
 
         ScopedChipSelect cs(uSpi, uCs);
         spi_send(uSpi, cmd, sizeof(cmd));
+        spi_receive(uSpi, lead, sizeof(lead));
         spi_receive(uSpi, data, len);
     }
 
