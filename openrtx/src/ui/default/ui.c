@@ -1379,7 +1379,7 @@ void ui_updateFSM(bool *sync_rtx)
     // Check is skipped if there is an ongoing transmission, since the voltage
     // drop caused by the RF PA power absorption causes spurious triggers of
     // the low battery alert.
-    bool txOngoing = platform_getPttStatus();
+    bool txOngoing = rtx_pttActive();
 #if !defined(PLATFORM_TTWRPLUS)
     if ((!state.emergency) && (!txOngoing) && (state.charge <= 0))
     {

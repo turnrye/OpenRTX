@@ -14,6 +14,7 @@
 #include "ui/ui_strings.h"
 #include "core/utils.h"
 #include "ui/utils.h"
+#include "rtx/rtx.h"
 
 void _ui_drawMainBackground()
 {
@@ -219,7 +220,7 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
 
 void _ui_drawFrequency()
 {
-    freq_t freq = platform_getPttStatus() ? last_state.channel.tx_frequency
+    freq_t freq = rtx_pttActive() ? last_state.channel.tx_frequency
                                           : last_state.channel.rx_frequency;
 
     char freq_str[16] = {0};
