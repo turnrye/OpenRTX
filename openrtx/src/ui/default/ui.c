@@ -563,31 +563,10 @@ static void _ui_timedate_add_digit(datetime_t *timedate, uint8_t pos,
 }
 #endif
 
-static bool _ui_freq_check_limits(freq_t freq)
-{
-    bool valid = false;
-    const hwInfo_t* hwinfo = platform_getHwInfo();
-    if(hwinfo->vhf_band)
-    {
-        // hwInfo_t frequencies are in MHz
-        if(freq >= (hwinfo->vhf_minFreq * 1000000) &&
-           freq <= (hwinfo->vhf_maxFreq * 1000000))
-        valid = true;
-    }
-    if(hwinfo->uhf_band)
-    {
-        // hwInfo_t frequencies are in MHz
-        if(freq >= (hwinfo->uhf_minFreq * 1000000) &&
-           freq <= (hwinfo->uhf_maxFreq * 1000000))
-        valid = true;
-    }
-    return valid;
-}
-
 static bool _ui_channel_valid(channel_t* channel)
 {
-return _ui_freq_check_limits(channel->rx_frequency) &&
-       _ui_freq_check_limits(channel->tx_frequency);
+return freqInBand(channel->rx_frequency) &&
+       freqInBand(channel->tx_frequency);
 }
 
 static bool _ui_drawDarkOverlay()
@@ -650,8 +629,8 @@ static void _ui_fsm_confirmVFOInput(bool *sync_rtx)
             ui_state.new_tx_frequency = ui_state.new_rx_frequency;
         }
         // Apply new frequencies if they are valid
-        if(_ui_freq_check_limits(ui_state.new_rx_frequency) &&
-           _ui_freq_check_limits(ui_state.new_tx_frequency))
+        if(freqInBand(ui_state.new_rx_frequency) &&
+           freqInBand(ui_state.new_tx_frequency))
         {
             state.channel.rx_frequency = ui_state.new_rx_frequency;
             state.channel.tx_frequency = ui_state.new_tx_frequency;
@@ -719,8 +698,8 @@ static void _ui_fsm_insertVFONumber(kbd_msg_t msg, bool *sync_rtx)
         if(ui_state.input_position >= FREQ_DIGITS)
         {
             // Save both inserted frequencies
-            if(_ui_freq_check_limits(ui_state.new_rx_frequency) &&
-               _ui_freq_check_limits(ui_state.new_tx_frequency))
+            if(freqInBand(ui_state.new_rx_frequency) &&
+               freqInBand(ui_state.new_tx_frequency))
             {
                 state.channel.rx_frequency = ui_state.new_rx_frequency;
                 state.channel.tx_frequency = ui_state.new_tx_frequency;
@@ -1586,8 +1565,8 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
                     {
                         // Increment TX and RX frequency of 12.5KHz
-                        if(_ui_freq_check_limits(state.channel.rx_frequency + freq_steps[state.step_index]) &&
-                           _ui_freq_check_limits(state.channel.tx_frequency + freq_steps[state.step_index]))
+                        if(freqInBand(state.channel.rx_frequency + freq_steps[state.step_index]) &&
+                           freqInBand(state.channel.tx_frequency + freq_steps[state.step_index]))
                         {
                             state.channel.rx_frequency += freq_steps[state.step_index];
                             state.channel.tx_frequency += freq_steps[state.step_index];
@@ -1600,8 +1579,8 @@ void ui_updateFSM(bool *sync_rtx)
                     else if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
                     {
                         // Decrement TX and RX frequency of 12.5KHz
-                        if(_ui_freq_check_limits(state.channel.rx_frequency - freq_steps[state.step_index]) &&
-                           _ui_freq_check_limits(state.channel.tx_frequency - freq_steps[state.step_index]))
+                        if(freqInBand(state.channel.rx_frequency - freq_steps[state.step_index]) &&
+                           freqInBand(state.channel.tx_frequency - freq_steps[state.step_index]))
                         {
                             state.channel.rx_frequency -= freq_steps[state.step_index];
                             state.channel.tx_frequency -= freq_steps[state.step_index];
@@ -2223,7 +2202,7 @@ void ui_updateFSM(bool *sync_rtx)
                                 // Apply new offset if it is within the hardware
                                 // limits of the radio
                                 freq_t new_freq = state.channel.rx_frequency + ui_state.new_offset;
-                                if (_ui_freq_check_limits(new_freq))
+                                if (freqInBand(new_freq))
                                 {
                                     state.channel.tx_frequency = new_freq;
                                     vp_queueStringTableEntry(&currentLanguage->offset);

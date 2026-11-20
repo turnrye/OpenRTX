@@ -8,6 +8,7 @@
 #define UTILS_H
 
 #include "core/datatypes.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -85,6 +86,14 @@ uint8_t rssiToSlevel(const rssi_t rssi);
  * @return tone index or 255 if the tone has not been found
  */
 uint8_t ctcssFreqToIndex(const uint16_t freq);
+
+/**
+ * Check whether a frequency falls inside one of the radio's bands.
+ *
+ * @param freq: frequency in Hz.
+ * @return true if the radio can tune it.
+ */
+bool freqInBand(const freq_t freq);
 
 /**
  * Convert coordinates from decimal value to Q1.23 representation.
