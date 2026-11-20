@@ -70,6 +70,7 @@ extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value);
 extern "C" int m17bench_ram(uint8_t page, uint16_t addr, uint8_t *out, size_t len);
 extern "C" int m17bench_c6kinit();
 extern "C" int m17bench_bw(int khz);
+extern "C" int m17bench_rinit();
 extern "C" bool m17bench_phyBusy();
 extern "C" int C6000phy_command(char *args, char *reply, size_t len);
 
@@ -491,6 +492,15 @@ static void handleCommand()
             reply("ERR", "PHY");
         else
             reply("PHY", "%s", text);
+    } else if (strcmp(command, "RINIT") == 0) {
+        // RINIT: both RF chips initialised again, the radio back in its mode
+        char off[] = "OFF";
+        char text[96];
+        C6000phy_command(off, text, sizeof(text));
+        if (m17bench_rinit() != 0)
+            reply("ERR", "RINIT");
+        else
+            reply("RINIT", "OK");
     } else if (strcmp(command, "BW") == 0) {
         // BW 12|25: the RF chip's channel bandwidth in kHz, until the next
         // mode change
@@ -650,6 +660,11 @@ extern "C" __attribute__((weak)) int m17bench_ram(uint8_t page, uint16_t addr,
 }
 
 extern "C" __attribute__((weak)) int m17bench_c6kinit()
+{
+    return -1;
+}
+
+extern "C" __attribute__((weak)) int m17bench_rinit()
 {
     return -1;
 }

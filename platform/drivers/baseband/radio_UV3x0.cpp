@@ -100,6 +100,24 @@ void radio_init(const rtxStatus_t *rtxState)
     radio_disableAfOutput();
 }
 
+// TEST ONLY: both RF chips initialised again, as at power on, and the radio
+// put back in its mode, for the bench console (some HR_C6000 writes leave the
+// receiver deaf until then)
+extern "C" int m17bench_rinit()
+{
+    radio_disableRtx();
+    C6000.terminate();
+    at1846s.terminate();
+    C6000.init();
+    C6000.benchForgetWrites();
+    at1846s.init();
+    radio_disableAfOutput();
+    radio_setOpmode(static_cast< enum opmode >(config->opMode));
+    radio_updateConfiguration();
+    radio_enableRx();
+    return 0;
+}
+
 void radio_terminate()
 {
     radio_disableRtx();
