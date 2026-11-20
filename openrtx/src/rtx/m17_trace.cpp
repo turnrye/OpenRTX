@@ -65,6 +65,12 @@ extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
 extern "C" void m17bench_wreg(uint16_t reg, uint8_t value);
 extern "C" int m17bench_copy(int16_t *out, int max);
 extern "C" int m17bench_mic(char *buf, size_t len);
+extern "C" int m17bench_rd(uint8_t page, uint8_t reg, uint8_t count, uint8_t *out);
+extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value);
+extern "C" int m17bench_ram(uint8_t page, uint16_t addr, uint8_t *out, size_t len);
+extern "C" int m17bench_c6kinit();
+extern "C" bool m17bench_phyBusy();
+extern "C" int C6000phy_command(char *args, char *reply, size_t len);
 
 // Builds without a USB serial port read and write nothing
 extern "C" __attribute__((weak)) ssize_t vcom_readBlock(void *buf, size_t len)
@@ -84,13 +90,13 @@ extern "C" __attribute__((weak)) ssize_t vcom_writeBlock(const void *buf,
 using namespace M17;
 
 /// Ring buffer between the receive thread and the writer thread.
-static constexpr size_t RING_SIZE = 4096;
+static constexpr size_t RING_SIZE = 16384;
 /// Largest write: one USB full speed bulk packet.
 static constexpr size_t WRITE_CHUNK = 64;
 /// Longest line, LSF with its 60 hex digits.
 static constexpr size_t LINE_SIZE = 112;
 /// Longest command from the host.
-static constexpr size_t COMMAND_SIZE = 40;
+static constexpr size_t COMMAND_SIZE = 96;
 /// Period of the stack report.
 static constexpr long long HEARTBEAT_MS = 1000;
 /// Pause of the writer thread when the ring is empty.
@@ -419,14 +425,77 @@ static void handleCommand()
             syncReq.store(true);
         }
         reply("CALL", "%s", state.settings.callsign);
+    } else if ((strcmp(command, "PTT") == 0) && m17bench_phyBusy()) {
+        reply("ERR", "PTT PHY");
     } else if (strcmp(command, "PTT") == 0) {
         if (hasArg)
             pttUntil.store((strcmp(arg, "ON") == 0) ? (getTick() + 600000) : 0);
         reply("PTT", "%d", m17bench_ptt() ? 1 : 0);
+    } else if ((strcmp(command, "TX") == 0) && m17bench_phyBusy()) {
+        reply("ERR", "TX PHY");
     } else if (strcmp(command, "TX") == 0) {
         long ms = hasArg ? strtol(arg, nullptr, 10) : 0;
         pttUntil.store(getTick() + ms);
         reply("TX", "%ld", ms);
+    } else if (strcmp(command, "RD") == 0) {
+        // RD <page> <reg> [<count, at most 32>]: registers of any page, hex
+        char *p = arg;
+        unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
+        unsigned long reg = strtoul(p, &p, 16);
+        unsigned long count = strtoul(p, nullptr, 16);
+        count = std::min<unsigned long>(std::max<unsigned long>(count, 1), 32);
+        uint8_t vals[32];
+        if (!hasArg || (m17bench_rd(page, reg, count, vals) != 0)) {
+            reply("ERR", "RD");
+        } else {
+            char hexs[2 * 32 + 1];
+            for (unsigned long i = 0; i < count; i++)
+                snprintf(&hexs[2 * i], 3, "%02x", vals[i]);
+            reply("RD", "%lx %02lx %s", page, reg, hexs);
+        }
+    } else if (strcmp(command, "WR") == 0) {
+        // WR <page> <reg> <value>: write a register of any page
+        char *p = arg;
+        unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
+        unsigned long reg = strtoul(p, &p, 16);
+        unsigned long value = strtoul(p, nullptr, 16);
+        if (!hasArg || (m17bench_wr(page, reg, value) != 0))
+            reply("ERR", "WR");
+        else
+            reply("WR", "%lx %02lx %02lx", page, reg, value);
+    } else if (strcmp(command, "RAM") == 0) {
+        // RAM <page> <addr> <len, at most 512>: chip RAM, 48 bytes a line,
+        // RAM <ms> <offset> <hex>, then RAM <ms> END <len>
+        static uint8_t data[512];
+        char *p = arg;
+        unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
+        unsigned long addr = strtoul(p, &p, 16);
+        unsigned long len = std::min<unsigned long>(strtoul(p, nullptr, 16), sizeof(data));
+        if (!hasArg || (len == 0) || (m17bench_ram(page, addr, data, len) != 0)) {
+            reply("ERR", "RAM");
+        } else {
+            for (unsigned long i = 0; i < len; i += 48) {
+                char hexs[2 * 48 + 1];
+                unsigned long k = 0;
+                for (unsigned long j = i; (j < i + 48) && (j < len); j++, k += 2)
+                    snprintf(&hexs[k], 3, "%02x", data[j]);
+                reply("RAM", "%lu %s", i, hexs);
+            }
+            reply("RAM", "END %lu", len);
+        }
+    } else if (strcmp(command, "PHY") == 0) {
+        // PHY <subcommand>: the HR_C6000's physical layer receive
+        char text[LINE_SIZE - 16];
+        if (!hasArg || (C6000phy_command(arg, text, sizeof(text)) != 0))
+            reply("ERR", "PHY");
+        else
+            reply("PHY", "%s", text);
+    } else if (strcmp(command, "C6KINIT") == 0) {
+        // C6KINIT: initialise the HR_C6000 again and put back its M17 set-up
+        if (m17bench_c6kinit() != 0)
+            reply("ERR", "C6KINIT");
+        else
+            reply("C6KINIT", "OK");
     } else if (strcmp(command, "MIC") == 0) {
         // MIC: the HR_C6000 codec microphone's I2S levels since the last MIC
         char text[160];
@@ -546,6 +615,60 @@ void m17bench_poll()
 extern "C" __attribute__((weak)) int m17bench_diag(char *buf, size_t len)
 {
     return snprintf(buf, len, "none");
+}
+
+// Any-page register and RAM access, chip re-init and the physical layer
+// receive, if the build has them
+extern "C" __attribute__((weak)) int m17bench_rd(uint8_t page, uint8_t reg,
+                                                 uint8_t count, uint8_t *out)
+{
+    (void) page; (void) reg; (void) count; (void) out;
+    return -1;
+}
+
+extern "C" __attribute__((weak)) int m17bench_wr(uint8_t page, uint8_t reg,
+                                                 uint8_t value)
+{
+    (void) page; (void) reg; (void) value;
+    return -1;
+}
+
+extern "C" __attribute__((weak)) int m17bench_ram(uint8_t page, uint16_t addr,
+                                                  uint8_t *out, size_t len)
+{
+    (void) page; (void) addr; (void) out; (void) len;
+    return -1;
+}
+
+extern "C" __attribute__((weak)) int m17bench_c6kinit()
+{
+    return -1;
+}
+
+extern "C" __attribute__((weak)) bool m17bench_phyBusy()
+{
+    return false;
+}
+
+extern "C" __attribute__((weak)) int C6000phy_command(char *args, char *reply,
+                                                      size_t len)
+{
+    (void) args; (void) reply; (void) len;
+    return -1;
+}
+
+/**
+ * Queue a line from platform code, the newline added.
+ *
+ * @param text: the line, without its newline.
+ */
+extern "C" void m17bench_emit(const char *text)
+{
+    char buf[LINE_SIZE];
+    size_t n = strnlen(text, LINE_SIZE - 1);
+    memcpy(buf, text, n);
+    buf[n++] = '\n';
+    push(buf, n);
 }
 
 // The codec microphone's I2S levels, if the build has them

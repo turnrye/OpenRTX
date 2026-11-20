@@ -127,6 +127,20 @@ public:
     static constexpr uint8_t SYMBOL_IDLE       = 0x77;  ///< +3 -3 +3 -3
     static constexpr size_t  FM_COPY_SAMPLES   = 256;   ///< 32 ms at 8 kHz
 
+    /**
+     * TEST ONLY: read the chip's RAM, any page.
+     *
+     * @param page: page number.
+     * @param addr: start address.
+     * @param data: destination.
+     * @param len: number of bytes.
+     */
+    void benchReadRam(const uint8_t page, const uint16_t addr, uint8_t *data,
+                      const size_t len)
+    {
+        readRam16(static_cast< C6000_SpiOpModes >(page), addr, data, len);
+    }
+
 private:
 
     /**

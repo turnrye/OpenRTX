@@ -202,6 +202,40 @@ public:
     }
 
     /**
+     * TEST ONLY: write a register of any page.
+     *
+     * @param page: register page, the SPI command's page number.
+     * @param reg: register number.
+     * @param value: new register value.
+     */
+    inline void benchWrite(const uint8_t page, const uint8_t reg,
+                           const uint8_t value)
+    {
+        writeReg(static_cast< M >(page), reg, value);
+    }
+
+    /**
+     * TEST ONLY: read a register of any page.
+     *
+     * @param page: register page, the SPI command's page number.
+     * @param reg: register number.
+     * @return the register's value.
+     */
+    inline uint8_t benchRead(const uint8_t page, const uint8_t reg)
+    {
+        return readReg(static_cast< M >(page), reg);
+    }
+
+    /**
+     * TEST ONLY: forget the values written to the configuration registers,
+     * after the chip has been initialised again.
+     */
+    inline void benchForgetWrites()
+    {
+        cfgWritten.reset();
+    }
+
+    /**
      * Send audio to the DAC FIFO for playback via the "OpenMusic" mode.
      * This function assumes that audio chunk is composed of 64 bytes.
      *

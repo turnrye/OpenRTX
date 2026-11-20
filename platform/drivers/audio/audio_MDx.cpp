@@ -28,6 +28,7 @@
 #include "C6000_symbols.h"
 #include "C6000_fmcopy.h"
 #include "C6000_modem.h"
+#include "C6000_phy.h"
 #endif
 
 
@@ -94,6 +95,7 @@ void __attribute__((used)) EXTI0_IRQHandler()
 {
     EXTI->PR = EXTI_PR_PR0;
     C6000symbols_timeslotIrq();
+    C6000phy_timeslotIrq();             // TEST ONLY
 }
 
 // HR_C6000 system interrupt, falling edge
@@ -114,6 +116,44 @@ extern "C" void m17bench_wreg(uint16_t reg, uint8_t value)
         C6000.writeAuxRegister(reg & 0xFF, value);
     else
         C6000.writeCfgRegister(reg, value);
+}
+
+extern "C" int m17bench_rd(uint8_t page, uint8_t reg, uint8_t count,
+                           uint8_t *out)
+{
+    for(uint8_t i = 0; i < count; i++)
+        out[i] = C6000.benchRead(page, static_cast< uint8_t >(reg + i));
+    return 0;
+}
+
+extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value)
+{
+    C6000.benchWrite(page, reg, value);
+    return 0;
+}
+
+extern "C" int m17bench_ram(uint8_t page, uint16_t addr, uint8_t *out,
+                            size_t len)
+{
+    C6000.benchReadRam(page, addr, out, len);
+    return 0;
+}
+
+extern "C" bool m17bench_phyBusy()
+{
+    return C6000phy_active();
+}
+
+extern "C" int m17bench_c6kinit()
+{
+    char off[] = "OFF";
+    char text[96];
+    C6000phy_command(off, text, sizeof(text));
+    C6000.init();
+    C6000.benchForgetWrites();
+    C6000.fmMode();                 // As radio_setOpmode() for M17
+    C6000.setInputGain(+6);
+    return 0;
 }
 
 extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
@@ -169,6 +209,7 @@ static void chipModemInit()
 {
     C6000symbols_init(&C6000);
     C6000fmcopy_init(&C6000);
+    C6000phy_init(&C6000);              // TEST ONLY
 
     gpio_setMode(DMR_TS_INT,  INPUT);
     gpio_setMode(DMR_SYS_INT, INPUT);
@@ -202,6 +243,7 @@ static void *audio_thread(void *arg)
         Cx000dac_task();
         #ifdef CONFIG_M17_CHIP_MODEM
         C6000symbols_task();
+        C6000phy_task();                // TEST ONLY
         #endif
 
         if(state.volume != oldVolume)
