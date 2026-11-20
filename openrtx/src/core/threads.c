@@ -19,6 +19,7 @@
 #include "core/utils.h"
 #include "core/input.h"
 #include "core/backup.h"
+#include "core/cat/cat.h"
 #include "core/gps.h"
 #include "core/voicePrompts.h"
 
@@ -143,6 +144,11 @@ void *main_thread(void *arg)
         state.gpsDetected = true;
     #endif
 
+    // A CAT device that fails to start reports why and leaves CAT off
+    #if defined(CONFIG_CAT)
+    cat_init(&cat_chardev);
+    #endif
+
     while(state.devStatus != SHUTDOWN)
     {
         time = getTick();
@@ -160,6 +166,11 @@ void *main_thread(void *arg)
         // Run GPS task
         #if defined(CONFIG_GPS)
         gps_task(gps);
+        #endif
+
+        // Run CAT task
+        #if defined(CONFIG_CAT)
+        cat_task(time);
         #endif
 
         // Run state update task
