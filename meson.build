@@ -95,6 +95,12 @@ else
 endif
 
 ##
+## CAT control, for targets with a CAT transport
+##
+cat_src = ['openrtx/src/core/cat/CatAnswer.cpp',
+           'openrtx/src/core/cat/CatParser.cpp']
+
+##
 ## External libraries
 ##
 
@@ -359,6 +365,8 @@ linux_src = ['platform/targets/linux/emulator/emulator.c',
              'platform/drivers/tones/toneGenerator_sdl.cpp',
              'platform/drivers/CPS/cps_io_libc.c',
              'platform/drivers/NVM/posix_file.c']
+
+linux_src += cat_src
 
 linux_inc = ['platform/targets/linux',
              'platform/targets/linux/emulator',
@@ -1198,6 +1206,10 @@ m17_metatext_test = executable('m17_metatext_test',
                       sources : unit_test_src + ['tests/unit/M17_metatext.cpp'],
                       kwargs  : unit_test_opts)
                  
+cat_test = executable('cat_test',
+                      sources : unit_test_src + ['tests/unit/cat.cpp'],
+                      kwargs  : unit_test_opts)
+
 # Test signals shared by the M17 tests (tests/platform/M17Signal.hpp)
 m17_signal_src = ['tests/platform/NoisyChannel.cpp', 'tests/platform/M17Signal.cpp']
 m17_signal_inc = linux_inc + ['tests/platform']
@@ -1273,6 +1285,7 @@ test('M17 Demodulator Test',  m17_demodulator_test)
 test('M17 RRC Test',          m17_rrc_test)
 test('M17 Callsign Unit Test',          m17_callsign_test)
 test('M17 Meta Text Unit Test',         m17_metatext_test)
+test('CAT Test',              cat_test)
 test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
