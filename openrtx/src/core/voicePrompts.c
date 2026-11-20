@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core/beeps.h"
+#include "rtx/rtx.h"
 #include <errno.h>
 
 static const uint32_t VOICE_PROMPTS_DATA_MAGIC = 0x5056;   //'VP'
@@ -504,8 +505,7 @@ void vp_play()
 
 void vp_tick()
 {
-    if (platform_getPttStatus()
-        && (voicePromptActive || (currentBeepDuration > 0))) {
+    if (rtx_pttActive() && (voicePromptActive || (currentBeepDuration > 0))) {
         vp_stop();
         return;
     }

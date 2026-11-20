@@ -167,7 +167,7 @@ void OpMode_M17::offState(rtxStatus_t *const status)
         return;
     }
 
-    if(platform_getPttStatus() && (status->txDisable == 0))
+    if(rtx_pttActive() && (status->txDisable == 0))
     {
         startTx = true;
         status->opStatus = TX;
@@ -303,7 +303,7 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
     locked = lock;
 
-    if(platform_getPttStatus())
+    if(rtx_pttActive())
     {
         demodulator.stopBasebandSampling();
         locked = false;
@@ -387,7 +387,7 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     codec_popFrame(dataFrame.data(),     true);
     codec_popFrame(dataFrame.data() + 8, true);
 
-    if(platform_getPttStatus() == false)
+    if(rtx_pttActive() == false)
     {
         lastFrame = true;
         startRx   = true;
