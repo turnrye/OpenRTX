@@ -58,6 +58,12 @@
 extern "C" ssize_t vcom_readBlock(void *buf, size_t len);
 extern "C" ssize_t vcom_writeBlock(const void *buf, size_t len);
 
+extern "C" int m17bench_diag(char *buf, size_t len);
+extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
+                             size_t len);
+extern "C" void m17bench_wreg(uint8_t reg, uint8_t value);
+extern "C" int m17bench_copy(int16_t *out, int max);
+
 // Builds without a USB serial port read and write nothing
 extern "C" __attribute__((weak)) ssize_t vcom_readBlock(void *buf, size_t len)
 {
@@ -111,6 +117,8 @@ static std::atomic<bool> modSet{false};    ///< Modulation pair overridden.
 static std::atomic<uint16_t> modPair{0};   ///< Mod1 << 8 | Mod2.
 static std::atomic<uint16_t> calPair{0};   ///< The calibration's pair.
 static std::atomic<bool> syncReq{false};   ///< Settings changed: sync rtx.
+static std::atomic<bool> rxFlip{false};    ///< Extra RX phase inversion.
+static std::atomic<bool> rxInverted{false};///< RX inversion last applied.
 
 static LinkSetupFrame lastLsf;             ///< Link setup data last reported.
 static LinkSetupFrame lsfCopy;             ///< Scratch copy of the decoder's.
@@ -415,6 +423,50 @@ static void handleCommand()
         long ms = hasArg ? strtol(arg, nullptr, 10) : 0;
         pttUntil.store(getTick() + ms);
         reply("TX", "%ld", ms);
+    } else if (strcmp(command, "COPY") == 0) {
+        // COPY: the FM copy's last block of raw samples, 16 per line in hex,
+        // COPY <ms> <index> <hex>..., then COPY <ms> END <count>
+        static int16_t block[256];
+        const int n = m17bench_copy(block, 256);
+        for (int i = 0; i < n; i += 16) {
+            char hexs[16 * 4 + 1];
+            int k = 0;
+            for (int j = i; (j < i + 16) && (j < n); j++)
+                k += snprintf(&hexs[k], sizeof(hexs) - k, "%04x",
+                              static_cast<uint16_t>(block[j]));
+            reply("COPY", "%d %s", i, hexs);
+        }
+        reply("COPY", "END %d", n);
+    } else if (strcmp(command, "RXFLIP") == 0) {
+        // RXFLIP [0|1]: invert the M17 receive phase once more
+        if (hasArg)
+            rxFlip.store(strcmp(arg, "1") == 0);
+        reply("RXFLIP", "%d %d", rxFlip.load() ? 1 : 0,
+              rxInverted.load() ? 1 : 0);
+    } else if (strcmp(command, "WREG") == 0) {
+        // WREG <reg hex> <value hex>: write an HR_C6000 config register
+        char *end = nullptr;
+        unsigned long reg = hasArg ? strtoul(arg, &end, 16) : 0;
+        unsigned long value = (end != nullptr) && (*end == ' ')
+                            ? strtoul(end + 1, nullptr, 16) : 0;
+        m17bench_wreg(static_cast<uint8_t>(reg), static_cast<uint8_t>(value));
+        reply("WREG", "%02lx %02lx", reg, value);
+    } else if (strcmp(command, "REGS") == 0) {
+        // REGS <start hex> [<count, at most 32>]: HR_C6000 config registers
+        char *end = nullptr;
+        unsigned long start = hasArg ? strtoul(arg, &end, 16) : 0;
+        unsigned long count = (end != nullptr) && (*end == ' ')
+                            ? strtoul(end + 1, nullptr, 10) : 32;
+        if (count > 32)
+            count = 32;
+        char regs[LINE_SIZE - 16];
+        m17bench_regs(static_cast<uint8_t>(start), static_cast<uint8_t>(count),
+                      regs, sizeof(regs));
+        reply("REGS", "%02lx %s", start, regs);
+    } else if (strcmp(command, "DIAG") == 0) {
+        char diag[LINE_SIZE - 16];
+        m17bench_diag(diag, sizeof(diag));
+        reply("DIAG", "%s", diag);
     } else if (strcmp(command, "STAT") == 0) {
         char mod[16];
         const bool set = modSet.load();
@@ -447,6 +499,37 @@ void m17bench_poll()
     }
 }
 
+// The platform's diagnostics line, if it has one
+extern "C" __attribute__((weak)) int m17bench_diag(char *buf, size_t len)
+{
+    return snprintf(buf, len, "none");
+}
+
+// The FM copy's last block, if the build has one
+extern "C" __attribute__((weak)) int m17bench_copy(int16_t *out, int max)
+{
+    (void) out;
+    (void) max;
+    return 0;
+}
+
+// The platform's register write, if it has one
+extern "C" __attribute__((weak)) void m17bench_wreg(uint8_t reg, uint8_t value)
+{
+    (void) reg;
+    (void) value;
+}
+
+// The platform's register dump, if it has one
+extern "C" __attribute__((weak)) int m17bench_regs(uint8_t start,
+                                                   uint8_t count, char *buf,
+                                                   size_t len)
+{
+    (void) start;
+    (void) count;
+    return snprintf(buf, len, "none");
+}
+
 bool m17bench_ptt()
 {
     return getTick() < pttUntil.load();
@@ -466,6 +549,16 @@ bool m17bench_mod(uint8_t *mod1, uint8_t *mod2)
 void m17bench_setCal(uint8_t mod1, uint8_t mod2)
 {
     calPair.store(static_cast<uint16_t>((mod1 << 8) | mod2));
+}
+
+bool m17bench_rxFlip()
+{
+    return rxFlip.load();
+}
+
+void m17bench_noteRxPhase(bool inverted)
+{
+    rxInverted.store(inverted);
 }
 
 bool m17bench_takeSync()

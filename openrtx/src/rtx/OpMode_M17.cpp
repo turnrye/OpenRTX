@@ -10,6 +10,7 @@
 #include "interfaces/radio.h"
 #include "protocols/M17/Datatypes.hpp"
 #include "rtx/OpMode_M17.hpp"
+#include "rtx/m17_bench.h"
 #include "rtx/m17_trace.hpp"
 #include "core/audio_codec.h"
 #include <errno.h>
@@ -93,6 +94,10 @@ void OpMode_M17::update(rtxStatus_t *const status, const bool newCfg)
     invertTxPhase = true;
     invertRxPhase = true;
     #endif
+
+    // TEST ONLY: the bench console can invert the receive phase once more
+    invertRxPhase = (invertRxPhase != m17bench_rxFlip());
+    m17bench_noteRxPhase(invertRxPhase);
 
     // A modem change takes effect at once: receive again from the new source
     const bool chip = (status->m17Chip != 0);

@@ -91,6 +91,49 @@ void __attribute__((used)) EXTI1_IRQHandler()
     C6000fmcopy_systemIrq();
 }
 
+// TEST ONLY: bench console diagnostics
+extern "C" void C6000symbols_bench(uint32_t *v);
+extern "C" void C6000fmcopy_bench(uint32_t *v);
+extern "C" void C6000modem_bench(uint32_t *v);
+
+extern "C" void m17bench_wreg(uint8_t reg, uint8_t value)
+{
+    C6000.writeCfgRegister(reg, value);
+}
+
+extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
+                             size_t len)
+{
+    size_t n = 0;
+    for(uint8_t i = 0; (i < count) && (n + 3 < len); i++)
+        n += snprintf(&buf[n], len - n, "%02x",
+                      C6000.readCfgRegister(static_cast< uint8_t >(start + i)));
+    return n;
+}
+
+extern "C" int m17bench_diag(char *buf, size_t len)
+{
+    uint32_t s[6], f[6], m[2];
+    C6000symbols_bench(s);
+    C6000fmcopy_bench(f);
+    C6000modem_bench(m);
+    return snprintf(buf, len,
+        "ts %lu st %lu sl %lu stall %lu end %lu act %lu sys %lu rd %lu to %lu "
+        "cmin %ld cmax %ld crms %lu "
+        "out %lu chip %lu pc %lx imr %lx r10 %02x r40 %02x r41 %02x r60 %02x "
+        "r81 %02x r82 %02x tim3 %lx",
+        (unsigned long) s[0], (unsigned long) s[1], (unsigned long) s[2],
+        (unsigned long) s[3], (unsigned long) s[4], (unsigned long) s[5],
+        (unsigned long) f[0], (unsigned long) f[1], (unsigned long) f[2],
+        (long) (int32_t) f[3], (long) (int32_t) f[4], (unsigned long) f[5],
+        (unsigned long) m[0], (unsigned long) m[1],
+        (unsigned long) (GPIOC->IDR & 0x3), (unsigned long) (EXTI->IMR & 0x3),
+        C6000.readCfgRegister(0x10), C6000.readCfgRegister(0x40),
+        C6000.readCfgRegister(0x41), C6000.readCfgRegister(0x60),
+        C6000.readCfgRegister(0x81), C6000.readCfgRegister(0x82),
+        (unsigned long) ((TIM3->CR1 & 1) | ((TIM3->CCER & TIM_CCER_CC3E) ? 2 : 0)));
+}
+
 /**
  * Route the HR_C6000 timeslot (DMR_TS_INT, PC0) and system (DMR_SYS_INT, PC1)
  * interrupts to EXTI lines 0 and 1, falling edge.

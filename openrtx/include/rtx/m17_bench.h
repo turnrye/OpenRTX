@@ -46,6 +46,18 @@ bool m17bench_mod(uint8_t *mod1, uint8_t *mod2);
 void m17bench_setCal(uint8_t mod1, uint8_t mod2);
 
 /**
+ * @return true when the host asks for the M17 receive phase inverted once more.
+ */
+bool m17bench_rxFlip();
+
+/**
+ * Report the M17 receive phase inversion in use.
+ *
+ * @param inverted: true when the demodulator inverts.
+ */
+void m17bench_noteRxPhase(bool inverted);
+
+/**
  * @return true, once, after a command changed the settings.
  */
 bool m17bench_takeSync();

@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <errno.h>
 #include <memory>
@@ -49,6 +50,27 @@ static std::unique_ptr<int16_t[]> carry; // Carried samples, then one copy
 static size_t carried;
 static uint8_t readyHalf;
 static uint8_t nextHalf;
+static uint32_t benchReads, benchTimeouts; // TEST ONLY
+static int16_t benchRaw[HR_C6000::FM_COPY_SAMPLES]; // TEST ONLY: last block
+
+extern "C" int m17bench_copy(int16_t *out, int max) // TEST ONLY
+{
+    const int n = std::min<int>(max, HR_C6000::FM_COPY_SAMPLES);
+    std::copy(&benchRaw[0], &benchRaw[n], out);
+    return n;
+}
+static int16_t benchMin, benchMax;          // TEST ONLY: last copy, raw
+static uint32_t benchRms;
+
+extern "C" void C6000fmcopy_bench(uint32_t *v) // TEST ONLY
+{
+    v[0] = sysCount;
+    v[1] = benchReads;
+    v[2] = benchTimeouts;
+    v[3] = static_cast<uint32_t>(static_cast<int32_t>(benchMin));
+    v[4] = static_cast<uint32_t>(static_cast<int32_t>(benchMax));
+    v[5] = benchRms;
+}
 
 void C6000fmcopy_init(HR_C6000 *device)
 {
@@ -115,8 +137,10 @@ static int fmcopy_sync(struct streamCtx *ctx, uint8_t dirty)
 
     while (carried < half) {
         if (sysCount == sysSeen) {
-            if (waited++ >= TIMEOUT_MS)
+            if (waited++ >= TIMEOUT_MS) {
+                benchTimeouts++;
                 return -1;
+            }
 
             sleepFor(0, 1);
             continue;
@@ -124,6 +148,21 @@ static int fmcopy_sync(struct streamCtx *ctx, uint8_t dirty)
 
         sysSeen = sysCount;
         c6000->readFmCopy(copy);
+        benchReads++;
+        std::copy(&copy[0], &copy[HR_C6000::FM_COPY_SAMPLES], &benchRaw[0]);
+        {
+            int16_t lo = copy[0], hi = copy[0];
+            uint64_t sq = 0;
+            for (size_t i = 0; i < HR_C6000::FM_COPY_SAMPLES; i++) {
+                lo = std::min(lo, copy[i]);
+                hi = std::max(hi, copy[i]);
+                sq += static_cast<int32_t>(copy[i]) * copy[i];
+            }
+            benchMin = lo;
+            benchMax = hi;
+            benchRms = static_cast<uint32_t>(
+                sqrtf(static_cast<float>(sq / HR_C6000::FM_COPY_SAMPLES)));
+        }
 
         for (size_t i = 0; i < HR_C6000::FM_COPY_SAMPLES; i++) {
             const float in = static_cast<float>(copy[i] >> SHIFT);

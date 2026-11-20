@@ -10,6 +10,7 @@
 #include "interfaces/radio.h"
 #include "peripherals/gpio.h"
 #include "hwconfig.h"
+#include <cstdio>
 #include "core/threads.h"
 #include "core/state.h"
 #include "drivers/baseband/HR_C6000.h"
@@ -95,6 +96,48 @@ void __attribute__((used)) EXTI1_IRQHandler()
     C6000fmcopy_systemIrq();
 }
 #endif
+
+// TEST ONLY: bench console diagnostics
+extern "C" void C6000symbols_bench(uint32_t *v);
+extern "C" void C6000fmcopy_bench(uint32_t *v);
+extern "C" void C6000modem_bench(uint32_t *v);
+
+extern "C" void m17bench_wreg(uint8_t reg, uint8_t value)
+{
+    C6000.writeCfgRegister(reg, value);
+}
+
+extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
+                             size_t len)
+{
+    size_t n = 0;
+    for(uint8_t i = 0; (i < count) && (n + 3 < len); i++)
+        n += snprintf(&buf[n], len - n, "%02x",
+                      C6000.readCfgRegister(static_cast< uint8_t >(start + i)));
+    return n;
+}
+
+extern "C" int m17bench_diag(char *buf, size_t len)
+{
+    uint32_t s[6], f[6], m[2];
+    C6000symbols_bench(s);
+    C6000fmcopy_bench(f);
+    C6000modem_bench(m);
+    #ifdef STM32H743xx
+    const unsigned long imr = EXTI_D1->IMR1 & 0xF;
+    #else
+    const unsigned long imr = EXTI->IMR & 0xF;
+    #endif
+    return snprintf(buf, len,
+        "ts %lu st %lu sl %lu stall %lu end %lu act %lu sys %lu rd %lu to %lu "
+        "cmin %ld cmax %ld out %lu chip %lu pc %lx imr %lx",
+        (unsigned long) s[0], (unsigned long) s[1], (unsigned long) s[2],
+        (unsigned long) s[3], (unsigned long) s[4], (unsigned long) s[5],
+        (unsigned long) f[0], (unsigned long) f[1], (unsigned long) f[2],
+        (long) (int32_t) f[3], (long) (int32_t) f[4],
+        (unsigned long) m[0], (unsigned long) m[1],
+        (unsigned long) (GPIOC->IDR & 0xF), imr);
+}
 
 /**
  * Route the HR_C6000 timeslot and system interrupts to their EXTI lines,

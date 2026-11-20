@@ -34,6 +34,7 @@ static uint32_t tail; // Slots left after the data
 static bool stopReq;
 static bool syncPoint;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t benchStarts, benchStalls, benchSlots, benchEnds; // TEST ONLY
 static pthread_cond_t wakeup = PTHREAD_COND_INITIALIZER;
 
 /**
@@ -61,6 +62,7 @@ static uint8_t dibit(const stream_sample_t sym, const size_t pos)
  */
 static void endStream()
 {
+    benchEnds++;
     c6000->stopSymbolTx();
     stream->running = 0;
     stream = NULL;
@@ -78,6 +80,16 @@ void C6000symbols_timeslotIrq()
     tsCount = tsCount + 1;
 }
 
+extern "C" void C6000symbols_bench(uint32_t *v)   // TEST ONLY
+{
+    v[0] = tsCount;
+    v[1] = benchStarts;
+    v[2] = benchSlots;
+    v[3] = benchStalls;
+    v[4] = benchEnds;
+    v[5] = (stream != NULL) ? 1 : 0;
+}
+
 void C6000symbols_task()
 {
     pthread_mutex_lock(&mutex);
@@ -89,8 +101,10 @@ void C6000symbols_task()
 
     const uint32_t now = tsCount;
     if (now == tsSeen) {
-        if ((getTick() - slotTime) > STALL_MS)
+        if ((getTick() - slotTime) > STALL_MS) {
+            benchStalls++;
             endStream();
+        }
 
         pthread_mutex_unlock(&mutex);
         return;
@@ -134,6 +148,7 @@ void C6000symbols_task()
     }
 
     c6000->writeSymbolSlot(slot, bytes.data());
+    benchSlots++;
     pthread_mutex_unlock(&mutex);
 }
 
@@ -165,6 +180,7 @@ static int symbols_start(const uint8_t instance, const void *config,
     syncPoint = false;
     tsSeen = tsCount;
     slotTime = getTick();
+    benchStarts++;
     c6000->startSymbolTx();
     ctx->running = 1;
     stream = ctx;

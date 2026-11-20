@@ -14,6 +14,14 @@ static const struct audioDriver *outDriver;
 static const struct audioDriver *inDriver;
 static bool useChip;
 
+extern "C" void C6000modem_bench(uint32_t *v) // TEST ONLY
+{
+    extern const struct audioDriver C6000_symbols_audio_driver;
+    v[0] = (outDriver == &C6000_symbols_audio_driver) ? 2
+           : (outDriver != NULL) ? 1 : 0;
+    v[1] = useChip ? 1 : 0;
+}
+
 void C6000modem_useChip(const bool chip)
 {
     useChip = chip;
