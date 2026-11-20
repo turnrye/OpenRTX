@@ -4,12 +4,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <algorithm>
 #include <cstring>
 #include "protocols/M17/Callsign.hpp"
 
 using namespace M17;
 
-static const char BROADCAST_CALL[] = "ALL";
+constexpr size_t Callsign::MAX_CALLSIGN_CHARS;
+constexpr char Callsign::BROADCAST_CALL[];
+
 static const char INVALID_CALL[] = "INVALID";
 static const char charMap[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/.";
 
@@ -136,4 +139,16 @@ bool Callsign::operator==(const Callsign &other) const
         truncatedIncoming = slash + 1;
 
     return std::strcmp(truncatedLocal, truncatedIncoming) == 0;
+}
+
+bool Callsign::isValid(const char *text, const size_t len)
+{
+    auto inCharset = [](const char c) {
+        return (c != '\0') && (std::strchr(charMap, c) != nullptr);
+    };
+
+    if (len > MAX_CALLSIGN_CHARS)
+        return false;
+
+    return std::all_of(text, text + len, inCharset);
 }
