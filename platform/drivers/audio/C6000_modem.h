@@ -15,7 +15,10 @@
  * - output: a stream at the symbol rate goes to the HR_C6000 symbol output
  *   driver, any other to the analog path;
  * - input: the HR_C6000 FM receive copy when the radio has picked the chip
- *   (C6000modem_useChip()), the analog path otherwise.
+ *   (C6000modem_useChip()), the analog path otherwise;
+ * - microphone, for radios whose microphone reaches the MCU only through the
+ *   HR_C6000's codec: the codec when the radio has picked the chip, the analog
+ *   path otherwise. Its devices name both paths, a struct C6000micPaths.
  *
  * The configuration of each device names its analog path, a struct
  * C6000modemPath. Each stream keeps the driver it started with.
@@ -30,6 +33,15 @@ struct C6000modemPath {
 };
 
 /**
+ * Microphone paths of a device: through the HR_C6000's codec, used with the
+ * chip's modem, and the analog one.
+ */
+struct C6000micPaths {
+    struct C6000modemPath chip;   ///< Through the HR_C6000's codec
+    struct C6000modemPath analog; ///< The analog path
+};
+
+/**
  * Pick the receive baseband source for the next input streams.
  *
  * @param chip: true for the HR_C6000 FM receive copy, false for the analog
@@ -39,5 +51,6 @@ void C6000modem_useChip(const bool chip);
 
 extern "C" const struct audioDriver C6000_modem_out_audio_driver;
 extern "C" const struct audioDriver C6000_modem_in_audio_driver;
+extern "C" const struct audioDriver C6000_modem_mic_audio_driver;
 
 #endif /* C6000_MODEM_H */

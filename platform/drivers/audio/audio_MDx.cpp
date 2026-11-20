@@ -15,6 +15,9 @@
 #include "drivers/tones/toneGenerator_MDx.h"
 #include "stm32_pwm.h"
 #include "stm32_adc.h"
+#ifdef CONFIG_M17_CHIP_MIC
+#include "stm32_i2s.h"
+#endif
 
 #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
 #include "drivers/baseband/HR_C6000.h"
@@ -76,6 +79,15 @@ static const struct C6000modemPath rtxInAnalog =
 {
     &stm32_adc_audio_driver, (const void *) 13
 };
+
+#ifdef CONFIG_M17_CHIP_MIC
+// Microphone: through the HR_C6000's codec with its modem, else the ADC
+static const struct C6000micPaths micPaths =
+{
+    {&stm32_i2s_audio_driver, NULL},
+    {&stm32_adc_audio_driver, (const void *) 3}
+};
+#endif
 
 // HR_C6000 timeslot interrupt, falling edge
 void __attribute__((used)) EXTI0_IRQHandler()
@@ -222,7 +234,11 @@ const struct audioDevice inputDevices[] =
     #else
     {&stm32_adc_audio_driver, (const void *) 13, STM32_ADC_ADC2, SOURCE_RTX},
     #endif
+    #ifdef CONFIG_M17_CHIP_MIC
+    {&C6000_modem_mic_audio_driver, &micPaths, STM32_ADC_ADC2, SOURCE_MIC},
+    #else
     {&stm32_adc_audio_driver, (const void *) 3,  STM32_ADC_ADC2, SOURCE_MIC},
+    #endif
 };
 
 void audio_init()
@@ -249,6 +265,9 @@ void audio_init()
 
     stm32pwm_init();
     stm32adc_init(STM32_ADC_ADC2);
+    #ifdef CONFIG_M17_CHIP_MIC
+    stm32i2s_init();
+    #endif
 
     #if defined(PLATFORM_MDUV3x0) || defined (PLATFORM_DM1701)
     gpio_setMode(DMR_CLK,  OUTPUT);
@@ -285,6 +304,9 @@ void audio_terminate()
 
     stm32pwm_terminate();
     stm32adc_terminate();
+    #ifdef CONFIG_M17_CHIP_MIC
+    stm32i2s_terminate();
+    #endif
 }
 
 void audio_connect(const enum AudioSource source, const enum AudioSink sink)

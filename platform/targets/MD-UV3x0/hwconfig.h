@@ -56,6 +56,9 @@ extern const struct Adc adc1;
 /* M17 also through the HR_C6000's own modem, chosen in the M17 settings */
 #define CONFIG_M17_CHIP_MODEM
 
+/* With the HR_C6000's modem, the microphone through its codec, over I2S */
+#define CONFIG_M17_CHIP_MIC
+
 /* Microphone audio input */
 #define CONFIG_MIC_GAIN 32
 #define CONFIG_MIC_OVERSAMPLE 8
