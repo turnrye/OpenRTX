@@ -27,6 +27,10 @@ enum Mod17Flags {
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/* CAT control over a pseudo-terminal */
+#define CONFIG_CAT
+extern const struct chardev_ops cat_chardev;
+
 #ifdef __cplusplus
 }
 #endif
