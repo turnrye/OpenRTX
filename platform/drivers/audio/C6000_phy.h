@@ -32,8 +32,8 @@ void C6000phy_init(HR_C6000 *chip);
 void C6000phy_timeslotIrq();
 
 /**
- * Poll the chip and send the records, from a thread that runs every few
- * milliseconds.
+ * Poll the chip and send the records; C6000phy_init() starts a thread that
+ * calls it every 2 ms.
  */
 void C6000phy_task();
 

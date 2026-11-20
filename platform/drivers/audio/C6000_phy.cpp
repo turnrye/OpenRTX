@@ -13,6 +13,7 @@
 #include <cstring>
 #include <pthread.h>
 #include "interfaces/delays.h"
+#include "core/threads.h"
 #include "C6000_phy.h"
 
 extern "C" void m17bench_emit(const char *line);
@@ -193,9 +194,36 @@ void turnOff()
 
 }  // namespace
 
+/**
+ * Poll the chip every 2 ms on a thread of its own, with the stack the line
+ * formatting needs.
+ *
+ * @param arg: unused.
+ * @return never.
+ */
+static void *phyThread(void *arg)
+{
+    (void) arg;
+    while(true)
+    {
+        C6000phy_task();
+        sleepFor(0, 2);
+    }
+    return nullptr;
+}
+
 void C6000phy_init(HR_C6000 *chip)
 {
     c6000 = chip;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 2048);
+    sched_param param;
+    param.sched_priority = THREAD_PRIO_HIGH;
+    pthread_attr_setschedparam(&attr, &param);
+    pthread_t thread;
+    pthread_create(&thread, &attr, phyThread, nullptr);
 }
 
 void C6000phy_timeslotIrq()

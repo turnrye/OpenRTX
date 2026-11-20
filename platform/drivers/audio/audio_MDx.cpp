@@ -243,7 +243,6 @@ static void *audio_thread(void *arg)
         Cx000dac_task();
         #ifdef CONFIG_M17_CHIP_MODEM
         C6000symbols_task();
-        C6000phy_task();                // TEST ONLY
         #endif
 
         if(state.volume != oldVolume)

@@ -45,6 +45,13 @@ static enum opstatus radioStatus;                // Current operating status
 HR_C6000 C6000((const struct spiDevice *) &c6000_spi, { DMR_CS }); // HR_C6000 driver
 static AT1846S& at1846s = AT1846S::instance();   // AT1846S driver
 
+// TEST ONLY: the AT1846S's bandwidth from the bench console
+extern "C" int m17bench_bw(int khz)
+{
+    at1846s.setBandwidth((khz == 12) ? AT1846S_BW::_12P5 : AT1846S_BW::_25);
+    return 0;
+}
+
 void radio_init(const rtxStatus_t *rtxState)
 {
     config      = rtxState;

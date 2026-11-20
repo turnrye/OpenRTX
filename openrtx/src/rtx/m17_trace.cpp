@@ -69,6 +69,7 @@ extern "C" int m17bench_rd(uint8_t page, uint8_t reg, uint8_t count, uint8_t *ou
 extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value);
 extern "C" int m17bench_ram(uint8_t page, uint16_t addr, uint8_t *out, size_t len);
 extern "C" int m17bench_c6kinit();
+extern "C" int m17bench_bw(int khz);
 extern "C" bool m17bench_phyBusy();
 extern "C" int C6000phy_command(char *args, char *reply, size_t len);
 
@@ -490,6 +491,14 @@ static void handleCommand()
             reply("ERR", "PHY");
         else
             reply("PHY", "%s", text);
+    } else if (strcmp(command, "BW") == 0) {
+        // BW 12|25: the RF chip's channel bandwidth in kHz, until the next
+        // mode change
+        int khz = hasArg ? atoi(arg) : 0;
+        if (((khz != 12) && (khz != 25)) || (m17bench_bw(khz) != 0))
+            reply("ERR", "BW");
+        else
+            reply("BW", "%d", khz);
     } else if (strcmp(command, "C6KINIT") == 0) {
         // C6KINIT: initialise the HR_C6000 again and put back its M17 set-up
         if (m17bench_c6kinit() != 0)
@@ -642,6 +651,12 @@ extern "C" __attribute__((weak)) int m17bench_ram(uint8_t page, uint16_t addr,
 
 extern "C" __attribute__((weak)) int m17bench_c6kinit()
 {
+    return -1;
+}
+
+extern "C" __attribute__((weak)) int m17bench_bw(int khz)
+{
+    (void) khz;
     return -1;
 }
 
