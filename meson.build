@@ -473,6 +473,7 @@ mduv3x0_def =  {'PLATFORM_MDUV3x0': '', 'timegm': 'mktime'}
 mduv3x0_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
 mduv3x0_inc += openrtx_inc + stm32f405_inc
 mduv3x0_def += openrtx_def + stm32f405_def
+mduv3x0_src += cat_src
 
 ##
 ## TYT MD-9600
