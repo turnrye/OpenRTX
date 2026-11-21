@@ -203,6 +203,10 @@ void *rtx_threadFunc(void *arg)
     while(state.devStatus == RUNNING)
     {
         rtx_task();
+
+        #if defined(CONFIG_CAT_DEBUG)
+        cat_debugService();
+        #endif
     }
 
     rtx_terminate();
