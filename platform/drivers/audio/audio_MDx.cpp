@@ -86,11 +86,12 @@ static const struct C6000modemPath rtxInAnalog =
 };
 
 #ifdef CONFIG_M17_CHIP_MIC
-// Microphone: through the HR_C6000's codec with its modem, else the ADC,
-// sampled 8 times faster and 32 times lower
+// Microphone: through the HR_C6000's codec with its modem, brought up 4
+// times, else the ADC, sampled 8 times faster and brought up 32 times
 static const struct C6000micPaths micPaths =
 {
     {&stm32_i2s_audio_driver, (const void *) STM32_I2S_LEFT},
+    4,
     {&stm32_adc_audio_driver, (const void *) 3},
     8,
     32

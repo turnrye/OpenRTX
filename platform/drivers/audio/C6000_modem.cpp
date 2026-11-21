@@ -21,10 +21,10 @@ static const struct audioDriver *micDriver;
 static bool useChip;
 
 /*
- * The microphone stream has the rate and the level of the codec's samples.
- * The analog path is sampled faster into a buffer of its own, on the heap
- * for the DMA to reach it, then low pass filtered down to the stream's rate
- * and brought up to that level.
+ * The microphone stream has the rate of the codec's samples, which only need
+ * their gain. The analog path is sampled faster into a buffer of its own, on
+ * the heap for the DMA to reach it, then low pass filtered down to the
+ * stream's rate and given its own gain.
  */
 static const struct C6000micPaths *micPaths;
 static bool micChip;
@@ -207,6 +207,9 @@ static int mic_data(struct streamCtx *ctx, stream_sample_t **buf)
 {
     if (micChip) {
         int len = micDriver->data(ctx, buf);
+        for (int i = 0; i < len; i++)
+            (*buf)[i] = s16_mulSat((*buf)[i], micPaths->chipGain);
+
         micBenchNote(*buf, len); // TEST ONLY
         return len;
     }
