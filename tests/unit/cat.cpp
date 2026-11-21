@@ -195,12 +195,19 @@ TEST_CASE("CAT answer builds fixed-width fields", "[cat][answer]")
 
     SECTION("A full answer still ends with ';'")
     {
-        for (int i = 0; i < 100; i++)
+        // Longer in bench builds, for the debug commands
+#ifdef CONFIG_CAT_DEBUG
+        static constexpr size_t MAX_LENGTH = 192;
+#else
+        static constexpr size_t MAX_LENGTH = 48;
+#endif
+
+        for (int i = 0; i < 300; i++)
             answer.append('A');
         answer.finish();
 
-        REQUIRE(answer.size() == 49);
-        REQUIRE(answer.data()[48] == ';');
+        REQUIRE(answer.size() == (MAX_LENGTH + 1));
+        REQUIRE(answer.data()[MAX_LENGTH] == ';');
     }
 }
 
