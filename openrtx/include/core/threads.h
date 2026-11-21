@@ -13,7 +13,12 @@
  * Threads' stack sizes
  */
 #define UI_THREAD_STKSIZE     2048
+#ifdef CONFIG_CAT_DEBUG
+// TEST ONLY: the bench's debug commands drive the radio chips on this thread
+#define RTX_THREAD_STKSIZE    2048
+#else
 #define RTX_THREAD_STKSIZE    512
+#endif
 #define CODEC2_THREAD_STKSIZE 16384
 #define AUDIO_THREAD_STKSIZE  512
 #define USB_THREAD_STKSIZE    1024
