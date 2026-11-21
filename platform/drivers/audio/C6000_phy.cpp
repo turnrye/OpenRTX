@@ -34,9 +34,9 @@ constexpr size_t   MAX_WATCH    = 8;
 
 struct RegWrite
 {
-    uint8_t page;
-    uint8_t reg;
-    uint8_t value;
+    uint8_t  page;
+    uint16_t reg;      ///< Above 0xFF: written with the extended address.
+    uint8_t  value;
 };
 
 HR_C6000 *c6000 = nullptr;
@@ -52,6 +52,12 @@ RegWrite tick;
 bool tickOn = false;
 bool baseOn = true;
 bool full = false;
+bool irqStatus = false;        ///< Status registers read at the timeslot tick.
+uint8_t  recPage = PAGE_DATA;  ///< What a record reads: page, address, bytes.
+uint16_t recAddr = RECORD_ADDR;
+size_t   recLen  = RECORD_BYTES;
+uint8_t  irq82 = 0, irq51 = 0, irq5f = 0;
+std::array<uint8_t, MAX_WATCH> irqWatch;
 uint32_t everyMs = 0;          ///< Read every slot, this long after its tick.
 uint32_t tsEvery = 0;
 long long everyAt = -1;
@@ -75,7 +81,22 @@ std::array<uint8_t, MAX_SETS> savedSets;
 
 void write(const RegWrite &w)
 {
-    c6000->benchWrite(w.page, w.reg, w.value);
+    if(w.reg > 0xFF)
+        c6000->benchWriteExt(w.page, w.reg, w.value);
+    else
+        c6000->benchWrite(w.page, static_cast<uint8_t>(w.reg), w.value);
+}
+
+/**
+ * Read the watched registers.
+ *
+ * @param out: one byte per watched register.
+ */
+void readWatch(uint8_t *out)
+{
+    for(size_t i = 0; i < nWatch; i++)
+        out[i] = c6000->benchRead(watch[i].page,
+                                  static_cast<uint8_t>(watch[i].reg));
 }
 
 void sendRecord(uint8_t r51, uint8_t r5f, uint8_t flags)
@@ -88,17 +109,20 @@ void sendRecord(uint8_t r51, uint8_t r5f, uint8_t flags)
                      static_cast<unsigned long>(seq),
                      static_cast<unsigned long>(tsCount.load()),
                      r51, r5f, flags);
+    uint8_t now[MAX_WATCH];
+    if(irqStatus == false)
+        readWatch(now);
     for(size_t i = 0; i < nWatch; i++)
         n += snprintf(&line[n], sizeof(line) - n, " %02x",
-                      c6000->benchRead(watch[i].page, watch[i].reg));
+                      irqStatus ? irqWatch[i] : now[i]);
     m17bench_emit(line);
 
-    c6000->benchReadRam(PAGE_DATA, RECORD_ADDR, rec, sizeof(rec));
+    c6000->benchReadRam(recPage, recAddr, rec, recLen);
 
     // The level bytes, or all of them: two bytes per symbol, the second a
     // copy of the slice in the chips seen so far
     const size_t step  = full ? 1 : 2;
-    const size_t bytes = sizeof(rec) / step;
+    const size_t bytes = recLen / step;
     size_t part = 0;
     for(size_t i = 0; i < bytes; part++)
     {
@@ -140,7 +164,7 @@ bool parseWrite(char *p, RegWrite *w)
     uint32_t page, reg, value;
     if(!parseHex(&p, &page) || !parseHex(&p, &reg) || !parseHex(&p, &value))
         return false;
-    *w = {static_cast<uint8_t>(page), static_cast<uint8_t>(reg),
+    *w = {static_cast<uint8_t>(page), static_cast<uint16_t>(reg),
           static_cast<uint8_t>(value)};
     return true;
 }
@@ -267,6 +291,14 @@ void C6000phy_task()
             {
                 tsEvery = ts;
                 everyAt = getTick() + everyMs;
+                if(irqStatus)
+                {
+                    // Within 2 ms of the timeslot interrupt
+                    irq82 = c6000->benchRead(PAGE_CONFIG, 0x82);
+                    irq51 = c6000->benchRead(PAGE_CONFIG, 0x51);
+                    irq5f = c6000->benchRead(PAGE_CONFIG, 0x5F);
+                    readWatch(irqWatch.data());
+                }
             }
             if((everyAt >= 0) && (getTick() >= everyAt))
             {
@@ -276,7 +308,10 @@ void C6000phy_task()
                 const uint8_t r5f = c6000->benchRead(PAGE_CONFIG, 0x5F);
                 polls++;
                 lastFlags = flags;
-                sendRecord(r51, r5f, flags);
+                if(irqStatus)
+                    sendRecord(irq51, irq5f, irq82);
+                else
+                    sendRecord(r51, r5f, flags);
                 if((flags & 0x01) != 0)
                     c6000->benchWrite(PAGE_CONFIG, 0x83, 0x01);
                 seq++;
@@ -344,6 +379,10 @@ int C6000phy_command(char *args, char *reply, size_t len)
         rearmK = 0;
         baseOn = true;
         full = false;
+        irqStatus = false;
+        recPage = PAGE_DATA;
+        recAddr = RECORD_ADDR;
+        recLen = RECORD_BYTES;
     }
     else if((strcmp(args, "SET") == 0) && (arg != nullptr) && (nSets < MAX_SETS))
     {
@@ -407,6 +446,25 @@ int C6000phy_command(char *args, char *reply, size_t len)
     else if((strcmp(args, "FULL") == 0) && (arg != nullptr))
     {
         full = (arg[0] == '1');
+    }
+    else if((strcmp(args, "IRQ") == 0) && (arg != nullptr))
+    {
+        irqStatus = (arg[0] == '1');
+    }
+    else if((strcmp(args, "REC") == 0) && (arg != nullptr))
+    {
+        // REC <page> <addr> <bytes, at most 288>: what a record reads
+        uint32_t page, addr, bytes;
+        char *p = arg;
+        if(parseHex(&p, &page) && parseHex(&p, &addr) && parseHex(&p, &bytes)
+           && (bytes >= 2) && (bytes <= RECORD_BYTES))
+        {
+            recPage = static_cast<uint8_t>(page);
+            recAddr = static_cast<uint16_t>(addr);
+            recLen  = bytes;
+        }
+        else
+            ret = -1;
     }
     else if(strcmp(args, "STAT") != 0)
     {

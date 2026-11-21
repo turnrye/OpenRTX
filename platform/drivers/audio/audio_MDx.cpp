@@ -126,9 +126,12 @@ extern "C" int m17bench_rd(uint8_t page, uint8_t reg, uint8_t count,
     return 0;
 }
 
-extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value)
+extern "C" int m17bench_wr(uint8_t page, uint16_t reg, uint8_t value)
 {
-    C6000.benchWrite(page, reg, value);
+    if(reg > 0xFF)
+        C6000.benchWriteExt(page, reg, value);
+    else
+        C6000.benchWrite(page, static_cast< uint8_t >(reg), value);
     return 0;
 }
 

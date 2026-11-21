@@ -66,7 +66,7 @@ extern "C" void m17bench_wreg(uint16_t reg, uint8_t value);
 extern "C" int m17bench_copy(int16_t *out, int max);
 extern "C" int m17bench_mic(char *buf, size_t len);
 extern "C" int m17bench_rd(uint8_t page, uint8_t reg, uint8_t count, uint8_t *out);
-extern "C" int m17bench_wr(uint8_t page, uint8_t reg, uint8_t value);
+extern "C" int m17bench_wr(uint8_t page, uint16_t reg, uint8_t value);
 extern "C" int m17bench_ram(uint8_t page, uint16_t addr, uint8_t *out, size_t len);
 extern "C" int m17bench_c6kinit();
 extern "C" int m17bench_bw(int khz);
@@ -456,7 +456,8 @@ static void handleCommand()
             reply("RD", "%lx %02lx %s", page, reg, hexs);
         }
     } else if (strcmp(command, "WR") == 0) {
-        // WR <page> <reg> <value>: write a register of any page
+        // WR <page> <reg> <value>: write a register of any page; a reg
+        // above FF goes out with the extended address
         char *p = arg;
         unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
         unsigned long reg = strtoul(p, &p, 16);
@@ -464,7 +465,7 @@ static void handleCommand()
         if (!hasArg || (m17bench_wr(page, reg, value) != 0))
             reply("ERR", "WR");
         else
-            reply("WR", "%lx %02lx %02lx", page, reg, value);
+            reply("WR", "%lx %03lx %02lx", page, reg, value);
     } else if (strcmp(command, "RAM") == 0) {
         // RAM <page> <addr> <len, at most 512>: chip RAM, 48 bytes a line,
         // RAM <ms> <offset> <hex>, then RAM <ms> END <len>
@@ -645,7 +646,7 @@ extern "C" __attribute__((weak)) int m17bench_rd(uint8_t page, uint8_t reg,
     return -1;
 }
 
-extern "C" __attribute__((weak)) int m17bench_wr(uint8_t page, uint8_t reg,
+extern "C" __attribute__((weak)) int m17bench_wr(uint8_t page, uint16_t reg,
                                                  uint8_t value)
 {
     (void) page; (void) reg; (void) value;

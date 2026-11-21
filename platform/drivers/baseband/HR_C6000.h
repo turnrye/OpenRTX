@@ -141,6 +141,19 @@ public:
         readRam16(static_cast< C6000_SpiOpModes >(page), addr, data, len);
     }
 
+    /**
+     * TEST ONLY: write a register with an extended (11-bit) address.
+     *
+     * @param page: page number.
+     * @param addr: register address.
+     * @param value: value to write.
+     */
+    void benchWriteExt(const uint8_t page, const uint16_t addr,
+                       const uint8_t value)
+    {
+        writeReg16(static_cast< C6000_SpiOpModes >(page), addr, value);
+    }
+
 private:
 
     /**
