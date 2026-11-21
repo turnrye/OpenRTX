@@ -400,6 +400,10 @@ TEST_CASE("CAT M17 settings", "[cat][commands]")
     REQUIRE(answers("ZN05;ZN;", "ZN05;"));
     REQUIRE(state.settings.m17_can == 5);
     REQUIRE(answers("ZN16;", "?;"));
+
+    REQUIRE(answers("ZH1;ZH;", "ZH1;"));
+    REQUIRE(answers("ZH0;ZH;", "ZH0;"));
+    REQUIRE(answers("ZH2;", "?;"));
 }
 
 TEST_CASE("CAT holds the PTT for at most two minutes", "[cat][commands]")

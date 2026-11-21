@@ -50,6 +50,7 @@ extern "C" {
  *   ZC    callsign, the M17 source
  *   ZD    M17 destination, ALL for the broadcast
  *   ZN    M17 channel access number, 00-15
+ *   ZH    M17 modem, 0 the MCU's, 1 the baseband chip's
  *   ZR    battery charge, percent
  *   ZV    firmware version
  *   ZB1   restart into the bootloader, on radios with CONFIG_BOOTLOADER_ENTRY

@@ -224,6 +224,11 @@ int cat_cmdZC(const CatRequest &req, CatAnswer &answer);
 int cat_cmdZD(const CatRequest &req, CatAnswer &answer);
 
 /**
+ * ZH: M17 modem, the MCU's (0) or the baseband chip's (1).
+ */
+int cat_cmdZH(const CatRequest &req, CatAnswer &answer);
+
+/**
  * ZN: M17 channel access number.
  */
 int cat_cmdZN(const CatRequest &req, CatAnswer &answer);

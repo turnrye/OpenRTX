@@ -104,6 +104,27 @@ int cat_cmdZD(const CatRequest &req, CatAnswer &answer)
     return 0;
 }
 
+int cat_cmdZH(const CatRequest &req, CatAnswer &answer)
+{
+    if (req.len == 0) {
+        uint32_t chip = cat_lockState(
+            [](const state_t &s) { return s.settings.m17_chip_modem; });
+
+        answer.append("ZH", 2);
+        answer.appendNumber(chip, 1);
+        return 0;
+    }
+
+    bool valid = (req.len == 1)
+              && ((req.args[0] == '0') || (req.args[0] == '1'));
+    if (valid == false)
+        return -EINVAL;
+
+    bool chip = (req.args[0] == '1');
+    cat_editSettings([chip](settings_t &st) { st.m17_chip_modem = chip; });
+    return 0;
+}
+
 int cat_cmdZN(const CatRequest &req, CatAnswer &answer)
 {
     uint32_t can;

@@ -29,7 +29,7 @@ static constexpr size_t DEBUG_COMMANDS = 0;
 #endif
 
 // Every command the radio executes, in alphabetical order
-static constexpr std::array<CatCommand, 28 + DEBUG_COMMANDS> commands = { {
+static constexpr std::array<CatCommand, 29 + DEBUG_COMMANDS> commands = { {
     { { 'A', 'I' }, cat_cmdAI }, { { 'B', 'S' }, cat_cmdBS },
     { { 'C', 'N' }, cat_cmdCN }, { { 'C', 'T' }, cat_cmdCT },
     { { 'E', 'X' }, cat_cmdEX }, { { 'F', 'A' }, cat_cmdFA },
@@ -41,9 +41,10 @@ static constexpr std::array<CatCommand, 28 + DEBUG_COMMANDS> commands = { {
     { { 'S', 'M' }, cat_cmdSM }, { { 'S', 'Q' }, cat_cmdSQ },
     { { 'T', 'X' }, cat_cmdTX }, { { 'Z', 'B' }, cat_cmdZB },
     { { 'Z', 'C' }, cat_cmdZC }, { { 'Z', 'D' }, cat_cmdZD },
-    { { 'Z', 'M' }, cat_cmdZM }, { { 'Z', 'N' }, cat_cmdZN },
-    { { 'Z', 'O' }, cat_cmdZO }, { { 'Z', 'P' }, cat_cmdZP },
-    { { 'Z', 'R' }, cat_cmdZR }, { { 'Z', 'V' }, cat_cmdZV },
+    { { 'Z', 'H' }, cat_cmdZH }, { { 'Z', 'M' }, cat_cmdZM },
+    { { 'Z', 'N' }, cat_cmdZN }, { { 'Z', 'O' }, cat_cmdZO },
+    { { 'Z', 'P' }, cat_cmdZP }, { { 'Z', 'R' }, cat_cmdZR },
+    { { 'Z', 'V' }, cat_cmdZV },
 #ifdef CONFIG_CAT_DEBUG
     { { 'Z', 'Z' }, cat_cmdZZ },
 #endif
