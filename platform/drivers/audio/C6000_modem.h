@@ -19,6 +19,8 @@
  * - microphone, for radios whose microphone reaches the MCU only through the
  *   HR_C6000's codec: the codec when the radio has picked the chip, the analog
  *   path otherwise. Its devices name both paths, a struct C6000micPaths.
+ *   The codec's 8 kHz stream is given at the rate the stream asks for, a
+ *   multiple of 8 kHz, and at the level of the analog path.
  *
  * The configuration of each device names its analog path, a struct
  * C6000modemPath. Each stream keeps the driver it started with.
@@ -39,6 +41,7 @@ struct C6000modemPath {
 struct C6000micPaths {
     struct C6000modemPath chip;   ///< Through the HR_C6000's codec
     struct C6000modemPath analog; ///< The analog path
+    uint8_t analogGain;           ///< Gain the stream's user applies to it
 };
 
 /**

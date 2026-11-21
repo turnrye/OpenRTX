@@ -4,16 +4,56 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <algorithm>
+#include <errno.h>
 #include "C6000_fmcopy.h"
 #include "C6000_symbols.h"
 #include "C6000_modem.h"
 
 static constexpr uint32_t SYMBOL_RATE = 4800;
+static constexpr uint32_t CODEC_RATE = 8000;
+static constexpr size_t CODEC_BUF_SIZE = 320;
 
 static const struct audioDriver *outDriver;
 static const struct audioDriver *inDriver;
 static const struct audioDriver *micDriver;
 static bool useChip;
+
+/*
+ * The codec's microphone stream is 8 kHz at full scale, while the stream is
+ * asked for at the rate of the analog path and its user applies the gain of
+ * that path: each codec sample is repeated to make up the rate and divided by
+ * that gain.
+ */
+static stream_sample_t codecBuf[CODEC_BUF_SIZE];
+static struct streamCtx codecCtx;
+static bool micChip;
+static size_t micRepeat;
+static int16_t micGain;
+
+// TEST ONLY: microphone starts, the last start's result, and the codec
+// samples since the last read: count, peak, sum and sum of squares
+static uint32_t micStarts;
+static int micStartRet;
+static uint32_t micFrames;
+static int32_t micPeak;
+static int64_t micSum;
+static uint64_t micSumSq;
+
+extern "C" void C6000modem_micBench(int32_t *v, int64_t *sum, uint64_t *sumSq)
+{
+    v[0] = micStarts;
+    v[1] = micStartRet;
+    v[2] = micFrames;
+    v[3] = micPeak;
+    v[4] = codecCtx.running;
+    *sum = micSum;
+    *sumSq = micSumSq;
+    micFrames = 0;
+    micPeak = 0;
+    micSum = 0;
+    micSumSq = 0;
+}
 
 extern "C" void C6000modem_bench(uint32_t *v) // TEST ONLY
 {
@@ -105,31 +145,88 @@ static int mic_start(const uint8_t instance, const void *config,
 {
     const struct C6000micPaths *paths =
         static_cast<const struct C6000micPaths *>(config);
-    const struct C6000modemPath *path = useChip ? &paths->chip : &paths->analog;
 
-    micDriver = path->driver;
-    return micDriver->start(instance, path->config, ctx);
+    micChip = useChip;
+    if (micChip == false) {
+        micDriver = paths->analog.driver;
+        return micDriver->start(instance, paths->analog.config, ctx);
+    }
+
+    micStarts++;                        // TEST ONLY
+    micStartRet = -EINVAL;              // TEST ONLY
+    micRepeat = ctx->sampleRate / CODEC_RATE;
+    if ((micRepeat == 0) || ((ctx->sampleRate % CODEC_RATE) != 0)
+        || ((ctx->bufSize % micRepeat) != 0)
+        || ((ctx->bufSize / micRepeat) > CODEC_BUF_SIZE))
+        return -EINVAL;
+
+    micDriver = paths->chip.driver;
+    micGain = paths->analogGain;
+    codecCtx.buffer = codecBuf;
+    codecCtx.bufSize = ctx->bufSize / micRepeat;
+    codecCtx.bufMode = ctx->bufMode;
+    codecCtx.sampleRate = CODEC_RATE;
+
+    int ret = micDriver->start(instance, paths->chip.config, &codecCtx);
+    ctx->running = codecCtx.running;
+    micStartRet = ret;                  // TEST ONLY
+
+    return ret;
 }
 
 static int mic_data(struct streamCtx *ctx, stream_sample_t **buf)
 {
-    return micDriver->data(ctx, buf);
+    if (micChip == false)
+        return micDriver->data(ctx, buf);
+
+    stream_sample_t *in;
+    int frames = micDriver->data(&codecCtx, &in);
+    if (frames < 0)
+        return frames;
+
+    stream_sample_t *out = &ctx->buffer[(in - codecBuf) * micRepeat];
+    for (int i = 0; i < frames; i++) {
+        std::fill_n(&out[i * micRepeat], micRepeat, in[i] / micGain);
+
+        // TEST ONLY
+        micFrames++;
+        micPeak = std::max<int32_t>(micPeak, (in[i] < 0) ? -in[i] : in[i]);
+        micSum += in[i];
+        micSumSq += static_cast<int32_t>(in[i]) * in[i];
+    }
+
+    *buf = out;
+    return frames * micRepeat;
 }
 
 static int mic_sync(struct streamCtx *ctx, uint8_t dirty)
 {
-    return micDriver->sync(ctx, dirty);
+    if (micChip == false)
+        return micDriver->sync(ctx, dirty);
+
+    int ret = micDriver->sync(&codecCtx, dirty);
+    ctx->running = codecCtx.running;
+
+    return ret;
 }
 
 static void mic_stop(struct streamCtx *ctx)
 {
-    micDriver->stop(ctx);
+    micDriver->stop(micChip ? &codecCtx : ctx);
 }
 
 static void mic_terminate(struct streamCtx *ctx)
 {
-    if (micDriver != NULL)
+    if (micDriver == NULL)
+        return;
+
+    if (micChip == false) {
         micDriver->terminate(ctx);
+        return;
+    }
+
+    micDriver->terminate(&codecCtx);
+    ctx->running = 0;
 }
 
 #pragma GCC diagnostic ignored "-Wpedantic"

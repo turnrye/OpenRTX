@@ -15,6 +15,7 @@
 #include "drivers/tones/toneGenerator_MDx.h"
 #include "stm32_pwm.h"
 #include "stm32_adc.h"
+#include <math.h>
 #ifdef CONFIG_M17_CHIP_MIC
 #include "stm32_i2s.h"
 #endif
@@ -88,8 +89,9 @@ static const struct C6000modemPath rtxInAnalog =
 // Microphone: through the HR_C6000's codec with its modem, else the ADC
 static const struct C6000micPaths micPaths =
 {
-    {&stm32_i2s_audio_driver, NULL},
-    {&stm32_adc_audio_driver, (const void *) 3}
+    {&stm32_i2s_audio_driver, (const void *) STM32_I2S_LEFT},
+    {&stm32_adc_audio_driver, (const void *) 3},
+    CONFIG_MIC_GAIN
 };
 #endif
 
@@ -174,12 +176,24 @@ extern "C" int m17bench_regs(uint8_t start, uint8_t count, char *buf,
 #ifdef CONFIG_M17_CHIP_MIC
 extern "C" int m17bench_mic(char *buf, size_t len) // TEST ONLY
 {
-    struct i2sStats st;
-    stm32i2s_getStats(&st, true);
+    extern void C6000modem_micBench(int32_t *v, int64_t *sum, uint64_t *sumSq);
+    int32_t v[5];
+    int64_t sum;
+    uint64_t sumSq;
+    C6000modem_micBench(v, &sum, &sumSq);
+
+    float mean = 0.0f;
+    float var = 0.0f;
+    if(v[2] > 0)
+    {
+        mean = (float) sum / (float) v[2];
+        var = ((float) sumSq / (float) v[2]) - (mean * mean);
+    }
+
     return snprintf(buf, len,
-        "frames %lu noclock %lu peak %d %d rms %u %u mean %d %d",
-        (unsigned long) st.frames, (unsigned long) st.noClock,
-        st.peak[0], st.peak[1], st.rms[0], st.rms[1], st.mean[0], st.mean[1]);
+        "starts %ld ret %ld run %ld frames %ld peak %ld rms %d mean %d",
+        (long) v[0], (long) v[1], (long) v[4], (long) v[2], (long) v[3],
+        (var > 0.0f) ? (int) sqrtf(var) : 0, (int) mean);
 }
 #endif
 
