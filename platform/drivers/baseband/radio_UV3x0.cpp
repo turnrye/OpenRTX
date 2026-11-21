@@ -30,6 +30,12 @@
  */
 static constexpr uint32_t M17_DEV_HZ = 2400;
 static constexpr uint32_t DMR_DEV_HZ = 1944;
+#ifdef CONFIG_CAT_DEBUG
+#include "core/cat/debug.hpp"
+#include <array>
+#include <cerrno>
+#endif
+
 
 static const rtxStatus_t *config;                // Pointer to data structure with radio configuration
 
@@ -62,6 +68,101 @@ extern "C" int m17bench_rinit()
     benchRinitReq.store(true);
     return 0;
 }
+
+#ifdef CONFIG_CAT_DEBUG
+/*
+ * CAT debug commands for the two chips, run on the RTX thread, in order with
+ * this driver's own register writes. Numbers are hexadecimal.
+ *
+ *   ZZC6<page> <reg>;          read a HR_C6000 register of page 1 (auxiliary)
+ *                              or 4 (configuration): ZZC6<page> <reg> <value>;
+ *   ZZC6<page> <reg> <value>;  write it
+ *   ZZAT<reg>;                 read an AT1846S register: ZZAT<reg> <value>;
+ *   ZZAT<reg> <value>;         write it
+ */
+
+/**
+ * ZZC6: HR_C6000 registers.
+ */
+static int catDebugC6000(const CatRequest &req, CatAnswer &answer)
+{
+    std::array<uint32_t, 3> arg;
+    int count = cat_debugParseHex(req, arg.data(), arg.size());
+
+    bool valid = (count >= 2) && ((arg[0] == 1) || (arg[0] == 4))
+              && (arg[1] <= 0xFF) && ((count == 2) || (arg[2] <= 0xFF));
+    if (valid == false)
+        return -EINVAL;
+
+    auto page = static_cast<C6000_SpiOpModes>(arg[0]);
+    uint8_t reg = arg[1];
+
+    if (count == 3) {
+        return cat_debugOnRtx([page, reg, &arg]() {
+            C6000.writeRegister(page, reg, arg[2]);
+            return 0;
+        });
+    }
+
+    uint8_t value;
+    int ret = cat_debugOnRtx([page, reg, &value]() {
+        value = C6000.readRegister(page, reg);
+        return 0;
+    });
+    if (ret < 0)
+        return ret;
+
+    answer.append("ZZC6", 4);
+    answer.appendNumber(arg[0], 1, 16);
+    answer.append(' ');
+    answer.appendNumber(reg, 2, 16);
+    answer.append(' ');
+    answer.appendNumber(value, 2, 16);
+    return 0;
+}
+
+/**
+ * ZZAT: AT1846S registers.
+ */
+static int catDebugAt1846s(const CatRequest &req, CatAnswer &answer)
+{
+    std::array<uint32_t, 2> arg;
+    int count = cat_debugParseHex(req, arg.data(), arg.size());
+
+    bool valid = (count >= 1) && (arg[0] <= 0xFF)
+              && ((count == 1) || (arg[1] <= 0xFFFF));
+    if (valid == false)
+        return -EINVAL;
+
+    uint8_t reg = arg[0];
+
+    if (count == 2) {
+        return cat_debugOnRtx([reg, &arg]() {
+            at1846s.writeRegister(reg, arg[1]);
+            return 0;
+        });
+    }
+
+    uint16_t value;
+    int ret = cat_debugOnRtx([reg, &value]() {
+        value = at1846s.readRegister(reg);
+        return 0;
+    });
+    if (ret < 0)
+        return ret;
+
+    answer.append("ZZAT", 4);
+    answer.appendNumber(reg, 2, 16);
+    answer.append(' ');
+    answer.appendNumber(value, 4, 16);
+    return 0;
+}
+
+static std::array<CatDebugCommand, 2> catDebugCommands = { {
+    { { 'C', '6' }, catDebugC6000, nullptr },
+    { { 'A', 'T' }, catDebugAt1846s, nullptr },
+} };
+#endif
 
 void radio_init(const rtxStatus_t *rtxState)
 {
@@ -109,6 +210,11 @@ void radio_init(const rtxStatus_t *rtxState)
      */
     at1846s.init();
     radio_disableAfOutput();
+
+#ifdef CONFIG_CAT_DEBUG
+    for (auto &cmd : catDebugCommands)
+        cat_debugRegister(cmd);
+#endif
 }
 
 // TEST ONLY: both RF chips initialised again, as at power on, and the radio
