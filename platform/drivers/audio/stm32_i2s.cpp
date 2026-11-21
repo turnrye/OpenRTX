@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <memory>
 #include "peripherals/gpio.h"
+#include "interfaces/delays.h"
 #include "DmaStream.hpp"
 #include "hwconfig.h"
 #include "stm32_i2s.h"
@@ -19,8 +20,9 @@
  * into the stream buffer.
  */
 
-static constexpr uint32_t WS_POLLS = 200000;        // About 10 ms
-static constexpr uint32_t WS_EDGE_POLLS = 2500;     // About 125 us, a frame
+static constexpr uint32_t WS_POLLS = 200000;    // About 10 ms
+static constexpr uint32_t WS_EDGE_POLLS = 2500; // About 125 us, a frame
+static constexpr uint32_t SYNC_TIMEOUT_MS = 100;
 
 using Dma1_Stream0 = DmaStream<DMA1_BASE, 0, 0, 2>; // SPI3_RX, high priority
 
@@ -29,6 +31,7 @@ static std::unique_ptr<int16_t[]> stereo;
 static size_t stereoSize;
 static struct streamCtx *streamCtx;
 static size_t channel; // STM32_I2S_LEFT or STM32_I2S_RIGHT
+static void *lastIdle;
 
 /**
  * Stop the I2S peripheral at the end of a transfer.
@@ -138,6 +141,7 @@ static int stm32i2s_start(const uint8_t instance, const void *config,
 
     const bool circ = (ctx->bufMode == BUF_CIRC_DOUBLE);
     stream.start(&SPI3->DR, stereo.get(), size, circ);
+    lastIdle = stream.idleBuf();
 
     // Philips slave: enable just after a WS rising edge, so that the first
     // frame starts with the left channel. WS toggling first says the codec
@@ -180,10 +184,29 @@ static int stm32i2s_data(struct streamCtx *ctx, stream_sample_t **buf)
 
 static int stm32i2s_sync(struct streamCtx *ctx, uint8_t dirty)
 {
-    (void)ctx;
     (void)dirty;
 
-    return stream.sync() ? 0 : -1;
+    // The codec clocks the transfer and may stop: poll for the next half of
+    // the buffer, or for the end of a linear transfer, and give up after a
+    // while instead of waiting for an interrupt that may never come
+    for (uint32_t i = 0; i < SYNC_TIMEOUT_MS; i++) {
+        if (ctx->bufMode == BUF_CIRC_DOUBLE) {
+            void *idle = stream.idleBuf();
+            if (idle != lastIdle) {
+                lastIdle = idle;
+                return 0;
+            }
+
+            if (ctx->running == 0)
+                return -1;
+        } else if (ctx->running == 0) {
+            return 0;
+        }
+
+        sleepFor(0, 1);
+    }
+
+    return -1;
 }
 
 static void stm32i2s_stop(struct streamCtx *ctx)
