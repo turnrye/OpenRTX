@@ -52,22 +52,30 @@ static enum opstatus radioStatus;                // Current operating status
 HR_C6000 C6000((const struct spiDevice *) &c6000_spi, { DMR_CS }); // HR_C6000 driver
 static AT1846S& at1846s = AT1846S::instance();   // AT1846S driver
 
-// TEST ONLY: bench console requests, applied on the rtx thread (in
-// radio_getRssi()) so that the AT1846S is never driven from two threads
-static std::atomic< int >  benchBwReq{0};
-static std::atomic< bool > benchRinitReq{false};
+static void benchRinit();
 
+// TEST ONLY: bench console requests. The console calls both on the RTX
+// thread (cat_debugOnRtx()), so that the AT1846S is never driven from two
+// threads
 extern "C" int m17bench_bw(int khz)
 {
-    benchBwReq.store(khz);
+    at1846s.setBandwidth((khz == 12) ? AT1846S_BW::_12P5 : AT1846S_BW::_25);
     return 0;
 }
 
 extern "C" int m17bench_rinit()
 {
-    benchRinitReq.store(true);
+    benchRinit();
     return 0;
 }
+
+#ifdef CONFIG_CAT_DEBUG
+#include "rtx/m17_bench.h"
+
+// ZZRI and ZZBW<12|25>: the console's RINIT and BW commands
+M17BENCH_CAT_COMMAND(catRinit, "RINIT", 'R', 'I')
+M17BENCH_CAT_COMMAND(catBw, "BW", 'B', 'W')
+#endif
 
 #ifdef CONFIG_CAT_DEBUG
 /*
@@ -222,6 +230,10 @@ void radio_init(const rtxStatus_t *rtxState)
 #ifdef CONFIG_CAT_DEBUG
     for (auto &cmd : catDebugCommands)
         cat_debugRegister(cmd);
+
+    cat_debugRegister(catRinit);
+    cat_debugRegister(catBw);
+    m17bench_catRegister();
 #endif
 }
 
@@ -522,13 +534,6 @@ void radio_updateConfiguration()
 
 rssi_t radio_getRssi()
 {
-    // TEST ONLY: bench console requests, on this (the rtx) thread
-    const int bw = benchBwReq.exchange(0);
-    if(bw != 0)
-        at1846s.setBandwidth((bw == 12) ? AT1846S_BW::_12P5 : AT1846S_BW::_25);
-    if(benchRinitReq.exchange(false))
-        benchRinit();
-
     return static_cast< rssi_t >(at1846s.readRSSI());
 }
 

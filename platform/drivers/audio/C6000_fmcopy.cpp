@@ -13,6 +13,9 @@
 #include "core/fir.hpp"
 #include "interfaces/delays.h"
 #include "C6000_fmcopy.h"
+#ifdef CONFIG_CAT_DEBUG
+#include "rtx/m17_bench.h"
+#endif
 
 /*
  * sync() waits for the chip's system interrupt, reads its next
@@ -72,8 +75,16 @@ extern "C" void C6000fmcopy_bench(uint32_t *v) // TEST ONLY
     v[5] = benchRms;
 }
 
+#ifdef CONFIG_CAT_DEBUG
+// TEST ONLY: ZZCP, the console's COPY command
+M17BENCH_CAT_COMMAND(catCopy, "COPY", 'C', 'P')
+#endif
+
 void C6000fmcopy_init(HR_C6000 *device)
 {
+#ifdef CONFIG_CAT_DEBUG
+    cat_debugRegister(catCopy);
+#endif
     c6000 = device;
 }
 

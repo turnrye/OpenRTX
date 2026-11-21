@@ -82,8 +82,10 @@ void *ui_threadFunc(void *arg)
 
         vp_tick();                           // continue playing voice prompts in progress if any.
 
-        // TEST ONLY: bench console
+        // TEST ONLY: bench console, where CAT does not own the serial port
+        #if !defined(CONFIG_CAT)
         m17bench_poll();
+        #endif
         if(m17bench_takeSync())
             sync_rtx = true;
 

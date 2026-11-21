@@ -29,6 +29,9 @@
 #include "C6000_fmcopy.h"
 #include "C6000_modem.h"
 #include "C6000_phy.h"
+#ifdef CONFIG_CAT_DEBUG
+#include "rtx/m17_bench.h"
+#endif
 #endif
 
 
@@ -150,8 +153,7 @@ extern "C" bool m17bench_phyBusy()
 extern "C" int m17bench_c6kinit()
 {
     char off[] = "OFF";
-    char text[96];
-    C6000phy_command(off, text, sizeof(text));
+    C6000phy_command(off, nullptr, 0);
     C6000.init();
     C6000.benchForgetWrites();
     C6000.fmMode();                 // As radio_setOpmode() for M17
@@ -187,6 +189,20 @@ extern "C" int m17bench_diag(char *buf, size_t len)
     C6000symbols_bench(s);
     C6000fmcopy_bench(f);
     C6000modem_bench(m);
+
+    // The registers, read on the RTX thread where CAT carries the console
+    static constexpr uint8_t REGS[] = { 0x10, 0x40, 0x41, 0x60, 0x81, 0x82 };
+    uint8_t r[sizeof(REGS)] = {};
+    auto readRegs = [&r]() {
+        for(size_t i = 0; i < sizeof(REGS); i++)
+            r[i] = C6000.readCfgRegister(REGS[i]);
+        return 0;
+    };
+#ifdef CONFIG_CAT_DEBUG
+    cat_debugOnRtx(readRegs);
+#else
+    readRegs();
+#endif
     return snprintf(buf, len,
         "ts %lu st %lu sl %lu stall %lu end %lu act %lu sys %lu rd %lu to %lu "
         "cmin %ld cmax %ld crms %lu "
@@ -198,9 +214,7 @@ extern "C" int m17bench_diag(char *buf, size_t len)
         (long) (int32_t) f[3], (long) (int32_t) f[4], (unsigned long) f[5],
         (unsigned long) m[0], (unsigned long) m[1],
         (unsigned long) (GPIOC->IDR & 0x3), (unsigned long) (EXTI->IMR & 0x3),
-        C6000.readCfgRegister(0x10), C6000.readCfgRegister(0x40),
-        C6000.readCfgRegister(0x41), C6000.readCfgRegister(0x60),
-        C6000.readCfgRegister(0x81), C6000.readCfgRegister(0x82),
+        r[0], r[1], r[2], r[3], r[4], r[5],
         (unsigned long) ((TIM3->CR1 & 1) | ((TIM3->CCER & TIM_CCER_CC3E) ? 2 : 0)));
 }
 
@@ -208,11 +222,29 @@ extern "C" int m17bench_diag(char *buf, size_t len)
  * Route the HR_C6000 timeslot (DMR_TS_INT, PC0) and system (DMR_SYS_INT, PC1)
  * interrupts to EXTI lines 0 and 1, falling edge.
  */
+#ifdef CONFIG_CAT_DEBUG
+// TEST ONLY: the console's HR_C6000 commands as CAT debug commands
+M17BENCH_CAT_COMMAND(catRam, "RAM", 'R', 'M')
+M17BENCH_CAT_COMMAND(catRegs, "REGS", 'R', 'G')
+M17BENCH_CAT_COMMAND(catWreg, "WREG", 'W', 'G')
+M17BENCH_CAT_COMMAND(catC6kInit, "C6KINIT", 'C', 'I')
+M17BENCH_CAT_COMMAND(catMic, "MIC", 'M', 'I')
+M17BENCH_CAT_COMMAND(catDiag, "DIAG", 'D', 'G')
+#endif
+
 static void chipModemInit()
 {
     C6000symbols_init(&C6000);
     C6000fmcopy_init(&C6000);
     C6000phy_init(&C6000);              // TEST ONLY
+#ifdef CONFIG_CAT_DEBUG
+    cat_debugRegister(catRam);
+    cat_debugRegister(catRegs);
+    cat_debugRegister(catWreg);
+    cat_debugRegister(catC6kInit);
+    cat_debugRegister(catMic);
+    cat_debugRegister(catDiag);
+#endif
 
     gpio_setMode(DMR_TS_INT,  INPUT);
     gpio_setMode(DMR_SYS_INT, INPUT);

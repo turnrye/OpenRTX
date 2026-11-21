@@ -86,4 +86,39 @@ int m17bench_nvm(uint32_t addr, uint8_t *buf, uint32_t len);
 }
 #endif
 
+#if defined(__cplusplus) && defined(CONFIG_CAT_DEBUG)
+#include "core/cat/debug.hpp"
+
+/**
+ * Run a console command as a CAT debug command and answer with its reply.
+ *
+ * @param word: the console's command word.
+ * @param name: the debug command's two characters.
+ * @param req: the debug command, whose parameters are the console arguments.
+ * @param answer: the answer.
+ * @return 0, or -EINVAL when the console replied ERR.
+ */
+int m17bench_cat(const char *word, const char *name, const CatRequest &req,
+                 CatAnswer &answer);
+
+/**
+ * Register the debug commands on the bench state m17_trace.cpp holds: ZZTR,
+ * ZZMO, ZZSY, ZZRF, ZZNV and ZZTK. Called by the radio driver of a bench
+ * target.
+ */
+void m17bench_catRegister();
+
+/**
+ * Define the CAT debug command ZZ<c0><c1> for a console word, to register
+ * with cat_debugRegister() from the driver the command pokes.
+ */
+#define M17BENCH_CAT_COMMAND(ident, word, c0, c1)                           \
+    static int ident##Run(const CatRequest &req, CatAnswer &answer)        \
+    {                                                                       \
+        static const char name[2] = { c0, c1 };                             \
+        return m17bench_cat(word, name, req, answer);                       \
+    }                                                                       \
+    static CatDebugCommand ident = { { c0, c1 }, ident##Run, nullptr };
+#endif
+
 #endif /* M17_BENCH_H */

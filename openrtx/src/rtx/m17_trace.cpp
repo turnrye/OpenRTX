@@ -40,6 +40,23 @@
  *   TX <ms>                          TX <ms> <duration>: key for that long
  *   STAT                             STAT <ms> <mode> <rx> <tx> <mW> <modem>
  *                                    <SET|CAL> <mod1> <mod2> <ptt>
+ *
+ * On targets with CAT (CONFIG_CAT_DEBUG) the USB serial port is CAT's and the
+ * console is reached through its ZZ debug commands, registered by the drivers
+ * they poke (m17_bench.h, M17BENCH_CAT_COMMAND):
+ *
+ *   ZZxx<arguments>;                 the console command behind xx, with the
+ *                                    same arguments; answers ZZxx <ms> <text>;
+ *                                    or, when the reply has several lines,
+ *                                    ZZxx<count>; followed by the lines
+ *   ZZxx <ms> <text>;                a line of such a reply
+ *   ZZTR<line>;                      a trace line, e.g. ZZTRSTR <ms> ...
+ *   ZZPHR ...; ZZPHD ...;            physical layer records
+ *   ZZTK;                            ZZTK <ms since boot>;
+ *
+ * Mode, frequency, power, callsign, PTT, modem and identification are plain
+ * CAT commands there (ZM, FA/FB, ZP, ZC, TX, ZH, ID) and their console words
+ * are not registered.
  */
 
 #include "rtx/m17_trace.hpp"
@@ -55,6 +72,11 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+
+#ifdef CONFIG_CAT_DEBUG
+#include "core/cat/debug.hpp"
+#include <cerrno>
+#endif
 
 extern "C" ssize_t vcom_readBlock(void *buf, size_t len);
 extern "C" ssize_t vcom_writeBlock(const void *buf, size_t len);
@@ -117,6 +139,15 @@ static bool lastLock = false;              ///< Lock state last reported.
 
 static char line[LINE_SIZE];               ///< Line being formatted.
 static size_t lineLen = 0;                 ///< Characters in line.
+
+#ifdef CONFIG_CAT_DEBUG
+static bool capturing = false;             ///< A ZZ command is running.
+static bool captureError = false;          ///< It replied ERR.
+static char captureName[2];                ///< Its two characters.
+static char held[LINE_SIZE];               ///< Its latest reply line.
+static size_t heldLen = 0;                 ///< Characters in held.
+static unsigned int captureLines = 0;      ///< Reply lines so far.
+#endif
 static char command[COMMAND_SIZE];         ///< Command being received.
 static size_t commandLen = 0;              ///< Characters in command.
 
@@ -169,11 +200,52 @@ static void *writer(void *arg)
     return nullptr;
 }
 
+#ifdef CONFIG_CAT_DEBUG
+/**
+ * Run a function that drives the radio chips on the RTX thread.
+ *
+ * @param fn: function taking nothing and returning an int.
+ * @return what fn returned, or -ETIMEDOUT.
+ */
+template <typename Function>
+static int onRtx(Function fn)
+{
+    return cat_debugOnRtx(fn);
+}
+
+/**
+ * Send the held reply line as a debug line: the command's two characters in
+ * place of its keyword.
+ */
+static void emitHeld()
+{
+    char buf[LINE_SIZE + 2];
+    const char *rest = static_cast<const char *>(memchr(held, ' ', heldLen));
+    const size_t restLen = (rest != nullptr) ? (heldLen - (rest - held)) : 0;
+
+    memcpy(buf, captureName, 2);
+    if (restLen > 0)
+        memcpy(&buf[2], rest, restLen);
+    cat_debugEmit(buf, 2 + restLen);
+    heldLen = 0;
+}
+#else
+template <typename Function>
+static int onRtx(Function fn)
+{
+    return fn();
+}
+#endif
+
 /**
  * Start the writer thread, once.
  */
 static void startWriter()
 {
+#ifdef CONFIG_CAT_DEBUG
+    // Lines go out with CAT's answers
+    return;
+#endif
     if (writerStarted)
         return;
 
@@ -275,6 +347,13 @@ static void push(const char *data, size_t len)
 
 static void send()
 {
+#ifdef CONFIG_CAT_DEBUG
+    // A trace line: ZZTR<line>;
+    char buf[LINE_SIZE + 2] = { 'T', 'R' };
+    memcpy(&buf[2], line, lineLen);
+    cat_debugEmit(buf, 2 + lineLen);
+    return;
+#endif
     if (lineLen < LINE_SIZE)
         line[lineLen++] = '\n';
 
@@ -305,6 +384,20 @@ static void reply(const char *keyword, const char *fmt, ...)
 
     if (n > static_cast<int>(sizeof(buf)) - 2)
         n = sizeof(buf) - 2;
+#ifdef CONFIG_CAT_DEBUG
+    // The reply of a ZZ command: its last line is the answer, the lines
+    // before it go out as debug lines
+    if (capturing) {
+        if (strcmp(keyword, "ERR") == 0)
+            captureError = true;
+        if (heldLen > 0)
+            emitHeld();
+        memcpy(held, buf, n);
+        heldLen = n;
+        captureLines++;
+    }
+    return;
+#endif
     buf[n++] = '\n';
     push(buf, n);
 }
@@ -447,7 +540,7 @@ static void handleCommand()
         unsigned long count = strtoul(p, nullptr, 16);
         count = std::min<unsigned long>(std::max<unsigned long>(count, 1), 32);
         uint8_t vals[32];
-        if (!hasArg || (m17bench_rd(page, reg, count, vals) != 0)) {
+        if (!hasArg || (onRtx([&]() { return m17bench_rd(page, reg, count, vals); }) != 0)) {
             reply("ERR", "RD");
         } else {
             char hexs[2 * 32 + 1];
@@ -462,7 +555,7 @@ static void handleCommand()
         unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
         unsigned long reg = strtoul(p, &p, 16);
         unsigned long value = strtoul(p, nullptr, 16);
-        if (!hasArg || (m17bench_wr(page, reg, value) != 0))
+        if (!hasArg || (onRtx([&]() { return m17bench_wr(page, reg, value); }) != 0))
             reply("ERR", "WR");
         else
             reply("WR", "%lx %03lx %02lx", page, reg, value);
@@ -474,7 +567,8 @@ static void handleCommand()
         unsigned long page = hasArg ? strtoul(p, &p, 16) : 0;
         unsigned long addr = strtoul(p, &p, 16);
         unsigned long len = std::min<unsigned long>(strtoul(p, nullptr, 16), sizeof(data));
-        if (!hasArg || (len == 0) || (m17bench_ram(page, addr, data, len) != 0)) {
+        if (!hasArg || (len == 0)
+            || (onRtx([&]() { return m17bench_ram(page, addr, data, len); }) != 0)) {
             reply("ERR", "RAM");
         } else {
             for (unsigned long i = 0; i < len; i += 48) {
@@ -488,17 +582,22 @@ static void handleCommand()
         }
     } else if (strcmp(command, "PHY") == 0) {
         // PHY <subcommand>: the HR_C6000's physical layer receive
+        // The command runs on the RTX thread, whose stack has no room for
+        // formatting; its status line is made here
         char text[LINE_SIZE - 16];
-        if (!hasArg || (C6000phy_command(arg, text, sizeof(text)) != 0))
+        char stat[] = "STAT";
+        if (!hasArg || (onRtx([&]() { return C6000phy_command(arg, nullptr, 0); }) != 0)
+            || (C6000phy_command(stat, text, sizeof(text)) != 0))
             reply("ERR", "PHY");
         else
             reply("PHY", "%s", text);
     } else if (strcmp(command, "RINIT") == 0) {
         // RINIT: both RF chips initialised again, the radio back in its mode
         char off[] = "OFF";
-        char text[96];
-        C6000phy_command(off, text, sizeof(text));
-        if (m17bench_rinit() != 0)
+        if (onRtx([&]() {
+                C6000phy_command(off, nullptr, 0);
+                return m17bench_rinit();
+            }) != 0)
             reply("ERR", "RINIT");
         else
             reply("RINIT", "OK");
@@ -506,13 +605,13 @@ static void handleCommand()
         // BW 12|25: the RF chip's channel bandwidth in kHz, until the next
         // mode change
         int khz = hasArg ? atoi(arg) : 0;
-        if (((khz != 12) && (khz != 25)) || (m17bench_bw(khz) != 0))
+        if (((khz != 12) && (khz != 25)) || (onRtx([&]() { return m17bench_bw(khz); }) != 0))
             reply("ERR", "BW");
         else
             reply("BW", "%d", khz);
     } else if (strcmp(command, "C6KINIT") == 0) {
         // C6KINIT: initialise the HR_C6000 again and put back its M17 set-up
-        if (m17bench_c6kinit() != 0)
+        if (onRtx([]() { return m17bench_c6kinit(); }) != 0)
             reply("ERR", "C6KINIT");
         else
             reply("C6KINIT", "OK");
@@ -581,7 +680,10 @@ static void handleCommand()
         unsigned long reg = hasArg ? strtoul(arg, &end, 16) : 0;
         unsigned long value = (end != nullptr) && (*end == ' ')
                             ? strtoul(end + 1, nullptr, 16) : 0;
-        m17bench_wreg(static_cast<uint16_t>(reg), static_cast<uint8_t>(value));
+        onRtx([&]() {
+            m17bench_wreg(static_cast<uint16_t>(reg), static_cast<uint8_t>(value));
+            return 0;
+        });
         reply("WREG", "%02lx %02lx", reg, value);
     } else if (strcmp(command, "REGS") == 0) {
         // REGS <start hex> [<count, at most 32>]: HR_C6000 config registers
@@ -592,8 +694,18 @@ static void handleCommand()
         if (count > 32)
             count = 32;
         char regs[LINE_SIZE - 16];
+#ifdef CONFIG_CAT_DEBUG
+        // Read on the RTX thread, formatted here
+        uint8_t vals[32] = {};
+        onRtx([&]() { return m17bench_rd(4, start, count, vals); });
+        for (unsigned long i = 0; i < count; i++)
+            snprintf(&regs[2 * i], 3, "%02x", vals[i]);
+        if (count == 0)
+            regs[0] = '\0';
+#else
         m17bench_regs(static_cast<uint8_t>(start), static_cast<uint8_t>(count),
                       regs, sizeof(regs));
+#endif
         reply("REGS", "%02lx %s", start, regs);
     } else if (strcmp(command, "DIAG") == 0) {
         char diag[LINE_SIZE - 16];
@@ -616,8 +728,92 @@ static void handleCommand()
     }
 }
 
+#ifdef CONFIG_CAT_DEBUG
+int m17bench_cat(const char *word, const char *name, const CatRequest &req,
+                 CatAnswer &answer)
+{
+    // The command as the console took it: the word, then the arguments
+    const char *args = req.args;
+    size_t len = req.len;
+    while ((len > 0) && (*args == ' ')) {
+        args++;
+        len--;
+    }
+
+    const size_t wordLen = strlen(word);
+    if ((wordLen + 1 + len) >= COMMAND_SIZE)
+        return -EINVAL;
+
+    memcpy(command, word, wordLen);
+    commandLen = wordLen;
+    if (len > 0) {
+        command[commandLen++] = ' ';
+        memcpy(&command[commandLen], args, len);
+        commandLen += len;
+    }
+    command[commandLen] = '\0';
+
+    capturing = true;
+    captureError = false;
+    captureLines = 0;
+    heldLen = 0;
+    memcpy(captureName, name, 2);
+    handleCommand();
+    capturing = false;
+
+    if (captureError)
+        return -EINVAL;
+
+    answer.append("ZZ", 2);
+    answer.append(name, 2);
+    if (captureLines > 1) {
+        // The lines follow as debug lines, the last one included
+        emitHeld();
+        answer.appendNumber(captureLines, 3);
+    } else if (heldLen > 0) {
+        const char *rest = static_cast<const char *>(memchr(held, ' ', heldLen));
+        if (rest != nullptr)
+            answer.append(rest, heldLen - (rest - held));
+    }
+
+    return 0;
+}
+
+/**
+ * ZZTK: the time since boot, in ms.
+ */
+static int catTick(const CatRequest &req, CatAnswer &answer)
+{
+    (void) req;
+    answer.append("ZZTK ", 5);
+    answer.appendNumber(static_cast<uint32_t>(getTick()), 10);
+    return 0;
+}
+
+M17BENCH_CAT_COMMAND(catTrace, "TRACE", 'T', 'R')
+M17BENCH_CAT_COMMAND(catMod, "MOD", 'M', 'O')
+M17BENCH_CAT_COMMAND(catSymReg, "SYMREG", 'S', 'Y')
+M17BENCH_CAT_COMMAND(catRxFlip, "RXFLIP", 'R', 'F')
+M17BENCH_CAT_COMMAND(catNvm, "NVM", 'N', 'V')
+static CatDebugCommand catTickCommand = { { 'T', 'K' }, catTick, nullptr };
+
+void m17bench_catRegister()
+{
+    cat_debugRegister(catTrace);
+    cat_debugRegister(catMod);
+    cat_debugRegister(catSymReg);
+    cat_debugRegister(catRxFlip);
+    cat_debugRegister(catNvm);
+    cat_debugRegister(catTickCommand);
+}
+#endif
+
 void m17bench_poll()
 {
+#ifdef CONFIG_CAT
+    // CAT reads the USB serial port
+    return;
+#endif
     char c;
     while (vcom_readBlock(&c, 1) == 1) {
         if ((c == '\r') || (c == '\n')) {
@@ -695,6 +891,11 @@ extern "C" __attribute__((weak)) int C6000phy_command(char *args, char *reply,
  */
 extern "C" void m17bench_emit(const char *text)
 {
+#ifdef CONFIG_CAT_DEBUG
+    // Records start with their command's two characters: ZZPHR ...;
+    cat_debugEmit(text, strnlen(text, LINE_SIZE - 1));
+    return;
+#endif
     char buf[LINE_SIZE];
     size_t n = strnlen(text, LINE_SIZE - 1);
     memcpy(buf, text, n);

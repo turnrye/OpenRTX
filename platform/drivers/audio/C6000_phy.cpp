@@ -15,6 +15,9 @@
 #include "interfaces/delays.h"
 #include "core/threads.h"
 #include "C6000_phy.h"
+#ifdef CONFIG_CAT_DEBUG
+#include "rtx/m17_bench.h"
+#endif
 
 extern "C" void m17bench_emit(const char *line);
 
@@ -240,9 +243,17 @@ static void *phyThread(void *arg)
     return nullptr;
 }
 
+#ifdef CONFIG_CAT_DEBUG
+// ZZPH<subcommand>: the console's PHY command
+M17BENCH_CAT_COMMAND(catPhy, "PHY", 'P', 'H')
+#endif
+
 void C6000phy_init(HR_C6000 *chip)
 {
     c6000 = chip;
+#ifdef CONFIG_CAT_DEBUG
+    cat_debugRegister(catPhy);
+#endif
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -471,7 +482,8 @@ int C6000phy_command(char *args, char *reply, size_t len)
         ret = -1;
     }
 
-    if(ret == 0)
+    // No status line for a caller without room to format one
+    if((ret == 0) && (reply != nullptr))
         stat(reply, len);
     pthread_mutex_unlock(&mutex);
     return ret;
