@@ -142,6 +142,20 @@ public:
     }
 
     /**
+     * Set the value of a register addressed with 11 bits, as the auxiliary
+     * registers from 0x100 up are.
+     *
+     * @param page: register page.
+     * @param addr: register address.
+     * @param value: new register value.
+     */
+    void writeRegister16(const C6000_SpiOpModes page, const uint16_t addr,
+                         const uint8_t value)
+    {
+        writeReg16(page, addr, value);
+    }
+
+    /**
      * TEST ONLY: write a register with an extended (11-bit) address.
      *
      * @param page: page number.

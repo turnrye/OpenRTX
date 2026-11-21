@@ -74,9 +74,11 @@ extern "C" int m17bench_rinit()
  * CAT debug commands for the two chips, run on the RTX thread, in order with
  * this driver's own register writes. Numbers are hexadecimal.
  *
- *   ZZC6<page> <reg>;          read a HR_C6000 register of page 1 (auxiliary)
- *                              or 4 (configuration): ZZC6<page> <reg> <value>;
- *   ZZC6<page> <reg> <value>;  write it
+ *   ZZC6<page> <reg>;          read a HR_C6000 register of any page (1 is
+ *                              auxiliary, 4 configuration):
+ *                              ZZC6<page> <reg> <value>;
+ *   ZZC6<page> <reg> <value>;  write it; a register above FF, up to 7FF, is
+ *                              written with the extended address
  *   ZZAT<reg>;                 read an AT1846S register: ZZAT<reg> <value>;
  *   ZZAT<reg> <value>;         write it
  */
@@ -89,8 +91,10 @@ static int catDebugC6000(const CatRequest &req, CatAnswer &answer)
     std::array<uint32_t, 3> arg;
     int count = cat_debugParseHex(req, arg.data(), arg.size());
 
-    bool valid = (count >= 2) && ((arg[0] == 1) || (arg[0] == 4))
-              && (arg[1] <= 0xFF) && ((count == 2) || (arg[2] <= 0xFF));
+    // Only writes take an extended address
+    bool valid = (count >= 2) && (arg[0] <= 7)
+              && (((count == 2) && (arg[1] <= 0xFF))
+                  || ((count == 3) && (arg[1] <= 0x7FF) && (arg[2] <= 0xFF)));
     if (valid == false)
         return -EINVAL;
 
@@ -99,7 +103,11 @@ static int catDebugC6000(const CatRequest &req, CatAnswer &answer)
 
     if (count == 3) {
         return cat_debugOnRtx([page, reg, &arg]() {
-            C6000.writeRegister(page, reg, arg[2]);
+            if (arg[1] > 0xFF)
+                C6000.writeRegister16(page, arg[1], arg[2]);
+            else
+                C6000.writeRegister(page, reg, arg[2]);
+
             return 0;
         });
     }
