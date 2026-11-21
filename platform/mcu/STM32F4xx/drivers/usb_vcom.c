@@ -224,7 +224,14 @@ int vcom_init()
     return 0;
 }
 
-ssize_t vcom_writeBlock(const void* buf, size_t len)
+/**
+ * Send one packet and wait for the host to take it.
+ *
+ * @param buf: data to send.
+ * @param len: number of bytes, at most CDC_DATA_IN_PACKET_SIZE.
+ * @return len, or -ETIMEDOUT when the host did not take the packet.
+ */
+static ssize_t writePacket(const uint8_t *buf, size_t len)
 {
     const uint16_t limit = txStalled ? TX_STALLED_TIMEOUT_MS : TX_TIMEOUT_MS;
 
@@ -246,6 +253,28 @@ ssize_t vcom_writeBlock(const void* buf, size_t len)
     }
 
     txStalled = false;
+    return len;
+}
+
+ssize_t vcom_writeBlock(const void* buf, size_t len)
+{
+    /*
+     * One packet at a time: a longer transfer is refilled from the USB
+     * interrupt, and the radio froze after some tens of thousands of them.
+     */
+    const uint8_t *data = (const uint8_t *) buf;
+    size_t sent = 0;
+    while(sent < len)
+    {
+        size_t chunk = len - sent;
+        if(chunk > CDC_DATA_IN_PACKET_SIZE)
+            chunk = CDC_DATA_IN_PACKET_SIZE;
+        ssize_t ret = writePacket(&data[sent], chunk);
+        if(ret < 0)
+            return ret;
+
+        sent += chunk;
+    }
     return len;
 }
 
