@@ -345,6 +345,28 @@ public:
         maskSetRegister(0x30, 0x0080, 0x0000);
     }
 
+    /**
+     * Set the value of a register.
+     *
+     * @param reg: register number.
+     * @param value: new register value.
+     */
+    inline void writeRegister(const uint8_t reg, const uint16_t value)
+    {
+        i2c_writeReg16(reg, value);
+    }
+
+    /**
+     * Get the current value of a register.
+     *
+     * @param reg: register number.
+     * \return current value of the register.
+     */
+    inline uint16_t readRegister(const uint8_t reg)
+    {
+        return i2c_readReg16(reg);
+    }
+
 private:
 
     /**
