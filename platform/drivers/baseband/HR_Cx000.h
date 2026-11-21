@@ -236,6 +236,31 @@ public:
     }
 
     /**
+     * Set the value of a register of any page.
+     *
+     * @param page: register page.
+     * @param reg: register number.
+     * @param value: new register value.
+     */
+    inline void writeRegister(const M page, const uint8_t reg,
+                              const uint8_t value)
+    {
+        writeReg(page, reg, value);
+    }
+
+    /**
+     * Get the current value of a register of any page.
+     *
+     * @param page: register page.
+     * @param reg: register number.
+     * \return current value of the register.
+     */
+    inline uint8_t readRegister(const M page, const uint8_t reg)
+    {
+        return readReg(page, reg);
+    }
+
+    /**
      * Send audio to the DAC FIFO for playback via the "OpenMusic" mode.
      * This function assumes that audio chunk is composed of 64 bytes.
      *
