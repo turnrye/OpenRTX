@@ -808,6 +808,35 @@ static int catHeap(const CatRequest &req, CatAnswer &answer)
 
 static CatDebugCommand catHeapCommand = { { 'H', 'P' }, catHeap, nullptr };
 
+#ifdef STM32F405xx
+volatile bool m17bench_crumbsOn = false;
+
+/**
+ * ZZBK: the breadcrumbs, ZZBK <armed> <main> <ui> <rtx> <phy> <usb> <write>;
+ * each the step (two hex digits) and the time in ms (six). ZZBK1 arms them,
+ * ZZBK0 stops them.
+ */
+static int catCrumbs(const CatRequest &req, CatAnswer &answer)
+{
+    if (req.len > 0) {
+        if (req.args[0] == '1')
+            PWR->CR |= PWR_CR_DBP;      // Backup registers writable
+        m17bench_crumbsOn = (req.args[0] == '1');
+        return 0;
+    }
+
+    char text[80];
+    int n = snprintf(text, sizeof(text), "ZZBK %d", m17bench_crumbsOn ? 1 : 0);
+    for (int i = CRUMB_MAIN; i <= CRUMB_WRITE; i++)
+        n += snprintf(&text[n], sizeof(text) - n, " %08lx",
+                      static_cast<unsigned long>((&RTC->BKP0R)[i]));
+    answer.append(text, n);
+    return 0;
+}
+
+static CatDebugCommand catCrumbsCommand = { { 'B', 'K' }, catCrumbs, nullptr };
+#endif
+
 M17BENCH_CAT_COMMAND(catTrace, "TRACE", 'T', 'R')
 M17BENCH_CAT_COMMAND(catMod, "MOD", 'M', 'O')
 M17BENCH_CAT_COMMAND(catSymReg, "SYMREG", 'S', 'Y')
@@ -824,6 +853,9 @@ void m17bench_catRegister()
     cat_debugRegister(catNvm);
     cat_debugRegister(catTickCommand);
     cat_debugRegister(catHeapCommand);
+#ifdef STM32F405xx
+    cat_debugRegister(catCrumbsCommand);
+#endif
 }
 #endif
 

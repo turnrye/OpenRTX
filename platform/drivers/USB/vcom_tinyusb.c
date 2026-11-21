@@ -11,6 +11,7 @@
 #include "core/threads.h"
 #include "interfaces/delays.h"
 #include "interfaces/vcom.h"
+#include "rtx/m17_bench.h"
 #include "tusb.h"
 #include "usb.h"
 
@@ -63,11 +64,13 @@ static void *usbThread(void *arg)
     (void)arg;
 
     for (;;) {
+        m17bench_crumb(CRUMB_USB, 1);       // TEST ONLY
         pthread_mutex_lock(&usbMutex);
         tud_task();
         // Send what a write left in the FIFO while the endpoint was busy
         tud_cdc_write_flush();
         pthread_mutex_unlock(&usbMutex);
+        m17bench_crumb(CRUMB_USB, 2);       // TEST ONLY
 
         sleepFor(0, USB_TASK_PERIOD_MS);
     }
@@ -104,6 +107,7 @@ ssize_t vcom_writeBlock(const void *buf, size_t len)
     size_t sent = 0;
     uint32_t waited = 0;
 
+    m17bench_crumb(CRUMB_WRITE, 1);         // TEST ONLY
     pthread_mutex_lock(&usbMutex);
 
     while (sent < len) {
@@ -127,6 +131,7 @@ ssize_t vcom_writeBlock(const void *buf, size_t len)
             break;
         }
 
+        m17bench_crumb(CRUMB_WRITE, 2);     // TEST ONLY
         pthread_mutex_unlock(&usbMutex);
         sleepFor(0, 1);
         waited++;
@@ -135,6 +140,7 @@ ssize_t vcom_writeBlock(const void *buf, size_t len)
 
     txStalled = (ret == -ETIMEDOUT);
     pthread_mutex_unlock(&usbMutex);
+    m17bench_crumb(CRUMB_WRITE, 3);         // TEST ONLY
 
     return ret;
 }

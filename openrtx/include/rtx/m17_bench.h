@@ -82,6 +82,44 @@ bool m17bench_symReg(int idx, uint8_t *reg, uint8_t *value);
  */
 int m17bench_nvm(uint32_t addr, uint8_t *buf, uint32_t len);
 
+/*
+ * Breadcrumbs for a firmware freeze: while armed (ZZBK1), each thread notes
+ * its step and the time in an RTC backup register, which keeps its value
+ * through a power cycle. ZZBK reads them back: the thread whose time is the
+ * oldest stopped first, at the step noted.
+ */
+enum m17benchCrumb
+{
+    CRUMB_MAIN = 10,    ///< Main thread: 1 loop, 2 CAT, 3 state, 4 sleep.
+    CRUMB_UI,           ///< UI thread: 1 loop, 2 FSM done, 3 render, 4 sleep.
+    CRUMB_RTX,          ///< RTX thread: 1 rtx_task, 2 debug call, 3 done.
+    CRUMB_PHY,          ///< PHY thread: 1 in, 2 status, 3 record, 4 out.
+    CRUMB_USB,          ///< USB thread: 1 tud_task, 2 done.
+    CRUMB_WRITE,        ///< vcom write: 1 in, 2 waiting, 3 out.
+};
+
+#if defined(CONFIG_CAT_DEBUG) && defined(STM32F405xx)
+#include "stm32f4xx.h"
+#include "interfaces/delays.h"
+
+extern volatile bool m17bench_crumbsOn;
+
+static inline void m17bench_crumb(const enum m17benchCrumb which,
+                                  const uint32_t step)
+{
+    if(m17bench_crumbsOn)
+        (&RTC->BKP0R)[which] = (step << 24)
+                             | ((uint32_t) getTick() & 0x00FFFFFF);
+}
+#else
+static inline void m17bench_crumb(const enum m17benchCrumb which,
+                                  const uint32_t step)
+{
+    (void) which;
+    (void) step;
+}
+#endif
+
 #ifdef __cplusplus
 }
 #endif

@@ -15,9 +15,7 @@
 #include "interfaces/delays.h"
 #include "core/threads.h"
 #include "C6000_phy.h"
-#ifdef CONFIG_CAT_DEBUG
 #include "rtx/m17_bench.h"
-#endif
 
 extern "C" void m17bench_emit(const char *line);
 
@@ -281,6 +279,7 @@ void C6000phy_task()
         return;
 
     pthread_mutex_lock(&mutex);
+    m17bench_crumb(CRUMB_PHY, 1);
     if(active.load())
     {
         const uint32_t ts = tsCount.load();
@@ -314,15 +313,18 @@ void C6000phy_task()
             if((everyAt >= 0) && (getTick() >= everyAt))
             {
                 everyAt = -1;
+                m17bench_crumb(CRUMB_PHY, 2);
                 const uint8_t flags = c6000->benchRead(PAGE_CONFIG, 0x82);
                 const uint8_t r51 = c6000->benchRead(PAGE_CONFIG, 0x51);
                 const uint8_t r5f = c6000->benchRead(PAGE_CONFIG, 0x5F);
                 polls++;
                 lastFlags = flags;
+                m17bench_crumb(CRUMB_PHY, 3);
                 if(irqStatus)
                     sendRecord(irq51, irq5f, irq82);
                 else
                     sendRecord(r51, r5f, flags);
+                m17bench_crumb(CRUMB_PHY, 4);
                 if((flags & 0x01) != 0)
                     c6000->benchWrite(PAGE_CONFIG, 0x83, 0x01);
                 seq++;

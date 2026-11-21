@@ -62,6 +62,7 @@ void *ui_threadFunc(void *arg)
     while(state.devStatus != SHUTDOWN)
     {
         time = getTick();
+        m17bench_crumb(CRUMB_UI, 1);
 
         if(input_scanKeyboard(&kbd_msg))
         {
@@ -79,6 +80,7 @@ void *ui_threadFunc(void *arg)
         }
 
         pthread_mutex_unlock(&state_mutex); // Unlock r/w access to radio state
+        m17bench_crumb(CRUMB_UI, 2);
 
         vp_tick();                           // continue playing voice prompts in progress if any.
 
@@ -122,12 +124,14 @@ void *ui_threadFunc(void *arg)
         }
 
         // Update UI and render on screen, if necessary
+        m17bench_crumb(CRUMB_UI, 3);
         if(ui_updateGUI() == true)
         {
             gfx_render();
         }
 
         // 40Hz update rate for keyboard and UI
+        m17bench_crumb(CRUMB_UI, 4);
         time += 25;
         sleepUntil(time);
     }
@@ -167,6 +171,7 @@ void *main_thread(void *arg)
         #endif
 
         // Check if power off is requested
+        m17bench_crumb(CRUMB_MAIN, 1);
         pthread_mutex_lock(&state_mutex);
         if(platform_pwrButtonStatus() == false)
             state.devStatus = SHUTDOWN;
@@ -179,13 +184,16 @@ void *main_thread(void *arg)
 
         // Run CAT task
         #if defined(CONFIG_CAT)
+        m17bench_crumb(CRUMB_MAIN, 2);
         cat_task(time);
         #endif
 
         // Run state update task
+        m17bench_crumb(CRUMB_MAIN, 3);
         state_task();
 
         // Run this loop once every 5ms
+        m17bench_crumb(CRUMB_MAIN, 4);
         time += 5;
         sleepUntil(time);
     }
@@ -204,11 +212,14 @@ void *rtx_threadFunc(void *arg)
 
     while(state.devStatus == RUNNING)
     {
+        m17bench_crumb(CRUMB_RTX, 1);
         rtx_task();
 
         #if defined(CONFIG_CAT_DEBUG)
+        m17bench_crumb(CRUMB_RTX, 2);
         cat_debugService();
         #endif
+        m17bench_crumb(CRUMB_RTX, 3);
     }
 
     rtx_terminate();
