@@ -11,7 +11,7 @@
 #include "drivers/GPS/gps_stm32.h"
 #include <pthread.h>
 #include "core/gps.h"
-#include "drivers/usb_vcom.h"
+#include "interfaces/vcom.h"
 #include "interfaces/chardev.h"
 
 static void gpsEnable(void *priv)
