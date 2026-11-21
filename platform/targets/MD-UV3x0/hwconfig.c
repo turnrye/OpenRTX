@@ -13,7 +13,7 @@
 #include "drivers/ADC/adc_stm32.h"
 #include "drivers/GPS/gps_stm32.h"
 #include "core/gps.h"
-#include "drivers/usb_vcom.h"
+#include "interfaces/vcom.h"
 #include "interfaces/chardev.h"
 
 static pthread_mutex_t c6000_mutex;
