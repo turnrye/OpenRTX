@@ -59,10 +59,6 @@ extern const struct Adc adc1;
 /* With the HR_C6000's modem, the microphone through its codec, over I2S */
 #define CONFIG_M17_CHIP_MIC
 
-/* Microphone audio input */
-#define CONFIG_MIC_GAIN 32
-#define CONFIG_MIC_OVERSAMPLE 8
-
 /* CAT control over the USB virtual COM port */
 #define CONFIG_CAT
 extern const struct chardev_ops cat_chardev;

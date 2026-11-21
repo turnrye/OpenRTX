@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#include <algorithm>
 #include <errno.h>
+#include <memory>
+#include <new>
+#include "core/dsp.h"
+#include "core/utils.h"
 #include "C6000_fmcopy.h"
 #include "C6000_symbols.h"
 #include "C6000_modem.h"
 
 static constexpr uint32_t SYMBOL_RATE = 4800;
-static constexpr uint32_t CODEC_RATE = 8000;
-static constexpr size_t CODEC_BUF_SIZE = 320;
 
 static const struct audioDriver *outDriver;
 static const struct audioDriver *inDriver;
@@ -20,18 +21,20 @@ static const struct audioDriver *micDriver;
 static bool useChip;
 
 /*
- * The codec's microphone stream is 8 kHz at full scale, while the stream is
- * asked for at the rate of the analog path and its user applies the gain of
- * that path: each codec sample is repeated to make up the rate and divided by
- * that gain.
+ * The microphone stream has the rate and the level of the codec's samples.
+ * The analog path is sampled faster into a buffer of its own, on the heap
+ * for the DMA to reach it, then low pass filtered down to the stream's rate
+ * and brought up to that level.
  */
-static stream_sample_t codecBuf[CODEC_BUF_SIZE];
-static struct streamCtx codecCtx;
+static const struct C6000micPaths *micPaths;
 static bool micChip;
-static size_t micRepeat;
-static int16_t micGain;
+static std::unique_ptr<stream_sample_t[]> analogBuf;
+static size_t analogSize;
+static struct streamCtx analogCtx;
+static struct lowPassDecimator micLowPass;
+static struct dcBlock micDcBlock;
 
-// TEST ONLY: microphone starts, the last start's result, and the codec
+// TEST ONLY: microphone starts, the last start's result, and the stream's
 // samples since the last read: count, peak, sum and sum of squares
 static uint32_t micStarts;
 static int micStartRet;
@@ -46,13 +49,23 @@ extern "C" void C6000modem_micBench(int32_t *v, int64_t *sum, uint64_t *sumSq)
     v[1] = micStartRet;
     v[2] = micFrames;
     v[3] = micPeak;
-    v[4] = codecCtx.running;
+    v[4] = micChip ? 1 : 0;
     *sum = micSum;
     *sumSq = micSumSq;
     micFrames = 0;
     micPeak = 0;
     micSum = 0;
     micSumSq = 0;
+}
+
+static void micBenchNote(const stream_sample_t *buf, const int len)
+{
+    for (int i = 0; i < len; i++) {
+        micFrames++;
+        micPeak = std::max<int32_t>(micPeak, (buf[i] < 0) ? -buf[i] : buf[i]);
+        micSum += buf[i];
+        micSumSq += static_cast<int32_t>(buf[i]) * buf[i];
+    }
 }
 
 extern "C" void C6000modem_bench(uint32_t *v) // TEST ONLY
@@ -143,76 +156,89 @@ static void in_terminate(struct streamCtx *ctx)
 static int mic_start(const uint8_t instance, const void *config,
                      struct streamCtx *ctx)
 {
-    const struct C6000micPaths *paths =
-        static_cast<const struct C6000micPaths *>(config);
-
+    micPaths = static_cast<const struct C6000micPaths *>(config);
     micChip = useChip;
-    if (micChip == false) {
-        micDriver = paths->analog.driver;
-        return micDriver->start(instance, paths->analog.config, ctx);
+    micStarts++; // TEST ONLY
+
+    if (micChip) {
+        micDriver = micPaths->chip.driver;
+        micStartRet = micDriver->start(instance, micPaths->chip.config, ctx);
+        return micStartRet;
     }
 
-    micStarts++;                        // TEST ONLY
-    micStartRet = -EINVAL;              // TEST ONLY
-    micRepeat = ctx->sampleRate / CODEC_RATE;
-    if ((micRepeat == 0) || ((ctx->sampleRate % CODEC_RATE) != 0)
-        || ((ctx->bufSize % micRepeat) != 0)
-        || ((ctx->bufSize / micRepeat) > CODEC_BUF_SIZE))
-        return -EINVAL;
+    int ret = dsp_lowPassInit(&micLowPass, micPaths->analogRatio);
+    micStartRet = ret; // TEST ONLY
+    if (ret < 0)
+        return ret;
 
-    micDriver = paths->chip.driver;
-    micGain = paths->analogGain;
-    codecCtx.buffer = codecBuf;
-    codecCtx.bufSize = ctx->bufSize / micRepeat;
-    codecCtx.bufMode = ctx->bufMode;
-    codecCtx.sampleRate = CODEC_RATE;
+    const size_t size = ctx->bufSize * micPaths->analogRatio;
+    if (size != analogSize) {
+        analogBuf.reset(new (std::nothrow) stream_sample_t[size]);
+        analogSize = (analogBuf != nullptr) ? size : 0;
+    }
 
-    int ret = micDriver->start(instance, paths->chip.config, &codecCtx);
-    ctx->running = codecCtx.running;
-    micStartRet = ret;                  // TEST ONLY
+    micStartRet = -ENOMEM; // TEST ONLY
+    if (analogBuf == nullptr)
+        return -ENOMEM;
+
+    dsp_resetState(micDcBlock);
+    micDriver = micPaths->analog.driver;
+    analogCtx.buffer = analogBuf.get();
+    analogCtx.bufSize = size;
+    analogCtx.bufMode = ctx->bufMode;
+    analogCtx.sampleRate = ctx->sampleRate * micPaths->analogRatio;
+
+    ret = micDriver->start(instance, micPaths->analog.config, &analogCtx);
+    ctx->running = analogCtx.running;
+    micStartRet = ret; // TEST ONLY
 
     return ret;
 }
 
 static int mic_data(struct streamCtx *ctx, stream_sample_t **buf)
 {
-    if (micChip == false)
-        return micDriver->data(ctx, buf);
-
-    stream_sample_t *in;
-    int frames = micDriver->data(&codecCtx, &in);
-    if (frames < 0)
-        return frames;
-
-    stream_sample_t *out = &ctx->buffer[(in - codecBuf) * micRepeat];
-    for (int i = 0; i < frames; i++) {
-        std::fill_n(&out[i * micRepeat], micRepeat, in[i] / micGain);
-
-        // TEST ONLY
-        micFrames++;
-        micPeak = std::max<int32_t>(micPeak, (in[i] < 0) ? -in[i] : in[i]);
-        micSum += in[i];
-        micSumSq += static_cast<int32_t>(in[i]) * in[i];
+    if (micChip) {
+        int len = micDriver->data(ctx, buf);
+        micBenchNote(*buf, len); // TEST ONLY
+        return len;
     }
 
+    stream_sample_t *in;
+    int len = micDriver->data(&analogCtx, &in);
+    if (len < 0)
+        return len;
+
+    stream_sample_t *out =
+        &ctx->buffer[(in - analogCtx.buffer) / micPaths->analogRatio];
+    int frames = 0;
+    for (int i = 0; i < len; i++) {
+        int16_t sample = in[i];
+        if (!dsp_lowPassDecimate(&micLowPass, &sample))
+            continue;
+
+        sample = dsp_dcBlockFilter(&micDcBlock, sample);
+        out[frames++] = s16_mulSat(sample, micPaths->analogGain);
+    }
+
+    micBenchNote(out, frames); // TEST ONLY
     *buf = out;
-    return frames * micRepeat;
+    return frames;
 }
 
 static int mic_sync(struct streamCtx *ctx, uint8_t dirty)
 {
-    if (micChip == false)
+    if (micChip)
         return micDriver->sync(ctx, dirty);
 
-    int ret = micDriver->sync(&codecCtx, dirty);
-    ctx->running = codecCtx.running;
+    int ret = micDriver->sync(&analogCtx, dirty);
+    ctx->running = analogCtx.running;
 
     return ret;
 }
 
 static void mic_stop(struct streamCtx *ctx)
 {
-    micDriver->stop(micChip ? &codecCtx : ctx);
+    micDriver->stop(micChip ? ctx : &analogCtx);
 }
 
 static void mic_terminate(struct streamCtx *ctx)
@@ -220,12 +246,12 @@ static void mic_terminate(struct streamCtx *ctx)
     if (micDriver == NULL)
         return;
 
-    if (micChip == false) {
+    if (micChip) {
         micDriver->terminate(ctx);
         return;
     }
 
-    micDriver->terminate(&codecCtx);
+    micDriver->terminate(&analogCtx);
     ctx->running = 0;
 }
 
