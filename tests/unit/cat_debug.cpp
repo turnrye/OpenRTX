@@ -25,7 +25,7 @@
 /**
  * Loopback of the link: what the host sends and what the radio answers.
  */
-using Text = std::array<char, 1024>;
+using Text = std::array<char, 8192>;
 
 static Text hostToRadio;
 static size_t hostToRadioLen;
@@ -272,13 +272,13 @@ TEST_CASE("CAT debug lines go out with the answers", "[cat][debug]")
     SECTION("Lines that do not fit are dropped and counted")
     {
         static constexpr size_t LEN = sizeof(LINE) - 1;
-        std::array<char, 1024> expected = {};
+        Text expected = {};
 
-        // Five lines fit in 512 characters, each sent as ZZ<line>;
-        for (size_t i = 0; i < 8; i++)
+        // 47 lines fit in 4096 characters, each sent as ZZ<line>;
+        for (size_t i = 0; i < 50; i++)
             cat_debugEmit(LINE, LEN);
 
-        for (size_t i = 0; i < 5; i++) {
+        for (size_t i = 0; i < 47; i++) {
             strcat(expected.data(), "ZZ");
             strcat(expected.data(), LINE);
             strcat(expected.data(), ";");

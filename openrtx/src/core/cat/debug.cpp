@@ -19,7 +19,8 @@
  * Debug lines waiting to be sent.
  */
 struct EmitBuffer {
-    std::array<char, 512> text; ///< Lines, each as ZZ<line>;.
+    // Room for a burst of bench records between two passes of cat_task()
+    std::array<char, 4096> text; ///< Lines, each as ZZ<line>;.
     size_t length;              ///< Characters in text.
 };
 

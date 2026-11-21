@@ -85,7 +85,12 @@ public:
     }
 
 private:
-    static constexpr size_t MAX_LENGTH = 48; ///< Longest answer, ';' excluded.
+#ifdef CONFIG_CAT_DEBUG
+    // Debug commands answer with register dumps and status lines
+    static constexpr size_t MAX_LENGTH = 192; ///< Longest answer, ';' excluded.
+#else
+    static constexpr size_t MAX_LENGTH = 48;  ///< Longest answer, ';' excluded.
+#endif
 
     std::array<char, MAX_LENGTH + 1> text;   ///< Answer text, room for ';'.
     size_t length;                           ///< Characters in text.
