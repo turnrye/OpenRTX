@@ -49,13 +49,15 @@ public:
     void append(const char *str, const size_t maxLen);
 
     /**
-     * Append a number in a fixed number of decimal digits, zero-padded. Digits
-     * beyond that number are dropped.
+     * Append a number in a fixed number of digits, zero-padded. Digits beyond
+     * that number are dropped.
      *
      * @param value: number to append.
      * @param digits: number of digits.
+     * @param base: number base, 10 or 16; hexadecimal digits are upper case.
      */
-    void appendNumber(uint32_t value, const size_t digits);
+    void appendNumber(uint32_t value, const size_t digits,
+                      const uint32_t base = 10);
 
     /**
      * Terminate the answer with ';'.

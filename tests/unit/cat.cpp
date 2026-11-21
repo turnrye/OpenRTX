@@ -184,6 +184,15 @@ TEST_CASE("CAT answer builds fixed-width fields", "[cat][answer]")
         REQUIRE(strcmp(textOf(answer).data(), "34ABC;") == 0);
     }
 
+    SECTION("Hexadecimal numbers")
+    {
+        answer.appendNumber(0x3F, 4, 16);
+        answer.appendNumber(0xABC, 2, 16);
+        answer.finish();
+
+        REQUIRE(strcmp(textOf(answer).data(), "003FBC;") == 0);
+    }
+
     SECTION("A full answer still ends with ';'")
     {
         for (int i = 0; i < 100; i++)

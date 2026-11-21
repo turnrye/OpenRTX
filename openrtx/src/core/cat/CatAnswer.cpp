@@ -31,15 +31,17 @@ void CatAnswer::append(const char *str, const size_t maxLen)
     length += count;
 }
 
-void CatAnswer::appendNumber(uint32_t value, const size_t digits)
+void CatAnswer::appendNumber(uint32_t value, const size_t digits,
+                             const uint32_t base)
 {
+    static constexpr char DIGITS[] = "0123456789ABCDEF";
     size_t count = std::min(digits, MAX_LENGTH - length);
 
     // Fill from the last digit, then drop the ones that did not fit
     for (size_t i = digits; i > 0; i--) {
         if (i <= count)
-            text[length + i - 1] = '0' + (value % 10);
-        value /= 10;
+            text[length + i - 1] = DIGITS[value % base];
+        value /= base;
     }
 
     length += count;
