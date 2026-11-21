@@ -793,15 +793,25 @@ static int catTick(const CatRequest &req, CatAnswer &answer)
 
 /**
  * ZZHP: the heap and the stack of the thread CAT runs on, in bytes:
- * ZZHP <heap> <free now> <least free> <stack> <least free>;
+ * ZZHP <heap> <free now> <least free> <stack> <least free> <RTX thread's
+ * stack> <least free>;
  */
 static int catHeap(const CatRequest &req, CatAnswer &answer)
 {
     (void) req;
-    char text[64];
-    int n = snprintf(text, sizeof(text), "ZZHP %u %u %u %u %u", getHeapSize(),
-                     getCurrentFreeHeap(), getAbsoluteFreeHeap(),
-                     getStackSize(), getAbsoluteFreeStack());
+    unsigned int rtxStack = 0;
+    unsigned int rtxFree = 0;
+    cat_debugOnRtx([&rtxStack, &rtxFree]() {
+        rtxStack = getStackSize();
+        rtxFree = getAbsoluteFreeStack();
+        return 0;
+    });
+
+    char text[96];
+    int n = snprintf(text, sizeof(text), "ZZHP %u %u %u %u %u %u %u",
+                     getHeapSize(), getCurrentFreeHeap(),
+                     getAbsoluteFreeHeap(), getStackSize(),
+                     getAbsoluteFreeStack(), rtxStack, rtxFree);
     answer.append(text, n);
     return 0;
 }
