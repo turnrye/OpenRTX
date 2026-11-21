@@ -53,6 +53,7 @@
  *   ZZTR<line>;                      a trace line, e.g. ZZTRSTR <ms> ...
  *   ZZPHR ...; ZZPHD ...;            physical layer records
  *   ZZTK;                            ZZTK <ms since boot>;
+ *   ZZHP;                            heap and CAT thread stack, see catHeap()
  *
  * Mode, frequency, power, callsign, PTT, modem and identification are plain
  * CAT commands there (ZM, FA/FB, ZP, ZC, TX, ZH, ID) and their console words
@@ -790,6 +791,23 @@ static int catTick(const CatRequest &req, CatAnswer &answer)
     return 0;
 }
 
+/**
+ * ZZHP: the heap and the stack of the thread CAT runs on, in bytes:
+ * ZZHP <heap> <free now> <least free> <stack> <least free>;
+ */
+static int catHeap(const CatRequest &req, CatAnswer &answer)
+{
+    (void) req;
+    char text[64];
+    int n = snprintf(text, sizeof(text), "ZZHP %u %u %u %u %u", getHeapSize(),
+                     getCurrentFreeHeap(), getAbsoluteFreeHeap(),
+                     getStackSize(), getAbsoluteFreeStack());
+    answer.append(text, n);
+    return 0;
+}
+
+static CatDebugCommand catHeapCommand = { { 'H', 'P' }, catHeap, nullptr };
+
 M17BENCH_CAT_COMMAND(catTrace, "TRACE", 'T', 'R')
 M17BENCH_CAT_COMMAND(catMod, "MOD", 'M', 'O')
 M17BENCH_CAT_COMMAND(catSymReg, "SYMREG", 'S', 'Y')
@@ -805,6 +823,7 @@ void m17bench_catRegister()
     cat_debugRegister(catRxFlip);
     cat_debugRegister(catNvm);
     cat_debugRegister(catTickCommand);
+    cat_debugRegister(catHeapCommand);
 }
 #endif
 
