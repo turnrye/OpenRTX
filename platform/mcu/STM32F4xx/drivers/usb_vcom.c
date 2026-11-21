@@ -18,6 +18,7 @@
 #include <errno.h>
 #include "interfaces/delays.h"
 #include "interfaces/vcom.h"
+#include "rtx/m17_bench.h"
 
 /**
  * Size of the reception buffer for incoming data from the USB host, in bytes.
@@ -264,17 +265,26 @@ ssize_t vcom_writeBlock(const void* buf, size_t len)
      */
     const uint8_t *data = (const uint8_t *) buf;
     size_t sent = 0;
+
+    m17bench_crumb(CRUMB_WRITE, 1);         // TEST ONLY
     while(sent < len)
     {
         size_t chunk = len - sent;
         if(chunk > CDC_DATA_IN_PACKET_SIZE)
             chunk = CDC_DATA_IN_PACKET_SIZE;
+
+        m17bench_crumb(CRUMB_WRITE, 2);     // TEST ONLY
         ssize_t ret = writePacket(&data[sent], chunk);
         if(ret < 0)
+        {
+            m17bench_crumb(CRUMB_WRITE, 4); // TEST ONLY
             return ret;
+        }
 
         sent += chunk;
     }
+
+    m17bench_crumb(CRUMB_WRITE, 3);         // TEST ONLY
     return len;
 }
 
