@@ -106,6 +106,14 @@ cat_src = ['openrtx/src/core/cat/cat.cpp',
            'openrtx/src/core/cat/system.cpp',
            'openrtx/src/core/cat/vfo.cpp']
 
+# Debug commands for bench testing, never in a release
+cat_def       = {}
+cat_debug_src = ['openrtx/src/core/cat/debug.cpp']
+if get_option('cat_debug')
+  cat_src += cat_debug_src
+  cat_def += {'CONFIG_CAT_DEBUG': ''}
+endif
+
 ##
 ## External libraries
 ##
@@ -409,6 +417,7 @@ threads_dep = dependency('threads',  required: false)
 linux_src  += openrtx_src
 linux_inc  += openrtx_inc
 linux_def  += openrtx_def
+linux_def  += cat_def
 linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
 
 #
@@ -503,6 +512,7 @@ mduv3x0_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
 mduv3x0_inc += openrtx_inc + stm32f405_inc
 mduv3x0_def += openrtx_def + stm32f405_def
 mduv3x0_src += cat_src
+mduv3x0_def += cat_def
 
 ##
 ## TYT MD-9600
@@ -525,6 +535,7 @@ md9600_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
 md9600_inc += openrtx_inc + stm32f405_inc
 md9600_def += openrtx_def + stm32f405_def
 md9600_src += cat_src
+md9600_def += cat_def
 
 ##
 ## Radioddity GD-77
@@ -1252,6 +1263,14 @@ cat_test = executable('cat_test',
                       sources : unit_test_src + ['tests/unit/cat.cpp'],
                       kwargs  : unit_test_opts)
 
+cat_debug_opts = unit_test_opts + {'c_args'  : linux_c_args + '-DCONFIG_CAT_DEBUG',
+                                   'cpp_args': linux_cpp_args + '-DCONFIG_CAT_DEBUG'}
+cat_debug_test = executable('cat_debug_test',
+                            sources : unit_test_src
+                                    + (get_option('cat_debug') ? [] : cat_debug_src)
+                                    + ['tests/unit/cat_debug.cpp'],
+                            kwargs  : cat_debug_opts)
+
 # Test signals shared by the M17 tests (tests/platform/M17Signal.hpp)
 m17_signal_src = ['tests/platform/NoisyChannel.cpp', 'tests/platform/M17Signal.cpp']
 m17_signal_inc = linux_inc + ['tests/platform']
@@ -1328,6 +1347,7 @@ test('M17 RRC Test',          m17_rrc_test)
 test('M17 Callsign Unit Test',          m17_callsign_test)
 test('M17 Meta Text Unit Test',         m17_metatext_test)
 test('CAT Test',              cat_test)
+test('CAT Debug Test',        cat_debug_test)
 test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)

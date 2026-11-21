@@ -53,6 +53,9 @@ extern "C" {
  *   ZR    battery charge, percent
  *   ZV    firmware version
  *   ZB1   restart into the bootloader, on radios with CONFIG_BOOTLOADER_ENTRY
+ *
+ * Bench builds with CONFIG_CAT_DEBUG add ZZ, the debug commands drivers
+ * register (core/cat/debug.hpp).
  */
 
 /*
@@ -83,6 +86,12 @@ int cat_init(const struct chardev_ops *dev);
  * @param now: current time in milliseconds.
  */
 void cat_task(const long long now);
+
+/**
+ * Run the call a CAT debug command queued for the RTX thread, if any. Called
+ * periodically from the RTX thread, in builds with CONFIG_CAT_DEBUG.
+ */
+void cat_debugService();
 
 #ifdef __cplusplus
 }

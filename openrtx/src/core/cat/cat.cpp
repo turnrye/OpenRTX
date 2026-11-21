@@ -8,6 +8,7 @@
 #include "core/cat/CatAnswer.hpp"
 #include "core/cat/CatParser.hpp"
 #include "core/cat/commands.hpp"
+#include "core/cat/debug.hpp"
 #include "core/threads.h"
 #include <algorithm>
 #include <array>
@@ -21,8 +22,14 @@ struct CatCommand {
     CatHandler run; ///< Handler.
 };
 
+#ifdef CONFIG_CAT_DEBUG
+static constexpr size_t DEBUG_COMMANDS = 1;
+#else
+static constexpr size_t DEBUG_COMMANDS = 0;
+#endif
+
 // Every command the radio executes, in alphabetical order
-static constexpr std::array<CatCommand, 28> commands = { {
+static constexpr std::array<CatCommand, 28 + DEBUG_COMMANDS> commands = { {
     { { 'A', 'I' }, cat_cmdAI }, { { 'B', 'S' }, cat_cmdBS },
     { { 'C', 'N' }, cat_cmdCN }, { { 'C', 'T' }, cat_cmdCT },
     { { 'E', 'X' }, cat_cmdEX }, { { 'F', 'A' }, cat_cmdFA },
@@ -37,6 +44,9 @@ static constexpr std::array<CatCommand, 28> commands = { {
     { { 'Z', 'M' }, cat_cmdZM }, { { 'Z', 'N' }, cat_cmdZN },
     { { 'Z', 'O' }, cat_cmdZO }, { { 'Z', 'P' }, cat_cmdZP },
     { { 'Z', 'R' }, cat_cmdZR }, { { 'Z', 'V' }, cat_cmdZV },
+#ifdef CONFIG_CAT_DEBUG
+    { { 'Z', 'Z' }, cat_cmdZZ },
+#endif
 } };
 
 // Bytes read from the link per call of cat_task()
@@ -136,4 +146,8 @@ void cat_task(const long long now)
         if (parser.push(rx[i]))
             execute(parser.data(), parser.size(), now);
     }
+
+#ifdef CONFIG_CAT_DEBUG
+    cat_debugFlush(device);
+#endif
 }
