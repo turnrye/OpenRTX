@@ -33,6 +33,7 @@ static size_t analogSize;
 static struct streamCtx analogCtx;
 static struct lowPassDecimator micLowPass;
 static struct dcBlock micDcBlock;
+static bool micPrimed;
 
 // TEST ONLY: microphone starts, the last start's result, and the stream's
 // samples since the last read: count, peak, sum and sum of squares
@@ -161,6 +162,12 @@ static int mic_start(const uint8_t instance, const void *config,
     micStarts++; // TEST ONLY
 
     if (micChip) {
+        // The analog path's buffer is not needed with the codec
+        if (analogCtx.running == 0) {
+            analogBuf.reset();
+            analogSize = 0;
+        }
+
         micDriver = micPaths->chip.driver;
         micStartRet = micDriver->start(instance, micPaths->chip.config, ctx);
         return micStartRet;
@@ -182,6 +189,7 @@ static int mic_start(const uint8_t instance, const void *config,
         return -ENOMEM;
 
     dsp_resetState(micDcBlock);
+    micPrimed = false;
     micDriver = micPaths->analog.driver;
     analogCtx.buffer = analogBuf.get();
     analogCtx.bufSize = size;
@@ -207,6 +215,15 @@ static int mic_data(struct streamCtx *ctx, stream_sample_t **buf)
     int len = micDriver->data(&analogCtx, &in);
     if (len < 0)
         return len;
+
+    // Start the filter settled on the first sample, so the microphone's DC
+    // level gives no step
+    for (size_t i = 0; (micPrimed == false) && (i < micLowPass.len); i++) {
+        int16_t sample = in[0];
+        dsp_lowPassDecimate(&micLowPass, &sample);
+    }
+
+    micPrimed = true;
 
     stream_sample_t *out =
         &ctx->buffer[(in - analogCtx.buffer) / micPaths->analogRatio];
