@@ -234,6 +234,11 @@ void create_threads()
     #else
     void *ui_thread_stack = malloc(UI_THREAD_STKSIZE * sizeof(uint8_t));
     pthread_attr_setstack(&ui_attr, ui_thread_stack, UI_THREAD_STKSIZE);
+
+    // Below the RTX thread: a Zephyr thread otherwise inherits its creator's
+    // priority, and at the same one the UI takes whole time slices from the
+    // RTX and codec threads. Without inheritance it gets the lowest.
+    pthread_attr_setinheritsched(&ui_attr, PTHREAD_EXPLICIT_SCHED);
     #endif
 
     pthread_t ui_thread;
